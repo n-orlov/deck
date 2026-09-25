@@ -59,9 +59,6 @@ func TestR142WheelDriftSurvivesSuccessiveReloads(t *testing.T) {
 
 	updated, _ := m.Update(wheelDown(10, 5))
 	m = updated.(Model)
-	if !m.sidebarScrollDrifted {
-		t.Fatalf("wheel down over the sidebar did not arm the drift flag")
-	}
 	driftedScroll := m.sidebarScroll
 	if driftedScroll == 0 {
 		t.Fatalf("fixture: wheel down did not move sidebarScroll at all")
@@ -71,9 +68,6 @@ func TestR142WheelDriftSurvivesSuccessiveReloads(t *testing.T) {
 		reloaded := append([]store.Session(nil), m.baseSessions...)
 		next, _ := m.Update(sessionsLoaded{sessions: reloaded, groups: []store.Group{{ID: 1, Name: "grp"}}})
 		m = next.(Model)
-		if !m.sidebarScrollDrifted {
-			t.Fatalf("reload #%d cleared the drift flag", i)
-		}
 		if m.sidebarScroll != driftedScroll {
 			t.Fatalf("reload #%d moved a drifted sidebarScroll: %d -> %d", i, driftedScroll, m.sidebarScroll)
 		}
@@ -81,6 +75,7 @@ func TestR142WheelDriftSurvivesSuccessiveReloads(t *testing.T) {
 		if !ok || idx < 0 || idx >= len(m.sessions) || m.sessions[idx].ID != selectedID {
 			t.Fatalf("reload #%d lost the selection by id: cursor %+v", i, m.selected)
 		}
+		assertDriftStillInForce(t, fmt.Sprintf("after reload #%d", i), m)
 	}
 }
 
@@ -101,20 +96,14 @@ func TestR142WheelDriftSurvivesSuccessiveReloadsClampsToShorterList(t *testing.T
 		updated = next.(Model)
 		m = updated
 	}
-	if !m.sidebarScrollDrifted {
-		t.Fatalf("fixture: wheel down did not arm the drift flag")
-	}
 	fullScroll := m.sidebarScroll
 	if fullScroll == 0 {
 		t.Fatalf("fixture: wheel down did not move sidebarScroll at all")
 	}
 
-	shorter := append([]store.Session(nil), m.baseSessions[:10]...)
+	shorter := append([]store.Session(nil), m.baseSessions[:20]...)
 	next, _ := m.Update(sessionsLoaded{sessions: shorter, groups: []store.Group{{ID: 1, Name: "grp"}}})
 	m = next.(Model)
-	if !m.sidebarScrollDrifted {
-		t.Fatalf("reload cleared the drift flag")
-	}
 	if m.sidebarScroll >= fullScroll {
 		t.Fatalf("reload to a shorter list did not clamp sidebarScroll down from %d: got %d", fullScroll, m.sidebarScroll)
 	}
@@ -129,6 +118,7 @@ func TestR142WheelDriftSurvivesSuccessiveReloadsClampsToShorterList(t *testing.T
 	if !ok || idx < 0 || idx >= len(m.sessions) || m.sessions[idx].ID != selectedID {
 		t.Fatalf("reload to a shorter list lost the selection by id: cursor %+v", m.selected)
 	}
+	assertDriftStillInForce(t, "after the shrinking reload", m)
 }
 
 // TestR142NoDriftReloadStillFollowsSelection is the negative half of
@@ -137,9 +127,6 @@ func TestR142WheelDriftSurvivesSuccessiveReloadsClampsToShorterList(t *testing.T
 // selection whose rendered position moves must stay in view.
 func TestR142NoDriftReloadStillFollowsSelection(t *testing.T) {
 	m := wheelDriftReloadTestModel(30, 24)
-	if m.sidebarScrollDrifted {
-		t.Fatalf("fixture: drift flag armed with no wheel event")
-	}
 	m.selected = rowCursor(29)
 	m.followSelectionViewport()
 	if m.sidebarScroll == 0 {
@@ -177,9 +164,6 @@ func TestR142WheelDriftSurvivesLiveReSort(t *testing.T) {
 
 	updated, _ := m.Update(wheelDown(10, 5))
 	m = updated.(Model)
-	if !m.sidebarScrollDrifted {
-		t.Fatalf("wheel down over the sidebar did not arm the drift flag")
-	}
 	driftedScroll := m.sidebarScroll
 	if driftedScroll == 0 {
 		t.Fatalf("fixture: wheel down did not move sidebarScroll at all")
@@ -188,9 +172,6 @@ func TestR142WheelDriftSurvivesLiveReSort(t *testing.T) {
 	m.settings.SortOrder = SortOrderName
 	m.resortSessionsLive()
 
-	if !m.sidebarScrollDrifted {
-		t.Fatalf("live re-sort cleared the drift flag")
-	}
 	if m.sidebarScroll != driftedScroll {
 		t.Fatalf("live re-sort moved a drifted sidebarScroll: %d -> %d", driftedScroll, m.sidebarScroll)
 	}
@@ -204,6 +185,7 @@ func TestR142WheelDriftSurvivesLiveReSort(t *testing.T) {
 	if idx == 0 {
 		t.Fatalf("fixture: re-sort by name did not move the selected session's position")
 	}
+	assertDriftStillInForce(t, "after the live re-sort", m)
 }
 
 // TestR142WheelDriftSurvivesLiveReGroup is the re-group half of SPEC §11's
@@ -241,9 +223,6 @@ func TestR142WheelDriftSurvivesLiveReGroup(t *testing.T) {
 				next, _ := m.Update(tc.wheel(10, 5))
 				m = next.(Model)
 			}
-			if !m.sidebarScrollDrifted {
-				t.Fatalf("fixture: wheel did not arm the drift flag")
-			}
 			driftedScroll := m.sidebarScroll
 
 			m.settingsEdits = settingsEditsFromSettings(m.settings)
@@ -253,9 +232,6 @@ func TestR142WheelDriftSurvivesLiveReGroup(t *testing.T) {
 				t.Fatal("fixture: default_group_first not applied live")
 			}
 
-			if !m.sidebarScrollDrifted {
-				t.Fatalf("live re-group cleared the drift flag")
-			}
 			if want := clampSidebarScroll(driftedScroll, len(m.sidebarEntries(sidebarEntryContentWidth(m.computeLayout()))), m.computeLayout().Sidebar.Height-2); m.sidebarScroll != want {
 				t.Fatalf("live re-group moved a drifted sidebarScroll: %d -> %d (want %d)", driftedScroll, m.sidebarScroll, want)
 			}
@@ -266,6 +242,7 @@ func TestR142WheelDriftSurvivesLiveReGroup(t *testing.T) {
 			if !ok || idx < 0 || idx >= len(m.sessions) || m.sessions[idx].ID != selectedID {
 				t.Fatalf("live re-group lost the selection by id: cursor %+v", m.selected)
 			}
+			assertDriftStillInForce(t, "after the live re-group", m)
 		})
 	}
 }
@@ -281,16 +258,13 @@ func TestR142WheelDriftSurvivesArchivedPoolReloads(t *testing.T) {
 		next, _ := m.Update(wheelDown(10, 5))
 		m = next.(Model)
 	}
-	if !m.sidebarScrollDrifted || m.sidebarScroll == 0 {
-		t.Fatalf("fixture: wheel did not drift the sidebar (drifted=%v scroll=%d)", m.sidebarScrollDrifted, m.sidebarScroll)
+	if m.sidebarScroll == 0 {
+		t.Fatalf("fixture: wheel did not drift the sidebar (scroll=%d)", m.sidebarScroll)
 	}
 	driftedScroll := m.sidebarScroll
 	for i := 1; i <= 3; i++ {
 		next, _ := m.Update(archivedSessionsLoaded{sessions: nil})
 		m = next.(Model)
-		if !m.sidebarScrollDrifted {
-			t.Fatalf("archived reload #%d cleared the drift flag", i)
-		}
 		if m.sidebarScroll != driftedScroll {
 			t.Fatalf("archived reload #%d moved a drifted sidebarScroll: %d -> %d", i, driftedScroll, m.sidebarScroll)
 		}
@@ -298,5 +272,6 @@ func TestR142WheelDriftSurvivesArchivedPoolReloads(t *testing.T) {
 		if !ok || idx < 0 || idx >= len(m.sessions) || m.sessions[idx].ID != selectedID {
 			t.Fatalf("archived reload #%d lost the selection by id: cursor %+v", i, m.selected)
 		}
+		assertDriftStillInForce(t, fmt.Sprintf("after archived reload #%d", i), m)
 	}
 }
