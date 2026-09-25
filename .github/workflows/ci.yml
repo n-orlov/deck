@@ -128,18 +128,38 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
-      - name: Notify on a red main/nightly run
-        if: always() && (steps.suite.outcome == 'failure' || steps.stability.outcome == 'failure') && (github.ref == 'refs/heads/main' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
-        continue-on-error: true
+      - name: Fail the job if the suite or the nightly stability run failed
+        if: steps.suite.outcome == 'failure' || steps.stability.outcome == 'failure'
+        run: exit 1
+
+  # R145: a red main/nightly run POSTs exactly one message with the run URL.
+  # This is its own job, not a step inside `suite`, because `suite` has
+  # `needs: lint`: when lint fails fast, `suite` is skipped outright and a
+  # notify step living inside it would never run. `always()` makes this job
+  # evaluate after both upstream jobs whatever their outcome (failure,
+  # cancellation/timeout, or `suite` skipped behind a red lint), and the
+  # needs.*.result checks keep it silent on a green run. It is the only
+  # place in the workflow that POSTs, so one red run sends one message.
+  notify:
+    name: notify (red main/nightly)
+    needs: [lint, suite]
+    runs-on: [self-hosted, linux, x64, deck]
+    if: >-
+      always()
+      && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+      && (github.ref == 'refs/heads/main' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+      && (contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled'))
+    timeout-minutes: 5
+    steps:
+      - name: POST the red run's URL to the notifier
+        env:
+          LINT_RESULT: ${{ needs.lint.result }}
+          SUITE_RESULT: ${{ needs.suite.result }}
         run: |
           set -eu
           run_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-          msg="deck CI red: ${{ github.event_name }} on ${{ github.ref_name }} -- ${run_url}"
+          msg="deck CI red: ${{ github.event_name }} on ${{ github.ref_name }} (lint=${LINT_RESULT}, suite=${SUITE_RESULT}) -- ${run_url}"
           payload=$(python3 -c 'import json,sys; print(json.dumps({"text": sys.argv[1]}))' "$msg")
           curl -fsS -X POST "http://100.71.162.65:8090/notify" \
             -H "Content-Type: application/json" \
             --data "$payload"
-
-      - name: Fail the job if the suite or the nightly stability run failed
-        if: steps.suite.outcome == 'failure' || steps.stability.outcome == 'failure'
-        run: exit 1
