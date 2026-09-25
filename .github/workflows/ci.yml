@@ -310,7 +310,8 @@ jobs:
     name: publish (Pages)
     needs: report
     if: >-
-      needs.report.result == 'success'
+      always()
+      && needs.report.result == 'success'
       && (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -336,7 +337,8 @@ jobs:
     name: PR comment (Allure link)
     needs: report
     if: >-
-      github.event_name == 'pull_request'
+      always()
+      && github.event_name == 'pull_request'
       && github.event.pull_request.head.repo.full_name == github.repository
       && needs.report.result == 'success'
     runs-on: ubuntu-latest
