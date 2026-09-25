@@ -204,7 +204,7 @@ if ! run_test_features "$outdir/junit-features-gotestsum.xml" "DECK_GODOG_JUNIT=
             i=$((i + 1))
             rerun_log="$outdir/features-rerun-$i.log"
             echo "ci/suite.sh: features/ rerunning failed scenario alone: DECK_GODOG_PATHS=$loc" >&2
-            if run_test_features "$outdir/junit-features-rerun-$i-gotestsum.xml" "DECK_GODOG_PATHS=$loc" "GOCOVERDIR=$covdir" > "$rerun_log" 2>&1; then
+            if run_test_features "$outdir/junit-features-rerun-$i-gotestsum.xml" "DECK_GODOG_PATHS=$loc" "DECK_GODOG_JUNIT=$outdir/junit-features-rerun-$i.xml" "GOCOVERDIR=$covdir" > "$rerun_log" 2>&1; then
                 echo "$loc" >> "$features_flaky"
             else
                 echo "ci/suite.sh: features/ scenario $loc failed again on its solo rerun" >&2
@@ -222,7 +222,59 @@ if [ "$features_status" -ne 0 ]; then
     overall_status=1
 fi
 
-# --- 3. coverage summary (R146/task 016) ---
+# --- 3. one merged JUnit file per pass, retries folded (R146/task 019) ---
+# The raw files above keep every attempt as its own <testcase>, and
+# Allure's junit-xml plugin, given those, can pick a test's failed attempt
+# as its result and report a test that passed on retry as failed and not
+# flaky. ci/junitflaky (see its own header) folds each test whose last
+# attempt passed into one passing <testcase> carrying its earlier failures
+# as <rerunFailure>/<rerunError>, the plugin's own flaky convention, and
+# recounts. junit-merged/ is what ci/allure-report.sh and ci/summary.sh
+# read. features/ contributes Godog's own per-scenario JUnit (the original
+# pass, then each solo rerun, in rerun order); gotestsum's view of the same
+# pass (TestFeatures/<scenario> subtests) is used instead only if Godog's
+# file is missing, e.g. when TestFeatures never got as far as running a
+# scenario. A merge failure is reported, not fatal: the report then shows
+# only what did merge.
+merged_dir="$outdir/junit-merged"
+mkdir -p "$merged_dir"
+
+# merge_junit <output> <input>...: the inputs in chronological order; any
+# that does not exist is left out.
+merge_junit() {
+    merged_out=$1
+    shift
+    merge_inputs=""
+    for f in "$@"; do
+        [ -f "$f" ] && merge_inputs="$merge_inputs $f"
+    done
+    [ -n "$merge_inputs" ] || return 0
+    # shellcheck disable=SC2086 # $outdir is canonical, one word per path
+    if ! go run ./ci/junitflaky -o "$merged_out" $merge_inputs; then
+        echo "ci/suite.sh: could not merge$merge_inputs into $merged_out" >&2
+        rm -f "$merged_out"
+    fi
+}
+
+merge_junit "$merged_dir/junit-go.xml" "$go_junit"
+# Rerun files are numbered 1..i in the order the reruns ran.
+features_reruns=""
+features_reruns_gotestsum=""
+n=1
+while [ -f "$outdir/junit-features-rerun-$n-gotestsum.xml" ] || [ -f "$outdir/junit-features-rerun-$n.xml" ]; do
+    features_reruns="$features_reruns $outdir/junit-features-rerun-$n.xml"
+    features_reruns_gotestsum="$features_reruns_gotestsum $outdir/junit-features-rerun-$n-gotestsum.xml"
+    n=$((n + 1))
+done
+if [ -f "$features_junit" ]; then
+    # shellcheck disable=SC2086
+    merge_junit "$merged_dir/junit-features.xml" "$features_junit" $features_reruns
+else
+    # shellcheck disable=SC2086
+    merge_junit "$merged_dir/junit-features.xml" "$outdir/junit-features-gotestsum.xml" $features_reruns_gotestsum
+fi
+
+# --- 4. coverage summary (R146/task 016) ---
 # `unit_coverprofile` (criterion 1, written above by pass 1's -coverprofile)
 # is already in the legacy text format `go tool cover` understands.
 # `covdir` (criterion 2) is the GOCOVERDIR binary format instead, one counter
