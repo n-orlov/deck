@@ -173,9 +173,20 @@ func TestHeaderCursorCueUnderColourIsSelectionBackground(t *testing.T) {
 	if selected.bg != theme.Selection {
 		t.Fatalf("selected header's bg = %q, want %q", selected.bg, theme.Selection)
 	}
+	// task 003/R141 dropped the old "> " gutter glyph the background cue
+	// used to ride alongside (cure-01-02): the background alone must now
+	// carry the cue, with no gutter reserved either way. Pinned separately
+	// so this test cannot pass merely because the pre-task-003 background
+	// already matched -- the old gutter glyph is exactly what must be gone.
+	if selected.gutter != "" {
+		t.Fatalf("selected header's gutter = %q, want \"\" (task 003/R141: no gutter, background alone carries the cue)", selected.gutter)
+	}
 	unselected := headerEntry(t, m, idB)
 	if unselected.bg != theme.Token("") {
 		t.Fatalf("unselected header's bg = %q, want \"\"", unselected.bg)
+	}
+	if unselected.gutter != "" {
+		t.Fatalf("unselected header's gutter = %q, want \"\"", unselected.gutter)
 	}
 }
 
@@ -235,6 +246,19 @@ func TestHeaderCursorLeavesWidthAndLeftColumnUnchanged(t *testing.T) {
 	}
 	if unselectedCol != selectedCol {
 		t.Fatalf("chevron's left column moved with the cursor: unselected column %d, selected column %d", unselectedCol, selectedCol)
+	}
+	// task 003/R141: a header reserves no gutter at all, either selected or
+	// not -- the old 2-column "> "/"  " gutter pair already left the
+	// chevron's column consistent between the two states without dropping
+	// the gutter, so the identical-column check above cannot by itself
+	// distinguish the two behaviours; the gutter field itself must.
+	m.selected = sidebarCursor{}
+	if got := headerEntry(t, m, idA).gutter; got != "" {
+		t.Fatalf("unselected header's gutter = %q, want \"\" (task 003/R141: no gutter reserved)", got)
+	}
+	m.selected = headerCursor(idA)
+	if got := headerEntry(t, m, idA).gutter; got != "" {
+		t.Fatalf("selected header's gutter = %q, want \"\" (task 003/R141: no gutter reserved)", got)
 	}
 
 	// The cue itself (background token, reverse video) lives entirely in
