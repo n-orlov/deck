@@ -1,10 +1,13 @@
 package tui
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/n-orlov/deck/internal/theme"
+	"github.com/n-orlov/deck/internal/tmux"
 )
 
 // entryRefusalKind names why entering interactive mode was refused --
@@ -77,6 +80,84 @@ func (m *Model) setEntryRefusal(sessionID string, kind entryRefusalKind, reason 
 // reaches for this same helper rather than a second struct literal.
 func (m *Model) clearEntryRefusal() {
 	m.entryRefusal = entryRefusalState{}
+}
+
+// clearEntryRefusalIfSessionStarted is task 008/R143's (GH #38) own "a
+// later tick finds the reason gone" clause for the entryRefusalStopped
+// kind: called every time m.sessions is refreshed (sessionsLoaded), it
+// looks up the refused session by ID in the JUST-refreshed list and
+// clears the refusal the moment canReachPane says the session has a pane
+// to reach again -- "the session started" in SPEC §11.9's own wording.
+// Every other kind is left untouched here; the holder-left half of the
+// same clause (the two contention kinds) is entryRefusalHolderCheck
+// below, which needs a live tmux probe rather than m.sessions' own
+// status. A session that has since left m.sessions entirely (deleted
+// mid-refusal) is left alone too -- there is nothing to have "started".
+func (m *Model) clearEntryRefusalIfSessionStarted() {
+	if !m.entryRefusal.active || m.entryRefusal.kind != entryRefusalStopped {
+		return
+	}
+	for _, s := range m.sessions {
+		if s.ID == m.entryRefusal.sessionID {
+			if canReachPane(s) {
+				m.clearEntryRefusal()
+			}
+			return
+		}
+	}
+}
+
+// entryRefusalHolderCheck issues one read-only tmux probe per previewTick
+// while an attached-elsewhere/owned-elsewhere refusal is active, so the
+// banner drops the moment the contending client/process actually lets go
+// -- SPEC §11.9's "the holder left" -- without waiting for the selection
+// to move, for entry to be retried, or for Esc. Every other kind returns
+// nil: the row-floor and shrank kinds have nothing to probe (the panel's
+// own size, read synchronously by the entry ladder itself on the next
+// attempt, governs those, not a tmux round trip), the stopped kind is
+// clearEntryRefusalIfSessionStarted's job above, and no-live-pane/other
+// name no single condition SPEC calls "the reason gone" -- every kind
+// still clears on selection move, a successful retry, or Esc regardless.
+func (m Model) entryRefusalHolderCheck() tea.Cmd {
+	r := m.entryRefusal
+	if !r.active || m.tmuxClient.Socket == "" {
+		return nil
+	}
+	if r.kind != entryRefusalAttachedElsewhere && r.kind != entryRefusalOwnedElsewhere {
+		return nil
+	}
+	var slug string
+	found := false
+	for _, s := range m.sessions {
+		if s.ID == r.sessionID {
+			slug, found = s.Slug, true
+			break
+		}
+	}
+	if !found {
+		return nil
+	}
+	client := m.tmuxClient
+	sessionID := r.sessionID
+	kind := r.kind
+	return func() tea.Msg {
+		ctx := context.Background()
+		windowTarget, err := tmux.SessionName(slug)
+		if err != nil {
+			return entryRefusalHolderRecheckDone{sessionID: sessionID, kind: kind}
+		}
+		switch kind {
+		case entryRefusalAttachedElsewhere:
+			if attached, aerr := client.SessionAttachedCount(ctx, windowTarget); aerr == nil && attached == 0 {
+				return entryRefusalHolderRecheckDone{sessionID: sessionID, kind: kind, reasonGone: true}
+			}
+		case entryRefusalOwnedElsewhere:
+			if state, perr := client.ProbeWindowOwnership(ctx, windowTarget); perr == nil && state != tmux.ClaimForeignLive {
+				return entryRefusalHolderRecheckDone{sessionID: sessionID, kind: kind, reasonGone: true}
+			}
+		}
+		return entryRefusalHolderRecheckDone{sessionID: sessionID, kind: kind}
+	}
 }
 
 // activeEntryRefusalForSelection reports the current refusal, but only
