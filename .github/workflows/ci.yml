@@ -293,10 +293,25 @@ jobs:
   # Runs on a GitHub-hosted runner: deploying is one API call through
   # `actions/deploy-pages`, needs neither the deck slots nor docker, and
   # keeps those two shared self-hosted slots free for the next queued run.
+  #
+  # Gated to root-triggered events only (push to main, schedule,
+  # workflow_dispatch), never `pull_request`: the repo's own `github-pages`
+  # deployment environment already carries a branch policy allowing only
+  # `main` (a pre-existing repository setting this job is never allowed to
+  # change -- see the standing rule and the PRD's "repository settings
+  # changes by the job, of any kind" non-goal), so a PR-branch deploy
+  # attempt is rejected by GitHub server-side before any step runs, whether
+  # or not this job even declares `environment:` in its own YAML (Pages
+  # deployments are always attributed to that one environment). See task
+  # 018's petition on successCriteria (2) for the evidence and the
+  # consequence: a PR's own /pr/<n>/ report goes live at the next
+  # root-triggered deploy, not synchronously within the PR's own run.
   publish:
     name: publish (Pages)
     needs: report
-    if: needs.report.result == 'success'
+    if: >-
+      needs.report.result == 'success'
+      && (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -312,14 +327,18 @@ jobs:
 
   # R146: exactly one PR comment carrying the report link, created or
   # updated depending on whether a comment with the marker HTML string
-  # already exists -- never appended as a fresh comment on every run.
+  # already exists -- never appended as a fresh comment on every run. Keyed
+  # only on `report` (not `publish`, which never even runs for a PR event --
+  # see the note on `publish` above): the PR's /pr/<n>/ content is already
+  # merged into the persisted site tree by the time `report` succeeds, and
+  # goes live at the next root-triggered deploy.
   pr-comment:
     name: PR comment (Allure link)
-    needs: [report, publish]
+    needs: report
     if: >-
       github.event_name == 'pull_request'
       && github.event.pull_request.head.repo.full_name == github.repository
-      && needs.publish.result == 'success'
+      && needs.report.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
