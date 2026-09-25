@@ -699,14 +699,22 @@ func sessionDisappeared(err error) bool {
 }
 
 // IsTargetAbsent reports that an operation lost a race with removal of its
-// target session or private server. Callers use it to make unleased collection
-// idempotent without hiding unrelated tmux command failures.
+// target session, pane, or private server. Callers use it to make unleased
+// collection idempotent without hiding unrelated tmux command failures.
+//
+// "can't find pane" covers a pane that vanished between a pane list and a
+// later capture-pane against the pane id that list returned (GH #36): the
+// pane id is server-global, so a session/window teardown that removed it
+// concurrently is reported by tmux against the pane, not the session, and is
+// exactly as much a removal race as "can't find session"/"can't find window"
+// already are.
 func IsTargetAbsent(err error) bool {
 	if sessionDisappeared(err) {
 		return true
 	}
 	message := err.Error()
-	return strings.Contains(message, "no server running") ||
+	return strings.Contains(message, "can't find pane") ||
+		strings.Contains(message, "no server running") ||
 		strings.Contains(message, "no sessions") ||
 		strings.Contains(message, "no current target") ||
 		strings.Contains(message, "error connecting to") && strings.Contains(message, "No such file or directory")
