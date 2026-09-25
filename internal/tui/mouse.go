@@ -190,6 +190,20 @@ func (m Model) handleMouse(e tea.MouseMsg) (tea.Model, tea.Cmd) {
 // ↑/↓/PgUp/PgDn). A wheel event anywhere outside the sidebar panel
 // (including over the preview, which must never fall through to the
 // sidebar) is a no-op, and the collapsed strip has no list to scroll.
+//
+// R142/GH #40: every actual scroll also arms m.sidebarScrollDrifted
+// (SPEC §11: "a wheel scroll stays where you put it until you press a
+// key that moves or acts on the selection"). Once armed, a background
+// reload, a live re-sort or a re-group must leave the wheel's own offset
+// alone (tui.go's sessionsLoaded/resortSessionsLive check the flag and
+// call clampDriftedSidebarScroll instead of following the selection);
+// task 005 is what clears it again, on the next key that actually moves
+// or acts on the selection. Set unconditionally on every notch, even one
+// that lands back on the same clamped offset the selection would already
+// have put it at (e.g. a single notch at the very top of a short list) --
+// the operator's wheel gesture itself is what starts the drift, not
+// whether the offset it produced happens to differ from the followed
+// one.
 func (m Model) scrollSidebar(e tea.MouseMsg, delta int) Model {
 	hit := m.hitTest(e.X, e.Y)
 	if hit.panel != hitPanelSidebar || hit.target == hitTargetCollapsedStrip {
@@ -199,6 +213,7 @@ func (m Model) scrollSidebar(e tea.MouseMsg, delta int) Model {
 	width, height := m.sidebarContentDims(layout)
 	total := len(m.sidebarEntries(width))
 	m.sidebarScroll = clampSidebarScroll(m.sidebarScroll+delta, total, height)
+	m.sidebarScrollDrifted = true
 	return m
 }
 
