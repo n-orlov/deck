@@ -4,6 +4,8 @@ import (
 	"context"
 	"testing"
 
+	tea "github.com/charmbracelet/bubbletea"
+
 	"github.com/n-orlov/deck/internal/store"
 	"github.com/n-orlov/deck/internal/tmux"
 )
@@ -176,5 +178,39 @@ func TestPreviewPressIsInertOnHeaderCursorStartsNoDragToCopyAndWheelStaysNoOp(t 
 	}
 	if afterWheel.selected != headerCursor(0) {
 		t.Fatalf("a wheel notch over the passive preview changed the selection to %v", afterWheel.selected)
+	}
+
+	// "Inert on a header cursor" is the header branch of R144's new
+	// gesture, and a tree with no preview-press gesture at all is inert
+	// everywhere -- so pin the other side on the identical model and
+	// (x, y): with the cursor moved onto the session row, the same press
+	// must do exactly what ↵ does from that same model (here a refusal,
+	// since the private socket has no server -- never the live `-L deck`),
+	// and that must visibly change the frame.
+	onRow := func() Model {
+		r := mouseTestModel([]store.Session{
+			{ID: "sess-prev-header", Name: "prevheader", Slug: "prevheader", Status: "waiting"},
+		})
+		r.width, r.height = 100, 30
+		r.tmuxClient = tmux.Client{Socket: "deck-tui-prev-header-no-server"}
+		r.selected = rowCursor(0)
+		return r
+	}
+	before := onRow()
+	if rx, ry := previewPressXY(t, before); rx != x || ry != y {
+		t.Fatalf("test setup: preview press point moved from (%d,%d) to (%d,%d) with the cursor on the row", x, y, rx, ry)
+	}
+	frameBefore := before.View()
+	pressedModel, _ := onRow().Update(press(x, y))
+	enteredModel, _ := onRow().Update(tea.KeyMsg{Type: tea.KeyEnter})
+	pressed, entered := pressedModel.(Model), enteredModel.(Model)
+	if pressed.interactive != entered.interactive {
+		t.Fatalf("on a session row a preview press left interactive=%v but \u21b5 left interactive=%v from the identical model", pressed.interactive, entered.interactive)
+	}
+	if pressedFrame, enteredFrame := pressed.View(), entered.View(); pressedFrame != enteredFrame {
+		t.Fatalf("on a session row a preview press did not do what \u21b5 does from the identical model:\n--- press ---\n%s\n--- \u21b5 ---\n%s", pressedFrame, enteredFrame)
+	}
+	if pressed.View() == frameBefore {
+		t.Fatalf("on a session row a preview press left the frame unchanged: the header-cursor inertness above is not the header branch of R144's preview-press gesture")
 	}
 }
