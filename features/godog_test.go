@@ -28,7 +28,7 @@ func TestFeatures(t *testing.T) {
 	suite := godog.TestSuite{
 		ScenarioInitializer: initializeScenario,
 		Options: &godog.Options{
-			Format:   "pretty",
+			Format:   godogFormat(),
 			Paths:    godogPaths(),
 			Tags:     tags,
 			Strict:   true,
@@ -40,13 +40,31 @@ func TestFeatures(t *testing.T) {
 	}
 }
 
+// godogFormat returns the godog Format string TestFeatures uses. It is
+// exactly "pretty" -- unchanged from before DECK_GODOG_JUNIT existed --
+// unless DECK_GODOG_JUNIT names a path, in which case godog's own
+// "pretty,junit:<path>" multi-formatter syntax is used: the terminal output
+// stays pretty, and godog's built-in JUnit formatter additionally writes one
+// <testcase> per scenario to <path> (task 014, R146). Local runs that never
+// set the variable are byte-for-byte unaffected.
+func godogFormat() string {
+	path := strings.TrimSpace(os.Getenv("DECK_GODOG_JUNIT"))
+	if path == "" {
+		return "pretty"
+	}
+	return "pretty,junit:" + path
+}
+
 // godogPaths returns the feature paths the suite runs. It is the whole
 // package directory unless DECK_GODOG_PATHS names specific feature files
 // (comma separated, relative to this package), which is a diagnostic knob for
 // running one feature targeted -- notably
 // interactive_sigwinch_budget.feature, whose scenarios carry NO tags and so
 // cannot be selected with DECK_GODOG_TAGS at all, which used to leave the
-// entire ~5 minute suite as the only way to exercise them.
+// entire ~5 minute suite as the only way to exercise them. Each comma-
+// separated entry may also carry a trailing ":<line>" (godog's own path:line
+// syntax, e.g. "mouse.feature:42") to select the single scenario at that
+// line instead of every scenario in the file (task 014, R146).
 //
 // It never shrinks what the ordinary run covers: unset -- the case for
 // `go test ./features/`, for CI and for every deliverable suite run -- means
@@ -146,6 +164,75 @@ func initializeScenario(sc *godog.ScenarioContext) {
 	registerInteractiveRetargetSteps(sc)
 	registerInteractivePipeLeakSteps(sc)
 	registerInteractiveForceAttachSteps(sc)
+}
+
+// TestGodogFormatBuildsJUnitOnlyWhenTheEnvVarIsSet pins the option builder
+// behind DECK_GODOG_JUNIT: unset, TestFeatures' Format stays exactly "pretty"
+// as before the variable existed; set, it becomes godog's own
+// "pretty,junit:<path>" multi-formatter string, verbatim, whatever the path's
+// own shape (task 014, R146).
+func TestGodogFormatBuildsJUnitOnlyWhenTheEnvVarIsSet(t *testing.T) {
+	t.Run("unset stays exactly pretty", func(t *testing.T) {
+		t.Setenv("DECK_GODOG_JUNIT", "")
+		if got := godogFormat(); got != "pretty" {
+			t.Fatalf("godogFormat() = %q, want exactly %q", got, "pretty")
+		}
+	})
+	t.Run("set adds the junit multi-formatter at that path", func(t *testing.T) {
+		path := filepath.Join(t.TempDir(), "junit.xml")
+		t.Setenv("DECK_GODOG_JUNIT", path)
+		want := "pretty,junit:" + path
+		if got := godogFormat(); got != want {
+			t.Fatalf("godogFormat() = %q, want %q", got, want)
+		}
+	})
+}
+
+// TestGodogJUnitFormatterWritesOneTestcasePerScenario runs a tiny two-
+// scenario suite through godog's own "pretty,junit:<path>" Format string --
+// the exact shape godogFormat() produces -- and asserts the written file
+// holds one <testcase> per scenario, both named, neither ever a place TUI
+// implementation code participates (task 014, R146).
+func TestGodogJUnitFormatterWritesOneTestcasePerScenario(t *testing.T) {
+	dir := t.TempDir()
+	featurePath := filepath.Join(dir, "two.feature")
+	feature := "Feature: two scenarios\n" +
+		"  Scenario: first scenario passes\n" +
+		"    Given a passing step\n" +
+		"  Scenario: second scenario passes\n" +
+		"    Given a passing step\n"
+	if err := os.WriteFile(featurePath, []byte(feature), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	junitPath := filepath.Join(dir, "junit.xml")
+
+	suite := godog.TestSuite{
+		ScenarioInitializer: func(sc *godog.ScenarioContext) {
+			sc.Step(`^a passing step$`, func() error { return nil })
+		},
+		Options: &godog.Options{
+			Format: "pretty,junit:" + junitPath,
+			Paths:  []string{featurePath},
+			Strict: true,
+		},
+	}
+	if status := suite.Run(); status != 0 {
+		t.Fatalf("suite.Run() = %d, want 0", status)
+	}
+
+	contents, err := os.ReadFile(junitPath)
+	if err != nil {
+		t.Fatalf("reading junit output: %v", err)
+	}
+	if got := strings.Count(string(contents), "<testcase "); got != 2 {
+		t.Fatalf("junit output has %d <testcase> elements, want exactly 2:\n%s", got, contents)
+	}
+	if !strings.Contains(string(contents), `name="first scenario passes"`) {
+		t.Fatalf("junit output missing the first scenario's own testcase name:\n%s", contents)
+	}
+	if !strings.Contains(string(contents), `name="second scenario passes"`) {
+		t.Fatalf("junit output missing the second scenario's own testcase name:\n%s", contents)
+	}
 }
 
 func TestGodogRejectsUndefinedAndFailedSteps(t *testing.T) {
