@@ -1,13 +1,22 @@
 # Phase 4c — ten-run stability sweep (retake, retake-01-01-05)
 
-Sweep re-taken (re-recorded) with `ci/stability.sh 10` at code sha
-**`610be00`** (`610be0069b6bef53d3a3d0e5b5f0bd478b8c4b8c`) — the tree
-`cure-01-01-3` (610be00, "tui: never let a background arrival steal an
-explicitly navigated header-only-sidebar cursor", R136/R137, SPEC §11,
-#31, #32) leaves; `main` == `origin/main` at the time of this retake,
-clean tree, verified by `git merge-base --is-ancestor 610be00 HEAD`. This
-retake supersedes the prior recording here (sha `9487955`, predates
-`cure-01-01-3`) at the current final code sha.
+Sweep re-taken (re-recorded) with `ci/stability.sh 10` at final code sha
+**`be7cdbc`** (`be7cdbc996b356a2b17ad31a4b7e095e0a98c98a`, "ci: forward
+DECK_* selectors into the sibling (task 015)") — the last commit touching a
+path outside `docs/`, i.e. the tree the code cures (`cure-01-01-2`,
+`cure-01-01-3`, `cure-01-01-4`) and task 015 leave once landed. `main` ==
+`origin/main` at the time of this retake, clean tree, verified by
+`git merge-base --is-ancestor be7cdbc HEAD`. This retake supersedes the
+prior recording here (sha `610be00`, commit `68a38ae`, predates
+`cure-01-01-4` and task 015) at the current final code sha.
+
+Commits between the prior retake's sha and this one, confirmed non-docs
+with `git diff-tree --no-commit-id --name-only -r <sha>`:
+
+    2d282e2  tui: follow the viewport and re-anchor by ID when Esc clears a held filter (cure-01-01-4, R136, SPEC §11, ruling002)
+      internal/tui/cure_01_01_4_esc_filter_viewport_test.go, internal/tui/tui.go
+    be7cdbc  ci: forward DECK_* selectors into the sibling (task 015)
+      ci/run.sh
 
 Each run invokes `ci/run.sh go test -p=1 -count=1 ./...` from a clean state
 (fresh per-run container, `-count=1` disables the test cache) and is
@@ -42,5 +51,5 @@ this sha.
 
 Raw combined script output (all ten `=== RUN N ===` markers plus the final
 `10/10 passed` summary line) was preserved in the sweep's own tmp working
-directory (`/tmp/deck-stability.YwRUdZ`) from the run that produced these
+directory (`/tmp/deck-stability.xHxl0L`) from the run that produced these
 logs; the per-run logs above are the ones actually committed as evidence.
