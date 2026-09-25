@@ -51,7 +51,7 @@ done before launch.
   `ci/SPIKE.md`.
 
   ```sh
-  BASE=$(git log --format=%H --diff-filter=A -1 -- prds/phase4d-backlog-sweep-and-ci.md)
+  BASE=$(git log --format=%H -1 -- prds/phase4d-backlog-sweep-and-ci.md)   # the operator's last PRD commit
   git log --oneline "$BASE..HEAD" -- SPEC.md prds/ ci/Dockerfile ci/SPIKE.md   # must print nothing
   ```
 
@@ -65,14 +65,21 @@ done before launch.
   its own temp database and a private socket.
 - **This is mostly a defect phase, so a test that passes against today's code has proven nothing.**
   - R140-R144 each name an assertion that must **fail on the v0.2.3 tree (`26cdbfd`) and pass after**.
-  - Keep phase 4c's probe-audit discipline: run the new tests against the unfixed tree and record the
-    failure each one produces there.
+  - Keep phase 4c's probe-audit discipline: run the new tests against the unfixed tree. The evidence
+    (the command and the failure it produced) goes to the run's artifacts, never into the repo.
 - **Docker is for `ci/run.sh` and for this phase's own CI verification, nothing else.**
   - Never remove or kill containers by label: a previous ralphd job on this host SIGKILLed itself by
     sweeping `label=ralphd.run`.
   - No `docker prune`, and no wildcard `rm`/`rmi`.
   - Never signal by pattern: resolve a pid, verify it, then signal that pid.
   - Other runs live on this host.
+- **Code references are pointers, not criteria.** The `file:line` references below were correct at
+  `3efce1d`. If one has drifted, find the current site by function name and carry on. Drift is never
+  a finding.
+- **No paperwork.** Do not add report, findings, audit, close-out or "retake" files to the repo, and
+  do not add a `docs/DELIVERY-LOG.md` row. Run evidence (probe audits, sweep logs, CI run URLs, the
+  contention measurement) goes to `/run/ralphd/artifacts`. CI evidence is the CI run itself, found by
+  its head sha. Do not close GitHub issues either: the operator closes them at release.
 - **The CI container has no agent binaries.** Every scenario runs against the `cmd/fake-*` stubs on a
   fixture `PATH`.
 - **Scope of GitHub actions.** The git credentials the job holds are the operator's PAT, which has
@@ -81,68 +88,66 @@ done before launch.
   - push throwaway branches named `ci-verify/*` and open and close PRs from them, to verify Tier 3;
   - read the Actions API.
 
-  Every `ci-verify/*` branch and PR is closed and deleted before the record is written. The job
+  Every `ci-verify/*` branch, PR, tag and draft release is closed and deleted before the final sweep. The job
   **never changes repository settings**: branch protection, rulesets, the Pages source, Actions
   permissions and runner registration are all operator steps (§Tier 3).
 
-## Scope and materiality
+## Scope
 
-**Tier 1: R140, R141, R142.** Three small, independent fixes with disjoint file sets. Acceptance
-requires all three.
+- **Tier 1: R140, R141, R142.** Three small, independent fixes with disjoint file sets.
+- **Tier 2: R143, then R144.** These are the interactive-entry UX. R144's preview click must show
+  R143's banner, so R143 lands first.
+- **Tier 3: R145, R146, R147.** CI.
+- **R148:** the spec and the code agree.
 
-**Tier 2: R143, then R144.** These are the interactive-entry UX. R144's preview click must show R143's
-banner, so R143 lands first. Acceptance requires both.
+All of them are acceptance.
 
-**Tier 3: R145, R146, R147.** CI. Acceptance requires R145 and R147. R146 (Allure report and
-coverage) is acceptance too, but a partial R146 is curable in place (see below).
+## Materiality rubric
 
-**Blocking:**
+Reject only on substance:
 
-- a requirement's behaviour absent or contradicted;
-- a behaviour asserted only by a test that also passes on the unfixed tree (R140-R144);
-- a session-scoped key acting while its target is scrolled out of view (R142);
-- any refusal of interactive entry rendering only as a footer line (R143);
-- a preview click moving the selection or acting on a header cursor (R144);
-- a self-hosted job reachable by a fork PR's code (R145);
-- a release tag that can publish over a red or missing suite run (R147);
-- a schema change;
-- any access to the operator's `state.db` or `tmux -L deck` server;
-- a narrowed suite sweep;
-- a test-only env knob in product code;
-- a protected path modified;
-- a secret in the tree, in a workflow log or in a published report;
-- a repository setting changed by the job.
+- a requirement's behaviour is absent or wrong in the live code;
+- a test the requirement names is missing, is red, asserts the opposite of the requirement, or (for
+  R140-R144) also passes on the unfixed tree `26cdbfd`;
+- the spec contradicts the live code;
+- a secret is exposed, in the tree, a workflow log or a published CI report;
+- a guard in §Ground rules is broken:
+  - a schema change;
+  - any access to the operator's `state.db` or `tmux -L deck` server;
+  - a protected path modified (the audit command prints anything);
+  - a repository setting changed by the job;
+  - a self-hosted job reachable by fork-PR code;
+  - a real `v*` release tag pushed.
 
-**Curable in place, never a replan:**
-
-- citations, shas, counts, report prose, scenario titles, doc-comment and help wording;
-- the Allure report's cosmetics: missing history on the first run, attachment coverage, summary
-  layout;
-- a coverage figure that is present but merged imperfectly;
-- a CI run that went red for a known flake class.
-
-Fix these forward in a docs or CI commit. They never justify archiving an approach.
+Everything else verifies, with the gap recorded as a residual note. That covers wording, form,
+provenance and process, the Allure report's cosmetics (no history on a first run, attachment coverage,
+summary layout), and **any number or claim in prose outside the spec** (commit messages, notes, issue
+and PR comments, `docs/ci.md`, run artifacts). Prose outside the spec is never a blocking ground.
 
 **Advisory, never blocking:**
-
-- a known flake class recurring in the gate or the stability sweep, reported with its log path. The
-  transient-`starting` assertion and the `SIGWINCH` exact-count assertion are both known and open;
-- a stability run below 10/10, published honestly with every failure named;
-- the CPU-contention measurement (R145) showing contention matters, which is information for the
-  operator, not a defect;
-- style and naming opinions;
+- a known flake class recurring in the gate, the sweep or a CI run. The transient-`starting` assertion
+  and the `SIGWINCH` exact-count assertion are both known and open;
+- a stability sweep below 10/10 whose failures are all known flake classes;
+- the CPU-contention measurement (R145) showing that contention matters;
 - any operator notification that is missed or late.
 
-**Notifications.** The operator is AFK on Telegram, so use the `notify` hat tool in the same iteration
-as the work.
+## Escape hatch
+
+If the run proves that a requirement contradicts `SPEC.md`, or is impossible as written, it must not
+edit the spec or quietly narrow the requirement. File a petition, with the evidence and the smallest
+change that would resolve it, notify the operator, and carry on with everything the petition does not
+block. The operator rules by amendment. SPEC changes are the operator's commits.
+
+## Notifications
+
+The operator is AFK on Telegram, so use the `notify` hat tool in the same iteration as the work.
 
 Send one message for each of:
-- anything that blocks work outright;
+- anything that blocks work outright, including a petition;
 - each requirement as it lands;
-- each tier boundary;
 - every rejection and cure pass;
-- the gate and stability results;
 - the first green CI run on `main`, with its Pages link;
+- the final sweep result;
 - one terminal summary.
 
 Keep each message to a few hundred characters: the notifier refuses a body over 16000 characters
@@ -301,17 +306,18 @@ criterion and never a finding.
 
 **Read #35 in full.** Its design sections 1-8 are the requirement. Summary and deltas:
 
-**Operator prerequisites, done before launch:**
-- Two runner slots on `int21h-ws`, repo-scoped to `n-orlov/deck` and labelled
-  `[self-hosted, linux, x64, deck]`.
-- GitHub Pages enabled with source "GitHub Actions".
-- "Require approval for all outside contributors" set on fork PRs.
+**Operator prerequisites, already done (2026-09-25):**
+- Two runner slots on `int21h-ws`, `deck-ws-1` and `deck-ws-2`, repo-scoped to `n-orlov/deck` and
+  labelled `[self-hosted, linux, x64, deck]`.
+- GitHub Pages enabled with source "GitHub Actions" (`https://n-orlov.github.io/deck/`).
+- Fork-PR approval set to `all_external_contributors`.
 
-The job verifies these exist through the API and **stops and notifies** if they don't. It does not
-create them.
+The job checks these still hold through the API, and **stops and notifies** if they don't. It never
+creates or changes them.
 
 **Operator steps, after the run:** the required-check rule on `main`. The job writes the exact
-settings, the check name and a `gh api` command for it into `docs/ci.md`, and does not apply it.
+settings, the check name and a `gh api` command for it into `docs/ci.md` (a how-CI-works page for
+maintainers, with no shas or run counts), and does not apply it.
 ralphd pushes straight to `main` with the operator's own token, and that must keep working.
 
 ### R145 — the suite on trusted PRs, `main` and nightly
@@ -351,8 +357,9 @@ ralphd pushes straight to `main` with the operator's own token, and that must ke
   - The fork guard is shown by the job's `if:` and a run list with no fork jobs.
   - A push to `main` runs green.
   - A `workflow_dispatch` nightly completes `-race` and three stability runs.
-  - **Measure contention once:** time one run while ralphd's own CI occupies `int21h-ws`, and record
-    the duration and flake count in the report. This is advisory information (#35 §1).
+  - **Measure contention once:** time one run while ralphd's own CI occupies `int21h-ws`. The duration
+    and flake count go to the run's artifacts and the terminal notification. This is advisory
+    information (#35 §1).
 
 ### R146 — the Allure report and coverage
 
@@ -389,41 +396,46 @@ ralphd pushes straight to `main` with the operator's own token, and that must ke
   throwaway tag and draft release.
   - **Never** push a `v0.2.*` or higher tag. Releasing is the operator's call.
 
+## R148 — the spec and the code agree
+
+- The operator's amendment (`03752ca`) states this phase's behaviour. When R140-R147 are done, every
+  amended passage must describe the live code: §2's tmux bullet, §11's viewport and header bullets,
+  §11.3's gutter paragraph, §11.8's table and passive-preview paragraph, §11.9's refusal banner, and
+  §13.2's CI bullet.
+- The `?` help view and the footer name the same keys and gestures the spec does.
+- A contradiction the run cannot resolve in code goes through the §Escape hatch. It is never an edit to
+  `SPEC.md`.
+- **Success:** the requirement tests above cover each amended passage's behaviour. Where help text is
+  itself the behaviour (R144's gestures), a render test asserts it.
+
 ## Ordering
 
 1. **R140**: the smallest change, and a real bug the operator sees today.
 2. **R141**: rendering only.
 3. **R142**: builds on the shared guard.
 4. **R143, then R144.**
-5. **The gate and the ten-run stability sweep** at the final product sha (the last commit touching
-   `*.go` or `*.feature`), as in phase 4c.
-6. **R145, R146, R147.** CI comes last so that its verification runs exercise the finished product. A
-   docs-only or CI-only tail does not invalidate the gate or the sweep and is not re-verified.
+5. **R145, R146, R147.** Verify these with `ci-verify/*` branches, then clean them all up.
+6. **R148**, checked last, against the finished code.
+7. **The final sweep, as the last task, with nothing committed after it.** This is §Definition of done.
+   If the sweep turns up a real defect, fix it, push, and run the sweep again. That is the only
+   reason to commit after a sweep.
 
-## Green when
+## Definition of done
 
-- **Build and format:** `go build ./...` and `go vet ./...` are clean, and `gofmt -l` is clean on every
-  file this run touches.
-- **The whole-suite gate:** `ci/run.sh go test -p=1 -count=1 ./...` is green at the final product sha.
-  That means the whole suite in the container, with no narrowed package list and no `-run` filter.
-- **Stability sweep:** the ten-run sweep is published with every failure named and its log path, even
-  when the headline is 10/10. The known flake classes are advisory.
-- **Protected paths:** the protected-path audit prints nothing.
-- **Probe audit:** each of R140-R144 has at least one test that fails on `26cdbfd`, named in the report
-  with the failure it produces there.
-- **CI:** R145-R147's verification runs are linked from the report by run URL. All `ci-verify/*`
-  branches, PRs, tags and draft releases are cleaned up. The latest push to `main` has a green suite
-  check.
-- **The record:**
-  - `docs/reports/phase4d.md`: per requirement, what shipped, the commits and the proving tests.
-  - `docs/reports/phase4d-findings.md`: what this run found and chose not to fix, each with a
-    `file:line`.
-  - `docs/ci.md`: how CI works, and the operator's post-run settings steps.
-  - One new row in `docs/DELIVERY-LOG.md`.
+- R140-R148's behaviours are in the live code, and each requirement's named tests exist and are green.
+- For R140-R144, each named test fails on `26cdbfd`. The evidence goes to artifacts.
+- **At the final pushed sha:**
+  - the GitHub suite check (R145) concluded `success`;
+  - `ci/run.sh go test -p=1 -count=1 ./...` is green locally, meaning the whole suite, with no
+    narrowed package list and no `-run` filter;
+  - `go build ./...`, `go vet ./...` and `gofmt -l` are clean on every file this run touched;
+  - the protected-path audit command prints nothing.
+- A ten-run stability sweep (`ci/stability.sh 10`) at that sha is complete, with its logs in artifacts.
+  A failure in a known flake class is advisory; any other failure is a real defect (see §Ordering 7).
+- No `ci-verify/*` branch, PR, tag or draft release remains.
+- No secret is exposed.
 
-  **Termination protocol:** the record is written **once**, after the last product and CI commit. A
-  docs-only tail commit correcting the record is exempt from re-verification and does not reopen any
-  gate. The record never needs to cite the commit that contains it.
+Nothing else is required. In particular, no report, record or log row goes in the repo.
 
 ## Non-goals
 
@@ -456,6 +468,6 @@ ralphd pushes straight to `main` with the operator's own token, and that must ke
   never echo it, and never let a workflow print it. Workflow secrets are not needed: the notifier has
   no auth, and Pages deploys with `GITHUB_TOKEN`.
 - **The known-flake classes are not this phase's to fix.** Don't spend iterations on the
-  transient-`starting` or `SIGWINCH` assertions. Report and move on.
+  transient-`starting` or `SIGWINCH` assertions. Note them in artifacts and move on.
 - **Budget for one cure pass.** Phases 4b and 4c were each rejected once, on curable findings, and one
   pass cleared them. That is the harness working.
