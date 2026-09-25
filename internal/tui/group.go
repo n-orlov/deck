@@ -633,30 +633,31 @@ func (m Model) pageSelection(delta int) sidebarCursor {
 	return visible[pos]
 }
 
-// headerSelectionCue answers the gutter glyph and background token a
-// group header's own sidebarEntry wants painted (cure-01-02, review
-// findings R136/R137: "neither header has a selection cue" --
-// TestReviewHeaderCursorHasVisibleSidebarCue). It reuses sidebarGutterBar
-// verbatim (rows' own "> "/accent selection cue, task 011) rather than
-// inventing a second gutter glyph, so a header's cursor and a row's read
-// as the same visual language, and reuses sidebarSelectionToken for the
-// same reason: the background painted behind a selected header is exactly
-// the background painted behind a selected row (`selection`/
-// `selection_idle`, focus-aware). The glyph survives NO_COLOR (it is a
-// literal "> ", never only a colour); the background does not, which is
-// why the glyph carries the cue on its own -- SPEC §11's "visibly
-// distinguishes" holds true in monochrome/ASCII output specifically
-// because of the glyph, not despite dropping the background there.
-func (m Model) headerSelectionCue(groupID int64) (string, theme.Token) {
+// headerSelectionCue answers the background token a group header's own
+// sidebarEntry wants painted, and whether the header is the one under the
+// cursor (task 003/R141, GH #39, amended SPEC §11: "a header starts at the
+// panel's first content column ... it reserves no gutter"). Cure-01-02's
+// original cue (reused below in the doc history) painted a literal "> "
+// glyph into a 2-column gutter every header reserved whether or not it was
+// selected -- that indented every header for nothing, since only rows draw
+// >/✓ there. The new cue drops the gutter entirely (a header's
+// sidebarEntry.gutter is always "", so its chevron lands in the exact same
+// column session rows' text does, level with "socket:") and moves the
+// cursor cue onto two ATTRIBUTES instead of a glyph: the `selection`/
+// `selection_idle` background (focus-aware, exactly sidebarSelectionToken's
+// existing row cue) across the header's own sidebarEntry, plus reverse
+// video over the header's rendered text (groupHeaderText below), which is
+// what survives NO_COLOR/ascii now that no literal glyph remains -- an
+// SGR attribute, never a colour.
+func (m Model) headerSelectionCue(groupID int64) (theme.Token, bool) {
 	selected := false
 	if gid, ok := m.selected.GroupID(); ok && gid == groupID {
 		selected = true
 	}
-	gutter, _ := m.sidebarGutterBar(selected, false)
 	if !selected {
-		return gutter, theme.Token("")
+		return theme.Token(""), false
 	}
-	return gutter, m.sidebarSelectionToken()
+	return m.sidebarSelectionToken(), true
 }
 
 // groupHeaderText renders one group's header line (SPEC requirement 30,
@@ -669,13 +670,22 @@ func (m Model) headerSelectionCue(groupID int64) (string, theme.Token) {
 // signal, the way it was when a group WAS a cwd-derived workspace.
 //
 // contentWidth is this header's own text budget -- the same contentWidth
-// every other sidebarEntries line already receives. SPEC §11: "Every
-// header carries its member count, including (0)" and "The name elides;
-// the count and the chevron never do" -- so only the name shrinks (via
-// elideToWidth) under a narrow sidebar; the chevron and "(n)" are budgeted
-// for FIRST and always emitted in full, even at SidebarWidthFloor, even
-// when that leaves no room at all for the name.
-func (m Model) groupHeaderText(group sidebarGroup, contentWidth int) string {
+// every other sidebarEntries line already receives, now that the header
+// reserves no gutter (task 003/R141) and so gets the FULL content width,
+// same as a row's own text minus its gutter used to leave less. SPEC §11:
+// "Every header carries its member count, including (0)" and "The name
+// elides; the count and the chevron never do" -- so only the name shrinks
+// (via elideToWidth) under a narrow sidebar; the chevron and "(n)" are
+// budgeted for FIRST and always emitted in full, even at SidebarWidthFloor,
+// even when that leaves no room at all for the name.
+//
+// selected (task 003/R141) wraps the whole composed text in reverse video
+// (m.reverseVideo, theme_color.go) -- unconditionally of m.settings.Color,
+// because SPEC §11 requires this cue survive NO_COLOR/ascii precisely
+// because it is an attribute, not a colour. It wraps OUTSIDE colorToken's
+// own SGR-colour-plus-reset so a coloured header still shows its group
+// colour reversed rather than losing it to reverse's own reset.
+func (m Model) groupHeaderText(group sidebarGroup, contentWidth int, selected bool) string {
 	marker := m.glyph("\u25be", "v") // expanded
 	if m.isGroupCollapsed(group.GroupID) {
 		marker = m.glyph("\u25b8", ">") // collapsed
@@ -692,5 +702,9 @@ func (m Model) groupHeaderText(group sidebarGroup, contentWidth int) string {
 		nameBudget = 0
 	}
 	name = m.elideToWidth(name, nameBudget)
-	return m.colorToken(theme.Group, prefix+name+suffix)
+	text := m.colorToken(theme.Group, prefix+name+suffix)
+	if selected {
+		text = m.reverseVideo(text)
+	}
+	return text
 }

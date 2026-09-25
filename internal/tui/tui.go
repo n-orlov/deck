@@ -5851,23 +5851,22 @@ func (m Model) sidebarEntries(contentWidth int) []sidebarEntry {
 	// resets it, so the stripe phase a session gets does not depend on
 	// which group happens to precede it.
 	//
-	// cure-01-02/R136/R137: a header's own selection cue is composed the
-	// same way a row's is (headerSelectionGutter below reuses
-	// sidebarGutterBar, the exact glyph1/accent pair rows already carry),
-	// so the cursor resting on a header is visible under NO_COLOR too --
-	// the literal "> " glyph survives colour being stripped, unlike a
-	// background token alone (canvasBackground is a no-op there). Every
-	// header reserves this same 2-column gutter regardless of selection
-	// (like a row's own gutter), so a header's rendered width never shifts
-	// when the cursor moves onto or off of it; groupHeaderText's own name
-	// budget is shrunk by that reserved width up front so its elision (and
-	// SPEC §11's "the chevron and (n) never do") stays correct once
-	// sidebarContentLine/fullBoxContentLine subtract the gutter for real.
+	// task 003/R141, GH #39: a header reserves NO gutter at all (its
+	// sidebarEntry.gutter is always "", unlike cure-01-02's original
+	// 2-column "> " cue) -- its chevron lands in the exact same column
+	// session rows' own text does, level with the socket line. The cursor
+	// cue lives entirely in the header's TEXT/BACKGROUND now:
+	// headerSelectionCue answers the selection background token plus
+	// whether this header is selected, and groupHeaderText wraps its own
+	// composed text in reverse video when selected -- an SGR attribute,
+	// so it survives NO_COLOR/ascii the same way the old glyph did, without
+	// shifting the header's rendered width or left column between
+	// selected and unselected (there is no gutter width to add or drop).
 	sessionPos := 0
 	for _, group := range m.groupSessions() {
-		headerGutter, headerBg := m.headerSelectionCue(group.GroupID)
-		headerText := m.groupHeaderText(group, max(contentWidth-stringWidth(headerGutter), 0))
-		entries = append(entries, sidebarEntry{text: headerText, kind: sidebarLineHeader, groupName: group.Name, groupID: group.GroupID, gutter: headerGutter, bg: headerBg})
+		headerBg, headerSelected := m.headerSelectionCue(group.GroupID)
+		headerText := m.groupHeaderText(group, contentWidth, headerSelected)
+		entries = append(entries, sidebarEntry{text: headerText, kind: sidebarLineHeader, groupName: group.Name, groupID: group.GroupID, gutter: "", bg: headerBg})
 		if m.isGroupCollapsed(group.GroupID) {
 			continue
 		}

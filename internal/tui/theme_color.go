@@ -74,6 +74,24 @@ func (m Model) colorToken(tok theme.Token, text string) string {
 	return sgr + text + "\x1b[0m"
 }
 
+// reverseVideo wraps text in SGR 7 (reverse video) / SGR 27 (reverse off),
+// UNCONDITIONALLY of m.settings.Color -- task 003/R141, GH #39, amended
+// SPEC §11: the header cursor's cue must survive NO_COLOR/ascii precisely
+// because it is an attribute, not a colour, so unlike every other
+// colorToken/bgSgrForToken helper in this file this one is never gated on
+// the Color setting. It closes with the specific SGR 27 (reverse off)
+// rather than a blanket SGR 0 (full reset) so it never clobbers a
+// background/foreground a caller opened around it (canvasBackground's own
+// "reopen after any embedded reset" trick only fires on a literal
+// "\x1b[0m", which this never emits) -- text's own trailing reset, if any
+// (colorToken always appends one), still runs first and is harmless: by
+// the time it fires every visible cell has already been read with the
+// right attributes, and the reverse-off right after it is a to-be-safe
+// no-op rather than the one doing the real work.
+func (m Model) reverseVideo(text string) string {
+	return "\x1b[7m" + text + "\x1b[27m"
+}
+
 // sgrForToken looks up tok's colour in th at the active colour depth and
 // renders the matching SGR escape. Factored out of colorToken so it can be
 // unit-tested independently of NO_COLOR gating.
