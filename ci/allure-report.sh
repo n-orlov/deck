@@ -18,11 +18,15 @@
 # for a report with no carried history, e.g. a PR run's `/pr/<n>/` report,
 # which the design deliberately keeps unlinked to any shared trend.
 #
-# Every *.xml file already in the results dir that looks like a JUnit
-# report is picked up: Allure's junit-xml plugin sniffs file *content*
-# (a <testsuite>/<testsuites> root), not the file name, so ci/suite.sh's
-# junit-go.xml, junit-features.xml and any junit-features-rerun-*.xml are
-# all read as-is, with no reformatting step of our own.
+# The report is built from ci/suite.sh's junit-merged/*.xml: one file per
+# pass, with every retried test's attempts already folded by ci/junitflaky
+# into one <testcase> (a test that passed on retry is one passing testcase
+# carrying its earlier failures as <rerunFailure>/<rerunError>), which
+# Allure's junit-xml plugin reports as passed and flaky, earlier attempts
+# kept as hidden retries. Fed the raw per-attempt files instead, the plugin
+# can pick the failed attempt as the result and report such a test failed
+# and not flaky. Only a results dir with no junit-merged/ (one written
+# before it existed) falls back to every top-level *.xml, as-is.
 set -eu
 
 results_dir=${1:?"usage: ci/allure-report.sh <ci/suite.sh output dir> <report output dir> [<history dir>]"}
@@ -48,7 +52,12 @@ fi
 allure_results="$work/allure-results"
 mkdir -p "$allure_results"
 
-for f in "$results_dir"/*.xml; do
+junit_dir="$results_dir/junit-merged"
+if [ ! -d "$junit_dir" ]; then
+    echo "ci/allure-report.sh: no $junit_dir, reading the raw per-attempt JUnit files" >&2
+    junit_dir=$results_dir
+fi
+for f in "$junit_dir"/*.xml; do
     [ -e "$f" ] || continue
     cp "$f" "$allure_results/"
 done

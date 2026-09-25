@@ -5,14 +5,19 @@
 #   ci/summary.sh <ci/suite.sh output dir>  >> "$GITHUB_STEP_SUMMARY"
 #
 # Reads exactly the files ci/suite.sh already writes:
-#   junit-go.xml, junit-features.xml   — <testsuites tests= failures= errors=>
+#   junit-merged/junit-go.xml, junit-merged/junit-features.xml (or, in a
+#   results dir written before junit-merged/ existed, the top-level
+#   junit-go.xml, junit-features.xml, where a retried test's every attempt
+#   still counts on its own)
+#                                       — <testsuites tests= failures= errors=>
 #                                         root attributes for the counts, and
 #                                         each <testsuite name= time=> child
 #                                         (one Go package, or one Godog
 #                                         feature file) for the slowest-N
 #                                         table.
 #   flaky-go.txt, flaky-features.txt   — one line per test/scenario that
-#                                         failed once then passed on retry.
+#                                         failed once then passed on retry;
+#                                         counted, and listed by name.
 #   coverage-summary.txt                — ci/suite.sh's own package-by-package
 #                                         table (unit + features/ black-box),
 #                                         reprinted verbatim (R146 criterion 3).
@@ -31,7 +36,10 @@ total_tests=0
 total_failures=0
 flaky_count=0
 
-for junit in "$outdir/junit-go.xml" "$outdir/junit-features.xml"; do
+junit_dir="$outdir/junit-merged"
+[ -d "$junit_dir" ] || junit_dir=$outdir
+
+for junit in "$junit_dir/junit-go.xml" "$junit_dir/junit-features.xml"; do
     [ -f "$junit" ] || continue
     line=$(grep -m1 '<testsuites ' "$junit" || true)
     [ -n "$line" ] || continue
@@ -62,13 +70,22 @@ echo "| pass | $total_pass |"
 echo "| fail | $total_failures |"
 echo "| flaky | $flaky_count |"
 echo
+if [ "$flaky_count" -gt 0 ]; then
+    echo "#### flaky (failed, then passed on retry)"
+    echo
+    for flaky in "$outdir/flaky-go.txt" "$outdir/flaky-features.txt"; do
+        [ -f "$flaky" ] || continue
+        grep . "$flaky" | sed 's/^/- /' || true
+    done
+    echo
+fi
 echo "#### slowest packages / feature files"
 echo
 
 times=$(mktemp)
 trap 'rm -f "$times"' EXIT
 
-for junit in "$outdir/junit-go.xml" "$outdir/junit-features.xml"; do
+for junit in "$junit_dir/junit-go.xml" "$junit_dir/junit-features.xml"; do
     [ -f "$junit" ] || continue
     grep -oE '<testsuite [^>]*>' "$junit" | while IFS= read -r line; do
         name=$(printf '%s' "$line" | grep -oE 'name="[^"]*"' | head -1 | sed -E 's/^name="//; s/"$//')
