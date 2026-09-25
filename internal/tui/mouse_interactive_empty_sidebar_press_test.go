@@ -119,14 +119,44 @@ func TestInteractiveEmptySidebarPressLeavesInteractiveModeLikeCtrlQ(t *testing.T
 // handleMousePress's own switch, so nothing about R144/GH #37's new
 // interactive-mode exit path leaks into list mode, where an empty-sidebar
 // press must remain a plain no-op -- no selection change, no interactive
-// entry, no command.
+// entry, no command, and a byte-identical frame.
+//
+// "Stays a no-op in list mode" is R144's claim about a MODE-GATED gesture:
+// the empty-sidebar press is a way out of interactive mode and only that.
+// A list-mode no-op alone is also what a tree with no such gesture at all
+// produces, so the test pins the gate from both sides on one geometry: the
+// identical press at the identical (x, y), dispatched to the identical
+// model with interactive mode on, must leave interactive mode. Without
+// R144's exit the interactive half fails, so this probe cannot pass on a
+// tree that lacks the gesture it is the list-mode branch of.
 func TestEmptySidebarPressInListModeIsStillANoOp(t *testing.T) {
 	m := emptySidebarTestModel()
 	m.selected = rowCursor(1)
 
 	x, y := findEmptySidebarSpace(t, m)
+	frameBefore := m.View()
 	updated, cmd := m.Update(press(x, y))
 	got := updated.(Model)
+
+	if frame := got.View(); frame != frameBefore {
+		t.Fatalf("empty-sidebar press in list mode changed the rendered frame:\n--- before ---\n%s\n--- after ---\n%s", frameBefore, frame)
+	}
+
+	// The other side of the mode gate: same model, same press, with
+	// interactive mode owning the keyboard, leaves interactive mode.
+	interactiveBase := emptySidebarTestModel()
+	interactiveBase.selected = rowCursor(1)
+	interactiveBase.interactive = true
+	if ix, iy := findEmptySidebarSpace(t, interactiveBase); ix != x || iy != y {
+		t.Fatalf("test setup: empty sidebar space moved from (%d,%d) to (%d,%d) when interactive mode is on", x, y, ix, iy)
+	}
+	left, _ := interactiveBase.Update(press(x, y))
+	if left.(Model).interactive {
+		t.Fatalf("the identical empty-sidebar press at (%d,%d) with interactive mode on did not leave interactive mode: the list-mode no-op is not the list branch of R144's mode-gated exit", x, y)
+	}
+	if left.(Model).selected != rowCursor(1) {
+		t.Fatalf("the interactive-mode empty-sidebar press moved the selection to %v, want rowCursor(1)", left.(Model).selected)
+	}
 
 	if got.selected != rowCursor(1) {
 		t.Fatalf("empty-sidebar press in list mode changed the selection to %v, want unchanged rowCursor(1)", got.selected)
