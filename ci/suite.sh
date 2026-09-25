@@ -66,6 +66,22 @@ overall_status=0
 # pass 2 owns; every other test function in features/ runs here.
 pkgs=${DECK_CI_GO_PACKAGES:-$(go list ./...)}
 
+# DECK_CI_GO_EXTRA_FLAGS (task 017, R145 nightly): extra `go test` flags
+# appended, unquoted on purpose, to BOTH the unit pass below and the
+# features/TestFeatures pass further down -- the nightly-only `-race` flag
+# is the reason this exists, but it is a generic pass-through, not a
+# race-specific hook. Unset (the default, every PR/push/dispatch run),
+# this expands to nothing and both passes run exactly as before.
+#
+# `-covermode=atomic` is mandatory once `-race` is enabled (`go test`
+# refuses `set`/`count` alongside it), so the unit pass's covermode tracks
+# whether the extra flags mention -race rather than hardcoding `set`; every
+# other caller (extra flags unset) keeps the original `set` mode.
+covermode=set
+case " ${DECK_CI_GO_EXTRA_FLAGS:-} " in
+    *' -race '*) covermode=atomic ;;
+esac
+
 go_junit="$outdir/junit-go.xml"
 go_rerun_report="$outdir/rerun-report-go.txt"
 go_flaky="$outdir/flaky-go.txt"
@@ -87,7 +103,7 @@ if [ -n "$pkgs" ]; then
         --rerun-fails=1 \
         --rerun-fails-report "$go_rerun_report" \
         --packages "$pkgs" \
-        -- -p=1 -count=1 -skip '^TestFeatures$' -covermode=set "-coverprofile=$unit_coverprofile" \
+        -- -p=1 -count=1 -skip '^TestFeatures$' "-covermode=$covermode" "-coverprofile=$unit_coverprofile" ${DECK_CI_GO_EXTRA_FLAGS:-} \
         || go_status=$?
 
     # gotestsum's own rerun report lists every test it reran, whether or not
@@ -147,7 +163,7 @@ run_test_features() {
         --format standard-verbose \
         --junitfile "$junit" \
         --packages ./features/ \
-        -- -p=1 -count=1 -run '^TestFeatures$'
+        -- -p=1 -count=1 -run '^TestFeatures$' ${DECK_CI_GO_EXTRA_FLAGS:-}
 }
 
 features_status=0
