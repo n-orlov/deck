@@ -1018,6 +1018,23 @@ type Model struct {
 	// render/scroll time (never negative, never past the point where the
 	// last line would leave the panel's bottom empty).
 	sidebarScroll int
+	// sidebarScrollDrifted is true once scrollSidebar (mouse.go) has moved
+	// sidebarScroll away from the selection without moving the selection
+	// itself (SPEC §11: "a wheel drift survives background reloads, and
+	// ends at the next key that moves or acts on the selection", R142/GH
+	// #40). While true, a background reload (sessionsLoaded) or a live
+	// re-sort (resortSessionsLive) must NOT call
+	// followSelectionViewport/scrollSessionIntoView -- both would snap the
+	// viewport back onto the selection, undoing the drift the very next
+	// tick. They instead only re-clamp sidebarScroll to the (possibly
+	// shorter) new entry count via clampDriftedSidebarScroll, and the
+	// selection keeps tracking its session/group by id exactly as it
+	// always has -- only the VIEWPORT stays put; the identity-preserving
+	// logic above this flag is untouched. Task 005 (R142) clears it: every
+	// navigation key (setSelection) and every session/header-scoped key
+	// (guardSessionScopedKey) bring the selection back into view and clear
+	// this flag on the very same keypress that acts.
+	sidebarScrollDrifted bool
 	// draggingSeam is true between a mouse press on the side-by-side
 	// seam column and its matching release (SPEC §11.8): while true, a
 	// motion event live-adjusts sidebarWidth the same way `<`/`>` do.
@@ -2641,7 +2658,9 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 					}
 					m.selected = rowCursor(idx)
 					m.pendingSelectSessionID = ""
-					m.scrollSessionIntoView(idx)
+					if !m.sidebarScrollDrifted {
+						m.scrollSessionIntoView(idx)
+					}
 				}
 			}
 			// cure-01-05 (R136/SPEC §11: "the viewport follows the
@@ -2654,7 +2673,18 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			// clearest case), so the scroll offset a PRIOR render computed is
 			// not assumed to still be valid. followSelectionViewport is a
 			// no-op when the selection is already fully in view.
-			m.followSelectionViewport()
+			//
+			// R142/GH #40: a live wheel drift is the one exception -- while
+			// m.sidebarScrollDrifted, this reload must keep the wheel's own
+			// offset (only re-clamped to the possibly-changed entry count,
+			// clampDriftedSidebarScroll) rather than snapping the viewport
+			// back onto the selection, which m.selected above already keeps
+			// tracking by id off screen.
+			if m.sidebarScrollDrifted {
+				m.clampDriftedSidebarScroll()
+			} else {
+				m.followSelectionViewport()
+			}
 		}
 	case archivedSessionsLoaded:
 		// Task 123/I-10: refreshes the filter's archived-side search pool.
@@ -5922,9 +5952,22 @@ func (m *Model) resortSessionsLive() {
 	}
 	if idx := indexOfSessionID(m.sessions, selectedID); idx >= 0 {
 		m.selected = rowCursor(idx)
-		m.scrollSessionIntoView(idx)
+		// R142/GH #40: a drifted wheel keeps its own viewport offset
+		// across a live re-sort too, exactly as it does across a
+		// background reload -- only re-clamped to the (possibly
+		// shorter) re-sorted entry count, never snapped back onto the
+		// selection's new position, which the id-based lookup above
+		// already keeps tracking off screen.
+		if m.sidebarScrollDrifted {
+			m.clampDriftedSidebarScroll()
+		} else {
+			m.scrollSessionIntoView(idx)
+		}
 	} else if idx, _ := m.selected.SessionIndex(); idx >= len(m.sessions) {
 		m.selected = rowCursor(max(0, len(m.sessions)-1))
+		if m.sidebarScrollDrifted {
+			m.clampDriftedSidebarScroll()
+		}
 	}
 }
 
@@ -6113,6 +6156,27 @@ func (m *Model) scrollSessionIntoView(sessionIndex int) {
 		offset = end - contentHeight + 1
 	}
 	m.sidebarScroll = clampSidebarScroll(offset, len(entries), contentHeight)
+}
+
+// clampDriftedSidebarScroll re-clamps m.sidebarScroll to the sidebar's
+// CURRENT entry count (SPEC §11, R142/GH #40: a wheel drift "keeps
+// m.sidebarScroll (clamped to the new list length)" across a background
+// reload, re-sort or re-group) without moving it toward the selection at
+// all -- the drifted counterpart to followSelectionViewport and
+// scrollSessionIntoView, called instead of either whenever
+// m.sidebarScrollDrifted is true so a list that got shorter never leaves
+// the wheel's own offset past the new bottom, while a list that merely
+// changed order or membership above the fold leaves the offset exactly
+// where the wheel put it.
+func (m *Model) clampDriftedSidebarScroll() {
+	layout := m.computeLayout()
+	contentWidth := sidebarEntryContentWidth(layout)
+	contentHeight := layout.Sidebar.Height - 2
+	if contentHeight <= 0 {
+		return
+	}
+	entries := m.sidebarEntries(contentWidth)
+	m.sidebarScroll = clampSidebarScroll(m.sidebarScroll, len(entries), contentHeight)
 }
 
 // clampSidebarScroll bounds a raw scroll offset into [0, max(0,

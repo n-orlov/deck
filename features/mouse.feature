@@ -254,3 +254,46 @@ Feature: §11.8 mouse bindings and the [ui] mouse / DECK_MOUSE opt-out (requirem
     When deck client "A" selects session "mouse-off-bravo"
     Then deck client "A" has session "mouse-off-bravo" selected
     When deck client "A" exits cleanly
+
+  @requirement-142-wheel-drift-survives-reload
+  Scenario: a wheel drift over the sidebar survives several real background reload ticks
+    # R142/GH #40 (task 004): "a background reload... while the list is
+    # drifted keeps the wheel's offset ... and does not snap back to the
+    # selection". The stacked layout (two "|" presses, same idiom as the
+    # wheel-scroll-without-selecting scenario above) keeps the sidebar
+    # short enough that five sessions do not all fit at once, so scrolling
+    # to the bottom genuinely moves drift-reload-1 (the selection) off
+    # screen. Each client already reconciles on its own real cadence
+    # (ScenarioHarness.Environment's DECK_RECONCILE_MS) -- the three
+    # "after one configured reconcile interval" steps below wait through
+    # three of those real ticks with no further input at all.
+    Given deck client "A" is started
+    When deck client "A" creates shell session "drift-reload-1"
+    And deck client "A" creates shell session "drift-reload-2"
+    And deck client "A" creates shell session "drift-reload-3"
+    And deck client "A" creates shell session "drift-reload-4"
+    And deck client "A" creates shell session "drift-reload-5"
+    And the state database session "drift-reload-1" has status "idle" 50 seconds ago
+    And the state database session "drift-reload-2" has status "idle" 40 seconds ago
+    And the state database session "drift-reload-3" has status "idle" 30 seconds ago
+    And the state database session "drift-reload-4" has status "idle" 20 seconds ago
+    And the state database session "drift-reload-5" has status "idle" 10 seconds ago
+    Then within one configured reconcile interval deck client "A" screen contains "idle"
+    And deck client "A" sends "|"
+    And deck client "A" sends "|"
+    Then deck client "A" screen stops containing "drift-reload-5"
+    When deck client "A" selects session "drift-reload-1"
+    And deck client "A" scrolls the wheel down at column 5 row 5
+    And deck client "A" scrolls the wheel down at column 5 row 5
+    And deck client "A" scrolls the wheel down at column 5 row 5
+    And deck client "A" scrolls the wheel down at column 5 row 5
+    Then deck client "A" screen contains "drift-reload-5"
+    And deck client "A" screen does not contain "drift-reload-1"
+    And after one configured reconcile interval deck client "A" screen still contains "drift-reload-5"
+    And after one configured reconcile interval deck client "A" screen still contains "drift-reload-5"
+    And after one configured reconcile interval deck client "A" screen still contains "drift-reload-5"
+    # Selection still tracks drift-reload-1 by id off screen while it is
+    # drifted (proven by internal/tui/r142_wheel_drift_test.go's unit
+    # tests) -- its own "> " marker is never expected on screen here,
+    # since that row not being rendered is the drift itself.
+    When deck client "A" exits cleanly
