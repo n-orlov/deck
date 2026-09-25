@@ -512,7 +512,18 @@ func registerScenarioLifecycle(sc *godog.ScenarioContext) {
 		binary := filepath.Join(os.TempDir(), fmt.Sprintf("deck-godog-%d-%d", os.Getpid(), scenarioSequence.Add(1)))
 		buildCtx, cancel := context.WithTimeout(context.Background(), scenarioBuildDeadline)
 		start := time.Now()
-		output, buildErr := exec.CommandContext(buildCtx, "go", "build", "-o", binary, filepath.Join(root, "cmd", "deck")).CombinedOutput()
+		// R146/task 016: when the caller (ci/suite.sh) sets GOCOVERDIR, build the
+		// released binary with `-cover` so every scenario's deck process writes
+		// black-box coverage counters into that directory via its inherited
+		// environment (StartScreenDriverInDir's cmd.Env starts from os.Environ(),
+		// which already carries GOCOVERDIR when the test process itself has it).
+		// Unset, this is the exact same `go build -o binary cmd/deck` as before.
+		buildArgs := []string{"build", "-o", binary}
+		if os.Getenv("GOCOVERDIR") != "" {
+			buildArgs = append(buildArgs, "-cover")
+		}
+		buildArgs = append(buildArgs, filepath.Join(root, "cmd", "deck"))
+		output, buildErr := exec.CommandContext(buildCtx, "go", buildArgs...).CombinedOutput()
 		elapsed := time.Since(start)
 		timedOut := buildCtx.Err() != nil
 		cancel()
