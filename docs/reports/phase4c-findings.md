@@ -4,20 +4,24 @@ Companion to [`phase4c.md`](phase4c.md) (the per-requirement evidence report
 for R136-R139): what that report does not carry — the review-raised
 behavioural findings this cure wave fixed, where each fix now lives in the
 tree (`file:line`), the two known advisory flake classes, and the
-iterations 48-54 infrastructure stall. Re-taken a second time
-(`retake-01-01-08`) at the tree `cure-01-01-3` leaves; the final code sha is
-now `610be0093db4c10c920b28e40b73efad4efee59f` (cure-01-01-3, the fix that
-makes `Model.selectedByUser` tell an explicitly navigated header-only-
-sidebar cursor apart from `cure-01-01-2`'s automatic-promotion case). Every
-commit after `610be00` up to `HEAD` touches only `docs/`
-(`90f698f`, `68a38ae`, `027415c`, `40bd883`, this file's own commit,
-confirmed via `git show --stat --format=''`), so every `file:line` below
-resolves identically at `610be00` and at this file's own commit. The
-previous retake (against `10c5021`, before `cure-01-01-3` landed) is
-superseded; this pass adds a new F0-2 sub-finding for `cure-01-01-3` itself
+iterations 48-54 infrastructure stall. Re-taken a third time
+(`retake-01-01-08`) at the tree `cure-01-01-4` leaves; the final code sha is
+now `be7cdbc996b356a2b17ad31a4b7e095e0a98c98a` (task 015's `ci/run.sh`
+DECK_*-forwarding fix — confirmed via `git diff-tree --no-commit-id
+--name-only -r be7cdbc`, which lists only `ci/run.sh`, outside `docs/`, so
+it changes no `file:line` below). `cure-01-01-4` (`2d282e23b059793647b29`
+`951c0f97335c8b065c3`) landed between the previous retake and this one — the
+fix that makes the list-mode `esc` branch re-anchor a row cursor on the
+cleared filter's session id and unconditionally follow the viewport, per
+binding ruling 002. Every commit after `2d282e2` up to `HEAD` touches only
+`docs/` (`6051c30`, `7d7f4f7`, `40bd883`, this file's own commit, confirmed
+via `git show --stat --format=''`), so every `file:line` below resolves
+identically at `2d282e2`/`be7cdbc` and at this file's own commit. The
+previous retake (against `610be00`, before `cure-01-01-4` landed) is
+superseded; this pass adds a new F0-3 sub-finding for `cure-01-01-4` itself
 and re-verifies every other `file:line` at the current line numbers (they
-shifted: `cure-01-01-3` inserted ~29 lines into `internal/tui/tui.go` ahead
-of the F2 handlers).
+shifted: `cure-01-01-4` inserted 31 net lines into `internal/tui/tui.go`
+ahead of the F2 handlers and everything below them).
 
 ## 1. Retained findings — review-raised, cured in place
 
@@ -48,7 +52,7 @@ footer deliverable (the list footer named none of the header cursor's
 fold keys, and the detail-dialog footer naming them was unreachable since
 `i` is inert on a header):
 
-- `internal/tui/tui.go:2500` (`selectedGroupHadNoRows` capture) through
+- `internal/tui/tui.go:2519` (`selectedGroupHadNoRows` capture) through
   `internal/tui/tui.go:2612` — `selectVisibleStopAfterReload`'s
   header-gains-its-first-row promotion is gated on `hadNoSessionsAtAll`
   (the whole sidebar had zero sessions before the reload), not merely the
@@ -62,8 +66,8 @@ fold keys, and the detail-dialog footer naming them was unreachable since
   `internal/tui/tui.go:2685` (`selectVisibleStopAfterReload(false)`) —
   `archivedSessionsLoaded` now runs the same preserve-by-id/normalize dance
   `sessionsLoaded` already does, instead of only clamping a raw row index.
-- `internal/tui/tui.go:5075` (wired into `footerLineContent`'s SPEC §11.3
-  status-reason slot) and `internal/tui/tui.go:6551`
+- `internal/tui/tui.go:5105` (wired into `footerLineContent`'s SPEC §11.3
+  status-reason slot) and `internal/tui/tui.go:6581`
   (`headerCursorFooterCue`'s own definition): while the cursor is
   on a group header the LIST footer (the only surface on screen at that
   point) now names `c folds/unfolds it · ← folds · → unfolds`. Fail-before
@@ -90,12 +94,45 @@ pending=\"\"", `TestReview132ExplicitHeaderOnEmptySidebarSurvivesBackgroundArriv
   gesture — up/down, PgUp/PgDn, space, `c`/left/right, `g`/`G`, both `/`
   filter paths, and a sidebar mouse click — assigns `m.selected` through)
   and never cleared again; never persisted (in-memory `Model` field only).
-- `internal/tui/tui.go:5885`-`5888` — `setSelection` now sets
+- `internal/tui/tui.go:5915`-`5918` — `setSelection` now sets
   `m.selectedByUser = true` alongside the existing `m.selected = c` and
   `m.followSelectionViewport()` calls.
 - `internal/tui/tui.go:2612` — `sessionsLoaded`'s promotion call is now
   gated on `!m.selectedByUser` too, so it fires only for the genuinely
   automatic case.
+
+### F0-3 (sweep-found, cure-01-01-4) — the list-mode Esc that clears a held filter neither preserved selection identity nor followed the viewport
+
+Review 154 re-ran the accepted R152-2 counterexamples at `610be00` and found
+the list-mode `esc` branch (`tui.go`'s top-level `"esc"` case, reached once
+`Enter` has returned focus to the list) still only normalized the cleared
+selection onto SOME visible stop by numeric position via
+`nearestVisibleSelection`, and never called `followSelectionViewport` at
+all: `TestReview152ClosedFilterEscapeKeepsSelectionVisible` and
+`TestReview152HeldFilterEscapeKeepsHeaderVisible` both FAIL on `610be00`
+with the selection span outside the scroll window
+(`/run/ralphd/artifacts/review154/filter-escape.log`: "list Esc clearing
+held filter with header cursor: sidebarScroll = 0 leaves selection span
+[30,30] outside window [0,21)" and "...span [31,32] outside window
+[0,21)"). Binding ruling 002 also requires the SAME session id survive,
+not merely a row at the same position — unfiltering can insert an
+earlier-sorting nonmatch back before the kept session, shifting its
+index — and `TestReview154HeldFilterEscapePreservesSessionID` FAILS on
+`610be00` with kept-id -> other-id
+(`/run/ralphd/artifacts/review154/held-filter-identity.log`: "held-filter
+Esc changed selected session ID: kept-id -> other-id (raw index=0)").
+Fixed in `cure-01-01-4` (`2d282e2`):
+
+- `internal/tui/tui.go:3592`-`3628` — the `"esc"` case now captures the
+  selected session's id (row cursor only; a header cursor's group id never
+  goes stale this way) before clearing `filterQuery`, re-anchors on that
+  id in the new unfiltered list, falls back to `nearestVisibleSelection`
+  only when the cursor no longer names a visible stop, and then calls
+  `m.followSelectionViewport()` unconditionally — instead of handing the
+  old numeric index straight to `nearestVisibleSelection` and never
+  following the viewport at all.
+  `TestEscOnAMarkedSetClearsOnlyTheMarksNotAHeldFilter` (the one-layer
+  marks-only-clear control) is unaffected and still passes.
 
 ### F1 — session-scoped keys were not unconditionally inert on a header
 
@@ -117,8 +154,8 @@ detail-mode `r`/`l` never asked the shared guard at all (`len(m.sessions)
 `cursorGroupID` resolves a header cursor's own id with no session lookup.
 Cured in `3529eb90`:
 
-- `internal/tui/tui.go:4140` (`c`), `internal/tui/tui.go:4157` (`left`),
-  `internal/tui/tui.go:4166` (`right`) — the stale `len(m.sessions) > 0`
+- `internal/tui/tui.go:4139` (`c`), `internal/tui/tui.go:4177` (`left`),
+  `internal/tui/tui.go:4194` (`right`) — the stale `len(m.sessions) > 0`
   guard is removed from all three handlers; `!m.help && !m.detail` is
   unchanged.
 
@@ -140,7 +177,7 @@ rendered entry span without re-clamping the scroll offset; a fresh
 session load after restart, a rename, or a filter query change could also
 normalize onto a hidden or absent stop. Cured in `4e30475c`:
 
-- `internal/tui/settings.go:519` — `settingsApplyLiveFields`'s
+- `internal/tui/settings.go:517` — `settingsApplyLiveFields`'s
   `default_group_first` branch now calls `m.followSelectionViewport()`
   after flipping the flag.
 - `internal/tui/tui.go:2646` — `sessionsLoaded`'s reload path calls the
@@ -155,9 +192,9 @@ row cursor onto the group's header — silently blanking the border title
 while the pane still held the keyboard. Cured in `c864e6b9` (unit
 fixture) and `5da35c55` (live-PTY feature scenario):
 
-- `internal/tui/tui.go:5933` — new `interactiveTargetSession`, keyed off
+- `internal/tui/tui.go:5963` — new `interactiveTargetSession`, keyed off
   `m.interactiveWindowTarget` rather than the cursor.
-- `internal/tui/tui.go:6369` — `previewTitle` now prefers
+- `internal/tui/tui.go:6399` — `previewTitle` now prefers
   `interactiveTargetSession` over `m.selectedSession()`.
 
 ### F8 (residual) — probe-report wording overstated a compile failure and cited the wrong issue
@@ -213,17 +250,18 @@ proceed" rule, and neither sweep nor gate encountered the outage.
 ## 5. How to re-check every citation in this file
 
 ```
-git show --stat --format='' 610be0093db4c10c920b28e40b73efad4efee59f
-git diff --stat 610be0093db4c10c920b28e40b73efad4efee59f..HEAD -- '*.go' '*.feature'   # empty
+git show --stat --format='' 2d282e23b059793647b29951c0f97335c8b065c3
+git diff --stat be7cdbc996b356a2b17ad31a4b7e095e0a98c98a..HEAD -- '*.go' '*.feature'   # empty
 sed -n '69,90p'   internal/tui/rename.go
 sed -n '360,400p'  internal/tui/tui.go
 sed -n '2495,2690p' internal/tui/tui.go
-sed -n '4109,4172p' internal/tui/tui.go
+sed -n '3560,3630p' internal/tui/tui.go
+sed -n '4139,4202p' internal/tui/tui.go
 sed -n '640,660p'   internal/tui/group.go
 sed -n '505,520p'   internal/tui/settings.go
-sed -n '5880,5940p' internal/tui/tui.go
-sed -n '6365,6375p' internal/tui/tui.go
-sed -n '5070,5077p' internal/tui/tui.go
-sed -n '6520,6555p' internal/tui/tui.go
+sed -n '5910,5970p' internal/tui/tui.go
+sed -n '6395,6405p' internal/tui/tui.go
+sed -n '5100,5107p' internal/tui/tui.go
+sed -n '6550,6585p' internal/tui/tui.go
 grep -n '^--- FAIL\|^FAIL' docs/reports/phase4c-stability10/run-*.log   # empty
 ```
