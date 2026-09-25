@@ -197,6 +197,41 @@ Feature: Forced entry into interactive mode answers a waiting row
     And deck client "A" exits cleanly
     And deck client "B" exits cleanly
 
+  # Task 009 (B.3, R143, GH #38): the same shape as the scenario above,
+  # but on a plain shell session (no fake agent/hook needed for the
+  # ownership contention itself) and with the OTHER half of the banner's
+  # own lifecycle made explicit -- not only that B's refused enter shows
+  # the banner (already proved below and in interactive_refusals.feature),
+  # but that B's OWN subsequent F, which enters, also leaves nothing of
+  # that banner on screen. "screen does not contain" is the literal check
+  # for that: `enterInteractiveBody`'s clearEntryRefusal on a successful
+  # force (task 008) is what this scenario is proving over the real
+  # multi-client path, not merely over a synthetic model.
+  Scenario: B's refused enter shows the banner, and B's own F clears it (task 009)
+    Given deck client "A" is started
+    And deck client "B" is started
+    And deck client "A" creates shell session "banner-clear"
+    Then within one configured reconcile interval deck client "B" screen contains "banner-clear"
+    And deck client "A" selects session "banner-clear"
+    When deck client "A" enters interactive mode
+    Then deck client "A" screen contains "Ctrl+Q"
+    When deck client "B" selects session "banner-clear"
+    And deck client "B" enters interactive mode
+    Then deck client "B" screen contains "holds ownership of this window"
+    And deck client "B" screen contains "a attaches"
+    And deck client "B" screen contains "F forces entry"
+    When deck client "B" forces entry into interactive mode
+    Then deck client "B" screen contains "Ctrl+Q"
+    And deck client "B" screen does not contain "holds ownership of this window"
+    And deck client "B" screen does not contain "a attaches"
+    And deck client "B" screen does not contain "F forces entry"
+    And deck client "A" screen contains "Lost attach: banner-clear"
+    When deck client "A" dismisses the lost-attach dialog
+    Then deck client "A" screen contains "deck - sessions"
+    When deck client "B" leaves interactive mode
+    And deck client "A" exits cleanly
+    And deck client "B" exits cleanly
+
   Scenario: a refused plain entry names F, and only B's forced steal is durably attached
     Given a long-running fake "claude" binary is on PATH for future deck clients
     And deck client "A" is started
@@ -213,8 +248,8 @@ Feature: Forced entry into interactive mode answers a waiting row
     When deck client "B" selects session "held entry"
     And deck client "B" enters interactive mode
     Then deck client "B" screen contains "holds ownership of this window"
-    And deck client "B" screen contains "press a to attach"
-    And deck client "B" screen contains "F to force it"
+    And deck client "B" screen contains "a attaches"
+    And deck client "B" screen contains "F forces entry"
     And deck client "B" screen contains "deck - sessions"
     And the state database session "held entry" has 0 attached events
     When deck client "B" forces entry into interactive mode

@@ -2478,7 +2478,15 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				session, _ := m.interactiveTargetSession()
 				next, cmd := m.exitInteractive()
 				m = next.(Model)
-				m.setEntryRefusal(session.ID, entryRefusalShrank, fmt.Sprintf("preview panel shrank to %d inner rows, fewer than the %d-row floor", height, interactiveMinInnerRows))
+				// Kept short (task 009/R143, GH #38) for the same reason
+				// enterInteractiveBody's own row-floor message is: the
+				// banner draws this inside the preview panel's own width,
+				// which at the requirement's own 80x9 godog fixture leaves
+				// too little room for the old, longer sentence to survive
+				// centerTruncate's ellipsis without losing the "N inner
+				// rows"/"7-row floor" phrases this package's own tests and
+				// features/interactive_refusals.feature assert on.
+				m.setEntryRefusal(session.ID, entryRefusalShrank, fmt.Sprintf("%d inner rows, below the %d-row floor", height, interactiveMinInnerRows))
 				return m, cmd
 			}
 		}

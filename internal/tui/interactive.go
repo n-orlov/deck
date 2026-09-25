@@ -100,7 +100,15 @@ func (m Model) enterInteractiveBody(force bool) (tea.Model, tea.Cmd) {
 		// interactiveMinInnerRows into it, so the phrase below stays the
 		// one place in the package's non-test sources naming this floor --
 		// keep it in sync with the constant above if it ever moves off 7.
-		m.setEntryRefusal(session.ID, entryRefusalRowFloor, fmt.Sprintf("preview panel has %d inner rows, fewer than the 7-row floor", height))
+		// Kept short (task 009/R143, GH #38): the banner draws this inside
+		// the preview panel's own width now, not the full-terminal footer
+		// pre-task-007 code used, and the preview column count at deck's own
+		// minimum supported terminal width (80 columns, this refusal's own
+		// godog fixture) leaves too little room for the old, longer sentence
+		// to survive centerTruncate's ellipsis without losing the "7-row
+		// floor" phrase both features/interactive_refusals.feature and this
+		// package's own tests assert on.
+		m.setEntryRefusal(session.ID, entryRefusalRowFloor, fmt.Sprintf("%d inner rows, below the 7-row floor", height))
 		return m, nil
 	}
 
