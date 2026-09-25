@@ -28,7 +28,7 @@ staged="$site/.new-report"
 case "$mode" in
     root)
         dest="$site"
-        find "$site" -mindepth 1 -maxdepth 1 ! -name pr ! -name .new-report -exec rm -rf {} +
+        find "$site" -mindepth 1 -maxdepth 1 ! -name pr ! -name .new-report ! -name .git -exec rm -rf {} +
         ;;
     pr)
         number=${3:?"usage: ci/allure-site.sh <site dir> pr <number>"}
