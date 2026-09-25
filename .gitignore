@@ -8,3 +8,6 @@ bin/
 
 # ralphd run-engine scratch (not project content)
 artifacts/
+
+# ci/suite.sh / ci.yml results dir (DECK_CI_OUT=ci-results), uploaded as a workflow artifact
+/ci-results/

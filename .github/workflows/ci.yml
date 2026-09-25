@@ -85,7 +85,18 @@ jobs:
         id: stability
         if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
         continue-on-error: true
-        run: ci/run.sh ci/stability.sh 3
+        # NOT wrapped in ci/run.sh: ci/stability.sh itself launches one fresh
+        # `ci/run.sh go test -p=1 -count=1 ./...` sibling per run (that is
+        # what makes each run clean-state), so it must run here on the
+        # runner host where docker is available -- inside the deck-ci image
+        # there is no docker and every run would fail with "image
+        # deck-ci:local not found". Its mktemp dir (per-run logs and
+        # summary.log) is placed under the results dir so the upload step
+        # below carries it.
+        run: |
+          set -eu
+          mkdir -p "$DECK_CI_OUT/stability"
+          TMPDIR="$PWD/$DECK_CI_OUT/stability" ci/stability.sh 3
 
       - name: Job summary (pass/fail/flaky counts, slowest packages)
         if: always()
@@ -97,6 +108,16 @@ jobs:
             echo "### CI suite summary" >> "$GITHUB_STEP_SUMMARY"
             echo "(no results directory -- the suite step never produced output)" >> "$GITHUB_STEP_SUMMARY"
           fi
+          for s in "$DECK_CI_OUT"/stability/*/summary.log; do
+            [ -f "$s" ] || continue
+            {
+              echo
+              echo "#### nightly stability (ci/stability.sh 3)"
+              echo
+              grep -E '^=== RUN [0-9]+: (PASS|FAIL)' "$s" | sed 's/^/- /' || true
+              echo "- $(tail -n 1 "$s")"
+            } >> "$GITHUB_STEP_SUMMARY"
+          done
 
       - name: Upload raw results
         if: always()
