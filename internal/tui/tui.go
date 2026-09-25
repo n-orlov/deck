@@ -3592,10 +3592,40 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				m.detail = false
 				m.marked = nil
 			}})
+			// cure-01-01-4 (R136/SPEC §11, binding ruling 002): clearing the
+			// held query used to hand the OLD row index straight to
+			// nearestVisibleSelection, which walks by POSITION, not identity --
+			// unfiltering never removes rows, only adds ones the filter had
+			// hidden, so the same numeric index can now name a different
+			// session entirely (TestReview154HeldFilterEscapePreservesSessionID),
+			// and neither branch ever called followSelectionViewport, so a
+			// selection that survived (by luck of position) could still sit
+			// outside the visible scroll window
+			// (TestReview152ClosedFilterEscapeKeepsSelectionVisible,
+			// TestReview152HeldFilterEscapeKeepsHeaderVisible). A header cursor
+			// carries its own group id rather than a session index, so it never
+			// needs this preserve-by-id step -- unfiltering cannot make a group
+			// id go stale the way it can a row's numeric position.
 			if !hadMarks && m.filterQuery != "" {
+				var selectedID string
+				selectedWasRow := false
+				if idx, ok := m.selected.SessionIndex(); ok {
+					selectedWasRow = true
+					if idx >= 0 && idx < len(m.sessions) {
+						selectedID = m.sessions[idx].ID
+					}
+				}
 				m.filterQuery = ""
 				m.sessions = m.filteredSessions()
-				m.selected = m.nearestVisibleSelection(m.selected)
+				if selectedWasRow {
+					if idx := indexOfSessionID(m.sessions, selectedID); idx >= 0 {
+						m.selected = rowCursor(idx)
+					}
+				}
+				if !m.cursorNamesVisibleStop(m.selected) {
+					m.selected = m.nearestVisibleSelection(m.selected)
+				}
+				m.followSelectionViewport()
 			}
 		case "i":
 			// m.detail is never true here (task 013's updateDetailView
