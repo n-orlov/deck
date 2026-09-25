@@ -18,7 +18,7 @@ import (
 // client already attached to the session; a live process already holding
 // the window's ownership option) are exactly the two `F` (task 105) exists
 // to let a user route around, so both messages must now say so alongside
-// the existing "press a to attach" offer -- while the other two refusal
+// the existing "a attaches instead" offer -- while the other two refusal
 // messages in the same ladder (the 7-row floor; no width at all, checked
 // even before the floor) are not offers `F` can do anything about (no
 // window is ever touched on either path), so they must keep naming only

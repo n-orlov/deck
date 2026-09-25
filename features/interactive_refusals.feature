@@ -18,7 +18,7 @@ Feature: Interactive mode refuses rather than degrades in three named cases (Par
     And the private tmux window for session "watched" is captured as "before-refusal"
     When deck client "host" enters interactive mode
     Then deck client "host" screen contains "attached to this session"
-    And deck client "host" screen contains "press a to attach"
+    And deck client "host" screen contains "a attaches"
     And deck client "host" screen contains "deck - sessions"
     And the private tmux window for session "watched" still matches "before-refusal"
     And tmux window "deck_watched" option "@deck_isize_owner" is unset in the window scope
@@ -34,7 +34,7 @@ Feature: Interactive mode refuses rather than degrades in three named cases (Par
     And deck client "cramped" terminal is resized to 80x9
     When deck client "cramped" enters interactive mode
     Then deck client "cramped" screen contains "7-row floor"
-    And deck client "cramped" screen contains "press a to attach"
+    And deck client "cramped" screen contains "a attaches"
     And deck client "cramped" screen contains "deck - sessions"
     And deck client "cramped" exits cleanly
 
@@ -47,7 +47,7 @@ Feature: Interactive mode refuses rather than degrades in three named cases (Par
     And another live process holds ownership of deck session "owned"'s window
     When deck client "solo" enters interactive mode
     Then deck client "solo" screen contains "holds ownership"
-    And deck client "solo" screen contains "press a to attach"
+    And deck client "solo" screen contains "a attaches"
     And deck client "solo" screen contains "deck - sessions"
     And deck client "solo" exits cleanly
 
@@ -67,7 +67,7 @@ Feature: Interactive mode refuses rather than degrades in three named cases (Par
     Then deck client "shrink" screen contains "Ctrl+Q"
     When deck client "shrink" terminal is resized to 80x9
     Then deck client "shrink" screen contains "7-row floor"
-    And deck client "shrink" screen contains "press a to attach"
+    And deck client "shrink" screen contains "a attaches"
     And deck client "shrink" screen contains "deck - sessions"
     And the private tmux window for session "live" still matches "before-interactive"
     And deck client "shrink" exits cleanly
