@@ -7,17 +7,31 @@ tree (`file:line`), the two known advisory flake classes, and the
 iterations 48-54 infrastructure stall. Re-taken a third time
 (`retake-01-01-08`) at the tree `cure-01-01-4` leaves; the final code sha is
 now `be7cdbc996b356a2b17ad31a4b7e095e0a98c98a` (task 015's `ci/run.sh`
-DECK_*-forwarding fix — confirmed via `git diff-tree --no-commit-id
---name-only -r be7cdbc`, which lists only `ci/run.sh`, outside `docs/`, so
-it changes no `file:line` below). `cure-01-01-4` (`2d282e23b059793647b29`
+DECK_*-forwarding fix). `cure-01-01-4` (`2d282e23b059793647b29`
 `951c0f97335c8b065c3`) landed between the previous retake and this one — the
 fix that makes the list-mode `esc` branch re-anchor a row cursor on the
 cleared filter's session id and unconditionally follow the viewport, per
-binding ruling 002. Every commit after `2d282e2` up to `HEAD` touches only
-`docs/` (`6051c30`, `7d7f4f7`, `40bd883`, this file's own commit, confirmed
-via `git show --stat --format=''`), so every `file:line` below resolves
-identically at `2d282e2`/`be7cdbc` and at this file's own commit. The
-previous retake (against `610be00`, before `cure-01-01-4` landed) is
+binding ruling 002.
+
+**Provenance of the `file:line` citations below, stated exactly.**
+`2d282e2..HEAD` contains exactly one commit that is **not** docs-only:
+`be7cdbc` (task 015), which modifies `ci/run.sh` — code by this job's
+freeze-line definition (anything outside `docs/`). Every other commit in that
+range touches only `docs/` paths: `a547e38`, `e6306a7`, `057971b`, `3281ed5`,
+plus this file's own retake commit `125181b` and the commit that carries this
+corrected paragraph. `ci/run.sh` is the CI-lane wrapper script, is cited
+nowhere in this file, and holds no Go or Gherkin source, so no `file:line`
+below resolves through it: `git diff --stat 2d282e2..HEAD -- '*.go'
+'*.feature'` prints nothing, and every `file:line` below therefore resolves
+identically at `2d282e2`, at `be7cdbc` and at this file's own commit. The
+`125181b` pass of this file claimed instead that *every* commit after
+`2d282e2` touches only `docs/`, citing `6051c30`/`7d7f4f7`/`40bd883`; that
+was wrong twice over — it missed `be7cdbc`'s `ci/run.sh`, and those three
+shas are ancestors of `2d282e2`, not descendants of it. The claim is
+corrected here rather than restated, and §5's command block now prints the
+range's non-`docs/` paths directly so the corrected form is checkable.
+
+The previous retake (against `610be00`, before `cure-01-01-4` landed) is
 superseded; this pass adds a new F0-3 sub-finding for `cure-01-01-4` itself
 and re-verifies every other `file:line` at the current line numbers (they
 shifted: `cure-01-01-4` inserted 31 net lines into `internal/tui/tui.go`
@@ -251,6 +265,11 @@ proceed" rule, and neither sweep nor gate encountered the outage.
 
 ```
 git show --stat --format='' 2d282e23b059793647b29951c0f97335c8b065c3
+git log --format='%h %s' 2d282e2..HEAD
+git log --format=%h 2d282e2..HEAD | while read c; do git diff-tree --no-commit-id --name-only -r $c \
+  | grep -v '^docs/' | sed "s|^|$c |"; done      # prints only: be7cdbc ci/run.sh
+git diff-tree --no-commit-id --name-only -r be7cdbc       # ci/run.sh only (the one non-docs commit)
+git diff --stat 2d282e2..HEAD -- '*.go' '*.feature'       # empty
 git diff --stat be7cdbc996b356a2b17ad31a4b7e095e0a98c98a..HEAD -- '*.go' '*.feature'   # empty
 sed -n '69,90p'   internal/tui/rename.go
 sed -n '360,400p'  internal/tui/tui.go
