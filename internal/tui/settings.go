@@ -514,9 +514,21 @@ func (m *Model) settingsApplyLiveFields(previous config.FileConfig) tea.Cmd {
 	// m.sidebarScroll to it -- a no-op when the selection happens to stay
 	// in view, exactly like every other selection-changing gesture task
 	// 007/R136 already wires it into (m.setSelection's own doc comment).
+	//
+	// R142/GH #40 (SPEC §11: "A background reload, re-sort or re-group
+	// while the list is drifted keeps the wheel's offset (clamped to the
+	// new length)"): a live re-group is not a selection move, so while a
+	// wheel drift is in force the offset is only re-clamped
+	// (clampDriftedSidebarScroll), exactly as sessionsLoaded and
+	// resortSessionsLive already do -- the selection keeps following its
+	// session by identity off screen.
 	if _, overridden := m.settings.EnvOverrides["ui.default_group_first"]; !overridden && m.settingsEdits.DefaultGroupFirst != previous.DefaultGroupFirst {
 		m.settings.DefaultGroupFirst = m.settingsEdits.DefaultGroupFirst
-		m.followSelectionViewport()
+		if m.sidebarScrollDrifted {
+			m.clampDriftedSidebarScroll()
+		} else {
+			m.followSelectionViewport()
+		}
 	}
 	return cmd
 }
