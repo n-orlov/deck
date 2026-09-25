@@ -229,19 +229,22 @@ func (m Model) handleMousePress(e tea.MouseMsg) (tea.Model, tea.Cmd) {
 		m.draggingSeam = true
 		return m, nil
 	case hitPanelPreview:
-		// "A click ... over the preview does nothing, and that is a
-		// binding too": it must not fall through to the sidebar. Steer
-		// 017 item 3/task 216's drag-to-copy selection is scoped to
-		// interactive mode only (Update's own tea.MouseMsg case routes
-		// press/motion/release there directly whenever m.interactive is
-		// true, never reaching handleMouse at all -- task 313/R54 hit-tests
-		// that same press FIRST, so a press over the sidebar re-targets
-		// interactive mode there instead of ever reaching drag-to-copy; a
-		// press landing here, over the preview, or over the seam still
-		// falls straight through to drag-to-copy exactly as before), so
-		// this stays a plain no-op for every gesture over the PASSIVE
-		// preview.
-		return m, nil
+		// R144/GH #37: "click the passive preview to enter" -- a left
+		// press here now runs ↵'s own entry path (enterInteractive) on the
+		// CURRENT selection, never moving it and never re-deriving which
+		// row is selected from the click's own coordinates (the click
+		// landed in the preview, not on a row). enterInteractive already
+		// carries every refusal (R143's banner), the header-cursor no-op
+		// (hasSelectedSession is false while m.selected is a header) and
+		// the same durable attachment record (m.prepareAttach) ↵ itself
+		// gets, so this is a plain call-through, not a second copy of any
+		// of that ladder. This still must not fall through to the sidebar,
+		// and it still starts no drag-to-copy selection (that gesture is
+		// scoped to interactive mode only -- Update's own tea.MouseMsg case
+		// routes press/motion/release there directly whenever m.interactive
+		// is true, never reaching handleMouse at all, so this call site
+		// only ever runs in list mode).
+		return m.enterInteractive()
 	case hitPanelSidebar:
 		updated, cmd, _ := m.resolveSidebarPress(hit, func(mm Model, h hitResult) (tea.Model, tea.Cmd) {
 			return mm.clickSidebarRow(h.sessionIndex, e)
