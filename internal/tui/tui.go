@@ -1686,6 +1686,17 @@ type previewFitDone struct {
 	clientAttached   bool
 }
 
+// entryRefusalHolderRecheckDone reports the result of one
+// entryRefusalHolderCheck probe (task 008/R143, GH #38): sessionID/kind
+// name the refusal the probe was issued against, so a stale reply racing
+// a selection change or a fresh refusal on the same session cannot clear
+// something it says nothing about (guarded in the Update case).
+type entryRefusalHolderRecheckDone struct {
+	sessionID  string
+	kind       entryRefusalKind
+	reasonGone bool
+}
+
 type sessionResumed struct {
 	session store.Session
 	outcome service.ResumeOutcome
@@ -2693,6 +2704,11 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			} else {
 				m.followSelectionViewport()
 			}
+			// SPEC §11.9 (task 008/R143, GH #38): "clears ... when a later
+			// tick finds the reason gone (... the session started)" for the
+			// entryRefusalStopped kind -- read against the JUST-refreshed
+			// m.sessions above, not the pre-reload snapshot.
+			m.clearEntryRefusalIfSessionStarted()
 		}
 	case archivedSessionsLoaded:
 		// Task 123/I-10: refreshes the filter's archived-side search pool.
@@ -3382,6 +3398,13 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		if cmd := m.previewFit(); cmd != nil {
 			cmds = append(cmds, cmd)
 		}
+		// SPEC §11.9 (task 008/R143, GH #38): "clears ... when a later tick
+		// finds the reason gone (the holder left...)" for the two
+		// contention refusal kinds -- read entryRefusalHolderCheck's own
+		// doc comment for why the other kinds have nothing to probe here.
+		if cmd := m.entryRefusalHolderCheck(); cmd != nil {
+			cmds = append(cmds, cmd)
+		}
 		// Task 118: displacement detection rides this same tick, never a
 		// per-keystroke check (updateInteractive gains none at all). The
 		// fast path is checked first and, unlike the backstop below, needs
@@ -3434,6 +3457,17 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		// navigating while the fit ran) -- that is exactly the case the next
 		// tick must be free to fit.
 		m.previewFitInFlight = ""
+		return m, nil
+	case entryRefusalHolderRecheckDone:
+		// SPEC §11.9 (task 008/R143, GH #38): only clears the SAME refusal
+		// this probe was issued against -- a stale reply racing a selection
+		// change (setSelection already clears the refusal outright, so
+		// m.entryRefusal.active would already be false) or a fresh refusal
+		// that has since landed on the same session (kind mismatch) must not
+		// clear something this reply says nothing about.
+		if msg.reasonGone && m.entryRefusal.active && m.entryRefusal.sessionID == msg.sessionID && m.entryRefusal.kind == msg.kind {
+			m.clearEntryRefusal()
+		}
 		return m, nil
 	case previewCaptured:
 		// A session with no live pane reports capture.Live == false and a nil
@@ -3604,6 +3638,20 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		// one deciding for itself whether the cursor names a session.
 		// Reverting just this call, leaving guardSessionScopedKey itself in
 		// place, restores the per-site gaps it closed.
+		if msg.String() == "esc" {
+			if _, ok := m.activeEntryRefusalForSelection(); ok {
+				// SPEC §11.9 (task 008/R143, GH #38): the banner "clears ...
+				// on Esc -- which dismisses the banner BEFORE any other
+				// layer Esc clears". This press swallows nothing else --
+				// marks, a held filter query, help/detail -- exactly one
+				// press dismisses exactly one thing, and the banner always
+				// goes first while it is up. The very NEXT Esc (with the
+				// banner now gone) falls through to the "esc" case below
+				// and clears whatever that press would have cleared anyway.
+				m.clearEntryRefusal()
+				return m, nil
+			}
+		}
 		if m.guardSessionScopedKey(msg.String()) {
 			return m, nil
 		}
@@ -4473,6 +4521,11 @@ func (m Model) attachSelected() (tea.Model, tea.Cmd) {
 		}
 	}
 	m.attachError = ""
+	// SPEC §11.9 (task 008/R143, GH #38): `a` is one of the three entry
+	// paths (↵, F, a) whose SUCCESS clears an active refusal banner --
+	// enterInteractiveBody already does this on its own success path via
+	// m.clearEntryRefusal(); this is the same clearing for the full attach.
+	m.clearEntryRefusal()
 	m.releaseForeignPreviewPin(session.Slug)
 	return m, tea.ExecProcess(command, func(err error) tea.Msg { return attachFinished{err: err} })
 }
@@ -5998,6 +6051,19 @@ func (m *Model) resortSessionsLive() {
 // this -- it moves sidebarScroll
 // without touching m.selected at all, the opposite half of the contract.
 func (m *Model) setSelection(c sidebarCursor) {
+	if m.entryRefusal.active && c != m.selected {
+		// SPEC §11.9 (task 008/R143, GH #38): the banner "clears ... when
+		// the selection moves" -- literally any change of cursor, not only
+		// a move off the refused session specifically. There is exactly
+		// one row per session, so a cursor change that is not a no-op
+		// (clicking the row that is already selected) always names a
+		// different stop -- the refusal is cleared OUTRIGHT here, not
+		// merely hidden for the new selection the way
+		// activeEntryRefusalForSelection's own session-match guard already
+		// did, so navigating back to the originally-refused session later
+		// does not resurrect a stale banner.
+		m.clearEntryRefusal()
+	}
 	m.selected = c
 	m.selectedByUser = true
 	m.followSelectionViewport()
