@@ -50,7 +50,7 @@ func (m Model) previewCellAt(x, y int) (col, row int, ok bool) {
 		return 0, 0, false
 	}
 	width, _ := m.frameSize()
-	banner := len(m.startupBanner(width)) + len(m.themeBanner(width))
+	banner := len(m.startupBanner(width)) + len(m.sessionsReloadBanner(width)) + len(m.themeBanner(width))
 	frameY := y - banner
 	if frameY < 0 {
 		return 0, 0, false
@@ -119,7 +119,7 @@ func (m Model) previewCellAtStacked(layout LayoutResult, x, y int) (col, row int
 // cell instead of refusing.
 func (m Model) previewClampToContent(x, y int) (col, row int) {
 	width, _ := m.frameSize()
-	banner := len(m.startupBanner(width)) + len(m.themeBanner(width))
+	banner := len(m.startupBanner(width)) + len(m.sessionsReloadBanner(width)) + len(m.themeBanner(width))
 	frameY := y - banner
 	layout := m.computeLayout()
 	contentWidth, contentHeight := m.previewContentSize()

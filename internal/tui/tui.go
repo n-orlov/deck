@@ -30,9 +30,19 @@ type Model struct {
 	settings    config.Settings
 	sessions    []store.Session
 	startupNote string
-	help        bool
-	creating    bool
-	detail      bool
+	// sessionsReloadNote (R140/GH #36) is the RUNTIME counterpart to
+	// startupNote: startupNote is set once at construction from tmuxNote
+	// (the start-up tmux-missing/too-old note) and never touched again by a
+	// reload, while sessionsReloadNote is set fresh on every sessionsLoaded
+	// with a non-nil err and cleared on every successful one, so a
+	// transient reload failure never sticks around after the next good
+	// load and never borrows the start-up note's "tmux unavailable:"
+	// prefix or install-tmux line (sessionsReloadBanner below, not
+	// startupBanner, renders it).
+	sessionsReloadNote string
+	help               bool
+	creating           bool
+	detail             bool
 	// helpScroll/detailScroll are task 078's height-bounding fix (requirement
 	// 39 residual): the help overlay and `i` detail view are the only
 	// widgets on screen while open, so unlike every bounded §11.4 dialog
@@ -2483,8 +2493,9 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		if msg.err != nil {
-			m.startupNote = "Cannot read sessions: " + msg.err.Error()
+			m.sessionsReloadNote = "Cannot read sessions: " + msg.err.Error()
 		} else {
+			m.sessionsReloadNote = ""
 			// SPEC requirements 28/29/30 (task 023's sort, task 024's
 			// grouping): every load renders in attention order, not
 			// store order, so the sidebar's group order itself follows
@@ -4709,6 +4720,22 @@ func (m Model) startupBanner(width int) []string {
 	return lines
 }
 
+// sessionsReloadBanner is the RUNTIME counterpart to startupBanner (R140/GH
+// #36): a reload error gets its own short line, "Cannot read sessions:
+// <err>", with no "tmux unavailable:" prefix and no install-tmux line --
+// unlike the start-up note, it is cleared the moment the next reload
+// succeeds (see sessionsReloadNote's field doc) rather than persisting for
+// the life of the process.
+func (m Model) sessionsReloadBanner(width int) []string {
+	if m.sessionsReloadNote == "" {
+		return nil
+	}
+	var lines []string
+	lines = append(lines, m.canvasWrapText(m.sessionsReloadNote, width)...)
+	lines = append(lines, "")
+	return lines
+}
+
 // themeBanner is requirement 28's fallback notice for the [ui] theme key:
 // theme.Resolve (invoked by config.LoadFrom) computed ThemeReason once, at
 // load time, whenever the configured name could not be resolved -- unknown
@@ -4950,7 +4977,7 @@ func (m Model) pendingDeleteLines(width int) []string {
 // future caller that sets both together still gets a frame that fits.
 func (m Model) computeLayout() LayoutResult {
 	width, height := m.frameSize()
-	reserved := 1 + len(m.startupBanner(width)) + len(m.themeBanner(width)) + len(m.sortOrderBanner(width)) + len(m.themePickerLines(width)) + len(m.attachErrorLines(width)) + len(m.resumeNoteLines(width)) + len(m.selectionCopyNoteLines(width)) + len(m.undoNoteLines(width)) + len(m.deleteUndoNoteLines(width)) + len(m.archiveUndoNoteLines(width)) + len(m.archiveUndoneRebuildNoteLines(width)) + len(m.teardownHookNoteLines(width)) + len(m.pendingDeleteLines(width)) + len(m.filterStatusLine(width))
+	reserved := 1 + len(m.startupBanner(width)) + len(m.sessionsReloadBanner(width)) + len(m.themeBanner(width)) + len(m.sortOrderBanner(width)) + len(m.themePickerLines(width)) + len(m.attachErrorLines(width)) + len(m.resumeNoteLines(width)) + len(m.selectionCopyNoteLines(width)) + len(m.undoNoteLines(width)) + len(m.deleteUndoNoteLines(width)) + len(m.archiveUndoNoteLines(width)) + len(m.archiveUndoneRebuildNoteLines(width)) + len(m.teardownHookNoteLines(width)) + len(m.pendingDeleteLines(width)) + len(m.filterStatusLine(width))
 	result := ComputeLayout(width, height-reserved, m.layoutMode, m.sidebarWidth)
 	// ComputeLayout's own BelowMinimum reads its rows argument as the full
 	// terminal height (its doc comment says so, and its direct unit tests
@@ -5002,6 +5029,7 @@ func (m Model) mainView() string {
 	width, _ := m.frameSize()
 	layout := m.computeLayout()
 	lines := m.startupBanner(width)
+	lines = append(lines, m.sessionsReloadBanner(width)...)
 	lines = append(lines, m.themeBanner(width)...)
 	lines = append(lines, m.sortOrderBanner(width)...)
 	lines = append(lines, m.themePickerLines(width)...)

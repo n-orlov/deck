@@ -59,7 +59,7 @@ func (m Model) hitTest(x, y int) hitResult {
 		return hitResult{}
 	}
 	width, _ := m.frameSize()
-	banner := len(m.startupBanner(width)) + len(m.themeBanner(width))
+	banner := len(m.startupBanner(width)) + len(m.sessionsReloadBanner(width)) + len(m.themeBanner(width))
 	frameY := y - banner
 	if frameY < 0 {
 		return hitResult{}
