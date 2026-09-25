@@ -95,9 +95,6 @@ func drift005DriftedModel(t *testing.T, n, height, notches int) Model {
 		next, _ := m.Update(wheelDown(10, 5))
 		m = next.(Model)
 	}
-	if !m.sidebarScrollDrifted {
-		t.Fatalf("fixture: %d wheel-down notches did not arm the drift flag", notches)
-	}
 	if m.sidebarScroll == 0 {
 		t.Fatalf("fixture: %d wheel-down notches left sidebarScroll at 0", notches)
 	}
@@ -106,24 +103,27 @@ func drift005DriftedModel(t *testing.T, n, height, notches int) Model {
 
 // assertDriftEndedWithContext is the shared assertion every case in
 // TestDriftEndingKeysBringSelectionBackIntoView and
-// TestWheelDriftDDRaisesConfirmWithTargetVisible make: the drift flag is
-// clear, the selected cursor's own entry span is fully inside the
-// sidebar's visible window (assertSelectionInView), and the resulting
-// sidebarScroll is EXACTLY what a fresh followSelectionViewport call would
-// produce right now -- i.e. it already carries the one-row context margin
-// followSelectionViewport gives every ordinary selection move, not merely
-// "somewhere that happens to include the row".
+// TestWheelDriftDDRaisesConfirmWithTargetVisible make, all of it through
+// observable behaviour (no internal drift field, so it runs to a real
+// assertion on a tree with no drift state too): the selected cursor's own
+// entry span is fully inside the sidebar's visible window
+// (assertSelectionInView), the resulting sidebarScroll is EXACTLY what a
+// fresh followSelectionViewport call would produce right now -- i.e. it
+// already carries the one-row context margin followSelectionViewport
+// gives every ordinary selection move, not merely "somewhere that happens
+// to include the row" -- and the drift is really over, not merely paused:
+// the next background reload must follow a selection that has gone off
+// screen back into view.
 func assertDriftEndedWithContext(t *testing.T, label string, m Model) {
 	t.Helper()
-	if m.sidebarScrollDrifted {
-		t.Fatalf("%s: sidebarScrollDrifted is still true; the key did not end the drift", label)
-	}
 	assertSelectionInView(t, m, label)
 	before := m.sidebarScroll
 	m.followSelectionViewport()
 	if m.sidebarScroll != before {
 		t.Fatalf("%s: sidebarScroll = %d is not what followSelectionViewport's own one-row-context margin computes (%d) -- the row is visible, but without the required context", label, before, m.sidebarScroll)
 	}
+	m.sidebarScroll = before
+	assertDriftEnded(t, label, m)
 }
 
 // driftEndingKeyFollowTestCases is task 005's own table: every
@@ -221,7 +221,8 @@ func TestWheelDriftDDRaisesConfirmWithTargetVisible(t *testing.T) {
 }
 
 // assertDriftLeftInPlace runs one key from a fresh drift and fails unless
-// both the drift flag and the wheel's own sidebarScroll survive it.
+// the wheel's own sidebarScroll survives it AND the drift itself does:
+// the next background reload must still keep the wheel's offset.
 func assertDriftLeftInPlace(t *testing.T, k string) {
 	t.Helper()
 	m := drift005DriftedModel(t, 30, 24, 6)
@@ -231,12 +232,17 @@ func assertDriftLeftInPlace(t *testing.T, k string) {
 	if !ok {
 		t.Fatalf("Update(%q) returned %T, not tui.Model", k, updated)
 	}
-	if !out.sidebarScrollDrifted {
-		t.Fatalf("key %q cleared the drift flag; SPEC §11 says a key that names no selection leaves the drift alone", k)
-	}
 	if out.sidebarScroll != driftedScroll {
 		t.Fatalf("key %q moved sidebarScroll from %d to %d while claiming to leave the drift in place", k, driftedScroll, out.sidebarScroll)
 	}
+	// SPEC §11 says a key that names no selection leaves the drift alone:
+	// a background reload arriving right after the key must still keep
+	// the wheel's offset, not snap it back onto the selection.
+	after := reloadSameSessions(out)
+	if after.sidebarScroll != driftedScroll {
+		t.Fatalf("key %q, then a background reload: sidebarScroll moved %d -> %d -- the drift did not survive the key", k, driftedScroll, after.sidebarScroll)
+	}
+	assertDriftStillInForce(t, fmt.Sprintf("key %q, then a reload", k), after)
 }
 
 // TestDriftPreservingKeysLeaveTheDriftInPlace is success criterion 4: the
