@@ -415,7 +415,14 @@ type Model struct {
 	// never by display name -- 0 is the implicit default group's sentinel id.
 	collapsedGroups map[int64]bool
 	attachError     string
-	resumeNote      string
+	// entryRefusal is SPEC §11.9/R143's (GH #38) refusal state: task 007
+	// replaces every entry-refusal use of attachError above with this --
+	// see entry_refusal.go for the type, the seven reason kinds and the
+	// banner it renders over the preview instead of a footer line.
+	// attachError itself is untouched for every OTHER footer note (Cannot
+	// kill/archive/restart/..., which R143 never claims).
+	entryRefusal entryRefusalState
+	resumeNote   string
 	// selectionCopyNote is the drag-to-copy success counterpart to
 	// attachError's failure message (task 207, steering 018's "adjacent"
 	// item): commitInteractiveSelection sets it on a successful
@@ -2457,9 +2464,10 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		// never disagree about what counts as below the floor.
 		if m.interactive {
 			if width, height := m.previewContentSize(); width <= 0 || height < interactiveMinInnerRows {
+				session, _ := m.interactiveTargetSession()
 				next, cmd := m.exitInteractive()
 				m = next.(Model)
-				m.attachError = fmt.Sprintf("Left interactive mode: preview panel shrank to %d inner rows, fewer than the %d-row floor; press a to attach instead", height, interactiveMinInnerRows)
+				m.setEntryRefusal(session.ID, entryRefusalShrank, fmt.Sprintf("preview panel shrank to %d inner rows, fewer than the %d-row floor", height, interactiveMinInnerRows))
 				return m, cmd
 			}
 		}
@@ -6541,6 +6549,25 @@ func (m Model) previewBodyLines(contentWidth, contentHeight int) ([]string, []pr
 		lines, owners := m.interactiveBodyLines(contentWidth, contentHeight)
 		return lines, owners, m.interactiveScrollOffset()
 	}
+	lines, owners, scrollOffset := m.previewBodyLinesBeforeRefusal(contentWidth, contentHeight)
+	// R143/GH #38 (task 007): an active entry refusal for the CURRENTLY
+	// selected session draws its banner over whatever the background
+	// branch above already built -- the passive capture, a placeholder or
+	// the no-session sentence -- rather than replacing it outright, so the
+	// passive capture stays visible around the banner (SPEC §11.9).
+	if r, ok := m.activeEntryRefusalForSelection(); ok {
+		lines, owners = m.overlayEntryRefusalBanner(lines, owners, contentWidth, r)
+	}
+	return lines, owners, scrollOffset
+}
+
+// previewBodyLinesBeforeRefusal is previewBodyLines' own background
+// branch (task 007 factored this out of previewBodyLines verbatim, this
+// task's ONLY change to it): the real cropped pane capture when the
+// selected session has a live capture on file, otherwise a placeholder
+// naming exactly which no-live-pane state applies. See previewBodyLines'
+// own doc comment for the full rationale; unchanged by this split.
+func (m Model) previewBodyLinesBeforeRefusal(contentWidth, contentHeight int) ([]string, []previewLineOwner, int) {
 	if !m.hasSelectedSession() {
 		lines := fitLines(wrapText("Select or create a session to preview it here.", contentWidth), contentHeight)
 		return lines, deckOwnedPreviewLines(len(lines)), 0

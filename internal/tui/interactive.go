@@ -65,7 +65,7 @@ func (m Model) enterInteractiveBody(force bool) (tea.Model, tea.Cmd) {
 	}
 	session, _ := m.selectedSession()
 	if !canReachPane(session) {
-		m.attachError = "Cannot enter interactive mode: " + stoppedSessionRefusalTail
+		m.setEntryRefusal(session.ID, entryRefusalStopped, stoppedSessionRefusalTail)
 		return m, nil
 	}
 	ctx := context.Background()
@@ -73,7 +73,7 @@ func (m Model) enterInteractiveBody(force bool) (tea.Model, tea.Cmd) {
 
 	windowTarget, err := tmux.SessionName(session.Slug)
 	if err != nil {
-		m.attachError = "Cannot enter interactive mode: " + err.Error()
+		m.setEntryRefusal(session.ID, entryRefusalOther, err.Error())
 		return m, nil
 	}
 
@@ -92,7 +92,7 @@ func (m Model) enterInteractiveBody(force bool) (tea.Model, tea.Cmd) {
 	// into client, which requires a live tmux to answer meaningfully.
 	width, height := m.previewContentSize()
 	if width <= 0 {
-		m.attachError = "Cannot enter interactive mode: preview panel is too small; press a to attach instead"
+		m.setEntryRefusal(session.ID, entryRefusalOther, "preview panel is too small")
 		return m, nil
 	}
 	if height < interactiveMinInnerRows {
@@ -100,7 +100,7 @@ func (m Model) enterInteractiveBody(force bool) (tea.Model, tea.Cmd) {
 		// interactiveMinInnerRows into it, so the phrase below stays the
 		// one place in the package's non-test sources naming this floor --
 		// keep it in sync with the constant above if it ever moves off 7.
-		m.attachError = fmt.Sprintf("Cannot enter interactive mode: preview panel has %d inner rows, fewer than the 7-row floor; press a to attach instead", height)
+		m.setEntryRefusal(session.ID, entryRefusalRowFloor, fmt.Sprintf("preview panel has %d inner rows, fewer than the 7-row floor", height))
 		return m, nil
 	}
 
@@ -120,28 +120,28 @@ func (m Model) enterInteractiveBody(force bool) (tea.Model, tea.Cmd) {
 	if !force {
 		attached, err := client.SessionAttachedCount(ctx, windowTarget)
 		if err != nil {
-			m.attachError = "Cannot enter interactive mode: " + err.Error()
+			m.setEntryRefusal(session.ID, entryRefusalOther, err.Error())
 			return m, nil
 		}
 		if attached > 0 {
-			m.attachError = "Cannot enter interactive mode: another client is attached to this session; press a to attach instead, or F to force it"
+			m.setEntryRefusal(session.ID, entryRefusalAttachedElsewhere, "another client is attached to this session")
 			return m, nil
 		}
 	}
 
 	pane, ok, err := client.PreviewPane(ctx, session.Slug)
 	if err != nil {
-		m.attachError = "Cannot enter interactive mode: " + err.Error()
+		m.setEntryRefusal(session.ID, entryRefusalOther, err.Error())
 		return m, nil
 	}
 	if !ok {
-		m.attachError = "Cannot enter interactive mode: no live pane"
+		m.setEntryRefusal(session.ID, entryRefusalNoLivePane, "no live pane")
 		return m, nil
 	}
 
 	geometry, err := client.CaptureWindowGeometry(ctx, windowTarget)
 	if err != nil {
-		m.attachError = "Cannot enter interactive mode: " + err.Error()
+		m.setEntryRefusal(session.ID, entryRefusalOther, err.Error())
 		return m, nil
 	}
 	var ownership *tmux.WindowOwnership
@@ -152,7 +152,7 @@ func (m Model) enterInteractiveBody(force bool) (tea.Model, tea.Cmd) {
 		ownership, acquired, err = client.ClaimWindowOwnership(ctx, windowTarget)
 	}
 	if err != nil {
-		m.attachError = "Cannot enter interactive mode: " + err.Error()
+		m.setEntryRefusal(session.ID, entryRefusalOther, err.Error())
 		return m, nil
 	}
 	if !acquired {
@@ -160,7 +160,7 @@ func (m Model) enterInteractiveBody(force bool) (tea.Model, tea.Cmd) {
 		// hand-crafted claim -- ClaimWindowOwnership's own liveness check via
 		// kill(pid, 0) is what decides this, not merely "the option is set")
 		// already holds ownership of this window.
-		m.attachError = "Cannot enter interactive mode: a live process holds ownership of this window; press a to attach instead, or F to force it"
+		m.setEntryRefusal(session.ID, entryRefusalOwnedElsewhere, "a live process holds ownership of this window")
 		return m, nil
 	}
 	// R100 (SPEC section 11.9): the geometry to restore is recorded beside
@@ -188,7 +188,7 @@ func (m Model) enterInteractiveBody(force bool) (tea.Model, tea.Cmd) {
 		// definition set nothing. err also leaves geometry zero-valued,
 		// so restoring it would resize the window to 0x0.
 		releaseIfStillMine(ctx, ownership)
-		m.attachError = "Cannot enter interactive mode: " + err.Error()
+		m.setEntryRefusal(session.ID, entryRefusalOther, err.Error())
 		return m, nil
 	}
 	if _, err := client.FitWindowToPane(ctx, windowTarget, pane.ID, width, height); err != nil {
@@ -203,7 +203,7 @@ func (m Model) enterInteractiveBody(force bool) (tea.Model, tea.Cmd) {
 		// failed entry's own halfway size as the window's original
 		// geometry. There is no transport yet (nil grid).
 		teardownInteractiveClaim(ctx, client, ownership, windowTarget, geometry, nil)
-		m.attachError = "Cannot enter interactive mode: " + err.Error()
+		m.setEntryRefusal(session.ID, entryRefusalOther, err.Error())
 		return m, nil
 	}
 	// SPEC §11.9's held size, stated rather than inherited. The fit above
@@ -221,7 +221,7 @@ func (m Model) enterInteractiveBody(force bool) (tea.Model, tea.Cmd) {
 	dispatcher, err := tmux.NewDispatcher(ctx, client, pane.ID)
 	if err != nil {
 		teardownInteractiveClaim(ctx, client, ownership, windowTarget, geometry, nil)
-		m.attachError = "Cannot enter interactive mode: " + err.Error()
+		m.setEntryRefusal(session.ID, entryRefusalOther, err.Error())
 		return m, nil
 	}
 	// PRD II-5 (task 089): DECK_INTERACTIVE_TRANSPORT/interactive_transport
@@ -258,7 +258,7 @@ func (m Model) enterInteractiveBody(force bool) (tea.Model, tea.Cmd) {
 	}, transport)
 	if err != nil {
 		teardownInteractiveClaim(ctx, client, ownership, windowTarget, geometry, nil)
-		m.attachError = "Cannot enter interactive mode: " + err.Error()
+		m.setEntryRefusal(session.ID, entryRefusalOther, err.Error())
 		return m, nil
 	}
 	// PRD R89/task 030: persist enough to reclaim this claim from a LATER
@@ -293,7 +293,7 @@ func (m Model) enterInteractiveBody(force bool) (tea.Model, tea.Cmd) {
 	if m.prepareAttach != nil {
 		if err := m.prepareAttach(ctx, session.ID); err != nil {
 			teardownInteractiveClaim(ctx, client, ownership, windowTarget, geometry, grid)
-			m.attachError = "Cannot enter interactive mode: " + err.Error()
+			m.setEntryRefusal(session.ID, entryRefusalOther, err.Error())
 			return m, nil
 		}
 	}
@@ -305,7 +305,7 @@ func (m Model) enterInteractiveBody(force bool) (tea.Model, tea.Cmd) {
 	m.interactiveGrid = grid
 	m.interactiveDispatcher = dispatcher
 	m.setInteractiveScrollOffset(0)
-	m.attachError = ""
+	m.clearEntryRefusal()
 	return m, nil
 }
 

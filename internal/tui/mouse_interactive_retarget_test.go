@@ -93,8 +93,8 @@ func TestInteractivePressOnADifferentSidebarRowRetargets(t *testing.T) {
 	if got.interactive {
 		t.Fatalf("retargeting press left interactive mode on despite the floor refusal on the NEW session")
 	}
-	if !strings.Contains(got.attachError, "7-row floor") {
-		t.Fatalf("attachError %q does not name the 7-row floor -- the retargeting press did not actually reach enterInteractive on the new row", got.attachError)
+	if !strings.Contains(got.entryRefusal.reason, "7-row floor") || got.entryRefusal.kind != entryRefusalRowFloor {
+		t.Fatalf("entryRefusal = %+v does not name the 7-row floor -- the retargeting press did not actually reach enterInteractive on the new row", got.entryRefusal)
 	}
 }
 
