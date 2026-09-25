@@ -4413,6 +4413,19 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			// interactive target is a no-op: no leave, no re-enter, no
 			// resize). A press over the preview or the seam falls straight
 			// through, unchanged, to the drag-to-copy path below.
+			//
+			// R144/GH #37: a press that resolves to the sidebar but to none
+			// of resolveSidebarPress's three targets (hitTargetNone -- the
+			// blank padding below the last row, or a border row) is list
+			// mode's own no-op (TestClickSidebarPaddingBelowLastRowIsANoOp),
+			// but while interactive mode owns the keyboard there is no row
+			// to fall through to, and letting it reach drag-to-copy below
+			// would silently start a text selection over blank sidebar
+			// space that gesture was never meant to cover. SPEC names
+			// Ctrl+Q as the only deliberate way out; this gives the operator
+			// a second, equally deliberate one -- a press on empty sidebar
+			// space runs the exact same exitInteractive Ctrl+Q itself
+			// calls, never a second, divergent teardown.
 			if msg.Button == tea.MouseButtonLeft && msg.Action == tea.MouseActionPress {
 				if hit := m.hitTest(msg.X, msg.Y); hit.panel == hitPanelSidebar {
 					if updated, cmd, ok := m.resolveSidebarPress(hit, func(mm Model, h hitResult) (tea.Model, tea.Cmd) {
@@ -4420,6 +4433,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 					}); ok {
 						return updated, cmd
 					}
+					return m.exitInteractive()
 				}
 			}
 			// Steer 017 item 3/task 216, SPEC §11.8: a left-button drag
@@ -9879,8 +9893,14 @@ Mouse (every binding duplicates a key above; nothing here is mouse-only)
                             drag over any overlay still does nothing
   drag the seam             adjust sidebar_width live (like </>)
   click the collapsed strip restore the previous layout mode (like |)
-  click over the preview     does nothing; a click outside a dialog does
-                            nothing (Esc cancels)
+  click over the preview     enters interactive mode on the current
+                            selection (like ↵), sharing the whole entry
+                            refusal ladder and the same recorded
+                            attachment
+  click empty sidebar space  while interactive, leaves interactive mode
+                            (like Ctrl+Q) without moving the selection;
+                            in list mode, or any other click outside a
+                            dialog, this still does nothing (Esc cancels)
   wheel over the preview     while interactive, scrolls the grid's own
                             bounded scrollback (like Shift+PgUp/PgDn);
                             otherwise does nothing
