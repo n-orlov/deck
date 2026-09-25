@@ -1,0 +1,116 @@
+name: ci
+
+# R145: the suite on trusted PRs, push to main, the nightly lane and manual
+# dispatch. See docs/ci.md (task C.12) for the maintainer-facing walkthrough
+# and prds/phase4d-backlog-sweep-and-ci.md's "Tier 3 -- CI" section for the
+# full design (GH #35).
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    # nightly: 03:17 UTC, an arbitrary off-hour slot so it doesn't collide
+    # with GitHub's own top-of-hour cron thundering herd.
+    - cron: "17 3 * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  # PR runs on the same ref cancel a superseded run; a push to main and the
+  # nightly/dispatch lane never cancel each other (they queue instead), so a
+  # red main/nightly run is never silently swallowed by a newer one.
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+# Every self-hosted job below repeats this same job-level `if:` (job-level
+# `if:` cannot read the workflow's own top-level `env:`, so it is inlined on
+# each job rather than centralised): a pull_request run's head repo must be
+# this repository itself. For every other event type github.event.pull_request
+# is null, so the equality would be false and the guard would wrongly refuse
+# push/schedule/workflow_dispatch runs -- hence the
+# `github.event_name != 'pull_request' ||` short-circuit. The `pull_request`
+# trigger checks out and evaluates workflow YAML from the PR's own head, so
+# this guard is what keeps a fork's code off the self-hosted runners; the
+# base-ref-YAML/head-ref-checkout trigger that would defeat that guard is
+# deliberately never used here.
+
+jobs:
+  lint:
+    name: lint
+    runs-on: [self-hosted, linux, x64, deck]
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Build/refresh the CI image
+        run: docker build -t deck-ci:local -f ci/Dockerfile ci
+
+      - name: Lint (gofmt -l, go vet, go mod tidy diff) -- fails fast, before the suite
+        run: ci/run.sh ci/lint.sh
+
+  suite:
+    name: suite
+    needs: lint
+    runs-on: [self-hosted, linux, x64, deck]
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    timeout-minutes: ${{ (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && 180 || 30 }}
+    env:
+      DECK_CI_OUT: ${{ github.workspace }}/ci-results
+      # nightly-only race detector, per R145; ci/suite.sh switches its
+      # -covermode to atomic automatically whenever this mentions -race.
+      DECK_CI_GO_EXTRA_FLAGS: ${{ (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && '-race' || '' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Build/refresh the CI image
+        run: docker build -t deck-ci:local -f ci/Dockerfile ci
+
+      - name: Run the suite (lint already gated this job on success)
+        id: suite
+        continue-on-error: true
+        run: ci/run.sh ci/suite.sh
+
+      - name: Nightly stability (3 clean-state runs, R145)
+        id: stability
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        continue-on-error: true
+        run: ci/run.sh ci/stability.sh 3
+
+      - name: Job summary (pass/fail/flaky counts, slowest packages)
+        if: always()
+        run: |
+          set -eu
+          if [ -d "$DECK_CI_OUT" ]; then
+            ci/summary.sh "$DECK_CI_OUT" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "### CI suite summary" >> "$GITHUB_STEP_SUMMARY"
+            echo "(no results directory -- the suite step never produced output)" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload raw results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-results-${{ github.run_id }}
+          path: ${{ env.DECK_CI_OUT }}
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Notify on a red main/nightly run
+        if: always() && (steps.suite.outcome == 'failure' || steps.stability.outcome == 'failure') && (github.ref == 'refs/heads/main' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+        continue-on-error: true
+        run: |
+          set -eu
+          run_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          curl -fsS -X POST "http://100.71.162.65:8090/notify" \
+            -H "Content-Type: text/plain" \
+            --data "deck CI red: ${{ github.event_name }} on ${{ github.ref_name }} -- ${run_url}"
+
+      - name: Fail the job if the suite or the nightly stability run failed
+        if: steps.suite.outcome == 'failure' || steps.stability.outcome == 'failure'
+        run: exit 1
