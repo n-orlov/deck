@@ -111,21 +111,53 @@ func (m Model) entryRefusalSessionName(id string) string {
 
 // entryRefusalWayOut is line 3's content for kind: SPEC §11.9's "the way
 // out for that kind (F and a for contention, a for the floor, and so
-// on), always ending with `keys go to the list`" -- every branch below
-// ends with exactly that phrase, unpunctuated, so a caller (or a test)
-// can assert the literal suffix regardless of what precedes it.
+// on), always ending with `keys go to the list`". EVERY kind names its
+// own way out ahead of that tail -- none of the seven is the bare tail
+// alone:
+//
+//   - contention (attached-elsewhere, owned-elsewhere): F forces entry
+//     over the holder, a attaches instead (SPEC's "both also offer F");
+//   - stopped: r starts the session (the keymap's `r` resume/start),
+//     then ↵ enters it -- neither F nor a helps, there is no pane yet;
+//   - row floor: a attaches instead, the floor is deck's own limit and
+//     offers only a;
+//   - shrank: grow the preview and ↵ re-enters, or a attaches
+//     instead -- the same floor, reached from inside interactive mode;
+//   - no live pane: R restarts the session so it has a pane again, then
+//     ↵ enters it;
+//   - other: ↵ retries (the failure was a tmux/store error, not a
+//     standing condition), or a attaches instead.
+//
+// Every branch ends with exactly the tail, unpunctuated, so a caller (or
+// a test) can assert the literal suffix regardless of what precedes it.
 func entryRefusalWayOut(kind entryRefusalKind) string {
 	const tail = "keys go to the list"
 	switch kind {
 	case entryRefusalAttachedElsewhere, entryRefusalOwnedElsewhere:
 		return "F forces entry, a attaches instead \u2014 " + tail
 	case entryRefusalStopped:
-		return "resume it, then try again \u2014 " + tail
-	case entryRefusalRowFloor, entryRefusalShrank:
+		return "r starts it, then \u21b5 enters \u2014 " + tail
+	case entryRefusalRowFloor:
 		return "a attaches instead \u2014 " + tail
-	default: // entryRefusalNoLivePane, entryRefusalOther
-		return tail
+	case entryRefusalShrank:
+		return "grow it and \u21b5, or a attaches \u2014 " + tail
+	case entryRefusalNoLivePane:
+		return "R restarts it, then \u21b5 enters \u2014 " + tail
+	default: // entryRefusalOther
+		return "\u21b5 retries, a attaches instead \u2014 " + tail
 	}
+}
+
+// entryRefusalWayOutText is entryRefusalWayOut(kind) as the banner draws
+// it in m's render mode: under `ascii` the two non-ASCII glyphs the way
+// out uses (the " \u2014 " separator and the \u21b5 key name) become "; " and
+// "Enter", so an ascii banner is plain ASCII throughout, not just its box.
+func (m Model) entryRefusalWayOutText(kind entryRefusalKind) string {
+	s := entryRefusalWayOut(kind)
+	if m.settings.ASCII {
+		s = strings.NewReplacer(" \u2014 ", "; ", "\u21b5", "Enter").Replace(s)
+	}
+	return s
 }
 
 // entryRefusalBannerRow paints one already-built, exactly-contentWidth
@@ -175,7 +207,7 @@ func (m Model) entryRefusalBannerLines(contentWidth int, sessionName string, r e
 	}
 
 	headline := fmt.Sprintf("NOT ATTACHED: %s", sessionName)
-	lines := []string{top, row(headline), row(r.reason), row(entryRefusalWayOut(r.kind)), bottom}
+	lines := []string{top, row(headline), row(r.reason), row(m.entryRefusalWayOutText(r.kind)), bottom}
 	for i, l := range lines {
 		lines[i] = m.entryRefusalBannerRow(l)
 	}

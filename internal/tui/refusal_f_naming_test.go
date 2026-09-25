@@ -64,8 +64,10 @@ func TestContentionRefusalsNameFFloorAndNoWidthRefusalsDoNot(t *testing.T) {
 		if strings.Contains(got, "F") {
 			t.Fatalf("no-width refusal way-out %q offers F, but F cannot do anything about a preview panel with no width at all", got)
 		}
-		if strings.Contains(got, "a attaches instead") {
-			t.Fatalf("no-width refusal way-out %q offers a, but the \"other\" kind names neither key", got)
+		// Task 106's own requirement: the no-width refusal keeps offering
+		// a (an ordinary attach does not need the preview's width at all).
+		if !strings.Contains(got, "a attaches instead") {
+			t.Fatalf("no-width refusal way-out %q lost the a-attaches-instead offer", got)
 		}
 	})
 }

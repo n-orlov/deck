@@ -44,6 +44,18 @@ func TestSetEntryRefusalNeverLeavesItFooterOnly(t *testing.T) {
 	}
 }
 
+// wantEntryRefusalWayOut is SPEC §11.9's line 3 for each of the seven
+// kinds: the kind's own way out, then the `keys go to the list` tail.
+var wantEntryRefusalWayOut = map[entryRefusalKind]string{
+	entryRefusalAttachedElsewhere: "F forces entry, a attaches instead \u2014 keys go to the list",
+	entryRefusalOwnedElsewhere:    "F forces entry, a attaches instead \u2014 keys go to the list",
+	entryRefusalStopped:           "r starts it, then \u21b5 enters \u2014 keys go to the list",
+	entryRefusalRowFloor:          "a attaches instead \u2014 keys go to the list",
+	entryRefusalNoLivePane:        "R restarts it, then \u21b5 enters \u2014 keys go to the list",
+	entryRefusalShrank:            "grow it and \u21b5, or a attaches \u2014 keys go to the list",
+	entryRefusalOther:             "\u21b5 retries, a attaches instead \u2014 keys go to the list",
+}
+
 // TestEveryEntryRefusalKindDrawsItsOwnBannerNotTheFooter is the second
 // half of the same table: for every one of the seven kinds, the banner
 // entryRefusalBannerLines/overlayEntryRefusalBanner draw -- exactly what
@@ -107,19 +119,52 @@ func TestEveryEntryRefusalKindDrawsItsOwnBannerNotTheFooter(t *testing.T) {
 			if !strings.HasSuffix(wayOut, "keys go to the list") {
 				t.Fatalf("kind %q: way-out text %q does not end with the required tail", kind, wayOut)
 			}
+			// SPEC §11.9 line 3 is "the way out for that reason" AND the
+			// tail -- the tail alone is not a way out. Every kind must
+			// name its own guidance ahead of it, exactly as specified.
+			want, ok := wantEntryRefusalWayOut[kind]
+			if !ok {
+				t.Fatalf("kind %q: no expected way-out in wantEntryRefusalWayOut -- a new kind needs its own line 3", kind)
+			}
+			if wayOut != want {
+				t.Fatalf("kind %q: way-out = %q, want %q", kind, wayOut, want)
+			}
+			guidance := strings.TrimSpace(strings.TrimSuffix(strings.TrimSuffix(wayOut, "keys go to the list"), " \u2014 "))
+			if guidance == "" || guidance == wayOut {
+				t.Fatalf("kind %q: way-out %q carries no kind-specific guidance ahead of the tail", kind, wayOut)
+			}
 			if !strings.Contains(joined, wayOut) {
 				t.Fatalf("kind %q: drawn preview does not contain the banner's own way-out line %q:\n%s", kind, wayOut, joined)
 			}
 
-			// SPEC §11.9: F/a are named for contention kinds only.
+			// SPEC §11.9: F and a for contention, a for the floor, and
+			// F never offered for a refusal that is not contention.
 			switch kind {
 			case entryRefusalAttachedElsewhere, entryRefusalOwnedElsewhere:
-				if !strings.Contains(wayOut, "F") {
-					t.Fatalf("kind %q: contention way-out %q does not name F", kind, wayOut)
+				if !strings.Contains(wayOut, "F forces entry") || !strings.Contains(wayOut, "a attaches") {
+					t.Fatalf("kind %q: contention way-out %q does not name both F and a", kind, wayOut)
 				}
 			default:
 				if strings.Contains(wayOut, "F ") || strings.Contains(wayOut, " F") {
 					t.Fatalf("kind %q: non-contention way-out %q names F", kind, wayOut)
+				}
+			}
+			if kind == entryRefusalRowFloor && !strings.HasPrefix(wayOut, "a attaches") {
+				t.Fatalf("kind %q: floor way-out %q does not offer a", kind, wayOut)
+			}
+
+			// ascii mode draws the same guidance in plain ASCII.
+			am := m
+			am.settings = config.Settings{ASCII: true}
+			asciiLines, _, _ := am.previewBodyLines(cw, ch)
+			asciiJoined := strings.Join(asciiLines, "\n")
+			asciiWay := am.entryRefusalWayOutText(kind)
+			if !strings.Contains(asciiJoined, asciiWay) || !strings.HasSuffix(asciiWay, "keys go to the list") {
+				t.Fatalf("kind %q: ascii drawing lacks way-out %q:\n%s", kind, asciiWay, asciiJoined)
+			}
+			for _, r := range asciiWay {
+				if r > 0x7e {
+					t.Fatalf("kind %q: ascii way-out %q carries non-ASCII rune %q", kind, asciiWay, r)
 				}
 			}
 		})
@@ -168,6 +213,19 @@ func renderEntryRefusalGolden(t *testing.T) string {
 				continue
 			}
 			for _, l := range lines {
+				fmt.Fprintf(&b, "%q\n", l)
+			}
+		}
+	}
+	// Every one of the seven kinds' own banner (its own line 3 way out)
+	// at a 60-column pane, in every render mode, so each kind's way out
+	// is pinned byte-for-byte -- not only the contention kind above.
+	for _, mode := range modes {
+		m := New(nil, mode.settings, "")
+		for _, kind := range allEntryRefusalKinds {
+			fmt.Fprintf(&b, "== %s / kind=%s / width=60 ==\n", mode.name, kind)
+			r := entryRefusalState{active: true, sessionID: "sess-1", kind: kind, reason: "reason for " + string(kind)}
+			for _, l := range m.entryRefusalBannerLines(60, "alpha", r) {
 				fmt.Fprintf(&b, "%q\n", l)
 			}
 		}
