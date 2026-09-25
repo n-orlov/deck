@@ -88,6 +88,12 @@ idle reaping or any timer that stops a running session · **inbound remote contr
 - Store: `modernc.org/sqlite` (pure Go, no cgo) — `WAL`, `busy_timeout=5000`, `foreign_keys=ON`.
 - tmux via the `tmux` CLI. No control mode in v1. **Minimum tmux 3.2**, required for
   `remain-on-exit failed` (§7) and the `window-size` option (§3.3).
+  The "tmux unavailable — install tmux 3.2 or newer" notice is for exactly that condition,
+  detected at start-up, and nothing else: a tmux call that fails **at runtime** is a
+  transient read error, shown as such with no install advice and cleared by the next
+  successful reload. A target that vanishes between two tmux calls — a session, window **or
+  pane** removed between a list and a capture — is a removal race and is skipped like the
+  others, never reported as an error.
 - Runtime deps: `tmux`, plus whichever agent CLIs the user has. Nothing else.
 - Test tooling (never linked into the release binary): `cucumber/godog` for Gherkin, a
   VT100 emulator for screen parsing, `net/http/httptest` for webhook capture, and the
@@ -1325,6 +1331,14 @@ hold them side by side.
       session, so `↵`, `a`, `x`, `dd`, `i` and the rest do nothing rather than acting on some
       nearby row the user did not point at. This is one rule for all of them, not a decision
       each binding makes for itself.
+    - **A header starts at the panel's first content column**, level with the sidebar's own
+      `socket:` line — it reserves no gutter. §11.3's gutter belongs to session rows, which
+      is where `>` and `✓` are drawn; a header carries neither, so reserving their columns on
+      it only indented every header for nothing. The cursor on a header is shown instead by
+      the `selection` background across the header's full inner width **and reverse video
+      over the header's text**, so the cue survives `NO_COLOR` and `ascii` (an attribute, not
+      a colour), and a header's width and left column never shift as the cursor moves on or
+      off it.
   - **Membership is set where the session is.** The create modal has a `Group` field that
     cycles the available groups exactly as the `Agent` field cycles kinds (§11.4), defaulting
     to the last group created into; the `i` detail dialog moves an existing session between
@@ -1368,7 +1382,16 @@ hold them side by side.
   cannot see, which is the same class of defect as a mis-aimed click (§11.8). The wheel is the
   one deliberate exception and stays one: it scrolls without selecting (§11.8), so it may drift
   away from the cursor — and the next selection move brings the cursor back into view rather
-  than the wheel's position being preserved.
+  than the wheel's position being preserved. **A drift is kept until the user acts, not until
+  deck does.** A background reload, re-sort or re-group while the list is drifted keeps the
+  wheel's offset (clamped to the new length) and does not snap back to the selection, which
+  still follows its session by identity off screen — a wheel scroll that lasted only until
+  the next tick would be no scroll at all. What ends a drift is the user's next key that
+  either moves the selection or **acts on it**: every session- or header-scoped key (`↵`,
+  `a`, `F`, `x`, `dd`, `A`, `r`, `i`, a mark, a fold and the rest) first brings the selection
+  back into view and then does exactly what it does today, so any confirmation it raises is
+  raised over a list where its target is visible. Keys that name no selection (`?`, `q`,
+  `<`/`>`, settings) leave the drift alone.
 - **A re-sort never moves the selection.** Selection follows the session, not the row index —
   whatever was selected before a reload, a re-group or a sort-order change is still selected
   after it, and the viewport scrolls to keep it visible rather than the selection sliding to
@@ -1689,7 +1712,8 @@ truncated-but-honest frame beats an unpredictable one.
   "elevated region" tone, which is what an attached pane is; `selection` would be a larger step
   and is deliberately not used, because a pane filled with the selected-row colour devalues the
   cue that colour exists for.
-- **The selected row has a gutter, not only a background.** The row's leftmost columns are a
+- **The selected row has a gutter, not only a background.** (Session rows only: a group
+  header has no gutter and carries its cursor cue as §11's header bullet states.) The row's leftmost columns are a
   painted bar in `accent`, carrying `>` on the row's first line with `background` as its
   *foreground*; §11's marked set puts its `✓` on the second line of the same bar, so a row
   that is both selected and marked shows both cues at once without either competing for a
@@ -2028,12 +2052,23 @@ scroll, no close button that is the only way to dismiss.
 | drag the seam | adjust `sidebar_width` live | `<`/`>` |
 | drag over the preview | select text; release copies it | `a`, then tmux's own copy-mode |
 | click the collapsed strip | restore the previous non-collapsed mode | `|` |
+| click the passive preview | enter §11.9's interactive preview on the **already selected** row | `↵` |
+| click empty sidebar space while interactive | leave interactive mode | `Ctrl+Q` |
 
-**A click or a wheel over the passive preview does nothing**, and that is a binding too. The
-passive preview is a non-interactive, non-scrolling crop (§11): there is no focus to take and
-no viewport to move, and a gesture aimed at the preview must not fall through to the sidebar
-instead. A mis-aimed click that quietly moved the selection would fire §7's status side
-effects from what the user experienced as a click on some text. **A drag is the exception**,
+**A wheel over the passive preview does nothing, and a click over it is `↵`.** The passive
+preview is a non-interactive, non-scrolling crop (§11): there is no viewport for a wheel to
+move, and no gesture aimed at the preview may fall through to the sidebar instead. A click
+there enters interactive mode on the session that is **already selected** — the one the
+preview is showing — through `↵`'s own path, with every one of its refusals (§11.9) and its
+inertness on a header cursor (§11). It never moves the selection: the objection this
+paragraph used to make, that a mis-aimed click must not quietly move the selection and fire
+§7's side effects on some other session, still holds and is still met, and the cost that
+remains — a click can resize the shown session's live window — is the one the single-click
+reversal below already accepted. The press that enters does not also begin a drag-to-copy
+selection. Symmetrically, **while interactive, a click on sidebar space that is no row, no
+header and not the collapsed strip** (the blank below the last row) is `Ctrl+Q`: the same
+teardown, restore and release, with the selection left where it is; in list mode that space
+still does nothing. **A drag is the exception**,
 because selecting text is reading rather than acting: it takes no focus, changes no status and
 moves no selection in the list. **While §11.9's interactive mode is active the wheel scrolls
 the grid's own scrollback**, which is the one viewport that does exist; a click over the
@@ -2165,6 +2200,22 @@ must be restored afterwards.
   three are refusals about *someone else's* claim on the window rather than about deck's
   ability to do the job, so both also offer `F` (below) and say so; the row floor is deck's
   own limit and offers only `a`.
+- **Every refusal is shown in the preview pane, not only in the footer, and keys stay live.**
+  A refused entry — the three cases above, a stopped session, a pane that is not live, any
+  other error that stops entry, and the fall-out when the panel shrinks below the floor while
+  interactive — draws one banner over the preview: boxed, centred, spanning the pane's width
+  but not its height, so the passive capture stays visible around it. Line one is the
+  headline (`NOT ATTACHED: <session> …`), line two the reason, line three the way out for
+  that reason (`F` and `a` for contention, `a` for the floor) and, always, that keys are going
+  to the list. It is high-visibility in every render mode: a warning background in colour,
+  reverse video plus bold under `NO_COLOR`, and a plain `+-|` box under `ascii`. **It does
+  not take the keyboard**: every list key keeps working, because the failure being prevented
+  is not seeing the refusal, and a modal would swap it for a dialog to dismiss. It belongs to
+  the refused session and clears when the selection moves, when an entry (`↵`, `F`, `a`)
+  succeeds, when a later tick finds the reason gone (the holder left, the session started),
+  or on `Esc` — which dismisses the banner *before* any other layer `Esc` clears. Every entry
+  path shows it: `↵`, `F`, a sidebar click and a preview click. No refusal renders as a
+  footer line alone; notes that are not refusals (undo, copy, resume) stay where they are.
 - **`F` forces entry over whoever holds the window.** One operator working one set of sessions
   from more than one place is the ordinary case, not an anomaly, and the refusals above leave
   them with no way to move the keyboard except by hunting down the other client. `F` is
@@ -2382,6 +2433,13 @@ in the help view.
   source must be the *host* path (a container-local `/workspace` mounts empty), and commands
   must go through `sh -c`, never `sh -lc`, whose login shell resets `PATH` and loses the
   toolchain. Leaving root-owned files in the workspace is a defect, not a nuisance.
+- **CI runs the same thing.** The GitHub workflows run the suite through `ci/run.sh` in the
+  same `ci/Dockerfile` image as a local run, on self-hosted runners reserved for this repo,
+  and only for trusted refs (pushes, schedules, and pull requests from this repository —
+  never a fork's code on a self-hosted runner). A pull request's suite check gates its
+  merge; a red push or nightly run on `main` alerts the operator. A failing test is retried
+  once, and a pass on the retry is green but recorded as **flaky**, never hidden. A release
+  tag publishes only for a sha whose suite check is green.
 - **tmux.** A real tmux on a per-scenario socket. Steps may assert tmux facts directly
   (`session exists`, `pane command is …`, `environment contains …`) — that's observable
   outside the app. Two of those facts carry §11's central preview guarantee and are
