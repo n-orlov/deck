@@ -194,11 +194,14 @@ Feature: §11.8 mouse bindings and the [ui] mouse / DECK_MOUSE opt-out (requirem
     And the state database session "wheel-scroll-4" has status "idle" 20 seconds ago
     And the state database session "wheel-scroll-5" has status "idle" 10 seconds ago
     Then within one configured reconcile interval deck client "A" screen contains "idle"
+    # Select the top row BEFORE the shrink: the viewport follows the
+    # selection on a layout change too (SPEC §11, cure-01-07), so the
+    # newest row the create left selected would otherwise stay in view.
+    And deck client "A" selects session "wheel-scroll-1"
     And deck client "A" sends "|"
     And deck client "A" sends "|"
     Then deck client "A" screen stops containing "wheel-scroll-5"
-    When deck client "A" selects session "wheel-scroll-1"
-    And deck client "A" scrolls the wheel down at column 5 row 5
+    When deck client "A" scrolls the wheel down at column 5 row 5
     And deck client "A" scrolls the wheel down at column 5 row 5
     And deck client "A" scrolls the wheel down at column 5 row 5
     And deck client "A" scrolls the wheel down at column 5 row 5
@@ -312,11 +315,14 @@ Feature: §11.8 mouse bindings and the [ui] mouse / DECK_MOUSE opt-out (requirem
     And the state database session "drift-reload-4" has status "idle" 20 seconds ago
     And the state database session "drift-reload-5" has status "idle" 10 seconds ago
     Then within one configured reconcile interval deck client "A" screen contains "idle"
+    # Select the top row BEFORE the shrink: the viewport follows the
+    # selection on a layout change too (SPEC §11, cure-01-07), so the
+    # newest row the create left selected would otherwise stay in view.
+    And deck client "A" selects session "drift-reload-1"
     And deck client "A" sends "|"
     And deck client "A" sends "|"
     Then deck client "A" screen stops containing "drift-reload-5"
-    When deck client "A" selects session "drift-reload-1"
-    And deck client "A" scrolls the wheel down at column 5 row 5
+    When deck client "A" scrolls the wheel down at column 5 row 5
     And deck client "A" scrolls the wheel down at column 5 row 5
     And deck client "A" scrolls the wheel down at column 5 row 5
     And deck client "A" scrolls the wheel down at column 5 row 5
