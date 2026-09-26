@@ -9881,9 +9881,11 @@ either -- hold your terminal's override modifier (usually Shift) to select
 and copy pane text, or use tmux's own copy-mode.
 
 Mouse (every binding duplicates a key above; nothing here is mouse-only)
-  click a sidebar row       select it (like ↑/↓); the preview follows on
-                            its next tick
-  double-click a row        enter interactive mode (like ↵)
+  click a sidebar row       select it and enter interactive mode on it
+                            (like ↑/↓ then ↵); while interactive, a click
+                            on another row re-targets interactive mode to
+                            it, and on the current target changes nothing
+                            (Ctrl+Q returns to the list)
   click a group header      toggle that group's collapse (like c)
   wheel over the sidebar    scroll the list without changing selection
                             (like ↑/↓/PgUp/PgDn)

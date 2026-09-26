@@ -489,7 +489,7 @@ func TestDeckBinaryEmptyHelpAndQuitThroughPTY(t *testing.T) {
 		"fuzzy-search every field by label or description", "save staged edits to config.toml",
 		"Theme picker (opened with t)", "change the previewed theme",
 		"select the previewed theme and save it", "revert to the theme active before the picker opened",
-		"click a sidebar row", "double-click a row", "click a group header",
+		"click a sidebar row", "select it and enter interactive mode on it", "click a group header",
 		"wheel over the sidebar", "drag the seam", "click the collapsed strip",
 		// R73 (issue #7): the overlay scroll bindings, through the real PTY.
 		"by exactly one line per", "a whole page per press, so consecutive",
