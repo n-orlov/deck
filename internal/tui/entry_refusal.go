@@ -107,14 +107,39 @@ func (m *Model) clearEntryRefusalIfSessionStarted() {
 	}
 }
 
+// clearEntryRefusalIfRoomGrew is task 008/cure-01-06's own "a later tick
+// finds the reason gone" clause for the entryRefusalRowFloor/
+// entryRefusalShrank kinds: called every previewTick (never a keypress or
+// a selection move -- both already clear ANY kind through the ordinary
+// paths this file's other helpers and setSelection/enterInteractive
+// cover), it re-measures m.previewContentSize() the exact same way
+// enterInteractiveBody's own floor check and the WindowSizeMsg shrink
+// check (tui.go) do, and clears the refusal the moment the panel is back
+// at or above interactiveMinInnerRows -- "the preview grows back above
+// the entry floor", in SPEC §11.9's own words. A refusal whose condition
+// remains true (the panel is still below the floor) is left untouched,
+// and every other kind is left untouched here too: this is purely a
+// size re-check, not a general refusal sweep.
+func (m *Model) clearEntryRefusalIfRoomGrew() {
+	if !m.entryRefusal.active {
+		return
+	}
+	if m.entryRefusal.kind != entryRefusalRowFloor && m.entryRefusal.kind != entryRefusalShrank {
+		return
+	}
+	if width, height := m.previewContentSize(); width > 0 && height >= interactiveMinInnerRows {
+		m.clearEntryRefusal()
+	}
+}
+
 // entryRefusalHolderCheck issues one read-only tmux probe per previewTick
 // while an attached-elsewhere/owned-elsewhere refusal is active, so the
 // banner drops the moment the contending client/process actually lets go
 // -- SPEC §11.9's "the holder left" -- without waiting for the selection
 // to move, for entry to be retried, or for Esc. Every other kind returns
-// nil: the row-floor and shrank kinds have nothing to probe (the panel's
-// own size, read synchronously by the entry ladder itself on the next
-// attempt, governs those, not a tmux round trip), the stopped kind is
+// nil: the row-floor and shrank kinds are clearEntryRefusalIfRoomGrew's
+// job above (a pure size re-check, not a tmux round trip, so it runs
+// inline rather than through a tea.Cmd here), the stopped kind is
 // clearEntryRefusalIfSessionStarted's job above, and no-live-pane/other
 // name no single condition SPEC calls "the reason gone" -- every kind
 // still clears on selection move, a successful retry, or Esc regardless.

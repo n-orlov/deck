@@ -3421,6 +3421,11 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		if cmd := m.entryRefusalHolderCheck(); cmd != nil {
 			cmds = append(cmds, cmd)
 		}
+		// cure-01-06 (R143/SPEC §11.9): the row-floor/shrank half of the
+		// same "a later tick finds the reason gone" clause -- a pure
+		// re-measure of m.previewContentSize() against interactiveMinInnerRows,
+		// so it runs inline here rather than through a tea.Cmd.
+		m.clearEntryRefusalIfRoomGrew()
 		// Task 118: displacement detection rides this same tick, never a
 		// per-keystroke check (updateInteractive gains none at all). The
 		// fast path is checked first and, unlike the backstop below, needs
