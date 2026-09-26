@@ -341,7 +341,7 @@ merge_junit() {
     return 0
 }
 
-# write_aborted_testfeatures_junit <path> <log>: a minimal, well-formed
+# write_aborted_testfeatures_junit <path> <log> <gotestsum-merged 0|1>: a minimal, well-formed
 # JUnit file carrying exactly one failed <testcase name="TestFeatures">,
 # used (cure-01-08, R146) whenever the features/ pass aborted with no
 # per-scenario evidence at all surviving from either Godog's own JUnit or
@@ -352,7 +352,12 @@ merge_junit() {
 write_aborted_testfeatures_junit() {
     out_path=$1
     log_path=$2
-    detail="features/TestFeatures aborted before Godog could report any per-scenario result (see $log_path); no usable Godog or gotestsum JUnit survived this pass"
+    survived=$3
+    if [ "$survived" -eq 1 ]; then
+        detail="features/TestFeatures aborted before Godog could report any per-scenario result (see $log_path); Godog's own JUnit was unusable, so this pass's scenario results come from gotestsum's view of the same run"
+    else
+        detail="features/TestFeatures aborted before Godog could report any per-scenario result (see $log_path); no usable Godog or gotestsum JUnit survived this pass"
+    fi
     detail=$(printf '%s' "$detail" | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g; s/"/\&quot;/g')
     cat > "$out_path" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
@@ -405,7 +410,7 @@ fi
 # failed even when gotestsum's own view merged successfully.
 if [ "$features_status" -ne 0 ] && { [ "$features_aborted_without_locations" -eq 1 ] || [ "$features_merge_ok" -eq 0 ]; }; then
     synthetic="$outdir/junit-features-aborted.xml"
-    write_aborted_testfeatures_junit "$synthetic" "$features_log"
+    write_aborted_testfeatures_junit "$synthetic" "$features_log" "$features_merge_ok"
     if [ "$features_merge_ok" -eq 1 ]; then
         tmp_merged="$outdir/junit-features-with-abort.xml"
         if merge_junit "$tmp_merged" "$features_merged" "$synthetic"; then
