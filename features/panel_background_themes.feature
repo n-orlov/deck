@@ -90,6 +90,10 @@ Feature: every built-in theme paints its own `background` token across the whole
     And deck client "bgempire" cells at row 2 columns 37 to 97 have background token "background"
     When deck client "bgempire" creates shell session "aaa"
     And deck client "bgempire" creates shell session "zzz-session"
+    # Sync on the new row actually being selected: the create step returns on
+    # any "starting" (aaa's own can satisfy it), and "running" below can then
+    # land before zzz-session's reload moves the selection off row 3 (cure-01-07).
+    And deck client "bgempire" has session "zzz-session" selected
     Then within one configured reconcile interval deck client "bgempire" screen contains "running"
     And deck client "bgempire" cells at row 0 columns 0 to 99 have background token "background"
     And deck client "bgempire" cells at row 28 columns 0 to 99 have background token "background"
@@ -112,6 +116,10 @@ Feature: every built-in theme paints its own `background` token across the whole
     And deck client "bgdaylight" cells at row 2 columns 37 to 97 have background token "background"
     When deck client "bgdaylight" creates shell session "aaa"
     And deck client "bgdaylight" creates shell session "zzz-session"
+    # Sync on the new row actually being selected: the create step returns on
+    # any "starting" (aaa's own can satisfy it), and "running" below can then
+    # land before zzz-session's reload moves the selection off row 3 (cure-01-07).
+    And deck client "bgdaylight" has session "zzz-session" selected
     Then within one configured reconcile interval deck client "bgdaylight" screen contains "running"
     And deck client "bgdaylight" cells at row 0 columns 0 to 99 have background token "background"
     And deck client "bgdaylight" cells at row 28 columns 0 to 99 have background token "background"
@@ -134,6 +142,10 @@ Feature: every built-in theme paints its own `background` token across the whole
     And deck client "bgmatrix" cells at row 2 columns 37 to 97 have background token "background"
     When deck client "bgmatrix" creates shell session "aaa"
     And deck client "bgmatrix" creates shell session "zzz-session"
+    # Sync on the new row actually being selected: the create step returns on
+    # any "starting" (aaa's own can satisfy it), and "running" below can then
+    # land before zzz-session's reload moves the selection off row 3 (cure-01-07).
+    And deck client "bgmatrix" has session "zzz-session" selected
     Then within one configured reconcile interval deck client "bgmatrix" screen contains "running"
     And deck client "bgmatrix" cells at row 0 columns 0 to 99 have background token "background"
     And deck client "bgmatrix" cells at row 28 columns 0 to 99 have background token "background"
@@ -156,6 +168,10 @@ Feature: every built-in theme paints its own `background` token across the whole
     And deck client "bgcobalt" cells at row 2 columns 37 to 97 have background token "background"
     When deck client "bgcobalt" creates shell session "aaa"
     And deck client "bgcobalt" creates shell session "zzz-session"
+    # Sync on the new row actually being selected: the create step returns on
+    # any "starting" (aaa's own can satisfy it), and "running" below can then
+    # land before zzz-session's reload moves the selection off row 3 (cure-01-07).
+    And deck client "bgcobalt" has session "zzz-session" selected
     Then within one configured reconcile interval deck client "bgcobalt" screen contains "running"
     And deck client "bgcobalt" cells at row 0 columns 0 to 99 have background token "background"
     And deck client "bgcobalt" cells at row 28 columns 0 to 99 have background token "background"
@@ -178,6 +194,10 @@ Feature: every built-in theme paints its own `background` token across the whole
     And deck client "bgparchment" cells at row 2 columns 37 to 97 have background token "background"
     When deck client "bgparchment" creates shell session "aaa"
     And deck client "bgparchment" creates shell session "zzz-session"
+    # Sync on the new row actually being selected: the create step returns on
+    # any "starting" (aaa's own can satisfy it), and "running" below can then
+    # land before zzz-session's reload moves the selection off row 3 (cure-01-07).
+    And deck client "bgparchment" has session "zzz-session" selected
     Then within one configured reconcile interval deck client "bgparchment" screen contains "running"
     And deck client "bgparchment" cells at row 0 columns 0 to 99 have background token "background"
     And deck client "bgparchment" cells at row 28 columns 0 to 99 have background token "background"
