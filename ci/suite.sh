@@ -99,12 +99,46 @@ go_rerun_report="$outdir/rerun-report-go.txt"
 go_flaky="$outdir/flaky-go.txt"
 : > "$go_flaky"
 
-# unit_coverprofile (R146/task 016, criterion 1): a legacy-format coverage
-# profile covering every package this pass tests, produced by `go test`'s own
-# `-coverprofile` merging across every package named in --packages. This is
-# deliberately the *ordinary* -coverprofile flag, not the GOCOVERDIR/covdata
-# route features/ uses below, so the coverage_summary step at the end has one
-# profile in each of the two formats `go tool covdata textfmt` bridges.
+# unit_coverprofile (R146/task 016 criterion 1, R146 cure-01-05): a
+# legacy-format coverage profile covering every package this pass tests.
+# task 016 originally produced this with the *ordinary* `go test
+# -coverprofile` flag, fed straight into gotestsum's --packages/-- args --
+# but gotestsum's own --rerun-fails=1 reruns a failed test with a SECOND,
+# separate `go test -run '^Name$' <pkg> ... -coverprofile=<same path>`
+# invocation, and each `go test` invocation, retry included, WRITES that
+# path from scratch rather than merging into whatever is already there. So
+# the moment any test anywhere in the pass needed a retry, that retry's own
+# `go test` call clobbered the whole profile with only its own (one
+# package, one test) coverage -- deleting every other tested package
+# outright and zeroing every block the retried package's OTHER, passing
+# tests had covered on the first attempt (cure-01-05, reviewer probe
+# coverage-retention-probe.log: StableCovered count 0, RetryCovered count
+# 1, ci/releasegate's whole profile gone).
+#
+# The fix is to stop asking `go test` to write the legacy format directly at
+# all, and instead use the same retry-safe, per-process-counter-file
+# mechanism already proven correct for features/'s black-box coverage
+# below -- but reached through `-test.gocoverdir`, the internal test-binary
+# flag `-coverprofile` itself sets under the hood (Go 1.20+; see `go help
+# testflag`'s -cover/-coverprofile entries and cmd/internal/test2json), not
+# through the GOCOVERDIR *environment variable*: that env var only steers
+# coverage for a separately built+run binary (go build -cover, as
+# features/ does with the deck binary itself); an ordinary `go test`
+# invocation ignores it and, absent -coverprofile, writes no profile at
+# all -- confirmed empirically before settling on -args -test.gocoverdir,
+# see /run/ralphd/artifacts/cure-01-05/. Passed via `-args` (everything
+# after -args goes to the test binary, not to `go test` itself), every `go
+# test -cover` invocation (the initial full pass AND each gotestsum retry)
+# writes its OWN uniquely-named counter file set into unit_covdir rather
+# than overwriting a shared path, so counters from every attempt --
+# including packages/tests that were never retried at all -- coexist and
+# accumulate instead of clobbering each other. `go tool covdata textfmt`
+# below then bridges that whole directory into the one legacy-format
+# unit_coverprofile file the rest of this script (and coverage_table)
+# already expects, so no downstream consumer needs to know the collection
+# mechanism changed.
+unit_covdir="$outdir/covdata-unit"
+mkdir -p "$unit_covdir"
 unit_coverprofile="$outdir/coverage-unit.out"
 
 if [ -n "$pkgs" ]; then
@@ -115,7 +149,7 @@ if [ -n "$pkgs" ]; then
         --rerun-fails=1 \
         --rerun-fails-report "$go_rerun_report" \
         --packages "$pkgs" \
-        -- -p=1 -count=1 -skip '^TestFeatures$' "-covermode=$covermode" "-coverprofile=$unit_coverprofile" ${DECK_CI_GO_EXTRA_FLAGS:-} \
+        -- -p=1 -count=1 -skip '^TestFeatures$' "-covermode=$covermode" -cover ${DECK_CI_GO_EXTRA_FLAGS:-} -args "-test.gocoverdir=$unit_covdir" \
         || go_status=$?
 
     # gotestsum's own rerun report lists every test it reran, whether or not
@@ -274,24 +308,47 @@ else
     merge_junit "$merged_dir/junit-features.xml" "$outdir/junit-features-gotestsum.xml" $features_reruns_gotestsum
 fi
 
-# --- 4. coverage summary (R146/task 016) ---
-# `unit_coverprofile` (criterion 1, written above by pass 1's -coverprofile)
-# is already in the legacy text format `go tool cover` understands.
-# `covdir` (criterion 2) is the GOCOVERDIR binary format instead, one counter
-# file per deck process the features/ scenarios spawned; "the runner merges
-# the covdata with `go tool covdata`" means bridging that into the same
-# legacy text format via `go tool covdata textfmt`, so both sources can be
-# read by the one small awk aggregator below rather than needing two
-# unrelated summarizers. A covdir with no data (every scenario's deck
-# process killed before its coverage atexit hook ran, or no scenario ran at
-# all) makes `textfmt` fail; that is reported, not fatal, and falls back to
-# an empty legacy profile so the table below still prints with a "-" column.
+# --- 4. coverage summary (R146/task 016, R146 cure-01-05) ---
+# `unit_coverprofile` and `features_coverprofile` are both bridged the same
+# way now: `unit_covdir`/`covdir` hold the GOCOVERDIR binary format, one
+# counter file per `go test`/deck process invocation (every gotestsum
+# retry, and every features/ scenario's spawned deck binary, gets its own
+# uniquely-named files rather than overwriting a shared one, which is
+# exactly what keeps a retry from deleting anything the earlier attempt
+# measured -- see the cure-01-05 comment above unit_covdir). `go tool
+# covdata textfmt` bridges each directory into the same legacy text format
+# `go tool cover` understands, so the one small awk aggregator below can
+# read both without needing two unrelated summarizers.
+#
+# A covdir with no data (every process killed before its coverage atexit
+# hook ran, or nothing ran at all) makes `textfmt` print a warning but
+# still EXIT 0, writing a completely empty (zero-byte, no "mode:" header)
+# file rather than failing -- so the fallback below cannot rely on the
+# command's own exit status; it checks the resulting file is actually
+# non-empty instead (cure-01-05: an empty section confuses the awk
+# aggregator's FNR==1 file-boundary detection just as much as a missing
+# one would, attributing the NEXT profile's own "mode:" header line to the
+# wrong section and silently swapping its data into the other column --
+# caught while proving this fix, /run/ralphd/artifacts/cure-01-05/).
+ensure_legacy_profile() {
+    # ensure_legacy_profile <path>: guarantee <path> exists and has at
+    # least the "mode: <mode>" header line every legacy coverage profile
+    # needs, regardless of why it might otherwise be missing or empty.
+    profile_path=$1
+    if [ ! -s "$profile_path" ]; then
+        printf 'mode: set\n' > "$profile_path"
+    fi
+}
+
 features_coverprofile="$outdir/coverage-features.out"
 if ! go tool covdata textfmt -i="$covdir" -o="$features_coverprofile" 2>"$outdir/covdata-textfmt.log"; then
     echo "ci/suite.sh: no features/ black-box coverage data in $covdir (see $outdir/covdata-textfmt.log)" >&2
-    printf 'mode: set\n' > "$features_coverprofile"
 fi
-[ -f "$unit_coverprofile" ] || printf 'mode: set\n' > "$unit_coverprofile"
+ensure_legacy_profile "$features_coverprofile"
+if ! go tool covdata textfmt -i="$unit_covdir" -o="$unit_coverprofile" 2>"$outdir/covdata-unit-textfmt.log"; then
+    echo "ci/suite.sh: no unit coverage data in $unit_covdir (see $outdir/covdata-unit-textfmt.log)" >&2
+fi
+ensure_legacy_profile "$unit_coverprofile"
 
 # coverage_table <unit-profile> <features-profile>: prints one
 # package-by-package table (plus a TOTAL row) with a column for each
