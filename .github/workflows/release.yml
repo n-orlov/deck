@@ -11,6 +11,7 @@ on:
 permissions:
   contents: write
   checks: read
+  actions: read
 
 jobs:
   release:
@@ -23,12 +24,18 @@ jobs:
           go-version-file: go.mod
 
       # R147: never build or publish a release for a commit whose CI
-      # suite (ci.yml's "suite" check) did not go green. Runs before
-      # anything else in this job -- see ci/releasegate/main.go for what
-      # "green" means (the check's most recently started run completed
-      # with conclusion success) and what refusal looks like (non-zero
-      # exit, a message naming this sha and what it found: no run at
-      # all, still in progress, or a non-success conclusion).
+      # suite (ci.yml's "suite" check) did not go green on a push or a
+      # pull request. Runs before anything else in this job -- see
+      # ci/releasegate/main.go for what "green" means (among the suite
+      # runs whose own workflow event is push or pull_request, the most
+      # recently started one completed with conclusion success -- a
+      # nightly `schedule` or manual `workflow_dispatch` run is never
+      # consulted, whatever its own conclusion) and what refusal looks
+      # like (non-zero exit, a message naming this sha and what it
+      # found: no push/PR run at all, still in progress, a non-success
+      # conclusion, or only a non-gating schedule/workflow_dispatch run).
+      # actions: read (permissions above) is needed to resolve each check
+      # run's check_suite to the workflow run event that produced it.
       - name: Gate on green CI
         env:
           GITHUB_TOKEN: ${{ github.token }}

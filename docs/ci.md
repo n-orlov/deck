@@ -179,18 +179,30 @@ test that fails twice in a row fails the check.
 
 Before `release.yml` builds or publishes anything for a pushed `vX.Y.Z` tag,
 its "Gate on green CI" step runs `go run ./ci/releasegate -repo
-"$GITHUB_REPOSITORY" -sha "$GITHUB_SHA"`. That program queries
-`GET /repos/{owner}/{repo}/commits/{sha}/check-runs`, finds the most recently
-started check run named `suite` (the default; overridable with `-check`),
-and refuses -- non-zero exit, a message naming the sha and exactly what it
-found -- unless that run's `status` is `completed` and its `conclusion` is
-`success`. No run at all, a run still queued/in-progress, or a completed run
-that concluded anything other than `success`, all refuse. This is what makes
-a tag's own release build depend on the *tagged commit's own* CI history,
-not on `main`'s current HEAD -- tagging a commit that predates the gate
-itself runs that old commit's `release.yml`, which has no gate at all, so
-the gate protects only tags on commits at or after the commit that
-introduced it.
+"$GITHUB_REPOSITORY" -sha "$GITHUB_SHA"`. That program queries `GET
+/repos/{owner}/{repo}/commits/{sha}/check-runs` for the check run named
+`suite` (the default; overridable with `-check`), and `GET
+/repos/{owner}/{repo}/actions/runs?head_sha={sha}` to learn, for each of
+those check runs, which workflow run -- and hence which triggering event
+(`push`, `pull_request`, `schedule`, `workflow_dispatch`, ...) -- produced
+it. Per SPEC §13.2/R147, only a `suite` run whose triggering event is
+`push` or `pull_request` ever gates a release: a nightly `schedule` run and
+a manual `workflow_dispatch` run may alert on red, but neither ever blocks
+a release for a sha whose own push (or PR) run went green, and a green
+schedule/workflow_dispatch run never substitutes for a missing push/PR one
+either way. Among the gating (push/pull_request) `suite` runs, the most
+recently started one decides, and the gate refuses -- non-zero exit, a
+message naming the sha and exactly what it found -- unless that run's
+`status` is `completed` and its `conclusion` is `success`. No gating run at
+all (whether because there is no `suite` run yet, or because every `suite`
+run on the sha belongs to a non-gating event), a gating run still
+queued/in-progress, or a completed gating run that concluded anything other
+than `success`, all refuse. This is what makes a tag's own release build
+depend on the *tagged commit's own* push/PR CI history, not on `main`'s
+current HEAD, and not on any nightly/dispatch run against that same commit
+-- tagging a commit that predates the gate itself runs that old commit's
+`release.yml`, which has no gate at all, so the gate protects only tags on
+commits at or after the commit that introduced it.
 
 ## The required-check rule on `main` (an operator step, never applied by this job)
 
