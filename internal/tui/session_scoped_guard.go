@@ -24,10 +24,26 @@ package tui
 // so there is nothing for it to collide with there, and the requirement is
 // the same either way -- the cursor must name a session before this key
 // does anything.
+// cure-01-03 (R142/R148, SPEC §11.9): "F" (force-attach) joined this map
+// alongside its own entry in driftEndingKeys below. Before this fix, "F"
+// was only in driftEndingKeys, never in sessionScopedKeys, so
+// guardSessionScopedKey's refuse computation ("sessionScopedKeys[key] &&
+// !m.hasSelectedSession()") was unconditionally false for "F" no matter
+// what the cursor named -- a header cursor never refused it. The keypress
+// itself stayed harmless (enterInteractiveBody's own !m.hasSelectedSession()
+// check already makes force-attach a no-op on a header), but the guard's
+// side effect ran anyway: endsDrift("F") is true, so a header press ended a
+// live wheel drift for an action that changed nothing at all -- exactly
+// the "unchanged action semantics" §11.9's "F is enter's own twin" must
+// hold for. Adding "F" here makes guardSessionScopedKey refuse it on a
+// header exactly like "enter" -- returning before the drift check ever
+// runs -- while leaving the selected-session case (refuse always false
+// there) byte-for-byte unchanged.
 var sessionScopedKeys = map[string]bool{
 	"enter": true, "a": true, "x": true, "d": true, "r": true, "R": true,
 	"i": true, "e": true, "P": true, "p": true, "Y": true, "m": true,
-	"A": true, "U": true, "s": true, "z": true, "l": true, "detail:g": true,
+	"A": true, "U": true, "s": true, "z": true, "l": true, "F": true,
+	"detail:g": true,
 }
 
 // driftEndingKeys is task 005's (R142/GH #40) closed list of the keys that
