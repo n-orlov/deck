@@ -10,6 +10,7 @@ on:
 
 permissions:
   contents: write
+  checks: read
 
 jobs:
   release:
@@ -20,6 +21,18 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
+
+      # R147: never build or publish a release for a commit whose CI
+      # suite (ci.yml's "suite" check) did not go green. Runs before
+      # anything else in this job -- see ci/releasegate/main.go for what
+      # "green" means (the check's most recently started run completed
+      # with conclusion success) and what refusal looks like (non-zero
+      # exit, a message naming this sha and what it found: no run at
+      # all, still in progress, or a non-success conclusion).
+      - name: Gate on green CI
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: go run ./ci/releasegate -repo "$GITHUB_REPOSITORY" -sha "$GITHUB_SHA"
 
       - name: Vet
         run: go vet ./...
@@ -48,6 +61,10 @@ jobs:
           rm dist/deck
 
       - name: Publish
+        # Throwaway CI-verification tags (v0.0.0-ci-verify-*, per the run's
+        # own standing rules) exercise this workflow end-to-end without
+        # ever cutting a real GitHub release.
+        if: ${{ !startsWith(github.ref_name, 'v0.0.0-ci-verify-') }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
