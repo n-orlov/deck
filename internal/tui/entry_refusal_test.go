@@ -296,3 +296,69 @@ func TestNoOtherSiteConstructsAnEntryRefusalState(t *testing.T) {
 		}
 	}
 }
+
+// TestEntryRefusalWayOutSurvivesDefaultGeometry is a render REGRESSION
+// test for a review finding (cure-01-01): at deck's supported 80x24
+// floor the preview panel's own content width (37 columns, well below
+// the up-to-56-column way-out text several kinds carry) used to let
+// entryRefusalBannerLines' single centerTruncate row ellipsis away the
+// mandatory "keys go to the list" tail entirely -- the unrendered
+// source string (entryRefusalWayOut/entryRefusalWayOutText) always
+// carried the tail; only the ACTUAL rendered preview output lost it, so
+// this asserts against previewBodyLines' own return, not the source
+// string TestEveryEntryRefusalKindDrawsItsOwnBannerNotTheFooter already
+// covers. Table-driven over every one of SPEC §11.9's seven kinds, in
+// all three render modes (colour, NO_COLOR, ascii), so a future kind or
+// mode that regresses the same way is caught the same way.
+func TestEntryRefusalWayOutSurvivesDefaultGeometry(t *testing.T) {
+	modes := []struct {
+		name     string
+		settings config.Settings
+	}{
+		{"colour", config.Settings{Color: true}},
+		{"NO_COLOR", config.Settings{}},
+		{"ascii", config.Settings{ASCII: true}},
+	}
+	for _, mode := range modes {
+		for _, kind := range allEntryRefusalKinds {
+			t.Run(mode.name+"/"+string(kind), func(t *testing.T) {
+				m := New(nil, mode.settings, "")
+				m.width, m.height = 80, 24
+				m.sessions = []store.Session{{ID: "sess-1", Name: "alpha", Slug: "alpha", Status: "running"}}
+				m.selected = rowCursor(0)
+				m.setEntryRefusal("sess-1", kind, "reason for "+string(kind))
+
+				cw, ch := m.previewContentSize()
+				lines, _, _ := m.previewBodyLines(cw, ch)
+				view := strings.Join(lines, "\n")
+
+				if !strings.Contains(view, "keys go to the list") {
+					t.Fatalf("%s/%s: 80x24 (preview %dx%d) rendered preview loses the mandatory keyboard destination:\n%s", mode.name, kind, cw, ch, view)
+				}
+				wayOut := m.entryRefusalWayOutText(kind)
+				guidance := strings.TrimSpace(strings.TrimSuffix(strings.TrimSuffix(wayOut, "keys go to the list"), "\u2014"))
+				guidance = strings.TrimSpace(strings.TrimSuffix(guidance, ";"))
+				if guidance == "" {
+					t.Fatalf("%s/%s: way-out text %q carries no kind-specific guidance to check for", mode.name, kind, wayOut)
+				}
+				// The reason-specific escape keys (line 3's own guidance
+				// ahead of the tail) must survive too, not only the tail
+				// -- a banner that kept the tail but dropped every key
+				// name ahead of it would still pass the check above.
+				firstWord := strings.Fields(guidance)[0]
+				if !strings.Contains(view, firstWord) {
+					t.Fatalf("%s/%s: rendered preview drops the reason-specific escape key %q from way-out %q:\n%s", mode.name, kind, firstWord, wayOut, view)
+				}
+
+				if len(lines) != ch {
+					t.Fatalf("%s/%s: preview row count = %d, want exactly contentHeight %d -- the banner must not overflow the preview", mode.name, kind, len(lines), ch)
+				}
+				for i, l := range lines {
+					if w := stringWidth(l); w > cw {
+						t.Fatalf("%s/%s: preview row %d has display width %d > contentWidth %d:\n%q", mode.name, kind, i, w, cw, l)
+					}
+				}
+			})
+		}
+	}
+}

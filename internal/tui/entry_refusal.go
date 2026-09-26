@@ -273,6 +273,18 @@ func (m Model) entryRefusalBannerRow(row string) string {
 // line 2 the reason, line 3 the way out. Returns nil below a 5-column
 // width (nothing legible fits) so overlayEntryRefusalBanner's caller
 // simply shows the background untouched rather than a garbled box.
+//
+// Line 3 is never truncated away: SPEC's own wording ("the way out for
+// that reason ... and, always, that keys are going to the list") makes
+// both halves mandatory, and at deck's 80x24 supported floor the box's
+// own textWidth (37 columns there) is narrower than several kinds' way
+// out text (up to 56 columns) -- a single centerTruncate row used to
+// ellipsis away the "keys go to the list" tail entirely at that width
+// (review finding: TestReviewRefusalWayOutSurvivesDefaultGeometry).
+// wrapToWidth below breaks the way-out text across as many centred rows
+// as it needs instead, so every kind's guidance AND the tail survive at
+// every supported width; only a pane too narrow for entryRefusalBannerRow
+// to draw legibly at all (contentWidth<5, above) drops content.
 func (m Model) entryRefusalBannerLines(contentWidth int, sessionName string, r entryRefusalState) []string {
 	if contentWidth < 5 {
 		return nil
@@ -288,9 +300,76 @@ func (m Model) entryRefusalBannerLines(contentWidth int, sessionName string, r e
 	}
 
 	headline := fmt.Sprintf("NOT ATTACHED: %s", sessionName)
-	lines := []string{top, row(headline), row(r.reason), row(m.entryRefusalWayOutText(r.kind)), bottom}
+	lines := []string{top, row(headline), row(r.reason)}
+	for _, wl := range wrapToWidth(m.entryRefusalWayOutText(r.kind), textWidth) {
+		lines = append(lines, row(wl))
+	}
+	lines = append(lines, bottom)
 	for i, l := range lines {
 		lines[i] = m.entryRefusalBannerRow(l)
+	}
+	return lines
+}
+
+// wayOutTailAtomic is entryRefusalWayOut's own mandatory tail, protected
+// during wrapToWidth's word-split so it can never itself be broken
+// across two wrapped lines: a wrap that split "keys go to the list"
+// into "...keys" on one line and "go to the list" on the next would
+// still fail TestEntryRefusalWayOutSurvivesDefaultGeometry's literal
+// strings.Contains(view, "keys go to the list") check, because the two
+// halves are joined by a newline in the rendered preview, not a space.
+const wayOutTailAtomic = "keys go to the list"
+
+// wrapToWidth breaks text into as many lines as needed so that every
+// returned line's display width (stringWidth) is at most width, breaking
+// only at the ASCII space between words -- never inside a word, and
+// never inside wayOutTailAtomic wherever it appears in text -- so
+// entryRefusalWayOut's own vocabulary (single-letter keys like `F`/`a`/
+// `r`/`R`, the `↵` glyph, and short clauses) wraps the way a reader
+// expects rather than mid-token, and the mandatory tail phrase always
+// lands on one line, never split across two. A "word" wider than width
+// by itself (the whole tail counts as one word here) is still placed
+// alone on its own line; centerTruncate (this file's row() closure) is
+// what would ellipsis it further if it somehow did not fit at all. A
+// width<=0 or single-line-fits input returns text as its own
+// one-element slice, matching the pre-wrap behaviour exactly.
+func wrapToWidth(text string, width int) []string {
+	if width <= 0 || stringWidth(text) <= width {
+		return []string{text}
+	}
+	// U+00A0 (NBSP) has the same display width as an ordinary space but
+	// is not the ASCII 0x20 byte strings.Split below breaks words on, so
+	// swapping the tail's internal spaces for NBSP keeps it as a single
+	// unsplittable token through the word loop; the final replace-back
+	// restores an ordinary space in whatever line the tail ends up on.
+	protectedTail := strings.ReplaceAll(wayOutTailAtomic, " ", "\u00a0")
+	protected := strings.ReplaceAll(text, wayOutTailAtomic, protectedTail)
+	words := strings.Split(protected, " ")
+	var lines []string
+	var cur strings.Builder
+	curWidth := 0
+	for _, w := range words {
+		ww := stringWidth(w)
+		switch {
+		case curWidth == 0:
+			cur.WriteString(w)
+			curWidth = ww
+		case curWidth+1+ww <= width:
+			cur.WriteString(" ")
+			cur.WriteString(w)
+			curWidth += 1 + ww
+		default:
+			lines = append(lines, cur.String())
+			cur.Reset()
+			cur.WriteString(w)
+			curWidth = ww
+		}
+	}
+	if curWidth > 0 || len(lines) == 0 {
+		lines = append(lines, cur.String())
+	}
+	for i, l := range lines {
+		lines[i] = strings.ReplaceAll(l, "\u00a0", " ")
 	}
 	return lines
 }
