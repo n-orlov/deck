@@ -2439,7 +2439,9 @@ in the help view.
   never a fork's code on a self-hosted runner). A pull request's suite check gates its
   merge; a red push or nightly run on `main` alerts the operator. A failing test is retried
   once, and a pass on the retry is green but recorded as **flaky**, never hidden. A release
-  tag publishes only for a sha whose suite check is green.
+  tag publishes only for a sha whose suite check is green. Only suite runs triggered by a push
+  or a pull request count: nightly (schedule) and manual (`workflow_dispatch`) runs alert but
+  never gate a release, so a flaky or `-race` nightly cannot block a sha whose push run passed.
 - **tmux.** A real tmux on a per-scenario socket. Steps may assert tmux facts directly
   (`session exists`, `pane command is …`, `environment contains …`) — that's observable
   outside the app. Two of those facts carry §11's central preview guarantee and are
