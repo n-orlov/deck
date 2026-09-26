@@ -979,6 +979,12 @@ func clientIsKilledWithSIGKILL(ctx context.Context, name string) error {
 	if client.terminal != nil {
 		_ = client.terminal.Close()
 	}
+	// Removing client from h.clients below means ScenarioHarness.Close will
+	// never call Stop (and so never Close) on it -- release its
+	// screen/budget emulators here instead, or its
+	// drainScreenInput/drainBudgetInput goroutines leak for the rest of the
+	// test binary's life (task 032) exactly like an un-Stopped driver's do.
+	client.Close()
 	for index, owned := range h.clients {
 		if owned == client {
 			h.clients = append(h.clients[:index], h.clients[index+1:]...)
