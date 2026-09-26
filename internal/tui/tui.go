@@ -3530,6 +3530,28 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return next, tea.Batch(cmds...)
 		}
+		// cure-01-02 (R143/SPEC §11.9): the banner-dismissing Esc has to run
+		// before EVERY other Esc-cleared layer's own dispatch below --
+		// pendingDelete's intercept, help/settings/filtering's own updaters,
+		// deleteConfirming/archiveConfirming and the rest all used to sit
+		// ahead of this check (it lived just above guardSessionScopedKey),
+		// so an Esc pressed while, say, pendingDelete was ALSO armed hit
+		// pendingDelete's own intercept first and never reached here at all
+		// (TestReviewRefusalEscPrecedesPendingDelete, TestReviewRefusalEscPrecedesHelp
+		// at ee7f5a5d3, artifacts/review/reviewer_refusal_test.go). Checking
+		// it first, before any layer's own dispatch, is what makes "the
+		// banner always goes first" true regardless of what else is open;
+		// activeEntryRefusalForSelection already answers false while
+		// m.interactive is true (no banner exists to dismiss there), so this
+		// cannot change interactive's own Esc handling, and every other
+		// layer below is reached completely unchanged on the very next Esc
+		// once the banner (if any) is gone.
+		if msg.String() == "esc" {
+			if _, ok := m.activeEntryRefusalForSelection(); ok {
+				m.clearEntryRefusal()
+				return m, nil
+			}
+		}
 		if m.lostAttach {
 			return m.updateLostAttachView(msg)
 		}
@@ -3646,20 +3668,12 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		// one deciding for itself whether the cursor names a session.
 		// Reverting just this call, leaving guardSessionScopedKey itself in
 		// place, restores the per-site gaps it closed.
-		if msg.String() == "esc" {
-			if _, ok := m.activeEntryRefusalForSelection(); ok {
-				// SPEC §11.9 (task 008/R143, GH #38): the banner "clears ...
-				// on Esc -- which dismisses the banner BEFORE any other
-				// layer Esc clears". This press swallows nothing else --
-				// marks, a held filter query, help/detail -- exactly one
-				// press dismisses exactly one thing, and the banner always
-				// goes first while it is up. The very NEXT Esc (with the
-				// banner now gone) falls through to the "esc" case below
-				// and clears whatever that press would have cleared anyway.
-				m.clearEntryRefusal()
-				return m, nil
-			}
-		}
+		//
+		// cure-01-02: the refusal-banner Esc used to be checked here (right
+		// before this guard), which put it AFTER pendingDelete's own
+		// intercept and every dialog's own updater above -- see the comment
+		// on the earlier, now sole "esc" check just above the coalesced-rune
+		// split, where it runs before all of those instead.
 		if m.guardSessionScopedKey(msg.String()) {
 			return m, nil
 		}
