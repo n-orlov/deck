@@ -1,35 +1,52 @@
-// Package lintcheck is the R145 probe for task 013/ci/lint.sh: a static
-// structural check over the script's own text that fails the moment any of
-// the three fail-fast lint stages, their exit-on-drift handling, or their
-// ordering, goes missing -- without needing a live Go toolchain, git tree
-// or gofmt binary to execute the script itself. Tier 3 probe audit (task
-// 025) added this alongside the ci.yml fork-guard, ci/suite.sh retry, and
-// ci/releasegate probes.
+// Package lintcheck is the R145 probe for task 013/ci/lint.sh. It EXECUTES
+// the script -- a copy of the repository's own ci/lint.sh, run inside a
+// throwaway git repository -- with stub `go` and `gofmt` binaries first on
+// PATH that record every invocation and can be told to fail or report
+// drift. The probe then asserts which stages actually ran, in what order,
+// and with what exit status. It therefore fails the moment a stage stops
+// being invoked, runs out of order, or a failure/drift no longer stops the
+// script -- whatever the script's comments or progress echoes still say.
+// Tier 3 probe audit (task 025) added this alongside the ci.yml fork-guard,
+// ci/suite.sh retry, and ci/releasegate probes.
 package lintcheck
 
 import (
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
 
-// stripCommentLines drops every line whose first non-whitespace character
-// is `#` (a POSIX sh full-line comment), so a marker or exit statement
-// mentioned only in prose above the real code is never mistaken for the
-// real thing.
-func stripCommentLines(s string) string {
-	lines := strings.Split(s, "\n")
-	kept := make([]string, 0, len(lines))
-	for _, line := range lines {
-		if strings.HasPrefix(strings.TrimSpace(line), "#") {
-			continue
-		}
-		kept = append(kept, line)
-	}
-	return strings.Join(kept, "\n")
-}
+const goStub = `#!/bin/sh
+echo "go $*" >> "$LINTPROBE_LOG"
+case "$1" in
+vet)
+    if [ -n "${LINTPROBE_VET_FAIL:-}" ]; then
+        echo "stub go vet: failing on request" >&2
+        exit 1
+    fi
+    ;;
+mod)
+    if [ "${2:-}" = "tidy" ] && [ -n "${LINTPROBE_TIDY_DRIFT:-}" ]; then
+        echo "// drift introduced by stub go mod tidy" >> go.mod
+    fi
+    ;;
+esac
+exit 0
+`
+
+const gofmtStub = `#!/bin/sh
+echo "gofmt $*" >> "$LINTPROBE_LOG"
+if [ -n "${LINTPROBE_GOFMT_DRIFT:-}" ]; then
+    echo "a.go"
+fi
+exit 0
+`
+
+const originalGoMod = "module example.com/lintprobe\n\ngo 1.25\n"
 
 func repositoryRoot() (string, error) {
 	directory, err := os.Getwd()
@@ -48,77 +65,149 @@ func repositoryRoot() (string, error) {
 	}
 }
 
-// TestLintScriptRunsAllThreeStagesFailFastAndExitsOnDrift is the probe for
-// task 013's ci/lint.sh: it fails if the script's own text no longer shows
-// (1) `set -eu` (or `set -e`) so any unguarded failing command aborts the
-// script, (2) all three stages present -- `gofmt -l`, `go vet ./...`,
-// `go mod tidy` -- in that exact order, so a formatting problem is reported
-// before vet or tidy ever run, and (3) an explicit non-zero exit on the
-// gofmt-drift branch and on the go-mod-tidy-drift branch (neither `gofmt -l`
-// nor a masked `diff` alone makes the script fail without one).
-//
-// Demonstrated failing against a scratch mutation removing the `go vet
-// ./...` stage from a disposable worktree's own copy of ci/lint.sh: see
-// /run/ralphd/artifacts/probes/tier3/013-lint-vet-stage-removed-fail.log.
-func TestLintScriptRunsAllThreeStagesFailFastAndExitsOnDrift(t *testing.T) {
+type lintRun struct {
+	exitCode int
+	calls    []string
+	output   string
+	goMod    string
+}
+
+// runLintScript copies the repository's ci/lint.sh into a fresh scratch git
+// repository holding one tracked Go file, puts the recording stubs first on
+// PATH, runs the script with the given LINTPROBE_* switches, and returns
+// its exit code, the ordered stub invocations, its combined output and the
+// scratch go.mod as the script left it.
+func runLintScript(t *testing.T, switches ...string) lintRun {
+	t.Helper()
 	root, err := repositoryRoot()
 	if err != nil {
 		t.Fatalf("repositoryRoot: %v", err)
 	}
-	path := filepath.Join(root, "ci", "lint.sh")
-	raw, err := os.ReadFile(path)
+	script, err := os.ReadFile(filepath.Join(root, "ci", "lint.sh"))
 	if err != nil {
-		t.Fatalf("read %s: %v", path, err)
-	}
-	fullContent := string(raw)
-	// The three stage markers ("gofmt -l", "go vet ./...", "go mod tidy")
-	// also appear, in that same order, in the script's own leading comment
-	// block -- so an ordering/exit check against the raw file text would
-	// spuriously pass (or, worse, spuriously fail) on the comment's own
-	// occurrences rather than the real invocations below it. Strip every
-	// full-line `#` comment before locating them.
-	content := stripCommentLines(fullContent)
-
-	if !strings.Contains(content, "set -eu") && !strings.Contains(content, "set -e") {
-		t.Errorf("%s: missing `set -eu`/`set -e` -- an unguarded failing command (e.g. go vet) would no longer abort the script", path)
+		t.Fatalf("read ci/lint.sh: %v", err)
 	}
 
-	idxGofmt := strings.Index(content, "gofmt -l")
-	idxVet := strings.Index(content, "go vet ./...")
-	idxTidy := strings.Index(content, "go mod tidy")
-
-	if idxGofmt < 0 {
-		t.Errorf("%s: missing the `gofmt -l` stage", path)
+	scratch := t.TempDir()
+	repo := filepath.Join(scratch, "repo")
+	stubs := filepath.Join(scratch, "stubs")
+	logPath := filepath.Join(scratch, "calls.log")
+	for _, dir := range []string{filepath.Join(repo, "ci"), stubs} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
 	}
-	if idxVet < 0 {
-		t.Errorf("%s: missing the `go vet ./...` stage", path)
+	files := map[string]struct {
+		content string
+		mode    os.FileMode
+	}{
+		filepath.Join(repo, "ci", "lint.sh"): {string(script), 0o755},
+		filepath.Join(repo, "a.go"):          {"package lintprobe\n", 0o644},
+		filepath.Join(repo, "go.mod"):        {originalGoMod, 0o644},
+		filepath.Join(repo, "go.sum"):        {"", 0o644},
+		filepath.Join(stubs, "go"):           {goStub, 0o755},
+		filepath.Join(stubs, "gofmt"):        {gofmtStub, 0o755},
+		logPath:                              {"", 0o644},
 	}
-	if idxTidy < 0 {
-		t.Errorf("%s: missing the `go mod tidy` stage", path)
-	}
-	if idxGofmt >= 0 && idxVet >= 0 && idxTidy >= 0 {
-		if !(idxGofmt < idxVet && idxVet < idxTidy) {
-			t.Errorf("%s: the three stages are not in fail-fast order gofmt(%d) < vet(%d) < tidy(%d)", path, idxGofmt, idxVet, idxTidy)
+	for path, f := range files {
+		if err := os.WriteFile(path, []byte(f.content), f.mode); err != nil {
+			t.Fatal(err)
 		}
 	}
 
-	// gofmt -l never returns non-zero merely for listing files, so the
-	// drift branch needs its own explicit non-zero exit between the gofmt
-	// stage and the vet stage.
-	if idxGofmt >= 0 && idxVet > idxGofmt {
-		gofmtBlock := content[idxGofmt:idxVet]
-		if !strings.Contains(gofmtBlock, "exit 1") && !strings.Contains(gofmtBlock, "exit 2") {
-			t.Errorf("%s: the gofmt-drift branch (between the gofmt and vet stages) has no explicit non-zero exit", path)
+	gitPath, err := exec.LookPath("git")
+	if err != nil {
+		t.Fatalf("git not on PATH: %v", err)
+	}
+	for _, args := range [][]string{{"init", "-q"}, {"add", "a.go", "go.mod", "go.sum", "ci/lint.sh"}} {
+		cmd := exec.Command(gitPath, args...)
+		cmd.Dir = repo
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
 		}
 	}
 
-	// The `go mod tidy` diff check is masked behind `||`/a captured status
-	// variable in this script, so it likewise needs its own explicit
-	// non-zero exit on drift, appearing after the tidy stage begins.
-	if idxTidy >= 0 {
-		tidyBlock := content[idxTidy:]
-		if !strings.Contains(tidyBlock, "exit 1") && !strings.Contains(tidyBlock, "exit 2") {
-			t.Errorf("%s: the go-mod-tidy-drift branch (after the tidy stage) has no explicit non-zero exit", path)
+	cmd := exec.Command("sh", filepath.Join(repo, "ci", "lint.sh"))
+	cmd.Dir = scratch
+	cmd.Env = append(os.Environ(),
+		"PATH="+stubs+string(os.PathListSeparator)+os.Getenv("PATH"),
+		"LINTPROBE_LOG="+logPath,
+	)
+	for _, s := range switches {
+		cmd.Env = append(cmd.Env, s+"=1")
+	}
+	out, runErr := cmd.CombinedOutput()
+	result := lintRun{output: string(out)}
+	if runErr != nil {
+		var exitErr *exec.ExitError
+		if !errors.As(runErr, &exitErr) {
+			t.Fatalf("run ci/lint.sh: %v\n%s", runErr, out)
 		}
+		result.exitCode = exitErr.ExitCode()
+	}
+	rawLog, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, line := range strings.Split(strings.TrimSpace(string(rawLog)), "\n") {
+		if line != "" {
+			result.calls = append(result.calls, line)
+		}
+	}
+	rawMod, err := os.ReadFile(filepath.Join(repo, "go.mod"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	result.goMod = string(rawMod)
+	return result
+}
+
+// TestLintScriptRunsAllThreeStagesFailFastAndExitsOnDrift is the probe for
+// task 013's ci/lint.sh. By executing the script against recording stubs it
+// requires that:
+//
+//   - clean tree: `gofmt -l <tracked .go files>`, then `go vet ./...`, then
+//     `go mod tidy` are all actually invoked, in that order, and the script
+//     exits 0;
+//   - gofmt drift: the script exits non-zero and neither vet nor tidy runs;
+//   - vet failure: the script exits non-zero and tidy never runs;
+//   - go mod tidy drift: the script exits non-zero and restores go.mod.
+//
+// Demonstrated failing against scratch mutations of a disposable copy of
+// ci/lint.sh -- the executable `go vet ./...` line alone deleted (its
+// progress echo left in place), and each drift branch's `exit 1` deleted:
+// see /run/ralphd/artifacts/probes/tier3/013-*.log.
+func TestLintScriptRunsAllThreeStagesFailFastAndExitsOnDrift(t *testing.T) {
+	gofmtCall := "gofmt -l a.go"
+	vetCall := "go vet ./..."
+	tidyCall := "go mod tidy"
+
+	cases := []struct {
+		name      string
+		switches  []string
+		wantFail  bool
+		wantCalls []string
+	}{
+		{"clean tree runs gofmt then vet then tidy and passes", nil, false, []string{gofmtCall, vetCall, tidyCall}},
+		{"gofmt drift fails before vet and tidy", []string{"LINTPROBE_GOFMT_DRIFT"}, true, []string{gofmtCall}},
+		{"vet failure fails before tidy", []string{"LINTPROBE_VET_FAIL"}, true, []string{gofmtCall, vetCall}},
+		{"go mod tidy drift fails", []string{"LINTPROBE_TIDY_DRIFT"}, true, []string{gofmtCall, vetCall, tidyCall}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := runLintScript(t, tc.switches...)
+			if tc.wantFail && got.exitCode == 0 {
+				t.Errorf("ci/lint.sh exited 0, want non-zero\noutput:\n%s", got.output)
+			}
+			if !tc.wantFail && got.exitCode != 0 {
+				t.Errorf("ci/lint.sh exited %d, want 0\noutput:\n%s", got.exitCode, got.output)
+			}
+			if !reflect.DeepEqual(got.calls, tc.wantCalls) {
+				t.Errorf("stage invocations = %q, want %q\noutput:\n%s", got.calls, tc.wantCalls, got.output)
+			}
+			if got.goMod != originalGoMod {
+				t.Errorf("ci/lint.sh left go.mod modified:\n%s", got.goMod)
+			}
+		})
 	}
 }
