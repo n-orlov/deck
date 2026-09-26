@@ -94,6 +94,30 @@ case " ${DECK_CI_GO_EXTRA_FLAGS:-} " in
     *' -race '*) covermode=atomic ;;
 esac
 
+# go_test_timeout / features_test_timeout (cure-01-07, R145 nightly
+# completion): `go test`'s own default per-binary budget is 10 minutes
+# (testing.(*M).startAlarm), applied independently to EACH package's test
+# binary. That default is not one of this repo's own scenario deadlines --
+# every individual scenario/step assertion in features/ carries its own
+# much shorter context timeout (see features/assertions_test.go and
+# friends) -- it is a harness-level aggregate budget nobody here ever set
+# explicitly. features/TestFeatures fans out into 300+ Godog scenarios in
+# one process, and as the suite has grown its wall time has crept up to
+# within seconds of that unset 10m default: nightly run 36222292303's own
+# suite step (the -race lane below) and its third ci/stability.sh
+# repetition both hit `panic: test timed out after 10m0s` at 600.033s/
+# 600.065s -- the harness's own execution budget, not any scenario's
+# assertion, was too tight for the work it was asking that one process to
+# finish (artifacts/review/nightly-timeout-stack.log,
+# nightly-features-original.log). `-race` alone roughly doubles CPU cost,
+# which is why the nightly-only lane hit it first, but the same panic also
+# fired on a plain (non-race) ci/stability.sh run under ordinary CI
+# contention -- so the fix widens the budget for every caller, not just
+# the race lane. 25 minutes is a little over double the ~10m observed
+# worst case, without touching a single scenario's own deadline.
+features_test_timeout=${DECK_CI_FEATURES_TEST_TIMEOUT:-25m}
+unit_test_timeout=${DECK_CI_UNIT_TEST_TIMEOUT:-15m}
+
 go_junit="$outdir/junit-go.xml"
 go_rerun_report="$outdir/rerun-report-go.txt"
 go_flaky="$outdir/flaky-go.txt"
@@ -149,7 +173,7 @@ if [ -n "$pkgs" ]; then
         --rerun-fails=1 \
         --rerun-fails-report "$go_rerun_report" \
         --packages "$pkgs" \
-        -- -p=1 -count=1 -skip '^TestFeatures$' "-covermode=$covermode" -cover ${DECK_CI_GO_EXTRA_FLAGS:-} -args "-test.gocoverdir=$unit_covdir" \
+        -- -p=1 -count=1 -skip '^TestFeatures$' "-timeout=$unit_test_timeout" "-covermode=$covermode" -cover ${DECK_CI_GO_EXTRA_FLAGS:-} -args "-test.gocoverdir=$unit_covdir" \
         || go_status=$?
 
     # gotestsum's own rerun report lists every test it reran, whether or not
@@ -209,7 +233,7 @@ run_test_features() {
         --format standard-verbose \
         --junitfile "$junit" \
         --packages ./features/ \
-        -- -p=1 -count=1 -run '^TestFeatures$' ${DECK_CI_GO_EXTRA_FLAGS:-}
+        -- -p=1 -count=1 -run '^TestFeatures$' "-timeout=$features_test_timeout" ${DECK_CI_GO_EXTRA_FLAGS:-}
 }
 
 features_status=0
