@@ -64,7 +64,22 @@ while [ "$i" -le "$runs" ]; do
     else
         # NOT piped: this is the real exit status of go test, captured
         # immediately, before any tee/cat touches the output.
-        (cd "$repo_root" && "$repo_root/ci/run.sh" go test -p=1 -count=1 ./...) > "$run_log" 2>&1
+        #
+        # -timeout (cure-01-07, R145 nightly completion): `go test`'s own
+        # unset default is a 10-minute-per-package-binary alarm
+        # (testing.(*M).startAlarm) -- a harness-level aggregate budget,
+        # never one of this repo's own scenario deadlines. features/
+        # TestFeatures fans into 300+ Godog scenarios in one process and,
+        # as the suite has grown, its wall time has crept to within
+        # seconds of that unset default: nightly run 36222292303's own
+        # third ci/stability.sh repetition hit `panic: test timed out
+        # after 10m0s` at 600.065s under ordinary (non-race) CI
+        # contention -- see artifacts/review/nightly-analysis.log and
+        # nightly-timeout-stack.log. 25m matches ci/suite.sh's own
+        # features_test_timeout (DECK_CI_FEATURES_TEST_TIMEOUT there);
+        # this direct invocation never goes through that script, so the
+        # flag is repeated here rather than shared.
+        (cd "$repo_root" && "$repo_root/ci/run.sh" go test -p=1 -count=1 "-timeout=${DECK_CI_FEATURES_TEST_TIMEOUT:-25m}" ./...) > "$run_log" 2>&1
         status=$?
     fi
 

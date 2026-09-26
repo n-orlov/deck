@@ -10,6 +10,8 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -103,4 +105,121 @@ func TestSuiteScriptRetriesOnceAndRecordsFlakyForBothPasses(t *testing.T) {
 	if !strings.Contains(content, `if [ "$all_recovered" -eq 1 ]`) {
 		t.Errorf("%s: missing the conditional that only clears features_status when every rerun scenario actually recovered", path)
 	}
+}
+
+// minuteDurationFlag finds the FIRST `<N>m` shell-duration literal inside
+// content and returns N, or ok=false if none appears. It deliberately does
+// not accept other Go duration suffixes (h, s) because every value this
+// repo has ever set here is a whole number of minutes; a future caller
+// writing `-timeout=1h` would fail this parse loudly rather than silently
+// being read as zero.
+func minuteDurationFlag(content string) (minutes int, ok bool) {
+	re := regexp.MustCompile(`(\d+)m`)
+	m := re.FindStringSubmatch(content)
+	if m == nil {
+		return 0, false
+	}
+	n, err := strconv.Atoi(m[1])
+	if err != nil {
+		return 0, false
+	}
+	return n, true
+}
+
+// TestFeaturesTestInvocationsCarryAGenerousExplicitTimeoutBudget is the
+// cure-01-07 (R145 nightly completion) regression: `go test`'s own default
+// per-test-binary alarm is an UNSET 10 minutes (testing.(*M).startAlarm),
+// never one of this repo's own scenario deadlines -- every scenario/step
+// assertion in features/ already carries its own, much shorter, explicit
+// deadline. features/TestFeatures fans out into 300+ Godog scenarios in one
+// process, and nightly run 36222292303 hit `panic: test timed out after
+// 10m0s` at 600.033s/600.065s in BOTH the -race suite step and a plain
+// (non-race) ci/stability.sh repetition -- the harness's own unset budget,
+// not any scenario's own assertion, was too tight (see
+// artifacts/review/nightly-timeout-stack.log, nightly-analysis.log). This
+// fails the moment any of the three `go test` invocations that can run
+// features/TestFeatures loses its own explicit `-timeout=` flag, or the
+// duration it defaults to shrinks back down near the 10-minute default that
+// already proved insufficient once under ordinary CI contention.
+func TestFeaturesTestInvocationsCarryAGenerousExplicitTimeoutBudget(t *testing.T) {
+	root, err := repositoryRoot()
+	if err != nil {
+		t.Fatalf("repositoryRoot: %v", err)
+	}
+
+	const minMinutes = 15 // comfortably above the 10m default that failed
+
+	suitePath := filepath.Join(root, "ci", "suite.sh")
+	raw, err := os.ReadFile(suitePath)
+	if err != nil {
+		t.Fatalf("read %s: %v", suitePath, err)
+	}
+	suiteContent := stripCommentLines(string(raw))
+
+	// run_test_features is the function both the original features/
+	// TestFeatures pass and every per-scenario solo rerun go through; it
+	// must pass an explicit -timeout, not rely on go test's unset default.
+	fnStart := strings.Index(suiteContent, "run_test_features()")
+	if fnStart < 0 {
+		t.Fatalf("%s: run_test_features() function not found", suitePath)
+	}
+	fnEnd := strings.Index(suiteContent[fnStart:], "\n}")
+	if fnEnd < 0 {
+		t.Fatalf("%s: run_test_features() function body has no closing brace", suitePath)
+	}
+	fnBody := suiteContent[fnStart : fnStart+fnEnd]
+	featuresVarRe := regexp.MustCompile(`-timeout=\$(\w+)`)
+	featuresVar := featuresVarRe.FindStringSubmatch(fnBody)
+	if featuresVar == nil {
+		t.Errorf("%s: run_test_features() carries no `-timeout=$<var>` flag; go test falls back to its unset 10-minute default, which already panicked TestFeatures on nightly run 36222292303", suitePath)
+	} else if minutes, ok := minuteDurationFlag(assignmentDefault(suiteContent, featuresVar[1])); !ok {
+		t.Errorf("%s: %s's default carries no <N>m duration to check", suitePath, featuresVar[1])
+	} else if minutes < minMinutes {
+		t.Errorf("%s: %s defaults to %dm, not comfortably above the 10-minute default that already failed; want >= %dm", suitePath, featuresVar[1], minutes, minMinutes)
+	}
+
+	// The unit pass (`-skip '^TestFeatures$'`) never runs TestFeatures
+	// itself, but under -race it still shares the same default per-binary
+	// alarm across every OTHER package in ./..., so it gets its own
+	// explicit budget too.
+	unitLineRe := regexp.MustCompile(`-skip '\^TestFeatures\$' "-timeout=\$(\w+)"`)
+	unitVar := unitLineRe.FindStringSubmatch(suiteContent)
+	if unitVar == nil {
+		t.Errorf("%s: the unit pass (-skip '^TestFeatures$') carries no `-timeout=$<var>` flag immediately after it", suitePath)
+	} else if minutes, ok := minuteDurationFlag(assignmentDefault(suiteContent, unitVar[1])); !ok {
+		t.Errorf("%s: %s's default carries no <N>m duration to check", suitePath, unitVar[1])
+	} else if minutes < minMinutes {
+		t.Errorf("%s: %s defaults to %dm, not comfortably above the 10-minute default; want >= %dm", suitePath, unitVar[1], minutes, minMinutes)
+	}
+
+	// ci/stability.sh drives the whole ./... suite (features/ included)
+	// directly through ci/run.sh, never through ci/suite.sh -- it needs its
+	// own independent -timeout for exactly the same reason. Nightly run
+	// 36222292303's third repetition is the one that actually hit the
+	// panic without -race at all.
+	stabilityPath := filepath.Join(root, "ci", "stability.sh")
+	raw, err = os.ReadFile(stabilityPath)
+	if err != nil {
+		t.Fatalf("read %s: %v", stabilityPath, err)
+	}
+	stabilityContent := stripCommentLines(string(raw))
+	stabilityLineRe := regexp.MustCompile(`-timeout=\$\{[A-Za-z0-9_]+:-(\d+)m\}`)
+	stabilityMatch := stabilityLineRe.FindStringSubmatch(stabilityContent)
+	if stabilityMatch == nil {
+		t.Errorf("%s: the ci/run.sh go test invocation carries no explicit -timeout=${VAR:-<N>m} flag; nightly run 36222292303's third repetition hit the unset 10-minute default's panic without -race at all", stabilityPath)
+	} else if minutes, _ := strconv.Atoi(stabilityMatch[1]); minutes < minMinutes {
+		t.Errorf("%s: -timeout defaults to %dm, not comfortably above the 10-minute default that already failed; want >= %dm", stabilityPath, minutes, minMinutes)
+	}
+}
+
+// assignmentDefault returns the raw text of the shell default expression a
+// `name=${ENV_VAR:-<default>}` (or `name=<literal>`) assignment for the
+// given variable name gives it, or "" if no such assignment line exists.
+func assignmentDefault(content, name string) string {
+	re := regexp.MustCompile(`(?m)^` + regexp.QuoteMeta(name) + `=(.+)$`)
+	m := re.FindStringSubmatch(content)
+	if m == nil {
+		return ""
+	}
+	return m[1]
 }
