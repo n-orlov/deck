@@ -3515,6 +3515,11 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			m.previewPaneWidth = msg.capture.Width
 			m.previewPaneHeight = msg.capture.Height
 		}
+		// cure-01-01-2 (R143/R148, SPEC §11.9): the no-live-pane refusal's own
+		// "a later tick finds the reason gone" clause -- this tick's capture
+		// (never a selection move or a keypress) is the only way liveness for
+		// the refused session is ever re-observed.
+		m.clearEntryRefusalIfPreviewLive(msg.sessionID, msg.err, msg.capture.Live)
 		return m, nil
 	case animationTick:
 		if !m.settings.Animation {
