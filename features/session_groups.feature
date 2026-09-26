@@ -135,12 +135,15 @@ Feature: SPEC §11's group navigation and order (Phase 4c Tier 1+2 -- GH #31, #3
     # Shrinks the sidebar's content height (stacked layout) so all five
     # rows no longer fit on screen at once, the same technique
     # features/mouse.feature's wheel-scroll scenario already relies on.
+    # Select the top row BEFORE the shrink: the viewport follows the
+    # selection on a layout change too (SPEC §11, cure-01-07), so the
+    # newest row the create left selected would otherwise stay in view.
+    And deck client "A" selects session "kbfollow-1"
     And deck client "A" sends "|"
     And deck client "A" sends "|"
     Then deck client "A" screen stops containing "kbfollow-5"
     And deck client "A" screen contains "kbfollow-1"
-    When deck client "A" selects session "kbfollow-1"
-    And deck client "A" sends "j"
+    When deck client "A" sends "j"
     And deck client "A" sends "j"
     And deck client "A" sends "j"
     And deck client "A" sends "j"

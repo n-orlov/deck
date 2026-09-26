@@ -185,3 +185,20 @@ func indexOfSessionID(sessions []store.Session, id string) int {
 func NeedsAttention(session store.Session) bool {
 	return attentionRank(session.Status) < attentionRankRunning
 }
+
+// replaceSessionByID swaps the in-memory copy of session (matched by id) in
+// both the displayed list and baseSessions for the fresh row an action
+// result carries, without re-sorting or moving the selection -- the reload
+// that follows the action still re-derives order. A row not present (or an
+// empty id) is left alone.
+func (m *Model) replaceSessionByID(session store.Session) {
+	if session.ID == "" {
+		return
+	}
+	if idx := indexOfSessionID(m.sessions, session.ID); idx >= 0 {
+		m.sessions[idx] = session
+	}
+	if idx := indexOfSessionID(m.baseSessions, session.ID); idx >= 0 {
+		m.baseSessions[idx] = session
+	}
+}

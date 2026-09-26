@@ -3297,6 +3297,14 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		// opened).
 		m.restartChoosing = false
 		m.restartChoiceNote = ""
+		// cure-01-07 (R145): the restarted row itself (env_dirty and
+		// launch_dirty already cleared in the store before Restart
+		// returned) replaces the stale in-memory copy in the SAME update
+		// that closes the dialog, so the first frame without the dialog
+		// never shows the `env*`/`launch*` badge the store has already
+		// cleared -- rather than waiting on the loadSessions below
+		// (TestRestartSuccessDropsEnvBadgeInTheFrameTheDialogCloses).
+		m.replaceSessionByID(msg.session)
 		// R117: mirrors sessionResumed's own clear immediately above -- a
 		// restart that reaches here (every no-pane outcome above already
 		// returned) killed the old pane and created a new one, so the same
@@ -3319,6 +3327,10 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.restartChoosing = false
 		m.restartChoiceNote = ""
+		// cure-01-07 (R145): same as sessionRestarted's success path --
+		// InjectEnv already cleared env_dirty in the store, so the frame
+		// that closes the dialog must not still show `env*`.
+		m.replaceSessionByID(msg.session)
 		return m, m.loadSessions
 	case profileSwitched:
 		if msg.err != nil {
@@ -4646,7 +4658,29 @@ func (m Model) cycleLayoutMode() (tea.Model, tea.Cmd) {
 		m.layoutCycleActive = false
 	}
 	m.layoutMode = next
+	m.followSelectionAfterLayoutChange()
 	return m, m.persistLayoutMode()
+}
+
+// followSelectionAfterLayoutChange re-applies SPEC §11's "the viewport
+// follows the selection" the moment a layout change (`|`, the collapsed
+// strip's restore click) resizes the sidebar's content box, instead of
+// leaving the pre-change scroll offset in force until whatever reload
+// happens to land next. cure-01-07 (R145): before this, a `|` shrink that
+// pushed the selected row below the new, shorter box kept the old offset
+// (selection off screen) until the next sessionsLoaded's
+// followSelectionViewport scrolled it back -- so the same frame showed, or
+// did not show, the selected row depending purely on whether a reload
+// raced the keystroke (nightly -race runs 36234392586/36238432665,
+// mouse.feature:184 and session_groups.feature:122). A live wheel drift
+// is kept exactly as every other re-layout keeps it: only re-clamped to
+// the new box.
+func (m *Model) followSelectionAfterLayoutChange() {
+	if m.sidebarScrollDrifted {
+		m.clampDriftedSidebarScroll()
+		return
+	}
+	m.followSelectionViewport()
 }
 
 // restoreFromCollapsedStrip is the collapsed strip's own click path (SPEC
@@ -4667,6 +4701,7 @@ func (m Model) restoreFromCollapsedStrip() (tea.Model, tea.Cmd) {
 	m.layoutMode = mode
 	m.preCollapseLayoutMode = ""
 	m.layoutCycleActive = false
+	m.followSelectionAfterLayoutChange()
 	return m, m.persistLayoutMode()
 }
 
