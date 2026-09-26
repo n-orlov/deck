@@ -591,6 +591,7 @@ func (d *ScreenDriver) Stop(timeout time.Duration) error {
 		if d.terminal != nil {
 			_ = d.terminal.Close()
 		}
+		d.Close()
 		return d.processError()
 	case <-time.After(timeout):
 		if d.cmd.Process != nil {
@@ -610,7 +611,55 @@ func (d *ScreenDriver) Stop(timeout time.Duration) error {
 		if d.terminal != nil {
 			_ = d.terminal.Close()
 		}
+		d.Close()
 		return fmt.Errorf("hung deck client killed after %s\nsent (input timeline):\n%sframe:\n%s\nraw (includes a SIGQUIT goroutine dump if the runtime managed to print one before the follow-up SIGKILL): %q", timeout, d.sentLog(), d.Frame(false), d.Raw())
+	}
+}
+
+// Close releases the screen and shadow-budget emulators, letting their
+// drainScreenInput/drainBudgetInput goroutines return instead of blocking
+// forever on a vt.Emulator.Read whose underlying io.Pipe writer side is
+// never otherwise closed (task 032: this leak, multiplied across every
+// scenario's every client in a features/TestFeatures run, eventually panics
+// the whole package with a 10-minute timeout -- see CI run 36205511917,
+// panel_background_themes.feature:170 and themes.feature:96). Stop calls
+// this after it has already closed d.terminal, on both the clean-exit and
+// the killed-after-timeout path, so this is the single place every
+// ScreenDriver's two drain goroutines are released.
+//
+// This deliberately closes each emulator's own InputPipe() (its
+// io.PipeWriter) directly rather than calling vt.(*Emulator).Close: that
+// method flips an internal `closed` bool with no synchronization of its
+// own, which drainScreenInput/drainBudgetInput's already-unguarded
+// vt.(*Emulator).Read call (reading the very same field) then races with
+// under `go test -race` the instant Close and a still-running drain
+// goroutine overlap -- confirmed by running this fix against that race
+// detector before settling on InputPipe (see artifacts/032/race-check.log,
+// the failing run, vs. race-check-after-fix.log, the passing one, in this
+// task's own evidence). io.PipeWriter.Close (unlike Emulator.Close) is
+// itself safe for concurrent use with a blocked reader by the stdlib's own
+// design: it needs no lock here, touches no field either side's Read ever
+// checks, and still unblocks a Read call already in flight with io.EOF.
+// Idempotent: closing an *io.PipeWriter more than once is a documented
+// no-op (returns nil again), so calling this more than once for the same
+// driver (Stop is safe to call twice; some callers do) is harmless.
+func (d *ScreenDriver) Close() {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	closeInputPipe(d.screen)
+	closeInputPipe(d.budget)
+}
+
+// closeInputPipe closes t's own InputPipe() when it implements io.Closer
+// (every vt.Terminal implementation feature tests use does, since
+// InputPipe returns a *io.PipeWriter), and is a no-op for a nil terminal or
+// one whose InputPipe happens not to be closeable.
+func closeInputPipe(t vt.Terminal) {
+	if t == nil {
+		return
+	}
+	if closer, ok := t.InputPipe().(io.Closer); ok {
+		_ = closer.Close()
 	}
 }
 
