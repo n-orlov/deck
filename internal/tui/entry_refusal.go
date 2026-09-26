@@ -132,6 +132,76 @@ func (m *Model) clearEntryRefusalIfRoomGrew() {
 	}
 }
 
+// clearEntryRefusalIfPreviewLive is cure-01-01-2's own "a later tick finds
+// the reason gone" clause for the entryRefusalNoLivePane kind: called from
+// the previewCaptured handler (tui.go) with the exact session ID and
+// liveness the tick just observed, it clears the refusal the moment a
+// SUCCESSFUL capture (err == nil) against the SAME refused session reports
+// Live == true -- "the session has a pane to reach again", the no-live-pane
+// analogue of clearEntryRefusalIfSessionStarted's stopped-kind check and
+// clearEntryRefusalIfRoomGrew's row-floor/shrank one above. Unlike those two,
+// this one is driven by capturePreview's own tea.Cmd round trip rather than
+// an inline re-measure, because liveness is only knowable through a real
+// tmux probe (mirroring entryRefusalHolderCheck's own reasoning for the
+// contention kinds) -- but it is still gated on capturePreview's own
+// selected-row rule: capturePreview only ever captures the CURRENTLY
+// SELECTED session, so this clears the refusal "without selection movement
+// or a keypress" only because the refused session is still the one
+// selected when the tick fires, exactly SPEC §11.9's own wording asks for.
+// A stale capture naming a DIFFERENT session (sessionID mismatch -- the
+// selection moved between when the tick was issued and when it landed, or a
+// fresh refusal for a different session has since replaced this one) is
+// left untouched, and so is one whose pane is still absent/dead (live ==
+// false) or whose probe itself failed (err != nil): "the reason gone" means
+// a live pane was actually observed, not merely that a tick happened to
+// fire.
+func (m *Model) clearEntryRefusalIfPreviewLive(sessionID string, err error, live bool) {
+	if !m.entryRefusal.active || m.entryRefusal.kind != entryRefusalNoLivePane {
+		return
+	}
+	if m.entryRefusal.sessionID != sessionID {
+		return
+	}
+	if err != nil || !live {
+		return
+	}
+	m.clearEntryRefusal()
+}
+
+// clearEntryRefusalIfSelectedSessionChanged clears any active refusal the
+// moment the SESSION under the cursor has changed identity, even when the
+// cursor's own sidebarCursor value (row index or header id) has not --
+// task 123's `/` filter (filter.go) never calls setSelection, so its own
+// "selection moves" clearing (setSelection's c != m.selected check above)
+// never fires there; a filter edit instead recomputes m.sessions and then
+// re-lands the SAME cursor value on whatever row now sits at that position
+// (selectVisibleStopAfterReload/nearestVisibleSelection, group.go), which
+// can silently be a completely different session when rows ahead of it
+// were hidden or revealed. previousSessionID/hadPrevious is the selection
+// BEFORE that recompute (the caller must capture it first, before
+// m.sessions/m.selected are reassigned); this then re-reads the CURRENT
+// selection through m.selectedSession() and clears exactly when the two
+// disagree -- including when either side names no session at all (a move
+// onto or off of a header row), matching setSelection's own "any change"
+// rule rather than only a same-session-vs-different-session comparison.
+// Once cleared here, the refusal is gone for good, exactly like
+// setSelection's own outright clear: navigating (or filtering) back onto
+// the originally-refused session later, or clearing the filter entirely,
+// must never resurrect it.
+func (m *Model) clearEntryRefusalIfSelectedSessionChanged(previousSessionID string, hadPrevious bool) {
+	if !m.entryRefusal.active {
+		return
+	}
+	session, ok := m.selectedSession()
+	if hadPrevious && ok && session.ID == previousSessionID {
+		return
+	}
+	if !hadPrevious && !ok {
+		return
+	}
+	m.clearEntryRefusal()
+}
+
 // entryRefusalHolderCheck issues one read-only tmux probe per previewTick
 // while an attached-elsewhere/owned-elsewhere refusal is active, so the
 // banner drops the moment the contending client/process actually lets go

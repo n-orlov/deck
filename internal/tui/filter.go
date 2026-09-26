@@ -129,11 +129,19 @@ func (m Model) updateFilter(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		// returns to the unfiltered list, not merely closing the text
 		// field with the query still applied.
 		selectedGroupHadNoRows := m.selectedGroupHadNoRows()
+		prevSession, prevOk := m.selectedSession()
 		m.filtering = false
 		m.filterQuery = ""
 		m.sessions = m.filteredSessions()
 		m.selectVisibleStopAfterReload(selectedGroupHadNoRows)
 		m.followSelectionViewport()
+		// cure-01-01-2 (R143/R148, SPEC §11.9): clearing the filter must never
+		// RESURRECT a refusal that a widening/narrowing edit already cleared
+		// below -- but it can also, on its own, land the cursor back on a
+		// different session than the one that was selected when Esc was
+		// pressed (selectVisibleStopAfterReload/nearestVisibleSelection), so
+		// the same session-identity check runs here too.
+		m.clearEntryRefusalIfSelectedSessionChanged(prevSession.ID, prevOk)
 		return m, nil
 	case "enter":
 		// Closes the text field only; the query and the narrowed list it
@@ -166,6 +174,7 @@ func (m Model) updateFilter(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// read from m.selected/m.sessions BEFORE filteredSessions() below
 	// overwrites the list this keystroke just narrowed or widened.
 	selectedGroupHadNoRows := m.selectedGroupHadNoRows()
+	prevSession, prevOk := m.selectedSession()
 	m.sessions = m.filteredSessions()
 	m.selectVisibleStopAfterReload(selectedGroupHadNoRows)
 	// cure-01-03 (R142, SPEC §11): a query edit (this shared tail --
@@ -182,6 +191,14 @@ func (m Model) updateFilter(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// selection with its usual context margin.
 	m.sidebarScrollDrifted = false
 	m.followSelectionViewport()
+	// cure-01-01-2 (R143/R148, SPEC §11.9): the filter never calls
+	// setSelection, so its own cursor-equality clear never fires here --
+	// narrowing/widening the visible set can silently change which SESSION
+	// sits at the very same cursor index (row 0 was alpha, is now beta)
+	// without the cursor value itself ever changing. Clears the previous
+	// refusal whenever the session identity under the cursor has changed,
+	// even when the raw cursor value has not.
+	m.clearEntryRefusalIfSelectedSessionChanged(prevSession.ID, prevOk)
 	return m, nil
 }
 
