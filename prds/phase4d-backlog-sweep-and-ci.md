@@ -387,8 +387,14 @@ ralphd pushes straight to `main` with the operator's own token, and that must ke
 
 - `.github/workflows/release.yml`, before building: query `commits/<sha>/check-runs` for the suite
   check on the tagged sha.
-  - If there is no run, or it did not conclude `success`, the release **refuses** with a clear message
-    naming the sha and what it found.
+  - **Only suite runs whose workflow run was triggered by `push` or `pull_request` count** (operator
+    ruling, 2026-09-26). Nightly (`schedule`) and `workflow_dispatch` runs are ignored by the gate,
+    whatever their conclusion: they alert, they never gate. Among the counted runs the most recently
+    started one decides.
+  - If there is no counted run, or it did not conclude `success`, the release **refuses** with a clear
+    message naming the sha and what it found.
+  - A unit test proves a sha whose push run succeeded and whose later nightly/dispatch run failed is
+    **accepted**, and a sha with only a nightly/dispatch success and no push/PR run is **refused**.
   - The release job stays on `ubuntu-latest`.
 - **Success:** verify it without publishing a real release. Use a throwaway tag, such as
   `v0.0.0-ci-verify-red` on a sha with a red check and `…-green` on a green one, with the release step
