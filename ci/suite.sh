@@ -237,6 +237,18 @@ run_test_features() {
 }
 
 features_status=0
+# features_aborted_without_locations (cure-01-08, R146): set only when the
+# initial run fails AND the pretty log never printed a parseable
+# "--- Failed steps:" summary at all -- the shape a whole-process abort
+# (go test's own -timeout alarm firing mid-scenario, or any other crash
+# that kills the binary before Godog reports anything) takes, as opposed
+# to an ordinary scenario assertion failure, which Godog always reports
+# before the process exits normally. This is exactly the case where
+# DECK_GODOG_JUNIT's own file is left empty/truncated (godog's JUnit
+# formatter never got to flush), which is what step 3 below uses to decide
+# whether a synthetic failed/aborted TestFeatures marker is needed so the
+# report input never silently drops the pass.
+features_aborted_without_locations=0
 if ! run_test_features "$outdir/junit-features-gotestsum.xml" "DECK_GODOG_JUNIT=$features_junit" "GOCOVERDIR=$covdir" > "$features_log" 2>&1; then
     features_status=1
     clean_log="$outdir/features-run1.clean.log"
@@ -255,6 +267,7 @@ if ! run_test_features "$outdir/junit-features-gotestsum.xml" "DECK_GODOG_JUNIT=
 
     if [ -z "$locations" ]; then
         echo "ci/suite.sh: features/ failed but no scenario location could be parsed from $features_log" >&2
+        features_aborted_without_locations=1
     else
         all_recovered=1
         i=0
@@ -290,15 +303,25 @@ fi
 # recounts. junit-merged/ is what ci/allure-report.sh and ci/summary.sh
 # read. features/ contributes Godog's own per-scenario JUnit (the original
 # pass, then each solo rerun, in rerun order); gotestsum's view of the same
-# pass (TestFeatures/<scenario> subtests) is used instead only if Godog's
-# file is missing, e.g. when TestFeatures never got as far as running a
-# scenario. A merge failure is reported, not fatal: the report then shows
-# only what did merge.
+# pass (TestFeatures/<scenario> subtests) is used instead when Godog's own
+# file is missing, empty or malformed -- e.g. when the process was killed
+# by go test's own -timeout alarm mid-scenario and Godog's JUnit formatter
+# never got to flush (cure-01-08, R146: final-sha nightly 36222292303 left
+# junit-features.xml empty this way, ci/junitflaky reported EOF on it, and
+# this step used to just delete the merged features file outright,
+# dropping every gotestsum scenario result the run DID produce and leaving
+# the report showing only junit-go.xml -- an all-passing subset for a run
+# that failed). merge_junit itself now reports success/failure to its
+# caller (it used to always return 0, the bug that hid the EOF failure
+# above from ever being noticed here) so this step can fall back instead of
+# silently accepting an empty result.
 merged_dir="$outdir/junit-merged"
 mkdir -p "$merged_dir"
 
 # merge_junit <output> <input>...: the inputs in chronological order; any
-# that does not exist is left out.
+# that does not exist is left out. Returns 1 (output removed) if there was
+# nothing to merge, or ci/junitflaky itself failed (e.g. malformed XML);
+# returns 0 only once <output> has actually been written.
 merge_junit() {
     merged_out=$1
     shift
@@ -306,15 +329,44 @@ merge_junit() {
     for f in "$@"; do
         [ -f "$f" ] && merge_inputs="$merge_inputs $f"
     done
-    [ -n "$merge_inputs" ] || return 0
+    if [ -z "$merge_inputs" ]; then
+        return 1
+    fi
     # shellcheck disable=SC2086 # $outdir is canonical, one word per path
     if ! go run ./ci/junitflaky -o "$merged_out" $merge_inputs; then
         echo "ci/suite.sh: could not merge$merge_inputs into $merged_out" >&2
         rm -f "$merged_out"
+        return 1
     fi
+    return 0
 }
 
-merge_junit "$merged_dir/junit-go.xml" "$go_junit"
+# write_aborted_testfeatures_junit <path> <log>: a minimal, well-formed
+# JUnit file carrying exactly one failed <testcase name="TestFeatures">,
+# used (cure-01-08, R146) whenever the features/ pass aborted with no
+# per-scenario evidence at all surviving from either Godog's own JUnit or
+# gotestsum's view of the same run -- so the report input always states
+# the failure explicitly rather than a downstream reader (ci/summary.sh,
+# Allure) ever being able to mistake the absence of features/ data for an
+# all-passing subset.
+write_aborted_testfeatures_junit() {
+    out_path=$1
+    log_path=$2
+    detail="features/TestFeatures aborted before Godog could report any per-scenario result (see $log_path); no usable Godog or gotestsum JUnit survived this pass"
+    detail=$(printf '%s' "$detail" | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g; s/"/\&quot;/g')
+    cat > "$out_path" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites tests="1" failures="1" errors="0" time="0">
+	<testsuite name="features-aborted" tests="1" failures="1" errors="0" time="0">
+		<testcase classname="features" name="TestFeatures">
+			<failure message="$detail" type="aborted">$detail</failure>
+		</testcase>
+	</testsuite>
+</testsuites>
+EOF
+}
+
+merge_junit "$merged_dir/junit-go.xml" "$go_junit" || true
 # Rerun files are numbered 1..i in the order the reruns ran.
 features_reruns=""
 features_reruns_gotestsum=""
@@ -324,12 +376,50 @@ while [ -f "$outdir/junit-features-rerun-$n-gotestsum.xml" ] || [ -f "$outdir/ju
     features_reruns_gotestsum="$features_reruns_gotestsum $outdir/junit-features-rerun-$n-gotestsum.xml"
     n=$((n + 1))
 done
-if [ -f "$features_junit" ]; then
+
+features_merged="$merged_dir/junit-features.xml"
+features_merge_ok=0
+if [ -s "$features_junit" ]; then
     # shellcheck disable=SC2086
-    merge_junit "$merged_dir/junit-features.xml" "$features_junit" $features_reruns
-else
+    if merge_junit "$features_merged" "$features_junit" $features_reruns; then
+        features_merge_ok=1
+    fi
+fi
+if [ "$features_merge_ok" -eq 0 ]; then
+    if [ -s "$features_junit" ]; then
+        echo "ci/suite.sh: godog JUnit for features/ ($features_junit) was malformed; falling back to gotestsum's own scenario results" >&2
+    else
+        echo "ci/suite.sh: godog JUnit for features/ ($features_junit) is missing or empty; falling back to gotestsum's own scenario results" >&2
+    fi
     # shellcheck disable=SC2086
-    merge_junit "$merged_dir/junit-features.xml" "$outdir/junit-features-gotestsum.xml" $features_reruns_gotestsum
+    if merge_junit "$features_merged" "$outdir/junit-features-gotestsum.xml" $features_reruns_gotestsum; then
+        features_merge_ok=1
+    fi
+fi
+
+# cure-01-08 (R146): whenever the features/ pass itself failed, an explicit
+# failed/aborted TestFeatures outcome must be part of the report input --
+# either because nothing at all survived to merge above, or because this is
+# specifically the whole-process-abort shape (features_aborted_without_
+# locations, set in step 2) that leaves no scenario-level evidence of WHY it
+# failed even when gotestsum's own view merged successfully.
+if [ "$features_status" -ne 0 ] && { [ "$features_aborted_without_locations" -eq 1 ] || [ "$features_merge_ok" -eq 0 ]; }; then
+    synthetic="$outdir/junit-features-aborted.xml"
+    write_aborted_testfeatures_junit "$synthetic" "$features_log"
+    if [ "$features_merge_ok" -eq 1 ]; then
+        tmp_merged="$outdir/junit-features-with-abort.xml"
+        if merge_junit "$tmp_merged" "$features_merged" "$synthetic"; then
+            mv "$tmp_merged" "$features_merged"
+        fi
+    else
+        if merge_junit "$features_merged" "$synthetic"; then
+            features_merge_ok=1
+        fi
+    fi
+fi
+
+if [ "$features_merge_ok" -eq 0 ]; then
+    echo "ci/suite.sh: no features/ JUnit data survived to merge (godog JUnit, gotestsum JUnit and every rerun file were all missing, empty or malformed)" >&2
 fi
 
 # --- 4. coverage summary (R146/task 016, R146 cure-01-05) ---

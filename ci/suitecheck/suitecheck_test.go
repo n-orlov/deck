@@ -212,6 +212,68 @@ func TestFeaturesTestInvocationsCarryAGenerousExplicitTimeoutBudget(t *testing.T
 	}
 }
 
+// TestSuiteScriptRetainsFeaturesReportDataAndAnExplicitAbortOnTimeout is the
+// cure-01-08 (R146) regression: final-sha nightly 36222292303 left
+// junit-features.xml empty after features/TestFeatures was killed by go
+// test's own -timeout alarm mid-scenario (Godog's own JUnit formatter never
+// got to flush). ci/junitflaky reported EOF parsing that empty file, and
+// ci/suite.sh's merge step used to treat that failure as fatal for the
+// whole features/ report input: it deleted junit-merged/junit-features.xml
+// outright, silently dropping every gotestsum scenario result the run DID
+// produce and leaving the report/summary looking like an all-passing
+// subset (junit-go.xml only) even though the run had failed
+// (artifacts/review/abort-report-{probe,assertion}.log, nightly-junit-
+// error.log). This fails the moment any of the following goes missing
+// from ci/suite.sh's own text:
+//
+//  1. the primary godog-JUnit branch checks the file is non-empty (`-s`),
+//     not merely present (`-f`) -- an empty file is exactly what a killed
+//     process leaves behind, and `-f` alone would keep feeding it to
+//     ci/junitflaky, which errors on it (EOF) with nothing to fall back to;
+//  2. merge_junit itself reports failure to its caller (`return 1`) instead
+//     of always returning success, which is what let the EOF failure above
+//     go unnoticed by the caller in the first place;
+//  3. a merge failure/empty/malformed Godog JUnit falls back to gotestsum's
+//     own view of the same pass (`junit-features-gotestsum.xml`); and
+//  4. a features/ pass that aborted with no scenario location parseable at
+//     all still gets an explicit, synthesized failed/aborted TestFeatures
+//     outcome folded into the report input (`write_aborted_testfeatures_
+//     junit`), so the merged file can never read as an all-passing subset
+//     for a run that actually failed.
+//
+// Demonstrated fixing the defect against a deterministic timeout fixture
+// (a scenario that sleeps past a short DECK_CI_FEATURES_TEST_TIMEOUT) run
+// through the real, unmodified ci/suite.sh in a throwaway worktree: see
+// /run/ralphd/artifacts/cure-01-08/.
+func TestSuiteScriptRetainsFeaturesReportDataAndAnExplicitAbortOnTimeout(t *testing.T) {
+	root, err := repositoryRoot()
+	if err != nil {
+		t.Fatalf("repositoryRoot: %v", err)
+	}
+	path := filepath.Join(root, "ci", "suite.sh")
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	content := stripCommentLines(string(raw))
+
+	if !strings.Contains(content, `[ -s "$features_junit" ]`) {
+		t.Errorf("%s: the primary godog-JUnit branch no longer checks the file is non-empty (`-s`) before trusting it -- an empty file left by a killed process would be fed to ci/junitflaky again", path)
+	}
+	if !strings.Contains(content, "return 1") {
+		t.Errorf("%s: merge_junit no longer reports failure (`return 1`) to its caller -- a merge failure would go unnoticed again, exactly as it did for final-sha nightly 36222292303", path)
+	}
+	if !strings.Contains(content, "junit-features-gotestsum.xml") || !strings.Contains(content, "falling back to gotestsum") {
+		t.Errorf("%s: missing the fallback to gotestsum's own scenario JUnit when Godog's own file is missing, empty or malformed", path)
+	}
+	if !strings.Contains(content, "write_aborted_testfeatures_junit") {
+		t.Errorf("%s: missing write_aborted_testfeatures_junit, the synthesized explicit failed/aborted TestFeatures outcome for a pass that aborted with no scenario location parseable", path)
+	}
+	if !strings.Contains(content, "features_aborted_without_locations") {
+		t.Errorf("%s: missing the features_aborted_without_locations flag that ties step 2's whole-process-abort detection to step 3's synthesized outcome", path)
+	}
+}
+
 // assignmentDefault returns the raw text of the shell default expression a
 // `name=${ENV_VAR:-<default>}` (or `name=<literal>`) assignment for the
 // given variable name gives it, or "" if no such assignment line exists.
