@@ -2685,9 +2685,17 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 					}
 					m.selected = rowCursor(idx)
 					m.pendingSelectSessionID = ""
-					if !m.sidebarScrollDrifted {
-						m.scrollSessionIntoView(idx)
-					}
+					// cure-01-03 (R142, SPEC §11): fulfilling this one-shot
+					// new-session selection intent is itself an intentional
+					// selection-follow operation -- SPEC's own "the
+					// newly-created session is selected and visible" rule --
+					// so it ends any wheel drift in force and always brings the
+					// new row into view, rather than deferring to the plain
+					// drift-preserving branch below (which exists for an
+					// ordinary background reload/re-sort that names no new
+					// selection intent at all).
+					m.sidebarScrollDrifted = false
+					m.scrollSessionIntoView(idx)
 				}
 			}
 			// cure-01-05 (R136/SPEC §11: "the viewport follows the

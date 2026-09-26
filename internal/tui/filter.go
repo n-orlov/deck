@@ -168,6 +168,19 @@ func (m Model) updateFilter(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	selectedGroupHadNoRows := m.selectedGroupHadNoRows()
 	m.sessions = m.filteredSessions()
 	m.selectVisibleStopAfterReload(selectedGroupHadNoRows)
+	// cure-01-03 (R142, SPEC §11): a query edit (this shared tail --
+	// backspace or a typed rune, never esc/enter above, which each return
+	// earlier in the switch) is an intentional selection-follow operation,
+	// not a "global control opened" one -- SPEC's drift rule ends the drift
+	// on the very key that moves or acts on the selection, and narrowing or
+	// widening the visible set by typing is exactly that: the row the
+	// cursor now names may have moved to a completely different screen
+	// position. followSelectionViewport below already recomputes the
+	// offset for THIS keystroke; without also clearing the flag, the very
+	// next background reload/re-sort saw sidebarScrollDrifted still true and
+	// froze the stale wheel offset in place instead of following the
+	// selection with its usual context margin.
+	m.sidebarScrollDrifted = false
 	m.followSelectionViewport()
 	return m, nil
 }
