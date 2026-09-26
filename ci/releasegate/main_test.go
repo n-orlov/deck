@@ -88,3 +88,9 @@ func TestEvaluate_Success(t *testing.T) {
 		t.Fatalf("evaluate: expected pass for conclusion=success, got error: %v", err)
 	}
 }
+
+// deliberateCIVerifyFailure forces the suite check red for task 023's
+// throwaway v0.0.0-ci-verify-red probe; removed before the branch is deleted.
+func TestDeliberateCIVerifyFailure(t *testing.T) {
+	t.Fatal("deliberate failure for task 023 ci-verify red-path probe")
+}
