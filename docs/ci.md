@@ -14,11 +14,13 @@ look at the Actions run itself, found by its head sha.
 | `lint` | self-hosted `[self-hosted, linux, x64, deck]` | `gofmt -l`, `go vet ./...`, `go mod tidy` drift check, in that order, via `ci/lint.sh`. Fails fast, before the suite. |
 | `suite` | self-hosted `[self-hosted, linux, x64, deck]`, `needs: lint` | Builds/refreshes the `deck-ci:local` image, runs `ci/run.sh ci/suite.sh` (the whole `go test -p=1 -count=1 ./...` matrix), and on `schedule`/`workflow_dispatch` also runs `ci/stability.sh 3` (three clean-state repetitions) with `-race` enabled. Writes the job summary and uploads raw results as a workflow artifact. |
 | `report (Allure)` | self-hosted, `needs: [lint, suite]` | Turns the JUnit `suite` produced into an Allure report, merges it into the persisted `gh-pages` site tree, uploads the rendered report as a workflow artifact, and stages the merged tree as a Pages artifact. Holds no `pages:`/`id-token:` permission -- it stages, it never deploys. |
-| `publish (Pages)` | `ubuntu-latest`, `needs: report` | The only job with `pages: write`/`id-token: write`. Calls `actions/deploy-pages`. Gated to `push`/`schedule`/`workflow_dispatch` only -- never `pull_request` (a PR-branch deploy is rejected server-side by the repo's `github-pages` environment's branch policy regardless). |
+| `publish (Pages)` | `ubuntu-latest`, `needs: report` | Deploys the root-triggered (`push`/`schedule`/`workflow_dispatch`) Pages artifact. Holds `pages: write`/`id-token: write`. Gated to `push`/`schedule`/`workflow_dispatch` only -- never `pull_request` (a PR-branch deploy is rejected server-side by the repo's `github-pages` environment's branch policy regardless; see "Publishing a PR's own report" below for how a PR's own report still gets published). |
 | `pr-comment` | `ubuntu-latest`, `needs: report` | Creates or updates one PR comment (keyed on an HTML marker) carrying the PR's own `/pr/<n>/` Allure link. Only for `pull_request` events whose head repo is this repository. |
 | `notify` | self-hosted, `needs: [lint, suite]` | Posts exactly one message to the Telegram notifier when `lint` or `suite` failed/was cancelled, and only for `push` to `main`, `schedule`, or `workflow_dispatch` (never for a PR). |
 
 `release.yml` adds one more gate, described under "The release gate" below.
+`pages-pr-publish.yml`, a separate `workflow_run`-triggered workflow, is
+described under "Publishing a PR's own report" below.
 
 ## Triggers
 
@@ -130,6 +132,34 @@ test that fails twice in a row fails the check.
   whether the report ever reaches Pages.
 - Failure attachments (pty traces, tmux captures already written by
   scenario teardown) are attached to their Allure case where practical.
+
+### Publishing a PR's own report (R146, GH #35 §5)
+
+- `report`'s `pull_request` run merges `/pr/<n>/` into `gh-pages` and pushes
+  it, but `ci.yml`'s `publish` job never runs for `pull_request` at all --
+  the repository's `github-pages` deployment environment restricts
+  deployment to `main` (a pre-existing setting neither workflow is ever
+  allowed to change), so a deploy attempted from inside a `pull_request`
+  run's own `github.ref` (the PR's head ref) would be rejected server-side
+  regardless of anything this job declares.
+- `.github/workflows/pages-pr-publish.yml` is a separate workflow, triggered
+  by `workflow_run` on `ci`'s own completion, that does the deploy instead.
+  `workflow_run` always executes using the default branch's copy of the
+  triggered workflow file, with `github.ref` set to that default branch
+  regardless of what triggered the run it reacts to -- so it satisfies the
+  same "main only" branch policy for free, and it fires automatically the
+  moment the PR's own `ci` run completes: caused by, not unrelated to, that
+  run, and requiring no later main push, nightly run or manual dispatch.
+- Its `gate` job calls the Jobs API for the completed run and only proceeds
+  when that run's own `report (Allure)` job succeeded (not the run's overall
+  conclusion, which can be `failure` on a red `suite` even though `report`
+  still ran) and the run's head repository is this one (a second, belt-and-
+  suspenders fork guard on top of `report`'s own, which already never runs
+  -- so never succeeds -- for a fork PR). Its `publish` job then checks out
+  `gh-pages` (already carrying the merged tree `report` pushed), re-stages
+  it as a fresh Pages artifact, and deploys it -- never touching the PR's
+  own head ref/commit, so it carries none of the fork-PR code-execution risk
+  the self-hosted fork guard above exists to keep off a fork's head.
 
 ## Coverage
 
