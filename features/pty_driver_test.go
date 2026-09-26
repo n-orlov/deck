@@ -261,10 +261,26 @@ func (d *ScreenDriver) GridSize() (cols, rows int) {
 // blind spot a byte-width bug like the review's escape-sequence miscount
 // would hide behind. Reading the fixed column directly has no such blind
 // spot.
+//
+// The returned cell is a copy taken while d.mu is held, never a pointer into
+// the live grid: ScreenDriver.read keeps writing PTY chunks into the same
+// emulator from its own goroutine, so a caller reading Content or Style off
+// a live-grid pointer after the lock is released races that write (nightly
+// -race run 36234392586, TestScreenDriverGridReadersAreRaceFreeAgainstRead).
 func (d *ScreenDriver) CellAt(x, y int) *uv.Cell {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	return d.screen.CellAt(x, y)
+	return cellCopy(d.screen, x, y)
+}
+
+// cellCopy returns a copy of terminal's cell at (x, y), or nil when there is
+// none. Callers hold d.mu.
+func cellCopy(terminal vt.Terminal, x, y int) *uv.Cell {
+	cell := terminal.CellAt(x, y)
+	if cell == nil {
+		return nil
+	}
+	return cell.Clone()
 }
 
 // FindText scans the emulator grid, cell by cell, for the first run whose
@@ -277,23 +293,36 @@ func (d *ScreenDriver) FindText(text string) (row, col int, err error) {
 	if len(runes) == 0 {
 		return 0, 0, fmt.Errorf("cannot search for empty text")
 	}
-	cols, rows := d.GridSize()
+	// One lock for the whole scan: the grid it reads is then a single
+	// consistent frame, and no cell is read while ScreenDriver.read writes it.
+	d.mu.Lock()
+	row, col, found := findTextLocked(d.screen, runes)
+	d.mu.Unlock()
+	if found {
+		return row, col, nil
+	}
+	return 0, 0, fmt.Errorf("text %q not found in frame:\n%s", text, d.Frame(false))
+}
+
+// findTextLocked is FindText's grid scan; the caller holds d.mu.
+func findTextLocked(terminal vt.Terminal, runes []rune) (row, col int, found bool) {
+	cols, rows := terminal.Width(), terminal.Height()
 	for y := 0; y < rows; y++ {
 		for x := 0; x+len(runes) <= cols; x++ {
 			match := true
 			for i, r := range runes {
-				cell := d.CellAt(x+i, y)
+				cell := terminal.CellAt(x+i, y)
 				if cell == nil || cell.Content != string(r) {
 					match = false
 					break
 				}
 			}
 			if match {
-				return y, x, nil
+				return y, x, true
 			}
 		}
 	}
-	return 0, 0, fmt.Errorf("text %q not found in frame:\n%s", text, d.Frame(false))
+	return 0, 0, false
 }
 
 // drainScreenInput discards synthetic terminal-query responses the emulator
@@ -332,11 +361,13 @@ func (d *ScreenDriver) drainBudgetInput() {
 // gone by the time anything reads the grid -- exactly the blind spot that
 // let requirement 37 through undetected. The shadow has nowhere near its own
 // edge to scroll or wrap into, so the overflow survives intact.
+//
+// The scan runs with d.mu held throughout, since ScreenDriver.read writes
+// every chunk into the budget emulator from its own goroutine.
 func (d *ScreenDriver) FrameFitsBudget(cols, rows int) error {
 	d.mu.Lock()
-	budget := d.budget
-	d.mu.Unlock()
-	return frameFitsBudget(budget, cols, rows)
+	defer d.mu.Unlock()
+	return frameFitsBudget(d.budget, cols, rows)
 }
 
 func (d *ScreenDriver) read() {
