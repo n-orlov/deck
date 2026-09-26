@@ -241,10 +241,11 @@ func TestFeaturesTestInvocationsCarryAGenerousExplicitTimeoutBudget(t *testing.T
 //     junit`), so the merged file can never read as an all-passing subset
 //     for a run that actually failed.
 //
-// Demonstrated fixing the defect against a deterministic timeout fixture
-// (a scenario that sleeps past a short DECK_CI_FEATURES_TEST_TIMEOUT) run
-// through the real, unmodified ci/suite.sh in a throwaway worktree: see
-// /run/ralphd/artifacts/cure-01-08/.
+// This is the static half; the behaviour itself is exercised end to end by
+// TestSuiteScriptTimeoutFixtureRetainsScenarioResultsAndAbortInReport
+// (timeoutfixture_test.go), which runs the real ci/suite.sh and
+// ci/summary.sh against the deterministic timeout fixture in
+// testdata/timeoutfixture/.
 func TestSuiteScriptRetainsFeaturesReportDataAndAnExplicitAbortOnTimeout(t *testing.T) {
 	root, err := repositoryRoot()
 	if err != nil {
