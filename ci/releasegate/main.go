@@ -30,7 +30,14 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strings"
 )
+
+// githubAPIBase is the root of every GitHub API URL this gate builds.
+// It is a var, never a const, purely so the HTTP-level tests below can
+// point it at an httptest.Server instead of the real api.github.com --
+// production always leaves it at its zero-value default.
+var githubAPIBase = "https://api.github.com"
 
 // checkRun is the subset of a GitHub check-run object this gate cares
 // about. CheckSuite.ID is how a check run is tied back to the workflow
@@ -145,27 +152,64 @@ func evaluate(checkRunsBody, actionsRunsBody []byte, sha, checkName string) erro
 	return nil
 }
 
-// fetchCheckRuns performs the actual GitHub API call; kept separate from
-// evaluate so the unit tests exercise evaluate directly against canned
-// JSON, never a live network call.
+// fetchCheckRuns performs the actual GitHub API call, and follows every
+// rel="next" Link header page GitHub returns, merging every page's
+// check_runs into one response before returning -- a later ignored
+// schedule/workflow_dispatch check run pushing the real push/PR suite
+// check onto a second (or later) page must never make it invisible to
+// evaluate. Kept separate from evaluate so the unit tests exercise
+// evaluate directly against canned JSON, never a live network call.
 func fetchCheckRuns(repo, sha, token string) ([]byte, error) {
-	url := fmt.Sprintf("https://api.github.com/repos/%s/commits/%s/check-runs", repo, sha)
-	return fetchGitHubJSON(url, token)
+	url := fmt.Sprintf("%s/repos/%s/commits/%s/check-runs", githubAPIBase, repo, sha)
+	var merged checkRunsResponse
+	for url != "" {
+		body, link, err := fetchGitHubJSON(url, token)
+		if err != nil {
+			return nil, err
+		}
+		var page checkRunsResponse
+		if err := json.Unmarshal(body, &page); err != nil {
+			return nil, fmt.Errorf("commit %s: could not parse check-runs response: %w", sha, err)
+		}
+		merged.TotalCount = page.TotalCount
+		merged.CheckRuns = append(merged.CheckRuns, page.CheckRuns...)
+		url = nextPageURL(link)
+	}
+	return json.Marshal(merged)
 }
 
 // fetchActionsRuns performs the actual GitHub API call that resolves each
 // check_suite on sha to the event that triggered its workflow run (push,
-// pull_request, schedule, workflow_dispatch, ...) -- kept separate from
-// evaluate for the same reason as fetchCheckRuns above.
+// pull_request, schedule, workflow_dispatch, ...), following every
+// rel="next" Link header page the same way fetchCheckRuns does -- a
+// later ignored schedule/workflow_dispatch run's event association
+// pushing the real push/PR one onto a second page must never make that
+// association invisible to evaluate's gatingSuite lookup.
 func fetchActionsRuns(repo, sha, token string) ([]byte, error) {
-	url := fmt.Sprintf("https://api.github.com/repos/%s/actions/runs?head_sha=%s", repo, sha)
-	return fetchGitHubJSON(url, token)
+	url := fmt.Sprintf("%s/repos/%s/actions/runs?head_sha=%s", githubAPIBase, repo, sha)
+	var merged actionsRunsResponse
+	for url != "" {
+		body, link, err := fetchGitHubJSON(url, token)
+		if err != nil {
+			return nil, err
+		}
+		var page actionsRunsResponse
+		if err := json.Unmarshal(body, &page); err != nil {
+			return nil, fmt.Errorf("commit %s: could not parse actions-runs response: %w", sha, err)
+		}
+		merged.WorkflowRuns = append(merged.WorkflowRuns, page.WorkflowRuns...)
+		url = nextPageURL(link)
+	}
+	return json.Marshal(merged)
 }
 
-func fetchGitHubJSON(url, token string) ([]byte, error) {
+// fetchGitHubJSON performs one page's GET request, returning its body
+// together with the raw Link response header so the caller can decide
+// whether to follow a rel="next" page.
+func fetchGitHubJSON(url, token string) ([]byte, string, error) {
 	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
@@ -175,18 +219,43 @@ func fetchGitHubJSON(url, token string) ([]byte, error) {
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("request to %s failed: %s: %s", url, resp.Status, string(body))
+		return nil, "", fmt.Errorf("request to %s failed: %s: %s", url, resp.Status, string(body))
 	}
-	return body, nil
+	return body, resp.Header.Get("Link"), nil
+}
+
+// nextPageURL extracts the rel="next" target from a GitHub Link response
+// header (RFC 5988 form: `<url>; rel="next", <url>; rel="last"`), or ""
+// if there is no next page -- the signal to stop paginating.
+func nextPageURL(linkHeader string) string {
+	if linkHeader == "" {
+		return ""
+	}
+	for _, part := range strings.Split(linkHeader, ",") {
+		segments := strings.Split(part, ";")
+		if len(segments) < 2 {
+			continue
+		}
+		urlPart := strings.TrimSpace(segments[0])
+		if !strings.HasPrefix(urlPart, "<") || !strings.HasSuffix(urlPart, ">") {
+			continue
+		}
+		for _, rel := range segments[1:] {
+			if strings.TrimSpace(rel) == `rel="next"` {
+				return urlPart[1 : len(urlPart)-1]
+			}
+		}
+	}
+	return ""
 }
 
 func run(args []string, getenv func(string) string) error {
