@@ -1,0 +1,122 @@
+# R146 (GH #35 §5): publish a trusted PR's own Allure report at
+# `/pr/<n>/` as part of that PR run's own report-publication chain --
+# never waiting on an unrelated later `main` push, nightly run or manual
+# dispatch.
+#
+# ci.yml's own `report` job already merges the PR's `/pr/<n>/` subtree
+# into the persisted `gh-pages` tree and pushes it, but ci.yml's only
+# deploy job (`publish`) is gated off `pull_request` entirely: the
+# repository's `github-pages` deployment environment restricts deployment
+# to the `main` branch (a pre-existing repository setting neither workflow
+# is ever allowed to change), and a `pull_request`-triggered job's own
+# `github.ref` is the PR's head ref, so a `publish`-style job running
+# inside ci.yml's own `pull_request` execution would be rejected
+# server-side before any step ran.
+#
+# `workflow_run` is the escape hatch: GitHub always executes a
+# `workflow_run` job using the *default branch's* copy of the triggered
+# workflow file, with `github.ref`/`GITHUB_SHA` set to that default
+# branch, regardless of what triggered the workflow it is reacting to
+# (see "Events that trigger workflows" -> `workflow_run` in GitHub's own
+# docs). So the `publish` job below satisfies the `github-pages`
+# environment's existing "main only" branch policy for free, without this
+# workflow -- or ci.yml -- ever touching that policy itself, and it starts
+# automatically the instant `ci.yml`'s own run completes: caused by, not
+# unrelated to, the PR run whose report it publishes.
+#
+# It never checks out or executes anything from the triggering run's own
+# head ref/commit -- it only reads the already-merged `gh-pages` tree
+# `ci.yml`'s own `report` job pushed as durable storage before this
+# workflow_run even fires, plus a same-repo API fact about that run's own
+# jobs -- so it carries none of the fork-PR code-execution risk ci.yml's
+# self-hosted `if:` guard exists to keep off a fork's head. The `gate` job
+# below re-derives that a fork PR never gets published here too (belt and
+# suspenders: ci.yml's own `report` job already never runs -- and so never
+# succeeds -- for a fork PR, and `gate` publishes only when `report`
+# succeeded), by requiring the completed run's head repository to be this
+# one.
+name: pages-pr-publish
+
+on:
+  workflow_run:
+    workflows: ["ci"]
+    types: [completed]
+
+permissions:
+  contents: read
+
+jobs:
+  # A push/schedule/workflow_dispatch run of `ci` already published
+  # synchronously via its own `publish` job in that same run; deploying
+  # the (by then identical) `gh-pages` tree a second time here would be
+  # redundant, so this only ever proceeds for a `pull_request`-sourced run
+  # whose head is a branch of this repository (never a fork's).
+  gate:
+    name: gate (PR report succeeded)
+    if: >-
+      github.event.workflow_run.event == 'pull_request'
+      && github.event.workflow_run.head_repository.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: read
+    outputs:
+      publish: ${{ steps.check.outputs.publish }}
+    steps:
+      # ci.yml's own overall run conclusion can be "failure" even when its
+      # `report` job succeeded (a red `suite` still gets an Allure report,
+      # deliberately -- see ci.yml's own comment on `report`), so the
+      # signal this job needs is that one job's own conclusion, not the
+      # run's.
+      - name: Confirm the completed run's own report job succeeded
+        id: check
+        uses: actions/github-script@v7
+        env:
+          RUN_ID: ${{ github.event.workflow_run.id }}
+        with:
+          script: |
+            const { data } = await github.rest.actions.listJobsForWorkflowRun({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              run_id: Number(process.env.RUN_ID),
+            });
+            const report = data.jobs.find((j) => j.name === "report (Allure)");
+            const conclusion = report ? report.conclusion : "not found";
+            core.info(`report (Allure) job conclusion: ${conclusion}`);
+            core.setOutput("publish", conclusion === "success" ? "true" : "false");
+
+  publish:
+    name: publish (Pages, PR)
+    needs: gate
+    if: needs.gate.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      # The tree ci.yml's own `report` job already merged this PR's
+      # `/pr/<n>/` subtree into and pushed, before this workflow_run even
+      # fired -- the same tree it staged as a Pages artifact inside its
+      # own run. Reading it back from `gh-pages` here, instead of trying
+      # to pull that run's own ephemeral Pages artifact across workflows,
+      # needs nothing beyond this job's own `contents: read` and stays
+      # correct even if a later run has since moved `gh-pages` on.
+      - name: Check out the persisted site tree (gh-pages)
+        uses: actions/checkout@v7
+        with:
+          ref: gh-pages
+          path: site
+
+      - name: Stage the persisted tree as this run's own Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

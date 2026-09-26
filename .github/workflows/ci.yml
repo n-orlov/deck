@@ -302,10 +302,15 @@ jobs:
   # changes by the job, of any kind" non-goal), so a PR-branch deploy
   # attempt is rejected by GitHub server-side before any step runs, whether
   # or not this job even declares `environment:` in its own YAML (Pages
-  # deployments are always attributed to that one environment). See task
-  # 018's petition on successCriteria (2) for the evidence and the
-  # consequence: a PR's own /pr/<n>/ report goes live at the next
-  # root-triggered deploy, not synchronously within the PR's own run.
+  # deployments are always attributed to that one environment). A PR's own
+  # /pr/<n>/ report is instead published by `pages-pr-publish.yml`
+  # (R146, GH #35 §5), a separate `workflow_run`-triggered workflow that
+  # fires the moment *this* workflow's own run completes and deploys the
+  # already-merged `gh-pages` tree `report` pushed below -- `workflow_run`
+  # always executes on the default branch regardless of what triggered the
+  # run it reacts to, so it satisfies the same "main only" branch policy
+  # for free, without this job or that one ever touching the policy
+  # itself. See that file for the rest of the design.
   publish:
     name: publish (Pages)
     needs: report
@@ -332,7 +337,9 @@ jobs:
   # only on `report` (not `publish`, which never even runs for a PR event --
   # see the note on `publish` above): the PR's /pr/<n>/ content is already
   # merged into the persisted site tree by the time `report` succeeds, and
-  # goes live at the next root-triggered deploy.
+  # goes live once `pages-pr-publish.yml`'s own deploy (triggered by this
+  # run's completion) finishes -- shortly after this comment posts, not at
+  # some later, unrelated root-triggered deploy.
   pr-comment:
     name: PR comment (Allure link)
     needs: report
