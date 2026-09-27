@@ -96,7 +96,7 @@ func StartScreenDriver(ctx context.Context, binary string, env []string) (*Scree
 // StartScreenDriverWithSize is StartScreenDriver with an explicit initial PTY
 // and emulator geometry.
 func StartScreenDriverWithSize(ctx context.Context, binary string, env []string, cols, rows uint16) (*ScreenDriver, error) {
-	return startScreenDriver(ctx, binary, env, "", cols, rows)
+	return startScreenDriver(ctx, binary, env, "", nil, cols, rows)
 }
 
 // StartScreenDriverInDir is StartScreenDriverWithSize with an explicit
@@ -105,11 +105,19 @@ func StartScreenDriverWithSize(ctx context.Context, binary string, env []string,
 // prefill) rather than inheriting whatever directory happens to be the test
 // binary's own cwd.
 func StartScreenDriverInDir(ctx context.Context, binary string, env []string, dir string, cols, rows uint16) (*ScreenDriver, error) {
-	return startScreenDriver(ctx, binary, env, dir, cols, rows)
+	return startScreenDriver(ctx, binary, env, dir, nil, cols, rows)
 }
 
-func startScreenDriver(ctx context.Context, binary string, env []string, dir string, cols, rows uint16) (*ScreenDriver, error) {
-	cmd := exec.CommandContext(ctx, binary)
+// StartScreenDriverWithArgs is StartScreenDriverWithSize with explicit
+// argv (task 011, R153): a scenario exercising SPEC §3.4's profile
+// selection needs the deck binary started with a positional profile
+// argument, which every other ScreenDriver starter omits.
+func StartScreenDriverWithArgs(ctx context.Context, binary string, env []string, args []string, cols, rows uint16) (*ScreenDriver, error) {
+	return startScreenDriver(ctx, binary, env, "", args, cols, rows)
+}
+
+func startScreenDriver(ctx context.Context, binary string, env []string, dir string, args []string, cols, rows uint16) (*ScreenDriver, error) {
+	cmd := exec.CommandContext(ctx, binary, args...)
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), env...)
 	cmd.Env = append(cmd.Env, "TERM=xterm-256color", fmt.Sprintf("COLUMNS=%d", cols), fmt.Sprintf("LINES=%d", rows))
