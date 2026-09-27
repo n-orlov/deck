@@ -4,22 +4,27 @@ Feature: Profiles: a hook's write stays walled to the pane's own profile (SPEC Â
   profile that created it for its whole life" and "a profile never reads
   another profile's state.db: no cross-profile counts, no aggregate view."
   This proves both halves at once with two profiles' decks running side by
-  side in one scenario: a hook fired from a pane profile A created changes
-  only A's own state.db, while profile B's state.db -- and B's still-running
+  side, each on its own private tmux socket, in one scenario's data root: a
+  hook fired from inside a pane profile A's own deck created changes only
+  A's own state.db, while profile B's state.db -- and B's still-running
   deck -- are left completely untouched.
 
   Scenario: a hook fired from a pane created by profile A writes only A's own database while profile B's deck keeps running
-    Given deck client "a" is launched for the not-yet-existing profile "acme"
-    And deck client "a" screen shows the creation prompt for profile "acme"
-    When deck client "a" answers the creation prompt with "y"
-    Then deck client "a" screen contains "socket: deck-acme"
-    When deck client "a" exits cleanly
-    And an uncontended Claude hook target "a-target" exists in profile "acme"'s state database
-    Given deck client "b" is started for the existing profile "beta"
-    Then deck client "b" screen contains "deck - sessions"
+    Given a long-running fake "claude" binary is on PATH for future deck clients
+    And deck client "a" is started for the existing profile "acme" on the scenario's private socket
+    And deck client "b" is started for the existing profile "beta" on its own private socket
+    When deck client "a" creates claude session "a-agent" with permission profile "safe"
+    Then the profile "acme" session "a-agent"'s pane carries DECK_PROFILE "acme" and its own session id
+    When deck client "b" creates shell session "b-shell"
+    Then the profile "beta" state database session "b-shell" settles at status "running"
     And the profile "beta" state database is snapshotted as "before"
-    When the released hook receiver handles a "SessionEnd" event for "a-target" in profile "acme"
-    Then the profile "acme" state database session "a-target" is stopped by session end
-    And the profile "beta" state database still matches snapshot "before" in content and session row count
+    When fake Claude session "a-agent" in profile "acme" fires "Notification" from its own pane:
+      | notification_type | permission_prompt |
+    Then the profile "acme" state database session "a-agent" has hook status "waiting" with reason "permission_prompt" and one "notification" event
+    And within one configured reconcile interval deck client "a" screen contains "waiting"
     And deck client "b" screen contains "deck - sessions"
+    And deck client "b" screen contains "b-shell"
+    And the profile "beta" state database still matches snapshot "before" in content and session row count
+    And the scenario's data root holds no default-profile state database
     When deck client "b" exits cleanly
+    And deck client "a" exits cleanly
