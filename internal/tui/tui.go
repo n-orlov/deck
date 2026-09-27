@@ -10069,6 +10069,9 @@ Theme picker (opened with t)
 
 Runtime controls
   DECK_HOME             isolated data/config/state root
+  DECK_PROFILE          select a named profile (default: default); the
+                        positional argument wins over it, and an empty
+                        value is treated as unset (SPEC §3.4)
   DECK_TMUX_SOCKET      private tmux socket (default: deck)
   DECK_CLOCK            freeze wall clock (RFC3339); clock.now overrides it
   DECK_CLOCK_STEP       exact amount advanced by each on-demand trigger
@@ -10098,6 +10101,10 @@ scrollback via tmux's copy-mode instead of typing into the shell; the cost
 is that a drag no longer makes the terminal's own text selection there
 either -- hold your terminal's override modifier (usually Shift) to select
 and copy pane text, or use tmux's own copy-mode.
+
+deck never deletes a profile -- it owns a socket that may hold live agents.
+To remove a named profile by hand: tmux -L deck-<name> kill-server, then
+remove its profiles/<name>/ directories.
 
 Mouse (every binding duplicates a key above; nothing here is mouse-only)
   click a sidebar row       select it and enter interactive mode on it
