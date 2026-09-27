@@ -174,17 +174,38 @@ test that fails twice in a row fails the check.
 
 ## Coverage
 
-- The ordinary Go matrix uses `-coverprofile` directly (legacy text format).
-- `features/` drives a built `deck` binary out-of-process, so
-  `-coverprofile` alone would report nothing for the code those scenarios
-  exercise. The binary is instead built with `go build -cover`, run with
-  `GOCOVERDIR` set, and the resulting counters are merged with
-  `go tool covdata textfmt` into the same legacy text format, so black-box
-  coverage from `features/` counts too.
+- The ordinary Go matrix does not use `-coverprofile` directly. gotestsum's
+  own `--rerun-fails=1` reruns a failed test with a *second*, separate `go
+  test` invocation, and each `go test` call -- retry included -- writes a
+  `-coverprofile` path from scratch rather than merging into whatever is
+  already there; the moment any test anywhere needed a retry, that retry's
+  own invocation would clobber the whole profile with only its own (one
+  package, one test) coverage, deleting every other package's data. So the
+  unit pass instead runs with `-cover` and `-args -test.gocoverdir=<dir>`:
+  every invocation (the initial run and every gotestsum retry) writes its
+  own uniquely-named counter files into that one shared directory, so
+  counters from every attempt -- including packages/tests that were never
+  retried at all -- accumulate instead of clobbering each other.
+- `features/` drives a built `deck` binary out-of-process, so neither
+  `-coverprofile` nor `-cover` on the `go test` invocation itself would
+  report anything for the code those scenarios exercise. The binary is
+  instead built with `go build -cover` and run with `GOCOVERDIR` set to its
+  own counter directory, for the same retry-safe reason: every scenario's
+  spawned deck process, and every solo scenario rerun, gets its own
+  uniquely-named counter files in that directory rather than overwriting a
+  shared one.
+- Both counter directories are converted with `go tool covdata textfmt`
+  into the same legacy text format `go tool cover` understands, so one
+  small package-by-package aggregator can read both without needing two
+  unrelated summarizers.
 - `ci/suite.sh` prints a per-package coverage table (`unit` column vs
-  `features/ (black-box)` column) plus a `TOTAL` row, and the job summary
-  and Allure report both surface the totals. There is no coverage
-  threshold gating anything.
+  `features/ (black-box)` column) plus a `TOTAL` row. That table is
+  surfaced in exactly two places: the job summary (`ci/summary.sh` cats it
+  under a `#### coverage` heading) and the uploaded raw results artifact
+  (`ci-results-<run>`, which carries the whole results directory --
+  `coverage-summary.txt` and both legacy-format profiles included). The
+  Allure report does not display it. There is no coverage threshold gating
+  anything.
 
 ## The release gate (`release.yml`, R147)
 
