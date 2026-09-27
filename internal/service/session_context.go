@@ -19,8 +19,9 @@ const (
 // deck-owned session-context layer: the nine DECK_SESSION_* variables
 // (including DECK_SESSION_ID) computed from session's own row facts and
 // the given launch kind, plus DECK_HOME and DECK_PROFILE (deck-owned per
-// §13.1/§3.4, from the service's own DeckHome/Profile, neither a row
-// column). DECK_PROFILE is always exported, `default` included (§3.4,
+// §13.1/§3.4, from the service's own DataRoot/Profile, neither a row
+// column; DECK_HOME is the data root, never a named profile's own
+// profiles/<name>/ directory, so the pair resolves back to this profile). DECK_PROFILE is always exported, `default` included (§3.4,
 // §6.1's own table): an empty s.Profile -- a zero-value Service a fixture
 // never set it on -- reads back as config.DefaultProfile here, exactly as
 // config.ResolveProfileName itself never returns "" to a real caller.
@@ -46,6 +47,10 @@ func (s Service) sessionContextEnv(session store.Session, launchKind string) map
 	if profile == "" {
 		profile = config.DefaultProfile
 	}
+	dataRoot := s.DataRoot
+	if dataRoot == "" {
+		dataRoot = s.DeckHome
+	}
 	return map[string]string{
 		"DECK_SESSION_ID":              session.ID,
 		"DECK_SESSION_NAME":            session.Name,
@@ -56,7 +61,7 @@ func (s Service) sessionContextEnv(session store.Session, launchKind string) map
 		"DECK_SESSION_PROFILE":         session.PermissionProfile,
 		"DECK_SESSION_CONVERSATION_ID": session.ConversationID,
 		"DECK_SESSION_LAUNCH_KIND":     launchKind,
-		"DECK_HOME":                    s.DeckHome,
+		"DECK_HOME":                    dataRoot,
 		"DECK_PROFILE":                 profile,
 	}
 }

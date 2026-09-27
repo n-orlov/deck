@@ -81,6 +81,13 @@ type Service struct {
 	// launch arguments or session environment.
 	DeckExecutable string
 	DeckHome       string
+	// DataRoot is the data root every profile nests under
+	// (config.Settings.DataRoot): the value a pane's DECK_HOME carries
+	// (SPEC §6.1), so _hook resolving DECK_PROFILE beneath it reaches this
+	// profile's own database. DeckHome stays this profile's own root
+	// (captures, history). Empty -- a fixture that never set it -- falls
+	// back to DeckHome, which is the same value for the default profile.
+	DataRoot string
 	// Profile is the resolved profile name (SPEC §3.4, config.Settings'
 	// own same-named field) this Service instance is running under --
 	// DefaultProfile ("default") for the flat, unnamed layout, or the

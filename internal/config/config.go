@@ -46,6 +46,11 @@ type Paths struct {
 // Settings contains the supported determinism and polling controls.
 type Settings struct {
 	Paths Paths
+	// DataRoot is the data root every profile nests under (see DataRoot):
+	// equal to Paths.Home for the default profile, its grandparent
+	// ($root/profiles/<name> -> $root) for a named one. It is the value a
+	// launched pane's DECK_HOME carries (SPEC §6.1), never Paths.Home.
+	DataRoot string
 	// Profile is the resolved profile name this Load/LoadFrom(Profile) call
 	// selected (SPEC §3.4): DefaultProfile ("default") when nothing named
 	// another one, otherwise the positional/DECK_PROFILE name that won
@@ -233,6 +238,10 @@ func LoadFromProfile(getenv func(string) string, userHome func() (string, error)
 	if err != nil {
 		return Settings{}, err
 	}
+	dataRoot, err := DataRoot(getenv, userHome)
+	if err != nil {
+		return Settings{}, err
+	}
 	clock, err := NewClock(getenv("DECK_CLOCK"), getenv("DECK_CLOCK_STEP"))
 	if err != nil {
 		return Settings{}, err
@@ -354,7 +363,7 @@ func LoadFromProfile(getenv func(string) string, userHome func() (string, error)
 		envOverrides = nil
 	}
 	return Settings{
-		Paths: paths, Profile: profile, Socket: socket, Clock: clock, IDs: NewIDGenerator(getenv("DECK_ID_SEED")),
+		Paths: paths, DataRoot: dataRoot, Profile: profile, Socket: socket, Clock: clock, IDs: NewIDGenerator(getenv("DECK_ID_SEED")),
 		Reconcile: reconcile, Preview: preview, Undo: undo, DeleteGrace: deleteGrace, StaleAfter: fileCfg.StaleAfter, CaptureMinInterval: fileCfg.CaptureMinInterval, InteractiveMS: interactiveMS, InteractiveTransport: interactiveTransport,
 		ASCII: ascii, Animation: animation, Color: color, ColorDepth: colorDepth, AllowYolo: fileCfg.AllowYolo, YoloDefault: fileCfg.YoloDefault, Env: fileCfg.Env, Mouse: mouse,
 		DefaultGroupFirst:  fileCfg.DefaultGroupFirst,
@@ -448,11 +457,27 @@ func profileRoot(root, profile string) string {
 // KnownProfiles and CreateProfile all resolve a specific profile's own
 // directory beneath this same root.
 func ProfilesRoot(getenv func(string) string, userHome func() (string, error)) (string, error) {
+	root, err := DataRoot(getenv, userHome)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(root, "profiles"), nil
+}
+
+// DataRoot returns the data root every profile nests under (SPEC §3.4):
+// $DECK_HOME, or $XDG_DATA_HOME/deck -- the default profile's own data
+// directory, whichever profile the caller is launching. It is what a
+// pane's DECK_HOME names (SPEC §6.1: DECK_HOME and DECK_PROFILE "name the
+// data root and the profile a hook writes to"), so that _hook, resolving
+// DECK_PROFILE beneath it with this same resolver, lands on the very
+// profile directory that launched the pane rather than a
+// profiles/<name>/profiles/<name>/ nested one.
+func DataRoot(getenv func(string) string, userHome func() (string, error)) (string, error) {
 	defaultPaths, err := resolvePaths(getenv, userHome, DefaultProfile)
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(defaultPaths.DataDir, "profiles"), nil
+	return defaultPaths.DataDir, nil
 }
 
 // ProfileExists reports whether profile already has a directory under the
