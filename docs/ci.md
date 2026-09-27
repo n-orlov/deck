@@ -15,7 +15,7 @@ look at the Actions run itself, found by its head sha.
 | `suite` | self-hosted `[self-hosted, linux, x64, deck]`, `needs: lint` | Builds/refreshes the `deck-ci:local` image, runs `ci/run.sh ci/suite.sh` (the whole `go test -p=1 -count=1 ./...` matrix), and on `schedule`/`workflow_dispatch` also runs `ci/stability.sh 3` (three clean-state repetitions) with `-race` enabled. Writes the job summary and uploads raw results as a workflow artifact. |
 | `report (Allure)` | self-hosted, `needs: [lint, suite]` | Turns the JUnit `suite` produced into an Allure report, merges it into the persisted `gh-pages` site tree, uploads the rendered report as a workflow artifact, and stages the merged tree as a Pages artifact. Holds no `pages:`/`id-token:` permission -- it stages, it never deploys. |
 | `publish (Pages)` | `ubuntu-latest`, `needs: report` | Deploys the root-triggered (`push`/`schedule`/`workflow_dispatch`) Pages artifact. Holds `pages: write`/`id-token: write`. Gated to `push`/`schedule`/`workflow_dispatch` only -- never `pull_request` (a PR-branch deploy is rejected server-side by the repo's `github-pages` environment's branch policy regardless; see "Publishing a PR's own report" below for how a PR's own report still gets published). |
-| `pr-comment` | `ubuntu-latest`, `needs: report` | Creates or updates one PR comment (keyed on an HTML marker) carrying the PR's own `/pr/<n>/` Allure link. Only for `pull_request` events whose head repo is this repository. |
+| `pr-comment` | `ubuntu-latest`, `needs: report` | Runs `go run ./ci/prcomment`, which pages through every existing PR comment and creates or updates the one comment (keyed on an HTML marker) carrying the PR's own `/pr/<n>/` Allure link and its head sha. Only for `pull_request` events whose head repo is this repository. |
 | `notify` | self-hosted, `needs: [lint, suite]` | Posts exactly one message to the Telegram notifier when `lint` or `suite` failed/was cancelled, and only for `push` to `main`, `schedule`, or `workflow_dispatch` (never for a PR). |
 
 `release.yml` adds one more gate, described under "The release gate" below.
@@ -113,6 +113,17 @@ test that fails twice in a row fails the check.
   `pull_request` run instead publishes under `/pr/<number>/`, with no shared
   history, and gets one PR comment (created once, then updated in place)
   carrying that link.
+- The PR comment itself is created/updated by `go run ./ci/prcomment`
+  (`ci/prcomment/main.go`), not an inline `actions/github-script` step: it
+  pages through *every* existing issue comment on the PR (`per_page=100`,
+  following the `Link: rel="next"` header, the same pattern
+  `ci/releasegate` uses for check-runs/actions-runs) before deciding
+  whether to update the first comment whose body carries the
+  `<!-- deck-allure-report -->` marker or create a fresh one when no page
+  holds it. A single-page lookup (GitHub's own default `per_page` is 30)
+  would stop seeing an existing marker comment once a PR accumulated
+  enough other comments, and would then append a duplicate on every
+  subsequent run instead of updating the one it already posted.
 - History and the accumulated multi-report tree live on a `gh-pages` branch,
   which the `report` job reads back (for history) and writes forward (the
   merged tree) on every run. This is a plain data branch this workflow reads

@@ -351,38 +351,36 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
+      contents: read
       pull-requests: write
     steps:
-      - name: Create or update the PR's Allure link comment
-        uses: actions/github-script@v7
-        env:
-          REPORT_LINK: ${{ needs.report.outputs.link }}
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
         with:
-          script: |
-            const marker = "<!-- deck-allure-report -->";
-            const link = process.env.REPORT_LINK;
-            const body = `${marker}\nAllure report for this PR: ${link}`;
-            const { data: comments } = await github.rest.issues.listComments({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
-            });
-            const existing = comments.find((c) => c.body && c.body.includes(marker));
-            if (existing) {
-              await github.rest.issues.updateComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                comment_id: existing.id,
-                body,
-              });
-            } else {
-              await github.rest.issues.createComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: context.issue.number,
-                body,
-              });
-            }
+          go-version-file: go.mod
+
+      # R146 (review finding B2): the previous inline actions/github-script
+      # step called the octokit issue-comments "list" method with no
+      # pagination arguments, which only ever returns page one (default
+      # per_page=30) -- once a PR held more ordinary comments than that, or
+      # the marker comment itself ended up beyond whatever page one held,
+      # every run appended a fresh marker comment instead of updating the
+      # existing one in place. ci/prcomment pages through every comment
+      # (per_page=100, following the Link: rel="next" header, the same
+      # pattern ci/releasegate already uses for check-runs/actions-runs)
+      # before deciding to create or update. See ci/prcomment/main.go.
+      - name: Create or update the PR's Allure link comment
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          go run ./ci/prcomment \
+            -repo "${{ github.repository }}" \
+            -pr "${{ github.event.pull_request.number }}" \
+            -sha "${{ github.event.pull_request.head.sha }}" \
+            -link "${{ needs.report.outputs.link }}"
 
   # R145: a red main/nightly run POSTs exactly one message with the run URL.
   # This is its own job, not a step inside `suite`, because `suite` has
