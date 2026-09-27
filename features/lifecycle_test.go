@@ -371,6 +371,10 @@ func (h *ScenarioHarness) StartNamedClientForNewProfile(ctx context.Context, nam
 	if err != nil {
 		return nil, err
 	}
+	// The profile's derived socket is registered so Close kills and probes
+	// it like h.Socket: a scenario that creates a session on the new
+	// profile must never leave its server running.
+	h.extraSockets = append(h.extraSockets, "deck-"+profile)
 	h.clients = append(h.clients, client)
 	h.namedClients[name] = client
 	return client, nil

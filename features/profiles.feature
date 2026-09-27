@@ -8,6 +8,9 @@ Feature: Profiles: independent decks side by side (SPEC §3.4)
     When deck client "newprofile" is launched for the not-yet-existing profile "acme"
     Then deck client "newprofile" screen shows the creation prompt for profile "acme"
     When deck client "newprofile" answers the creation prompt with "y"
-    Then deck client "newprofile" screen contains "socket: deck-acme"
+    Then deck client "newprofile" screen contains "profile: acme"
+    When deck client "newprofile" creates shell session "acme-first"
+    Then deck client "newprofile" screen contains "acme-first"
+    And the profile "acme" session "acme-first" is a live tmux session on socket "deck-acme"
     And the profile "acme" data and log directories exist under the scenario's data root
     And deck client "newprofile" exits cleanly

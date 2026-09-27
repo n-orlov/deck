@@ -13,9 +13,11 @@ import (
 // registerProfileCreationSteps wires SPEC §3.4's lazy profile-creation
 // scenario (task 011, R153): launching deck for a not-yet-existing but
 // validly named profile over a real pty, answering its terminal creation
-// prompt, and proving both the created profile's own derived socket (via
-// the released binary's own sidebar rendering -- never a raw tmux
-// invocation against it) and its on-disk directories.
+// prompt, and proving the created profile's header, its own derived socket
+// and its on-disk directories. The socket is proven by a session created
+// through the released binary landing live on tmux -L deck-<name>, not by
+// the header: SPEC §3.4 elides the header's socket half first when the
+// sidebar is too narrow, as it is at this harness's default width.
 func registerProfileCreationSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^deck client "([^"]+)" is launched for the not-yet-existing profile "([^"]+)"$`, launchClientForNewProfile)
 	sc.Step(`^deck client "([^"]+)" screen shows the creation prompt for profile "([^"]+)"$`, clientShowsCreationPrompt)
