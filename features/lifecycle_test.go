@@ -314,6 +314,44 @@ func (h *ScenarioHarness) StartClientWithSize(ctx context.Context, cols, rows ui
 	return client, nil
 }
 
+// StartNamedClientForNewProfile starts a client for profile, a valid but
+// not-yet-existing name (task 011, R153, SPEC §3.4): unlike every other
+// starter it deliberately does NOT let h.Environment's own
+// DECK_TMUX_SOCKET override apply, since the whole point of this scenario
+// is proving what config.go itself derives from the positional profile
+// argument -- socket "deck-<profile>" -- rather than the harness's usual
+// per-scenario socket isolation. Setting DECK_TMUX_SOCKET to the empty
+// string (rather than simply never adding it) is what actually clears the
+// override: os/exec keeps only the last value for a duplicate key, and an
+// explicit empty value is indistinguishable from unset to config.go's
+// getenv wrapper, so the resolver falls through to its own
+// "deck-"+profile derivation exactly as it would with the variable never
+// set at all. This never touches DECK_HOME: the profile still nests under
+// this scenario's own temp data root at profiles/<profile>/, per §3.4's
+// directory layout table, so teardown's removal of h.Home still takes it
+// with everything else. It is registered under name like every other
+// named client, so the generic "deck client \"<name>\" ..." steps work on
+// it unchanged.
+func (h *ScenarioHarness) StartNamedClientForNewProfile(ctx context.Context, name, profile string) (*ScreenDriver, error) {
+	if h.Binary == "" {
+		return nil, errors.New("scenario deck binary is required")
+	}
+	if name == "" {
+		return nil, errors.New("client name is required")
+	}
+	if _, exists := h.namedClients[name]; exists {
+		return nil, fmt.Errorf("deck client %q is already running", name)
+	}
+	env := append(h.Environment(), "DECK_TMUX_SOCKET=")
+	client, err := StartScreenDriverWithArgs(ctx, h.Binary, env, []string{profile}, terminalColumns, terminalRows)
+	if err != nil {
+		return nil, err
+	}
+	h.clients = append(h.clients, client)
+	h.namedClients[name] = client
+	return client, nil
+}
+
 // StartClientInDir starts a client with the released binary's own process
 // working directory pinned to dir, so a scenario can assert exactly what
 // deck prefills its create modal's cwd field with when it started (task
