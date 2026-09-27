@@ -4531,7 +4531,20 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		// clicks).
 		if m.interactive {
 			if msg.Button == tea.MouseButtonWheelUp || msg.Button == tea.MouseButtonWheelDown {
-				if hit := m.hitTest(msg.X, msg.Y); hit.panel == hitPanelPreview {
+				// R149/GH #47: a wheel over the sidebar while interactive does
+				// exactly what list mode's own scrollSidebar (mouse.go:208)
+				// does -- move the sidebar viewport and arm
+				// m.sidebarScrollDrifted, never the selection, the interactive
+				// target or the grid. A wheel over the preview still scrolls
+				// the interactive scrollback exactly as before.
+				switch hit := m.hitTest(msg.X, msg.Y); hit.panel {
+				case hitPanelSidebar:
+					delta := 1
+					if msg.Button == tea.MouseButtonWheelUp {
+						delta = -1
+					}
+					return m.scrollSidebar(msg, delta), nil
+				case hitPanelPreview:
 					delta := interactiveWheelStepLines
 					if msg.Button == tea.MouseButtonWheelDown {
 						delta = -delta
