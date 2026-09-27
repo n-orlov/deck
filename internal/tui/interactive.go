@@ -438,6 +438,17 @@ func (m Model) exitInteractive() (tea.Model, tea.Cmd) {
 	if !m.interactive {
 		return m, nil
 	}
+	// R149/GH #47: leaving interactive mode returns keyboard focus to the
+	// sidebar's own selection, so a wheel drift left over the sidebar
+	// (m.sidebarScrollDrifted) is ended here too, through the same follow
+	// guardSessionScopedKey and updateInteractive's own forwarding branches
+	// use (followSelectionViewport; no second implementation) -- the list
+	// view Ctrl+Q/the empty-sidebar click return to must already show the
+	// selected row, not a viewport left wherever the wheel last drifted it.
+	if m.sidebarScrollDrifted {
+		m.followSelectionViewport()
+		m.sidebarScrollDrifted = false
+	}
 	m.teardownInteractive(context.Background())
 	m.interactive = false
 	m.interactiveWindowTarget = ""
@@ -498,11 +509,29 @@ func (m Model) updateInteractive(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		// interactiveAltNamedKeys documents) writes no bytes at all and
 		// must leave a scrolled-back view exactly where it was, not snap
 		// it to the bottom for a keystroke nobody's pane ever saw.
+		//
+		// R149/GH #47: for the exact same reason, a wheel drift over the
+		// sidebar (m.sidebarScrollDrifted, armed by scrollSidebar while
+		// interactive) is only ended on a press this helper actually
+		// agrees to forward -- through the SAME follow
+		// guardSessionScopedKey already uses (followSelectionViewport,
+		// session_scoped_guard.go; no second implementation here), so the
+		// selected row is on screen again by the time the byte reaches the
+		// dispatcher on this same press. A key neither helper recognises
+		// forwards nothing and must leave the drift exactly where it was.
+		if m.sidebarScrollDrifted {
+			m.followSelectionViewport()
+			m.sidebarScrollDrifted = false
+		}
 		m.setInteractiveScrollOffset(0)
 		_ = m.interactiveDispatcher.SendNamedKey(ctx, named)
 		return m, nil
 	}
 	if payload, ok := interactiveLiteralPayload(msg); ok {
+		if m.sidebarScrollDrifted {
+			m.followSelectionViewport()
+			m.sidebarScrollDrifted = false
+		}
 		m.setInteractiveScrollOffset(0)
 		_ = interactive.SendKeyRun(ctx, m.interactiveDispatcher, payload)
 	}
