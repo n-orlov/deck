@@ -5,7 +5,8 @@ conversations, an attention-sorted list, and N concurrent clients — on one hos
 tmux as the only runtime dependency.
 
 Interaction model: **`deck` is a TUI. Every user action happens in the UI.** There is no
-user-facing command line.
+user-facing command line: the only arguments choose *which* deck opens — `deck [<profile>]`
+(§3.4) — plus `--profiles` and `--version`, and none of them performs an action.
 
 **deck is the primary way to control a session; direct `tmux` is the fallback for the awkward
 cases.** Where deck's own view and a bare `tmux attach` elsewhere want different things from
@@ -63,8 +64,8 @@ worktree per task. What's actually needed is three things:
 Git worktrees, branches, PRs, CI · web UI / HTTP server / PWA / tunnels · Docker or
 sandboxing · ACP or any structured-render protocol · plugins · **a theme *engine***
 (themes are colour-only data files, and a theme can change nothing but colour — §11.6) · **a
-user-facing CLI or scripting surface** · **multi-host / remote sessions** · declarative
-config files describing the session set · multiple windows or a shell drawer per session
+user-facing CLI or scripting surface** (choosing a profile at launch, §3.4, is not one) ·
+**multi-host / remote sessions** · declarative config files describing the session set · multiple windows or a shell drawer per session
 (one agent or shell per session, full stop) · orchestration, task queues, kanban,
 auto-approval · env profiles or secret-manager integrations · auto-restart on crash ·
 idle reaping or any timer that stops a running session · **inbound remote control**
@@ -100,6 +101,8 @@ idle reaping or any timer that stops a running session · **inbound remote contr
   `cmd/fake-*` agent binaries. The harness drives the real `deck` binary (§13).
 - Paths: XDG with fallbacks — `$XDG_DATA_HOME/deck/` (default `~/.local/share/deck/`),
   `$XDG_CONFIG_HOME/deck/config.toml`, `$XDG_STATE_HOME/deck/log`. `state.db` is `0600`.
+  These are the **default profile's** paths; a named profile nests the same three under
+  `profiles/<name>/` (§3.4).
 
 ```
 cmd/deck/main.go          TUI entrypoint; hidden internal verbs (§3.1)
@@ -176,7 +179,8 @@ undocumented in the UI, excluded from help, and prefixed `_`:
 
 ### 3.2 tmux contract
 
-Sessions live on a dedicated socket, `tmux -L deck`, never the default one.
+Sessions live on a dedicated socket, `tmux -L deck`, never the default one. A named
+profile's socket is `deck-<name>` (§3.4); everything below applies to it unchanged.
 
 - The user's interactive tmux is untouchable; `deck` can neither clobber it nor be
   clobbered by it. `tmux -L deck ls` is the escape hatch if the TUI breaks — surfaced in
@@ -258,6 +262,82 @@ leaves the window at the size the attaching client had.
 
 Nested tmux (running the TUI inside another tmux) is out of scope for v1: detect `$TMUX`,
 warn, and attach with `TMUX` unset.
+
+### 3.4 Profiles: independent decks side by side
+
+A **profile** is a whole, independent deck — its own config, state, log and tmux socket —
+so that work and home, or two organisations, never share a session list. (It is unrelated to
+§5's *permission* profiles; the word is qualified wherever the two could be confused.)
+
+- **Selection is the only argument.** `deck` and `deck default` open the default profile;
+  `deck work` opens `work`; `DECK_PROFILE=work deck` does the same. Precedence: positional
+  argument, then `DECK_PROFILE`, then `default`; an empty `DECK_PROFILE` is unset. At most one
+  positional argument (`deck work home` is an error), and flags are recognised before it, so an
+  unknown `-x` is `error: unknown flag -x`, never a profile name. `--version` and the hidden
+  verbs (§3.1) are unchanged. `deck --profiles` lists profiles and exits.
+- **A deck stays on the profile it launched on.** There is no switcher and no in-place
+  switch: changing profile is quitting and starting `deck <other>`, and decks on different
+  profiles run side by side in different terminals. Several clients on one profile behave
+  exactly as R4 says.
+- **The default profile is the flat layout and socket `deck`**, byte-for-byte: no migration,
+  no file move, no socket rename, and `profiles/default/` is never created. **A named profile
+  lives under `profiles/<name>/` and uses socket `deck-<name>`:**
+
+  | mode | default | `<name>` |
+  |---|---|---|
+  | XDG | `$XDG_CONFIG_HOME/deck/config.toml`, `$XDG_DATA_HOME/deck/state.db`, `$XDG_STATE_HOME/deck/log/` | the same three with `profiles/<name>/` inserted after `deck/` |
+  | `DECK_HOME` | `$DECK_HOME/{config.toml,state.db,log/,clock.now}` | `$DECK_HOME/profiles/<name>/{config.toml,state.db,log/,clock.now}` |
+
+  Everything that hangs off the data root — captures (§9.4), history, the shared frozen clock
+  (§13.1) — follows the profile's root, so two profiles never share a clock or a capture.
+  **User themes are shared**: every profile discovers them in the default profile's
+  `themes/` directory (§11.6), because a theme is colour data, not state. `DECK_TMUX_SOCKET`
+  still overrides the derived socket name and wins.
+- **Names match `^[a-z0-9][a-z0-9_-]{0,15}$`**: 1–16 characters, lowercase letters, digits, `-`
+  and `_`, starting with a letter or digit. The first-character rule excludes flags, `_`
+  internals, `.` and `..` in one rule; lowercase-only keeps `Work` and `work` from colliding on
+  a case-insensitive filesystem; 16 keeps `deck-<name>` far below the Unix socket path cap
+  under a long `TMUX_TMPDIR` and fits the sidebar header. `default` is valid and always means
+  the flat layout. **One validator** checks every entry point — the argument, `DECK_PROFILE`,
+  `_hook`'s pane environment, and the `--profiles` scan — before anything touches disk or
+  tmux, and its message quotes what was typed and names the rule broken
+  (`error: profile name "acme.prod" contains "."; allowed: a-z 0-9 - _`,
+  `error: profile names are lowercase; did you mean "work"?`, a length message naming the
+  length and the limit of 16, a first-character message; a `DECK_PROFILE` failure is prefixed
+  `DECK_PROFILE="…":`). An invalid name, an unknown flag or a second positional argument
+  exits **2**.
+- **Profiles are created lazily, behind a typo guard.** Launch order is validate → confirm if
+  unknown → create → launch. An unknown valid name asks once on the terminal —
+  `deck: no profile "wrok" yet (known: default, work). Create it? [y/N]` — and only `y`
+  creates it; anything else exits 1 and creates nothing. **If stdin is not a terminal deck
+  refuses** with the same message, exit 1, and creates nothing. Creation copies the default
+  profile's `config.toml` once, if it has one, and the two files are independent from then on;
+  `state.db` and `log/` come from the normal first-launch path. **Whether a profile exists is
+  a directory scan** of the data root's `profiles/` (`$XDG_DATA_HOME/deck/profiles/`, or
+  `$DECK_HOME/profiles/`) — there is no registry to drift from the disk; creation makes the
+  profile's config, data and log directories together.
+- **Every pane carries `DECK_PROFILE`** (§6.1), `default` included, and `_hook` resolves its
+  paths from it with the same resolver the TUI uses, so a pane writes to the database of the
+  profile that created it for its whole life. A pane with no `DECK_PROFILE` resolves to
+  default. If the pane's `DECK_PROFILE` is invalid, or names a profile whose directory no
+  longer exists, `_hook` writes nothing, creates nothing, **never falls back to default's
+  database** (that would record one organisation's status in another's), prints one line on
+  stderr naming the pane and the profile, and exits **exactly 1** — never 2, which several
+  Claude Code hook events read as "block this action".
+- **`deck --profiles`** prints one line per profile, default first: name, socket, config and
+  data paths, and "last used" — the mtime of a `last_used` marker the TUI touches in the
+  profile's data root at launch, default included (a directory's own mtime moves with WAL
+  checkpoints and log rotation). It never opens a `state.db`. A directory under `profiles/` whose name fails
+  validation is listed flagged `(invalid name: not selectable)`, and the exit code is still 0.
+- **A hard wall.** A profile never reads another profile's `state.db`: no cross-profile
+  counts, no aggregate view. Settings (§11.5) always write the running profile's own
+  `config.toml`. **deck never deletes a profile** — it owns a socket that may hold live
+  agents; help gives the manual steps (`tmux -L deck-<name> kill-server`, then remove its
+  `profiles/<name>/` directories).
+- **Display.** For a named profile the sidebar's header line reads
+  `profile: <name> · socket: deck-<name>` (the socket half elides first when it does not fit —
+  the name is what matters at a glance) and the terminal title is `deck: <name>`. For default
+  the line stays exactly `socket: deck` and deck sets no title, as it never has.
 
 ---
 
@@ -477,9 +557,11 @@ And it is a **launch-time snapshot, not a live view**: a rename (§9.2) or a pro
 reaches an already-running pane no more than an `env` edit does, which is precisely what §6.2
 is about.
 
-`DECK_HOME` and `DECK_LAUNCH_GENERATION` are not session properties and are unchanged — the
-first names the data root a hook writes to (§13.1), the second is the launch lease's own
-discriminator (§9.3) and is absent when a launch took no lease. Both are likewise deck-owned.
+`DECK_HOME`, `DECK_PROFILE` and `DECK_LAUNCH_GENERATION` are not session properties and are
+unchanged — the first two name the data root and the profile a hook writes to (§13.1, §3.4;
+`DECK_PROFILE` is always set, `default` included), the third is the launch lease's own
+discriminator (§9.3) and is absent when a launch took no lease. All three are likewise
+deck-owned.
 Adapter *instrumentation* (§8.1) stays what it is, the facts an adapter owns such as Claude's
 `--settings` hook config, and never restates a session fact: a name or a cwd duplicated per
 adapter is a name or a cwd that will drift.
@@ -573,7 +655,9 @@ Session `env` values are stored literally in `state.db`. Therefore:
 
 ### 6.5 The config file
 
-One file, `$XDG_CONFIG_HOME/deck/config.toml`, with a declared schema:
+One file per profile — `$XDG_CONFIG_HOME/deck/config.toml` for default,
+`$XDG_CONFIG_HOME/deck/profiles/<name>/config.toml` for a named one (§3.4) — with a declared
+schema:
 
 | where | keys |
 |---|---|
@@ -1160,7 +1244,8 @@ stopping the unit never sweeps the agents.
 `loginctl enable-linger`, the user manager and its whole cgroup go away at logout, taking
 the tmux server with it regardless of `KillMode`. So the health view treats linger as a
 *requirement* of the outlive-logout goal, not a hint: it reports linger state and prints the
-exact command. deck never runs privileged or account-level commands itself.
+exact command. deck never runs privileged or account-level commands itself. The unit is
+templated per profile (§3.4), one instance per socket.
 
 ---
 
@@ -1391,7 +1476,13 @@ hold them side by side.
   `a`, `F`, `x`, `dd`, `A`, `r`, `i`, a mark, a fold and the rest) first brings the selection
   back into view and then does exactly what it does today, so any confirmation it raises is
   raised over a list where its target is visible. Keys that name no selection (`?`, `q`,
-  `<`/`>`, settings) leave the drift alone.
+  `<`/`>`, settings) leave the drift alone. **While §11.9's interactive mode is active, input
+  to the live pane is acting:** a keystroke or paste that interactive mode forwards first
+  brings the selected row — the interactive target — back into view, then is forwarded
+  exactly as it would have been, on the same press, with nothing swallowed; `Ctrl+Q` leaving
+  interactive mode brings it back too. Reading is not acting: a wheel over the interactive
+  preview (its scrollback), a drag-to-copy, and a background reload, re-sort or re-group leave
+  the drift alone.
 - **A re-sort never moves the selection.** Selection follows the session, not the row index —
   whatever was selected before a reload, a re-group or a sort-order change is still selected
   after it, and the viewport scrolls to keep it visible rather than the selection sliding to
@@ -2070,8 +2161,12 @@ header and not the collapsed strip** (the blank below the last row) is `Ctrl+Q`:
 teardown, restore and release, with the selection left where it is; in list mode that space
 still does nothing. **A drag is the exception**,
 because selecting text is reading rather than acting: it takes no focus, changes no status and
-moves no selection in the list. **While §11.9's interactive mode is active the wheel scrolls
-the grid's own scrollback**, which is the one viewport that does exist; a click over the
+moves no selection in the list. **While §11.9's interactive mode is active, the panel under the
+pointer decides what the wheel scrolls:** over the preview it scrolls the grid's own
+scrollback, which is the one viewport that exists there; over the sidebar it scrolls the list
+exactly as it does in list mode — the viewport only, never the selection or the interactive
+target, without leaving interactive mode or resizing anything — and the resulting drift ends
+as §11 says, at the next input to the live pane; a click over the
 preview is the drag-to-copy gesture's press and never a navigation (a click over the
 *sidebar* does navigate and re-target, per the bullets below — the panel the gesture starts
 in is what decides). A drag that begins on the seam adjusts the seam and a drag that begins in the preview
@@ -2265,7 +2360,8 @@ must be restored afterwards.
 - **Input is dispatched on a verified identity**, re-resolved immediately before every send:
   socket path, server pid, `pane_id`, **`pane_pid`** and session name. `pane_id` alone is not
   sufficient — `respawn-pane` keeps it, and everything else tmux reports, unchanged.
-- **The grid keeps its own bounded scrollback, and the wheel scrolls it.** This is the only
+- **The grid keeps its own bounded scrollback, and the wheel over the preview scrolls it**
+  (over the sidebar the wheel scrolls the list, §11.8). This is the only
   way to scroll a full-screen agent: the alternate screen has no tmux history, which is why
   tmux's own wheel binding declines to enter copy-mode for it.
 - **The one-off entry seed reaches back into the pane's own tmux scrollback**, so a session
@@ -2381,8 +2477,8 @@ listed here rather than left to a test package:
 
 | control | mechanism | why |
 |---|---|---|
-| **State isolation** | `DECK_HOME` overrides the data/config/state root (XDG resolution applies only when unset). | Each scenario gets a pristine root; parallel scenarios never collide. |
-| **tmux isolation** | `DECK_TMUX_SOCKET` overrides the socket name (default `deck`). | Scenarios run concurrently against private servers; teardown kills exactly one. |
+| **State isolation** | `DECK_HOME` overrides the data/config/state root (XDG resolution applies only when unset); a named profile (§3.4) nests under `$DECK_HOME/profiles/<name>/`. | Each scenario gets a pristine root; parallel scenarios never collide. |
+| **tmux isolation** | `DECK_TMUX_SOCKET` overrides the socket name (default `deck`, or `deck-<name>` for a named profile, §3.4). | Scenarios run concurrently against private servers; teardown kills exactly one. |
 | **Frozen / stepped clock** | `DECK_CLOCK=<rfc3339>` pins wall-clock now; `DECK_CLOCK_STEP` advances it on demand. **Wall clock only — durations, timeouts and budgets always use a monotonic clock and are never frozen**, or the §13.5 budget assertions would all measure zero. | Relative times ("2m", "31m") and quiet-hours windows become assertable without making elapsed time unmeasurable. |
 | **Deterministic rendering** | `NO_COLOR`, `DECK_ASCII=1` (no nerd glyphs), `DECK_ANIM=0` (no spinner frames), fixed `COLUMNS`×`LINES`. | Screen text is byte-stable, so golden frames are meaningful. |
 | **Explicit colour override** | `DECK_COLOR` forces colour on or off as a boolean, overriding both `NO_COLOR` and terminal detection. | `NO_COLOR` can only ever *disable*; a test that needs colour deliberately on — or a terminal deck mis-detects — has no other lever. |
