@@ -791,10 +791,14 @@ func TestOldHolderResultCannotDismissNewRefusal(t *testing.T) {
 }
 
 // TestLaterHolderRecheckStillClearsRefusal proves the fix does not also
-// break the ordinary recovery path: a genuinely LATER holder-recheck --
-// issued after the fresh refusal, once the holder has actually left, with
-// no superseding refusal in between -- must still clear the banner, for
-// both real contention kinds.
+// break the ordinary recovery path AFTER a superseding refusal (review B1,
+// task 001, R143/R148, SPEC §11.9): the first refusal's held probe observes
+// the holder gone, the holder is reinstated, a fresh Enter issues a NEW
+// refusal of the same kind for the same session, and the old reply is
+// correctly ignored -- then the holder genuinely leaves again, and a
+// subsequent previewTick's own holder-recheck (stamped with the FRESH
+// refusal's generation) must still clear the banner, for both real
+// contention kinds.
 func TestLaterHolderRecheckStillClearsRefusal(t *testing.T) {
 	t.Run("attached", func(t *testing.T) {
 		socket := selectionTestSocket("laterholderatt")
@@ -820,13 +824,54 @@ func TestLaterHolderRecheckStillClearsRefusal(t *testing.T) {
 		if !m.entryRefusal.active || m.entryRefusal.kind != entryRefusalAttachedElsewhere {
 			t.Fatalf("fixture: Enter against a real attached holder = %+v", m.entryRefusal)
 		}
+		oldGeneration := m.entryRefusal.generation
 
+		var heldCmd tea.Cmd
+		m, heldCmd = extractHolderRecheckCmd(t, m)
 		detach()
 		waitForSessionAttachedCountForce(t, client, windowTarget, 0)
+		oldMsg, ok := heldCmd().(entryRefusalHolderRecheckDone)
+		if !ok || !oldMsg.reasonGone {
+			t.Fatalf("fixture: held probe run while the holder was gone = %+v (ok=%v), want reasonGone=true", oldMsg, ok)
+		}
 
-		m = runOnePreviewTick(t, m)
+		// The holder is reinstated and a fresh Enter supersedes the first
+		// refusal with a new one of the same kind.
+		reattach := attachDetachablePTY(t, socket, windowTarget)
+		waitForSessionAttachedCountForce(t, client, windowTarget, 1)
+		next, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+		m = next.(Model)
+		if !m.entryRefusal.active || m.entryRefusal.kind != entryRefusalAttachedElsewhere || m.entryRefusal.sessionID != "sess-laterholder-1" {
+			t.Fatalf("fixture: fresh Enter against the reinstated holder = %+v, want a fresh active attached-elsewhere refusal", m.entryRefusal)
+		}
+		freshGeneration := m.entryRefusal.generation
+		if freshGeneration == oldGeneration {
+			t.Fatalf("fixture: the fresh refusal's generation (%d) did not advance past the old one (%d)", freshGeneration, oldGeneration)
+		}
+		next, _ = m.Update(oldMsg)
+		m = next.(Model)
+		if !m.entryRefusal.active {
+			t.Fatalf("fixture: the old reply cleared the fresh refusal: %+v", m.entryRefusal)
+		}
+
+		// Now the holder genuinely leaves again; the next tick's OWN
+		// recheck must clear the fresh refusal.
+		reattach()
+		waitForSessionAttachedCountForce(t, client, windowTarget, 0)
+
+		var laterCmd tea.Cmd
+		m, laterCmd = extractHolderRecheckCmd(t, m)
+		laterMsg, ok := laterCmd().(entryRefusalHolderRecheckDone)
+		if !ok || !laterMsg.reasonGone || laterMsg.sessionID != "sess-laterholder-1" || laterMsg.kind != entryRefusalAttachedElsewhere {
+			t.Fatalf("the later tick's own recheck = %+v (ok=%v), want reasonGone=true for sess-laterholder-1", laterMsg, ok)
+		}
+		if m.entryRefusal.generation != freshGeneration {
+			t.Fatalf("fixture: the refusal the later tick probed is generation %d, want the fresh refusal's %d", m.entryRefusal.generation, freshGeneration)
+		}
+		next, _ = m.Update(laterMsg)
+		m = next.(Model)
 		if m.entryRefusal.active {
-			t.Fatalf("a genuinely later tick's own holder-recheck did not clear the refusal: %+v", m.entryRefusal)
+			t.Fatalf("a genuinely later tick's own holder-recheck did not clear the fresh refusal: %+v", m.entryRefusal)
 		}
 		if _, ok := m.activeEntryRefusalForSelection(); ok {
 			t.Fatalf("banner still showing after the holder actually left and a later tick observed it")
@@ -846,8 +891,8 @@ func TestLaterHolderRecheckStillClearsRefusal(t *testing.T) {
 			t.Fatalf("SessionName: %v", err)
 		}
 
-		claim := "laterholder-claim:" + strconv.Itoa(os.Getpid())
-		setForeignOwnershipClaim(t, socket, windowTarget, claim)
+		claim1 := "laterholder-claim-1:" + strconv.Itoa(os.Getpid())
+		setForeignOwnershipClaim(t, socket, windowTarget, claim1)
 
 		m := New(nil, config.Settings{}, "")
 		m.width, m.height = 100, 30
@@ -861,12 +906,52 @@ func TestLaterHolderRecheckStillClearsRefusal(t *testing.T) {
 		if !m.entryRefusal.active || m.entryRefusal.kind != entryRefusalOwnedElsewhere {
 			t.Fatalf("fixture: Enter against a real live ownership claim = %+v", m.entryRefusal)
 		}
+		oldGeneration := m.entryRefusal.generation
 
+		var heldCmd tea.Cmd
+		m, heldCmd = extractHolderRecheckCmd(t, m)
+		unsetForeignOwnershipClaim(t, socket, windowTarget)
+		oldMsg, ok := heldCmd().(entryRefusalHolderRecheckDone)
+		if !ok || !oldMsg.reasonGone {
+			t.Fatalf("fixture: held probe run while the claim was unset = %+v (ok=%v), want reasonGone=true", oldMsg, ok)
+		}
+
+		// The claim is reinstated and a fresh Enter supersedes the first
+		// refusal with a new one of the same kind.
+		claim2 := "laterholder-claim-2:" + strconv.Itoa(os.Getpid())
+		setForeignOwnershipClaim(t, socket, windowTarget, claim2)
+		next, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+		m = next.(Model)
+		if !m.entryRefusal.active || m.entryRefusal.kind != entryRefusalOwnedElsewhere || m.entryRefusal.sessionID != "sess-laterholder-2" {
+			t.Fatalf("fixture: fresh Enter against the reinstated claim = %+v, want a fresh active owned-elsewhere refusal", m.entryRefusal)
+		}
+		freshGeneration := m.entryRefusal.generation
+		if freshGeneration == oldGeneration {
+			t.Fatalf("fixture: the fresh refusal's generation (%d) did not advance past the old one (%d)", freshGeneration, oldGeneration)
+		}
+		next, _ = m.Update(oldMsg)
+		m = next.(Model)
+		if !m.entryRefusal.active {
+			t.Fatalf("fixture: the old reply cleared the fresh refusal: %+v", m.entryRefusal)
+		}
+
+		// Now the claim is genuinely released again; the next tick's OWN
+		// recheck must clear the fresh refusal.
 		unsetForeignOwnershipClaim(t, socket, windowTarget)
 
-		m = runOnePreviewTick(t, m)
+		var laterCmd tea.Cmd
+		m, laterCmd = extractHolderRecheckCmd(t, m)
+		laterMsg, ok := laterCmd().(entryRefusalHolderRecheckDone)
+		if !ok || !laterMsg.reasonGone || laterMsg.sessionID != "sess-laterholder-2" || laterMsg.kind != entryRefusalOwnedElsewhere {
+			t.Fatalf("the later tick's own recheck = %+v (ok=%v), want reasonGone=true for sess-laterholder-2", laterMsg, ok)
+		}
+		if m.entryRefusal.generation != freshGeneration {
+			t.Fatalf("fixture: the refusal the later tick probed is generation %d, want the fresh refusal's %d", m.entryRefusal.generation, freshGeneration)
+		}
+		next, _ = m.Update(laterMsg)
+		m = next.(Model)
 		if m.entryRefusal.active {
-			t.Fatalf("a genuinely later tick's own holder-recheck did not clear the refusal: %+v", m.entryRefusal)
+			t.Fatalf("a genuinely later tick's own holder-recheck did not clear the fresh refusal: %+v", m.entryRefusal)
 		}
 		if _, ok := m.activeEntryRefusalForSelection(); ok {
 			t.Fatalf("banner still showing after the claim was actually released and a later tick observed it")
