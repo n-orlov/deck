@@ -2540,6 +2540,18 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			m.sessionsReloadNote = "Cannot read sessions: " + msg.err.Error()
 		} else {
 			m.sessionsReloadNote = ""
+			// cure-01-01-3 (R143/R148, SPEC §11.9): the pre-reload selected
+			// session identity, captured before m.baseSessions/m.sessions/
+			// m.selected are touched below by ANYTHING this branch does --
+			// the sort/resort, the preserve-by-id-then-clamp dance, the
+			// header promotion, and the newly-created-session intent below
+			// all move m.selected through this same reload, and
+			// clearEntryRefusalIfSelectedSessionChanged (entry_refusal.go)
+			// needs the BEFORE value to tell a genuine identity change
+			// (refused alpha's row now selecting freshly-created beta, or
+			// the selected row disappearing outright) apart from a resort
+			// that lands the SAME session at a new index or cursor.
+			prevSelectedSession, prevSelectedOK := m.selectedSession()
 			// SPEC requirements 28/29/30 (task 023's sort, task 024's
 			// grouping): every load renders in attention order, not
 			// store order, so the sidebar's group order itself follows
@@ -2725,6 +2737,22 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			// entryRefusalStopped kind -- read against the JUST-refreshed
 			// m.sessions above, not the pre-reload snapshot.
 			m.clearEntryRefusalIfSessionStarted()
+			// cure-01-01-3 (R143/R148, SPEC §11.9): every other lifetime edge
+			// this reload can cause -- the preserve-by-id dance landing on a
+			// DIFFERENT session (never possible by id, but the clamp-to-last
+			// fallback and the visible-stop normalization above can both
+			// change WHICH session ends up selected), the selected row
+			// disappearing outright (removed mid-refusal, restored later),
+			// and the newly-created-session intent (pendingSelectSessionID)
+			// landing on its own fresh row -- are all just "the selected
+			// session's identity differs from what it was before this
+			// reload" to clearEntryRefusalIfSelectedSessionChanged, compared
+			// against prevSelectedSession/prevSelectedOK captured at the top
+			// of this branch, before any of the above ran. A resort that
+			// preserves the SAME selected session (TestIndependentSameSession
+			// ResortKeepsRefusal) leaves this a no-op, exactly like
+			// setSelection's own c != m.selected guard.
+			m.clearEntryRefusalIfSelectedSessionChanged(prevSelectedSession.ID, prevSelectedOK)
 		}
 	case archivedSessionsLoaded:
 		// Task 123/I-10: refreshes the filter's archived-side search pool.
@@ -2744,6 +2772,15 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		// refresh is never a local creation) and no header ever gains a
 		// row from this path, so selectVisibleStopAfterReload's promotion
 		// branch is never armed (false).
+		//
+		// cure-01-01-3 (R143/R148, SPEC §11.9): prevSelectedSession/
+		// prevSelectedOK, captured here before anything below touches
+		// m.sessions/m.selected, is sessionsLoaded's own identical
+		// "before" snapshot for clearEntryRefusalIfSelectedSessionChanged
+		// -- an archived-list refresh is exactly as capable of moving the
+		// selection onto a different session (or off the selected row
+		// entirely) as an ordinary session-list refresh is.
+		prevSelectedSession, prevSelectedOK := m.selectedSession()
 		var selectedID string
 		selectedWasRow := false
 		if idx, ok := m.selected.SessionIndex(); ok {
@@ -2772,6 +2809,12 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		} else {
 			m.followSelectionViewport()
 		}
+		// cure-01-01-3 (R143/R148, SPEC §11.9): see sessionsLoaded's own
+		// identical call above -- an archived-list refresh clears a
+		// previous entry refusal exactly when the selected session's
+		// identity actually changed, and retains it when the same session
+		// stayed selected across the refresh.
+		m.clearEntryRefusalIfSelectedSessionChanged(prevSelectedSession.ID, prevSelectedOK)
 	case eventLogLoaded:
 		// R61 (steer 3e-001 §6.3): the ONE place loadEventLog's result is
 		// consumed. m.eventLogRows/m.eventLogErr are what eventLogBody

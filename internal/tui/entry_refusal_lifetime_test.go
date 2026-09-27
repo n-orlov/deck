@@ -231,3 +231,190 @@ func TestReviewFilteringToAnotherSessionDoesNotResurrectRefusal(t *testing.T) {
 		t.Fatalf("alpha's banner reappeared after clearing the filter, with no new entry attempt")
 	}
 }
+
+// TestRefusalDoesNotSurviveCreatedSelection is cure-01-01-3's (R143/R148,
+// SPEC §11.9) own regression for the create-selection lifetime edge: a
+// refusal set on alpha (Enter against a stopped session) must clear
+// PERMANENTLY the moment the newly-created beta is actually selected via
+// pendingSelectSessionID's own sessionsLoaded fulfillment -- and once
+// cleared, beta subsequently disappearing from the list (another client's
+// deletion) must never resurrect alpha's old banner, because that would
+// require a fresh entry attempt against alpha, not merely a reload.
+func TestRefusalDoesNotSurviveCreatedSelection(t *testing.T) {
+	m := New(nil, config.Settings{}, "")
+	m.width, m.height = 100, 30
+	m.tmuxClient = tmux.Client{Socket: "dummy"}
+	alpha := store.Session{ID: "alpha", Name: "alpha", Slug: "alpha", Status: "stopped"}
+	beta := store.Session{ID: "beta", Name: "beta", Slug: "beta", Status: "starting"}
+	m.sessions = []store.Session{alpha}
+	m.baseSessions = m.sessions
+	m.selected = rowCursor(0)
+
+	next, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = next.(Model)
+	if !m.entryRefusal.active || m.entryRefusal.sessionID != "alpha" {
+		t.Fatalf("fixture: Enter did not refuse stopped alpha: %+v", m.entryRefusal)
+	}
+
+	next, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("n")})
+	m = next.(Model)
+	if !m.creating {
+		t.Fatalf("fixture: n did not open the create dialog")
+	}
+
+	next, _ = m.Update(shellCreated{session: beta})
+	m = next.(Model)
+	if m.pendingSelectSessionID != "beta" {
+		t.Fatalf("fixture: shellCreated did not record beta as the pending selection intent: %q", m.pendingSelectSessionID)
+	}
+
+	next, _ = m.Update(sessionsLoaded{sessions: []store.Session{alpha, beta}})
+	m = next.(Model)
+	session, ok := m.selectedSession()
+	if !ok || session.ID != "beta" {
+		t.Fatalf("fixture: created beta was not selected after sessionsLoaded: (%+v, %v)", session, ok)
+	}
+	if m.entryRefusal.active {
+		t.Fatalf("selecting newly-created beta did not clear alpha's refusal: %+v", m.entryRefusal)
+	}
+
+	// Beta subsequently leaves the visible list (another client deletes it).
+	// The selection lands back on alpha's row, but alpha's refusal is gone
+	// for good -- no old banner without a fresh entry attempt.
+	next, _ = m.Update(sessionsLoaded{sessions: []store.Session{alpha}})
+	m = next.(Model)
+	if m.entryRefusal.active {
+		t.Fatalf("alpha's old refusal reappeared after beta left with no new entry attempt: %+v", m.entryRefusal)
+	}
+	if _, ok := m.activeEntryRefusalForSelection(); ok {
+		t.Fatalf("alpha's NOT ATTACHED banner resurrected after beta left the list, with no new entry attempt")
+	}
+}
+
+// TestRefusalDoesNotSurviveRemovedAndRestoredSelection is cure-01-01-3's own
+// regression for the disappearance lifetime edge: the selected row itself
+// (not a different session taking its place) vanishing from a reload must
+// clear its refusal permanently, so restoring the SAME session later never
+// resurrects the stale banner.
+func TestRefusalDoesNotSurviveRemovedAndRestoredSelection(t *testing.T) {
+	m := New(nil, config.Settings{}, "")
+	m.width, m.height = 100, 30
+	m.tmuxClient = tmux.Client{Socket: "dummy"}
+	alpha := store.Session{ID: "alpha", Name: "alpha", Slug: "alpha", Status: "stopped"}
+	m.sessions = []store.Session{alpha}
+	m.baseSessions = m.sessions
+	m.selected = rowCursor(0)
+
+	next, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = next.(Model)
+	if !m.entryRefusal.active {
+		t.Fatalf("fixture: Enter did not refuse alpha")
+	}
+
+	// Another client tombstones the only row.
+	next, _ = m.Update(sessionsLoaded{sessions: nil})
+	m = next.(Model)
+	if _, ok := m.selectedSession(); ok {
+		t.Fatalf("fixture: a session is still selected after the only row was removed")
+	}
+	if m.entryRefusal.active {
+		t.Fatalf("refusal survived the selected row's own removal: %+v", m.entryRefusal)
+	}
+
+	// The same session comes back (undo, or the tombstone itself expiring).
+	next, _ = m.Update(sessionsLoaded{sessions: []store.Session{alpha}})
+	m = next.(Model)
+	session, ok := m.selectedSession()
+	if !ok || session.ID != "alpha" {
+		t.Fatalf("fixture: alpha was not reselected after restoration: (%+v, %v)", session, ok)
+	}
+	if m.entryRefusal.active {
+		t.Fatalf("removed selection's refusal returned after restoration with no entry attempt: %+v", m.entryRefusal)
+	}
+	if _, ok := m.activeEntryRefusalForSelection(); ok {
+		t.Fatalf("alpha's NOT ATTACHED banner resurrected after restoration, with no new entry attempt")
+	}
+}
+
+// TestRefusalOnSameSelectedSessionSurvivesResort proves the identity check
+// (not merely a row-index check) in clearEntryRefusalIfSelectedSessionChanged:
+// a reload that reorders the sidebar but keeps the SAME session selected
+// (alpha, now at a different index because beta's status promoted it ahead
+// in attention order) must retain alpha's still-applicable refusal.
+func TestRefusalOnSameSelectedSessionSurvivesResort(t *testing.T) {
+	m := New(nil, config.Settings{}, "")
+	m.width, m.height = 100, 30
+	m.tmuxClient = tmux.Client{Socket: "dummy"}
+	alpha := store.Session{ID: "alpha", Name: "alpha", Slug: "alpha", Status: "stopped"}
+	beta := store.Session{ID: "beta", Name: "beta", Slug: "beta", Status: "stopped"}
+	m.sessions = []store.Session{alpha, beta}
+	m.baseSessions = m.sessions
+	m.selected = rowCursor(0)
+
+	next, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = next.(Model)
+	if !m.entryRefusal.active || m.entryRefusal.sessionID != "alpha" {
+		t.Fatalf("fixture: Enter did not refuse alpha: %+v", m.entryRefusal)
+	}
+
+	beta.Status = "waiting"
+	next, _ = m.Update(sessionsLoaded{sessions: []store.Session{beta, alpha}})
+	m = next.(Model)
+	session, ok := m.selectedSession()
+	if !ok || session.ID != "alpha" {
+		t.Fatalf("fixture: alpha was not retained as the selected session across the resort: (%+v, %v)", session, ok)
+	}
+	if !m.entryRefusal.active {
+		t.Fatalf("same selected session's still-applicable refusal was incorrectly cleared by a resort that kept it selected")
+	}
+	if _, ok := m.activeEntryRefusalForSelection(); !ok {
+		t.Fatalf("alpha's banner is not showing after a resort that kept alpha selected")
+	}
+}
+
+// TestRefusalOnRemovedArchivedSelectionDoesNotSurvive is cure-01-01-3's own
+// regression for the archived-list refresh half of the same lifetime rule:
+// an archivedSessionsLoaded reload that drops the selected session out of
+// the (archive-inclusive) filtered list must clear its refusal permanently,
+// exactly like an ordinary sessionsLoaded removal above.
+func TestRefusalOnRemovedArchivedSelectionDoesNotSurvive(t *testing.T) {
+	m := New(nil, config.Settings{}, "")
+	m.width, m.height = 100, 30
+	m.tmuxClient = tmux.Client{Socket: "dummy"}
+	// alpha is reachable ONLY through the archived pool (never in
+	// baseSessions), and a live filter query is what makes filteredSessions
+	// (filter.go) search that pool at all -- so an archivedSessionsLoaded
+	// reload that drops alpha out of msg.sessions is what actually removes
+	// it from m.sessions here, exactly the archive-side mirror of an
+	// ordinary sessionsLoaded removal.
+	alpha := store.Session{ID: "alpha", Name: "alpha", Slug: "alpha", Status: "stopped"}
+	m.baseSessions = nil
+	m.filterQuery = "alpha"
+	m.archivedSessions = []store.Session{alpha}
+	m.sessions = m.filteredSessions()
+	if len(m.sessions) != 1 || m.sessions[0].ID != "alpha" {
+		t.Fatalf("fixture: filteredSessions did not surface archived alpha: %+v", m.sessions)
+	}
+	m.selected = rowCursor(0)
+
+	next, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = next.(Model)
+	if !m.entryRefusal.active {
+		t.Fatalf("fixture: Enter did not refuse alpha")
+	}
+
+	next, _ = m.Update(archivedSessionsLoaded{sessions: nil})
+	m = next.(Model)
+	if _, ok := m.selectedSession(); ok {
+		t.Fatalf("fixture: alpha is still selected after the archived-list refresh dropped it")
+	}
+	if m.entryRefusal.active {
+		t.Fatalf("refusal survived an archived-list refresh that dropped the selected session: %+v", m.entryRefusal)
+	}
+
+	next, _ = m.Update(archivedSessionsLoaded{sessions: []store.Session{alpha}})
+	m = next.(Model)
+	if m.entryRefusal.active {
+		t.Fatalf("alpha's old refusal reappeared after an archived-list refresh restored it, with no new entry attempt")
+	}
+}
