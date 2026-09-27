@@ -244,6 +244,15 @@ type ScenarioHarness struct {
 	// kills and probes each one exactly like h.Socket itself, so a second
 	// profile's server can never outlive the scenario.
 	extraSockets []string
+
+	// defaultInstallHome is the temp $HOME features/profile_default_unchanged.feature
+	// (task 020, R156) resolves a real installation's own $HOME/XDG_* table
+	// against, set once by defaultInstallSeeded and reused by every later
+	// restart of that same scenario's client -- unlike every other scenario
+	// in this package, which points every client at h.Home through the
+	// DECK_HOME shortcut instead. It nests under h.Home, so Close's own
+	// teardown removes it with everything else.
+	defaultInstallHome string
 }
 
 var scenarioSequence atomic.Uint64
