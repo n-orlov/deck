@@ -295,3 +295,5 @@ documentation for the operator's own step. `GET
 `main` as of this writing; applying the command turns the first of those
 from a 404 ("Branch not protected") into the settings above, and never
 touches the second.
+
+<!-- ci-verify: throwaway edit for task 004 CI verification (branch deleted before task ends) -->
