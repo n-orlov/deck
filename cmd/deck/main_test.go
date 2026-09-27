@@ -404,8 +404,12 @@ func TestDeckBinaryEmptyHelpAndQuitThroughPTY(t *testing.T) {
 	// regression involved), so this is raised again to 300, re-measured at
 	// 273 total View() lines including the border (task 030; re-measurable
 	// the same way: render helpText at this width/height in internal/tui and
-	// count the View()'s lines).
-	terminal, err := pty.StartWithSize(cmd, &pty.Winsize{Rows: 300, Cols: 100})
+	// count the View()'s lines). Task 021 (R157) reconciled the ↵ entry and
+	// the "wheel over the sidebar" mouse row with SPEC's amended §11.8/
+	// §11.9 wheel text, adding 9 lines and pushing the body to 301 total
+	// View() lines at Cols: 100 -- re-measured the same way -- so this is
+	// raised again to 330 for headroom.
+	terminal, err := pty.StartWithSize(cmd, &pty.Winsize{Rows: 330, Cols: 100})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -516,6 +520,7 @@ func TestDeckBinaryEmptyHelpAndQuitThroughPTY(t *testing.T) {
 		"consumes its own scrollback faster than the same output would at",
 		"full width", "while interactive, a wheel notch or Shift+PgUp/PgDn",
 		"scrolls this bounded, deck-owned scrollback of the fitted view",
+		"a wheel notch over the sidebar instead", "without leaving interactive mode",
 		// Issue #29: the entry seed pulls the pane's own tmux history into
 		// that scrollback, so the help no longer disclaims it as "not the
 		// pane's own tmux scrollback". Pinning the honest clause here is
