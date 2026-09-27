@@ -27,6 +27,16 @@ func TestProfilesFlagListsDefaultFirstThenSortedAndExitsZero(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	// alpha has launched before: its last_used marker's mtime is what its
+	// "last used" field must report; zulu never has, so it reads "never".
+	used := time.Date(2026, 3, 4, 5, 6, 7, 0, time.UTC)
+	marker := filepath.Join(home, "profiles", "alpha", "last_used")
+	if err := os.WriteFile(marker, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(marker, used, used); err != nil {
+		t.Fatal(err)
+	}
 	code, stdout, stderr := runWithEnv(t, []string{"DECK_HOME=" + home}, "--profiles")
 	if code != 0 {
 		t.Fatalf("deck --profiles exit = %d, want 0 (stderr=%q)", code, stderr)
@@ -34,6 +44,16 @@ func TestProfilesFlagListsDefaultFirstThenSortedAndExitsZero(t *testing.T) {
 	lines := strings.Split(strings.TrimRight(stdout, "\n"), "\n")
 	if len(lines) != 3 {
 		t.Fatalf("deck --profiles printed %d lines, want 3:\n%s", len(lines), stdout)
+	}
+	if want := "last used: " + used.Local().Format(time.RFC3339); !strings.HasSuffix(lines[1], want) {
+		t.Fatalf("alpha line = %q, want it to end %q (the marker's mtime)", lines[1], want)
+	}
+	if !strings.HasSuffix(lines[2], "last used: never") {
+		t.Fatalf("zulu line = %q, want \"last used: never\" with no marker", lines[2])
+	}
+	alphaDir := filepath.Join(home, "profiles", "alpha")
+	if want := "config: " + filepath.Join(alphaDir, "config.toml") + "\tdata: " + alphaDir + "\t"; !strings.Contains(lines[1], want) {
+		t.Fatalf("alpha line = %q, want its own paths %q", lines[1], want)
 	}
 	if !strings.HasPrefix(lines[0], "default\t") {
 		t.Fatalf("first line = %q, want default listed first", lines[0])
@@ -68,11 +88,31 @@ func TestProfilesFlagFlagsInvalidDirectoryNameAndExitsZero(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("deck --profiles exit = %d, want 0 (stderr=%q)", code, stderr)
 	}
-	want := "Bad.Name (invalid name: not selectable)\n"
-	if !strings.Contains(stdout, want) {
-		t.Fatalf("stdout = %q, want it to contain %q", stdout, want)
+	lines := strings.Split(strings.TrimRight(stdout, "\n"), "\n")
+	if len(lines) != 3 {
+		t.Fatalf("deck --profiles printed %d lines, want 3 (default, the flagged dir, ok):\n%s", len(lines), stdout)
 	}
-	if !strings.Contains(stdout, "ok\t") {
+	// Sorted by name: "Bad.Name" < "ok" byte-wise, so the flagged row is
+	// the second line, after default.
+	bad := lines[1]
+	badDir := filepath.Join(home, "profiles", "Bad.Name")
+	// The flagged row keeps SPEC §3.4's one-line shape -- name, socket,
+	// config and data paths, last used -- with the flag after the name.
+	for _, want := range []string{
+		"Bad.Name (invalid name: not selectable)\t",
+		"socket: deck-Bad.Name\t",
+		"config: " + filepath.Join(badDir, "config.toml") + "\t",
+		"data: " + badDir + "\t",
+		"last used: never",
+	} {
+		if !strings.Contains(bad, want) {
+			t.Fatalf("flagged row = %q, want it to contain %q", bad, want)
+		}
+	}
+	if !strings.HasPrefix(bad, "Bad.Name (invalid name: not selectable)\t") {
+		t.Fatalf("flagged row = %q, want it to start with the name and its flag", bad)
+	}
+	if !strings.HasPrefix(lines[2], "ok\t") {
 		t.Fatalf("stdout = %q, want the valid sibling profile still listed", stdout)
 	}
 }
