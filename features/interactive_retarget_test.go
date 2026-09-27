@@ -166,38 +166,37 @@ func clientPreviewTopBorderContains(ctx context.Context, name, text string) erro
 }
 
 // previewTopBorderText isolates the preview panel's own top border text
-// from a full rendered frame, reusing layout_modes_test.go's shape-based
-// detection (detectLayoutMode/seamColumn) rather than importing
-// internal/tui, exactly as every other black-box step in this package
-// does. Side-by-side and collapsed modes share one top border row with
-// the sidebar (the seam's T-junction divides it); stacked mode draws the
-// preview as its own fully-bordered box below the sidebar's, so its top
-// border is a later, independent line.
+// from a full rendered frame, reusing mouse_bindings_test.go's own
+// previewRegion (the same shape-based detection every other black-box
+// step in this package shares, rather than importing internal/tui) for
+// its row/column bounds. Side-by-side and collapsed modes share one top
+// border row with the sidebar (the seam's T-junction divides it), so
+// previewRegion's rowStart is that shared row sliced from the seam
+// column on; stacked mode draws the preview as its own fully-bordered box
+// below the sidebar's, so previewRegion's rowStart is that LATER,
+// independent line -- this function used to scan for it directly (the
+// first "+"-prefixed line after row 0), which wrongly matched the
+// sidebar's own bottom border (also "+"-prefixed, with no title) one line
+// too early whenever that border was not itself the very first bordered
+// line in the frame; previewRegion's own two-border scan (task 314) does
+// not have that defect, so reusing it here fixes it rather than
+// duplicating it a second, still-buggy way.
 func previewTopBorderText(frame string) (string, error) {
-	mode, err := detectLayoutMode(frame)
-	if err != nil {
-		return "", err
-	}
 	lines := strings.Split(frame, "\n")
-	if mode == "stacked" {
-		for i := 1; i < len(lines); i++ {
-			trimmed := strings.TrimRight(lines[i], " ")
-			if strings.HasPrefix(trimmed, "+") || strings.HasPrefix(trimmed, "\u256d") {
-				return lines[i], nil
-			}
-		}
-		return "", fmt.Errorf("no second panel top border found in stacked frame:\n%s", frame)
-	}
-	col, err := seamColumn(frame)
+	rowStart, _, colStart, err := previewRegion(frame)
 	if err != nil {
 		return "", err
 	}
-	if len(lines) == 0 {
-		return "", fmt.Errorf("empty frame")
+	if rowStart >= len(lines) {
+		return "", fmt.Errorf("preview top border row %d out of range in frame:\n%s", rowStart, frame)
 	}
-	runes := []rune(lines[0])
-	if col >= len(runes) {
-		return "", fmt.Errorf("seam column %d out of range on top border line %q", col, lines[0])
+	line := lines[rowStart]
+	if colStart <= 0 {
+		return line, nil
 	}
-	return string(runes[col:]), nil
+	runes := []rune(line)
+	if colStart >= len(runes) {
+		return "", fmt.Errorf("preview column %d out of range on top border line %q", colStart, line)
+	}
+	return string(runes[colStart:]), nil
 }

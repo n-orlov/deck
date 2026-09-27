@@ -110,6 +110,14 @@ type ScenarioHarness struct {
 	// re-reading whatever value happens to be there now.
 	preResumeConversationIDs map[string]string
 
+	// previewContentSnapshots backs features/interactive_sidebar_wheel.feature
+	// (task 003, R149): a step captures the preview panel's own rendered
+	// text (previewRegion's slice of the frame, mouse_bindings_test.go) so
+	// a later step can assert a sidebar-only gesture (a wheel notch over
+	// the sidebar while interactive) never repainted the interactive grid
+	// at all.
+	previewContentSnapshots map[string]string
+
 	// codexPaneAnnouncements backs features/codex_hooks.feature's B3
 	// attribution check (task 008): a step captures a Codex pane's own
 	// authoritative SessionStart identity -- its session_id AND its

@@ -164,6 +164,7 @@ func initializeScenario(sc *godog.ScenarioContext) {
 	registerInteractiveRetargetSteps(sc)
 	registerInteractivePipeLeakSteps(sc)
 	registerInteractiveForceAttachSteps(sc)
+	registerInteractiveSidebarWheelFeatureSteps(sc)
 }
 
 // TestGodogFormatBuildsJUnitOnlyWhenTheEnvVarIsSet pins the option builder
