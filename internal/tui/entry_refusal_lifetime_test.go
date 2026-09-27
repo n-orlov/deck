@@ -2,11 +2,15 @@ package tui
 
 import (
 	"context"
+	"io"
+	"os"
 	"os/exec"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/creack/pty"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/n-orlov/deck/internal/config"
@@ -548,4 +552,328 @@ func TestRefusalOnRemovedArchivedSelectionDoesNotSurvive(t *testing.T) {
 	if m.entryRefusal.active {
 		t.Fatalf("alpha's old refusal reappeared after an archived-list refresh restored it, with no new entry attempt")
 	}
+}
+
+// attachDetachablePTY attaches a real tmux client to target through a pty,
+// exactly like force_enter_test.go's own attachForceEnterPTY, but returns a
+// detach func the caller can invoke MID-TEST -- rather than only at
+// t.Cleanup -- so a holder can genuinely leave and later be reinstated
+// within the same test. SessionAttachedCount's own liveness this file's
+// review-B1 tests below drive against is a real client attach/detach, not
+// a hand-set option.
+func attachDetachablePTY(t *testing.T, socket, target string) func() {
+	t.Helper()
+	ctx, cancel := context.WithCancel(context.Background())
+	cmd := exec.CommandContext(ctx, "tmux", "-L", socket, "attach-session", "-t", target)
+	cmd.Env = append(os.Environ(), "TERM=xterm-256color")
+	terminal, err := pty.StartWithSize(cmd, &pty.Winsize{Rows: 24, Cols: 80})
+	if err != nil {
+		t.Fatalf("attach %q through pty: %v", target, err)
+	}
+	go func() { _, _ = io.CopyBuffer(io.Discard, terminal, make([]byte, 4096)) }()
+	detached := false
+	detach := func() {
+		if detached {
+			return
+		}
+		detached = true
+		cancel()
+		_ = terminal.Close()
+	}
+	t.Cleanup(detach)
+	return detach
+}
+
+// setForeignOwnershipClaim/unsetForeignOwnershipClaim write and unset
+// tmux.OwnershipOption (@deck_isize_owner) directly against a real tmux
+// window, exactly like TestEnterInteractiveDrawsBannerForRealContentionHolders'
+// own "owned elsewhere" setup -- but exposed as two separate calls here so
+// a test can set the claim, release it, and set a fresh one again within
+// the same run.
+func setForeignOwnershipClaim(t *testing.T, socket, target, claim string) {
+	t.Helper()
+	if out, err := exec.Command("tmux", "-L", socket, "set-option", "-w", "-t", target, "@deck_isize_owner", claim).CombinedOutput(); err != nil {
+		t.Fatalf("tmux -L %s set-option -w -t %s @deck_isize_owner %s: %v: %s", socket, target, claim, err, out)
+	}
+}
+
+func unsetForeignOwnershipClaim(t *testing.T, socket, target string) {
+	t.Helper()
+	if out, err := exec.Command("tmux", "-L", socket, "set-option", "-w", "-u", "-t", target, "@deck_isize_owner").CombinedOutput(); err != nil {
+		t.Fatalf("tmux -L %s set-option -w -u -t %s @deck_isize_owner: %v: %s", socket, target, err, out)
+	}
+}
+
+// extractHolderRecheckCmd runs previewTick through the real Model.Update
+// (review B1, task 001, R143/R148) and returns, UNCALLED, the tea.Cmd
+// entryRefusalHolderCheck appended to that tick's own batch (tui.go's
+// previewTick case) -- so its actual tmux probe only runs once the caller
+// invokes the returned func, not at issue time. It relies on the fixture
+// guaranteeing capturePreview and previewFit both return nil this tick (no
+// m.previewCapture wired, and m.settings.PreviewFit left at its zero-value
+// false, exactly every caller below), so the batch holds exactly two
+// commands: the tick's own reschedule (index 0, called here only to
+// sanity-check its type) and the holder-recheck probe (index 1, returned
+// uncalled) -- entryRefusalHolderCheck's own guard (r.active and one of
+// the two contention kinds) is what puts a second command in the batch at
+// all.
+func extractHolderRecheckCmd(t *testing.T, m Model) (Model, tea.Cmd) {
+	t.Helper()
+	next, cmd := m.Update(previewTick(time.Now()))
+	m = next.(Model)
+	if cmd == nil {
+		t.Fatalf("previewTick returned no command at all -- fixture assumption (an active contention refusal) violated")
+	}
+	msg := cmd()
+	batch, ok := msg.(tea.BatchMsg)
+	if !ok {
+		t.Fatalf("previewTick's own command did not return a tea.BatchMsg: %T", msg)
+	}
+	if len(batch) != 2 {
+		t.Fatalf("previewTick's batch has %d commands, want exactly 2 (reschedule + holder-recheck) -- fixture assumption (no previewCapture, PreviewFit off) violated", len(batch))
+	}
+	if _, isTick := batch[0]().(previewTick); !isTick {
+		t.Fatalf("batch[0] is not the tick's own reschedule command")
+	}
+	return m, batch[1]
+}
+
+// TestOldHolderResultCannotDismissNewRefusal is review B1's own regression
+// (task 001, R143/R148, SPEC §11.9): entryRefusalHolderCheck's probe is
+// issued against ONE specific refusal instance, but a holder can leave and
+// come back -- producing a FRESH refusal of the exact same kind for the
+// exact same session -- before that old probe's own reasonGone reply ever
+// lands. sessionID+kind alone (the pre-fix guard) cannot tell the two
+// apart; only the generation stamped at issue time can. Both real
+// contention kinds (attached-elsewhere via a genuine pty attach/detach,
+// owned-elsewhere via a genuine @deck_isize_owner set/unset) are proved
+// against a real private tmux socket, driving the probe through the exact
+// tea.Cmd Model.Update(previewTick) itself returns -- never a bare call
+// into entryRefusalHolderCheck.
+func TestOldHolderResultCannotDismissNewRefusal(t *testing.T) {
+	t.Run("attached", func(t *testing.T) {
+		socket := selectionTestSocket("oldholderatt")
+		newQuietSelectionPane(t, socket, "deck_oldholderatt", 80, 24)
+		client := tmux.Client{Socket: socket}
+		windowTarget, err := tmux.SessionName("oldholderatt")
+		if err != nil {
+			t.Fatalf("SessionName: %v", err)
+		}
+
+		detach := attachDetachablePTY(t, socket, windowTarget)
+		waitForSessionAttachedCountForce(t, client, windowTarget, 1)
+
+		m := New(nil, config.Settings{}, "")
+		m.width, m.height = 100, 30
+		if _, height := m.previewContentSize(); height < interactiveMinInnerRows {
+			t.Fatalf("test assumption violated: preview content height %d is below the %d-row floor", height, interactiveMinInnerRows)
+		}
+		m.tmuxClient = client
+		m.sessions = []store.Session{{ID: "sess-oldholder-1", Name: "oldholderatt", Slug: "oldholderatt", Status: "waiting"}}
+		m.baseSessions = m.sessions
+		m.selected = rowCursor(0)
+
+		next, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+		m = next.(Model)
+		if !m.entryRefusal.active || m.entryRefusal.kind != entryRefusalAttachedElsewhere || m.entryRefusal.sessionID != "sess-oldholder-1" {
+			t.Fatalf("fixture: Enter against a real attached holder = %+v, want an active attached-elsewhere refusal", m.entryRefusal)
+		}
+		oldGeneration := m.entryRefusal.generation
+
+		var heldCmd tea.Cmd
+		m, heldCmd = extractHolderRecheckCmd(t, m)
+
+		// The holder leaves; run the HELD probe now, while it is genuinely
+		// gone, so its own reply's reasonGone is true -- but do not deliver
+		// it to Update yet.
+		detach()
+		waitForSessionAttachedCountForce(t, client, windowTarget, 0)
+		oldMsg, ok := heldCmd().(entryRefusalHolderRecheckDone)
+		if !ok || !oldMsg.reasonGone || oldMsg.sessionID != "sess-oldholder-1" || oldMsg.kind != entryRefusalAttachedElsewhere {
+			t.Fatalf("fixture: held probe run while the holder was gone = %+v (ok=%v), want reasonGone=true for sess-oldholder-1/attached-elsewhere", oldMsg, ok)
+		}
+
+		// The holder comes BACK before the old reply is ever delivered, and a
+		// fresh Enter against it issues a NEW refusal of the exact same kind
+		// for the exact same session.
+		reattach := attachDetachablePTY(t, socket, windowTarget)
+		defer reattach()
+		waitForSessionAttachedCountForce(t, client, windowTarget, 1)
+
+		next, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+		m = next.(Model)
+		if !m.entryRefusal.active || m.entryRefusal.kind != entryRefusalAttachedElsewhere || m.entryRefusal.sessionID != "sess-oldholder-1" {
+			t.Fatalf("fixture: fresh Enter against the reinstated holder = %+v, want a fresh active attached-elsewhere refusal", m.entryRefusal)
+		}
+		if m.entryRefusal.generation == oldGeneration {
+			t.Fatalf("fixture: the fresh refusal's generation (%d) did not advance past the old one (%d) -- the race this test exists to prove is not set up", m.entryRefusal.generation, oldGeneration)
+		}
+
+		// Deliver the OLD, pre-reinstatement reasonGone reply. It must not
+		// clear the newer, still-applicable refusal.
+		next, _ = m.Update(oldMsg)
+		m = next.(Model)
+		if !m.entryRefusal.active {
+			t.Fatalf("an old holder-recheck reply for a SUPERSEDED refusal instance cleared the current one: %+v", m.entryRefusal)
+		}
+		if _, ok := m.activeEntryRefusalForSelection(); !ok {
+			t.Fatalf("banner is not showing after the old reply was correctly ignored")
+		}
+		joined := drawnPreviewJoined(t, m)
+		if !strings.Contains(joined, "NOT ATTACHED") {
+			t.Fatalf("drawn preview does not contain NOT ATTACHED after the old reply was ignored:\n%s", joined)
+		}
+	})
+
+	t.Run("owned", func(t *testing.T) {
+		socket := selectionTestSocket("oldholderown")
+		newQuietSelectionPane(t, socket, "deck_oldholderown", 80, 24)
+		client := tmux.Client{Socket: socket}
+		windowTarget, err := tmux.SessionName("oldholderown")
+		if err != nil {
+			t.Fatalf("SessionName: %v", err)
+		}
+
+		claim1 := "oldholder-claim-1:" + strconv.Itoa(os.Getpid())
+		setForeignOwnershipClaim(t, socket, windowTarget, claim1)
+
+		m := New(nil, config.Settings{}, "")
+		m.width, m.height = 100, 30
+		if _, height := m.previewContentSize(); height < interactiveMinInnerRows {
+			t.Fatalf("test assumption violated: preview content height %d is below the %d-row floor", height, interactiveMinInnerRows)
+		}
+		m.tmuxClient = client
+		m.sessions = []store.Session{{ID: "sess-oldholder-2", Name: "oldholderown", Slug: "oldholderown", Status: "waiting"}}
+		m.baseSessions = m.sessions
+		m.selected = rowCursor(0)
+
+		next, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+		m = next.(Model)
+		if !m.entryRefusal.active || m.entryRefusal.kind != entryRefusalOwnedElsewhere || m.entryRefusal.sessionID != "sess-oldholder-2" {
+			t.Fatalf("fixture: Enter against a real live ownership claim = %+v, want an active owned-elsewhere refusal", m.entryRefusal)
+		}
+		oldGeneration := m.entryRefusal.generation
+
+		var heldCmd tea.Cmd
+		m, heldCmd = extractHolderRecheckCmd(t, m)
+
+		unsetForeignOwnershipClaim(t, socket, windowTarget)
+		oldMsg, ok := heldCmd().(entryRefusalHolderRecheckDone)
+		if !ok || !oldMsg.reasonGone || oldMsg.sessionID != "sess-oldholder-2" || oldMsg.kind != entryRefusalOwnedElsewhere {
+			t.Fatalf("fixture: held probe run while the claim was unset = %+v (ok=%v), want reasonGone=true for sess-oldholder-2/owned-elsewhere", oldMsg, ok)
+		}
+
+		claim2 := "oldholder-claim-2:" + strconv.Itoa(os.Getpid())
+		setForeignOwnershipClaim(t, socket, windowTarget, claim2)
+
+		next, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+		m = next.(Model)
+		if !m.entryRefusal.active || m.entryRefusal.kind != entryRefusalOwnedElsewhere || m.entryRefusal.sessionID != "sess-oldholder-2" {
+			t.Fatalf("fixture: fresh Enter against the reinstated claim = %+v, want a fresh active owned-elsewhere refusal", m.entryRefusal)
+		}
+		if m.entryRefusal.generation == oldGeneration {
+			t.Fatalf("fixture: the fresh refusal's generation (%d) did not advance past the old one (%d) -- the race this test exists to prove is not set up", m.entryRefusal.generation, oldGeneration)
+		}
+
+		next, _ = m.Update(oldMsg)
+		m = next.(Model)
+		if !m.entryRefusal.active {
+			t.Fatalf("an old holder-recheck reply for a SUPERSEDED refusal instance cleared the current one: %+v", m.entryRefusal)
+		}
+		if _, ok := m.activeEntryRefusalForSelection(); !ok {
+			t.Fatalf("banner is not showing after the old reply was correctly ignored")
+		}
+		joined := drawnPreviewJoined(t, m)
+		if !strings.Contains(joined, "NOT ATTACHED") {
+			t.Fatalf("drawn preview does not contain NOT ATTACHED after the old reply was ignored:\n%s", joined)
+		}
+	})
+}
+
+// TestLaterHolderRecheckStillClearsRefusal proves the fix does not also
+// break the ordinary recovery path: a genuinely LATER holder-recheck --
+// issued after the fresh refusal, once the holder has actually left, with
+// no superseding refusal in between -- must still clear the banner, for
+// both real contention kinds.
+func TestLaterHolderRecheckStillClearsRefusal(t *testing.T) {
+	t.Run("attached", func(t *testing.T) {
+		socket := selectionTestSocket("laterholderatt")
+		newQuietSelectionPane(t, socket, "deck_laterholderatt", 80, 24)
+		client := tmux.Client{Socket: socket}
+		windowTarget, err := tmux.SessionName("laterholderatt")
+		if err != nil {
+			t.Fatalf("SessionName: %v", err)
+		}
+
+		detach := attachDetachablePTY(t, socket, windowTarget)
+		waitForSessionAttachedCountForce(t, client, windowTarget, 1)
+
+		m := New(nil, config.Settings{}, "")
+		m.width, m.height = 100, 30
+		m.tmuxClient = client
+		m.sessions = []store.Session{{ID: "sess-laterholder-1", Name: "laterholderatt", Slug: "laterholderatt", Status: "waiting"}}
+		m.baseSessions = m.sessions
+		m.selected = rowCursor(0)
+
+		next, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+		m = next.(Model)
+		if !m.entryRefusal.active || m.entryRefusal.kind != entryRefusalAttachedElsewhere {
+			t.Fatalf("fixture: Enter against a real attached holder = %+v", m.entryRefusal)
+		}
+
+		detach()
+		waitForSessionAttachedCountForce(t, client, windowTarget, 0)
+
+		m = runOnePreviewTick(t, m)
+		if m.entryRefusal.active {
+			t.Fatalf("a genuinely later tick's own holder-recheck did not clear the refusal: %+v", m.entryRefusal)
+		}
+		if _, ok := m.activeEntryRefusalForSelection(); ok {
+			t.Fatalf("banner still showing after the holder actually left and a later tick observed it")
+		}
+		joined := drawnPreviewJoined(t, m)
+		if strings.Contains(joined, "NOT ATTACHED") {
+			t.Fatalf("drawn preview still contains NOT ATTACHED after the refusal cleared:\n%s", joined)
+		}
+	})
+
+	t.Run("owned", func(t *testing.T) {
+		socket := selectionTestSocket("laterholderown")
+		newQuietSelectionPane(t, socket, "deck_laterholderown", 80, 24)
+		client := tmux.Client{Socket: socket}
+		windowTarget, err := tmux.SessionName("laterholderown")
+		if err != nil {
+			t.Fatalf("SessionName: %v", err)
+		}
+
+		claim := "laterholder-claim:" + strconv.Itoa(os.Getpid())
+		setForeignOwnershipClaim(t, socket, windowTarget, claim)
+
+		m := New(nil, config.Settings{}, "")
+		m.width, m.height = 100, 30
+		m.tmuxClient = client
+		m.sessions = []store.Session{{ID: "sess-laterholder-2", Name: "laterholderown", Slug: "laterholderown", Status: "waiting"}}
+		m.baseSessions = m.sessions
+		m.selected = rowCursor(0)
+
+		next, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+		m = next.(Model)
+		if !m.entryRefusal.active || m.entryRefusal.kind != entryRefusalOwnedElsewhere {
+			t.Fatalf("fixture: Enter against a real live ownership claim = %+v", m.entryRefusal)
+		}
+
+		unsetForeignOwnershipClaim(t, socket, windowTarget)
+
+		m = runOnePreviewTick(t, m)
+		if m.entryRefusal.active {
+			t.Fatalf("a genuinely later tick's own holder-recheck did not clear the refusal: %+v", m.entryRefusal)
+		}
+		if _, ok := m.activeEntryRefusalForSelection(); ok {
+			t.Fatalf("banner still showing after the claim was actually released and a later tick observed it")
+		}
+		joined := drawnPreviewJoined(t, m)
+		if strings.Contains(joined, "NOT ATTACHED") {
+			t.Fatalf("drawn preview still contains NOT ATTACHED after the refusal cleared:\n%s", joined)
+		}
+	})
 }
