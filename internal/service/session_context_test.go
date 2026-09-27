@@ -7,18 +7,20 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/n-orlov/deck/internal/config"
 	"github.com/n-orlov/deck/internal/store"
 )
 
 // sessionContextKeys is SPEC section 6.1's nine DECK_SESSION_* variables,
-// plus the deck-owned DECK_HOME that sits in the same unoverridable layer
-// (session_context.go's sessionContextEnv). Task 001 (R104) merges every
-// one of these last, above instrumentation, on every adapter and on both
-// launch paths; this file is the unit evidence for that.
+// plus the deck-owned DECK_HOME and DECK_PROFILE (task 012, R154) that sit
+// in the same unoverridable layer (session_context.go's sessionContextEnv).
+// Task 001 (R104) merges every one of these last, above instrumentation,
+// on every adapter and on both launch paths; this file is the unit
+// evidence for that.
 var sessionContextKeys = []string{
 	"DECK_SESSION_ID", "DECK_SESSION_NAME", "DECK_SESSION_SLUG", "DECK_SESSION_CWD",
 	"DECK_SESSION_AGENT", "DECK_SESSION_GROUP", "DECK_SESSION_PROFILE",
-	"DECK_SESSION_CONVERSATION_ID", "DECK_SESSION_LAUNCH_KIND", "DECK_HOME",
+	"DECK_SESSION_CONVERSATION_ID", "DECK_SESSION_LAUNCH_KIND", "DECK_HOME", "DECK_PROFILE",
 }
 
 // tmuxShowEnvironment reports one key of a deck_<slug> tmux session's own
@@ -72,7 +74,14 @@ func assertTMuxEnvironmentAbsent(t *testing.T, socket, slug, key string) {
 // session under launchKind should have produced. It is deliberately
 // re-derived field by field here, rather than calling session_context.go's
 // own sessionContextEnv, so this test cannot pass by construction against a
-// production bug that changes both sides identically.
+// production bug that changes both sides identically. Every caller of this
+// helper launches through newAgentTestService/newRecentCwdTestService,
+// neither of which ever sets Service.Profile, so DECK_PROFILE is always
+// config.DefaultProfile ("default", task 012, R154) here -- the profile-
+// naming behaviour itself (Service.Profile propagating verbatim) is
+// session_context_profile_test.go's TestSessionContextEnvExportsProfileDefaultAndNamed,
+// a narrower unit test called directly against sessionContextEnv with no
+// tmux launch.
 func wantSessionContext(session store.Session, deckHome, launchKind string) map[string]string {
 	return map[string]string{
 		"DECK_SESSION_ID":              session.ID,
@@ -85,6 +94,7 @@ func wantSessionContext(session store.Session, deckHome, launchKind string) map[
 		"DECK_SESSION_CONVERSATION_ID": session.ConversationID,
 		"DECK_SESSION_LAUNCH_KIND":     launchKind,
 		"DECK_HOME":                    deckHome,
+		"DECK_PROFILE":                 config.DefaultProfile,
 	}
 }
 
@@ -114,8 +124,8 @@ func assertSessionContextEnv(t *testing.T, socket string, session store.Session,
 // registers (agent.NewShell, agent.NewClaude, agent.NewPi), it launches a
 // session on the create path and then, after killing and stopping it, on
 // the resume path, and asserts every one of the nine DECK_SESSION_*
-// variables (plus DECK_HOME) actually lands in the pane's own tmux
-// environment table with the row's own value on both.
+// variables (plus DECK_HOME and DECK_PROFILE) actually lands in the
+// pane's own tmux environment table with the row's own value on both.
 func TestSessionContextEnvAcrossAdaptersAndLaunchPaths(t *testing.T) {
 	for _, kind := range []string{"claude", "pi", "shell"} {
 		kind := kind
