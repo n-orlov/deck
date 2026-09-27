@@ -81,6 +81,17 @@ type Service struct {
 	// launch arguments or session environment.
 	DeckExecutable string
 	DeckHome       string
+	// Profile is the resolved profile name (SPEC §3.4, config.Settings'
+	// own same-named field) this Service instance is running under --
+	// DefaultProfile ("default") for the flat, unnamed layout, or the
+	// positional/DECK_PROFILE name that won config.ResolveProfileName's
+	// precedence otherwise. sessionContextEnv exports it as DECK_PROFILE
+	// next to DECK_HOME (SPEC §6.1) on every launch, default included; an
+	// unset (zero-value) Profile is treated the same as DefaultProfile
+	// there, so a caller that never sets this field (e.g. an existing
+	// test fixture) still sees the documented default rather than an
+	// empty pane variable.
+	Profile string
 
 	// Shell overrides the user's $SHELL. It is primarily useful to embedded
 	// callers; an empty value selects $SHELL, falling back to /bin/sh.

@@ -1,6 +1,9 @@
 package service
 
-import "github.com/n-orlov/deck/internal/store"
+import (
+	"github.com/n-orlov/deck/internal/config"
+	"github.com/n-orlov/deck/internal/store"
+)
 
 // LaunchKindCreate and LaunchKindResume are the two SPEC §6.1
 // DECK_SESSION_LAUNCH_KIND values: every session's first launch is
@@ -15,8 +18,13 @@ const (
 // sessionContextEnv is SPEC §6.1's single construction function for the
 // deck-owned session-context layer: the nine DECK_SESSION_* variables
 // (including DECK_SESSION_ID) computed from session's own row facts and
-// the given launch kind, plus DECK_HOME (deck-owned per §13.1, from the
-// service's own DeckHome, not a row column). Every one of the three launch
+// the given launch kind, plus DECK_HOME and DECK_PROFILE (deck-owned per
+// §13.1/§3.4, from the service's own DeckHome/Profile, neither a row
+// column). DECK_PROFILE is always exported, `default` included (§3.4,
+// §6.1's own table): an empty s.Profile -- a zero-value Service a fixture
+// never set it on -- reads back as config.DefaultProfile here, exactly as
+// config.ResolveProfileName itself never returns "" to a real caller.
+// Every one of the three launch
 // call sites -- CreateAgent, CreateShell, Resume -- builds this same map
 // from this one function and merges it into the pane's launch environment
 // strictly AFTER applyInstrumentation, so it is the last, unoverridable
@@ -34,6 +42,10 @@ const (
 // row (§11: "renders under default rather than vanishing") -- with no
 // cwd-derived fallback of any kind, unlike the removed Workspace label.
 func (s Service) sessionContextEnv(session store.Session, launchKind string) map[string]string {
+	profile := s.Profile
+	if profile == "" {
+		profile = config.DefaultProfile
+	}
 	return map[string]string{
 		"DECK_SESSION_ID":              session.ID,
 		"DECK_SESSION_NAME":            session.Name,
@@ -45,6 +57,7 @@ func (s Service) sessionContextEnv(session store.Session, launchKind string) map
 		"DECK_SESSION_CONVERSATION_ID": session.ConversationID,
 		"DECK_SESSION_LAUNCH_KIND":     launchKind,
 		"DECK_HOME":                    s.DeckHome,
+		"DECK_PROFILE":                 profile,
 	}
 }
 

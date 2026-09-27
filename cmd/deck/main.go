@@ -152,6 +152,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		Store: db, TMux: client, Audit: logger,
 		Clock: settings.Clock, IDs: settings.IDs, Agents: registry,
 		ConfigEnv: settings.Env, DeckExecutable: executable, DeckHome: settings.Paths.Home,
+		Profile:           settings.Profile,
 		GlobalPreLaunch:   settings.PreLaunch,
 		GlobalPostDestroy: settings.PostDestroy,
 		RecentCwdLimit:    settings.RecentCwdLimit,
