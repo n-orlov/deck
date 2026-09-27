@@ -95,7 +95,16 @@ Feature: §11.8 mouse bindings and the [ui] mouse / DECK_MOUSE opt-out (requirem
     And within one configured reconcile interval deck client "A" row "padding-noop-bravo" contains "running"
     And deck client "A" selects session "padding-noop-alpha"
     Then deck client "A" has session "padding-noop-alpha" selected
-    And deck client "A" captures its frame as "before-padding-click"
+    # Settled capture (task 406 helper), not the plain one: selecting
+    # padding-noop-alpha starts its preview panel fetch (DECK_PREVIEW_MS,
+    # a background render with no externally visible pending signal before
+    # this point), which can still be showing the "No live preview
+    # captured for this row yet." placeholder at the instant of a plain
+    # capture and then fill in with the real pane content on its own, well
+    # after this no-op click, breaking the byte-exact compare below on a
+    # frame change the click itself never caused (found by this task's
+    # exhaustive 20x solo -race sweep, R150).
+    And deck client "A" captures its settled frame as "before-padding-click"
     When deck client "A" clicks at column 10 row 15
     Then deck client "A" frame still matches the captured "before-padding-click" frame
     And deck client "A" has session "padding-noop-alpha" selected
