@@ -5501,6 +5501,12 @@ func (m Model) footerLineContent() string {
 // pre-existing forward-note reminder (dropped first: it is the least
 // essential of the three, and unlike the other two it is not information
 // specific to being scrolled back at all).
+//
+// R157 adds one more optional segment, shown only when the mouse is on:
+// the sidebar wheel, which scrolls the list while interactive (SPEC
+// §11.8/§11.9). It ranks below the forward note and drops first, at the
+// live bottom as well as scrolled back. With the mouse off the line is
+// unchanged from R134, the no-"scroll" live-bottom line included.
 func (m Model) interactiveFooterLine() string {
 	forwardNote := m.colorToken(theme.Hint, "keystrokes forward to the live pane")
 	sep := m.glyph(" · ", " - ")
@@ -5508,14 +5514,27 @@ func (m Model) interactiveFooterLine() string {
 	hint := m.colorToken(theme.Hint, "leave interactive mode")
 	quit := key + " " + hint
 
-	cue := m.interactiveScrollCue()
-	if cue == "" {
-		return forwardNote + sep + quit
-	}
-
+	// R157 (SPEC §11.8/§11.9): while interactive, the panel under the
+	// pointer decides what the wheel scrolls, and over the sidebar it
+	// scrolls the list -- the viewport only, without leaving interactive
+	// mode. The footer names that gesture beside the forward note, and
+	// only when the mouse is on (m.settings.Mouse gates updateInteractive's
+	// wheel handling itself), so it never advertises a gesture that does
+	// nothing. It is the least essential segment and drops first.
 	width, _ := m.frameSize()
 	sepWidth := stringWidth(sep)
 	quitWidth := stringWidth("Ctrl+Q leave interactive mode")
+	wheelPlain := interactiveSidebarWheelKey + " " + interactiveSidebarWheelHint
+	wheelNote := m.colorToken(theme.Key, interactiveSidebarWheelKey) + " " + m.colorToken(theme.Hint, interactiveSidebarWheelHint)
+
+	cue := m.interactiveScrollCue()
+	if cue == "" {
+		line := forwardNote + sep + quit
+		if m.settings.Mouse && stringWidth("keystrokes forward to the live pane")+sepWidth+stringWidth(wheelPlain)+sepWidth+quitWidth <= width {
+			line = forwardNote + sep + wheelNote + sep + quit
+		}
+		return line
+	}
 
 	scrollKey := m.colorToken(theme.Key, "Shift+PgUp/PgDn")
 	scrollHint := m.colorToken(theme.Hint, "scroll")
@@ -5529,6 +5548,9 @@ func (m Model) interactiveFooterLine() string {
 		{m.colorToken(theme.Hint, cue), stringWidth(cue)},
 		{scrollAd, stringWidth("Shift+PgUp/PgDn scroll")},
 		{forwardNote, stringWidth("keystrokes forward to the live pane")},
+	}
+	if m.settings.Mouse {
+		segments = append(segments, footerSegment{wheelNote, stringWidth(wheelPlain)})
 	}
 
 	budget := width - quitWidth
@@ -5560,6 +5582,14 @@ func (m Model) interactiveFooterLine() string {
 	}
 	return strings.Join(parts, sep) + sep + quit
 }
+
+// interactiveSidebarWheelKey/Hint are the interactive footer's R157
+// segment naming the wheel over the sidebar (SPEC §11.8/§11.9): it scrolls
+// the list, as it does in list mode, while interactive mode stays active.
+const (
+	interactiveSidebarWheelKey  = "sidebar wheel"
+	interactiveSidebarWheelHint = "scrolls the list"
+)
 
 // interactiveScrollCue is R133 part 2's own claim (PRD phase4b, GH #30):
 // while scrolled back into history, interactive mode's footer states how
