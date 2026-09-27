@@ -9887,7 +9887,10 @@ Keys
     scrolls this bounded, deck-owned scrollback of the fitted view --
     seeded on entry from the pane's own tmux history where it has any,
     then grown from what the pane prints -- rather than forwarding to
-    the pane; a full-screen app (editor, pager, agent TUI) sits on the
+    the pane; a wheel notch over the sidebar instead scrolls the list,
+    without leaving interactive mode or resizing anything (see Mouse
+    below), exactly as it does outside interactive mode;
+    a full-screen app (editor, pager, agent TUI) sits on the
     alternate screen, which keeps no history, so its preview starts
     with none; typing snaps the view back to the live bottom
   F force-enter interactive mode on the selected session, stealing it from
@@ -10114,7 +10117,10 @@ Mouse (every binding duplicates a key above; nothing here is mouse-only)
                             (Ctrl+Q returns to the list)
   click a group header      toggle that group's collapse (like c)
   wheel over the sidebar    scroll the list without changing selection
-                            (like ↑/↓/PgUp/PgDn)
+                            (like ↑/↓/PgUp/PgDn); while interactive, does
+                            the same instead of leaving interactive mode
+                            or resizing anything -- the panel under the
+                            pointer decides what the wheel scrolls
   wheel over an overlay     scroll ? help, E the event log or i the
                             detail view by one line (like ↑/↓ or j/k);
                             no other overlay scrolls, and a click or a
