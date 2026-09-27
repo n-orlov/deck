@@ -229,6 +229,14 @@ type ScenarioHarness struct {
 	// count would silently stop landing on the live bottom the moment the
 	// harness's own shell banner changed length.
 	interactiveScrollPagesBack map[string]int
+
+	// profileDatabaseSnapshots backs features/profile_hook_isolation.feature
+	// (task 014, R154): a step captures a named profile's own state.db raw
+	// bytes plus its sessions row count under "<profile>/<label>", so a
+	// later step can assert the OTHER profile's database is still
+	// byte-identical and row-count-identical after a hook fired against the
+	// first profile's own session.
+	profileDatabaseSnapshots map[string]profileDatabaseSnapshot
 }
 
 var scenarioSequence atomic.Uint64
