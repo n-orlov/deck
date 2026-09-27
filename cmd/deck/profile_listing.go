@@ -20,7 +20,9 @@ func isProfilesRequest(args []string) bool {
 // runProfilesListing implements `deck --profiles` (SPEC §3.4): one line
 // per profile, default first, naming its socket, config and data paths
 // and its last-used time; a directory whose name fails validation is
-// flagged "(invalid name: not selectable)" rather than skipped.
+// flagged "(invalid name: not selectable)" rather than skipped, on a row
+// of the same shape: the flag follows the name, and the socket, config,
+// data and last-used fields follow the flag.
 // config.ListProfiles is a directory scan only -- it never opens a
 // state.db -- so this always exits 0, even when every profile's own
 // database is missing, corrupt or unreadable.
@@ -31,16 +33,16 @@ func runProfilesListing(getenv func(string) string, userHome func() (string, err
 		return 0
 	}
 	for _, listing := range listings {
+		name := listing.Name
 		if !listing.Valid {
-			fmt.Fprintf(stdout, "%s (invalid name: not selectable)\n", listing.Name)
-			continue
+			name += " (invalid name: not selectable)"
 		}
 		lastUsed := "never"
 		if !listing.LastUsed.IsZero() {
 			lastUsed = listing.LastUsed.Format(time.RFC3339)
 		}
 		fmt.Fprintf(stdout, "%s\tsocket: %s\tconfig: %s\tdata: %s\tlast used: %s\n",
-			listing.Name, listing.Socket, listing.ConfigFile, listing.DataDir, lastUsed)
+			name, listing.Socket, listing.ConfigFile, listing.DataDir, lastUsed)
 	}
 	return 0
 }

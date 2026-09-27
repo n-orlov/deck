@@ -23,8 +23,10 @@ type ProfileListing struct {
 	// layout). Always set, valid or not.
 	Name string
 	// Valid is false when Name failed ValidateProfileName -- SPEC's
-	// "(invalid name: not selectable)" row. Every field below is only
-	// meaningful when Valid is true.
+	// "(invalid name: not selectable)" row. Such a row still carries
+	// every field below, describing the directory as it sits on disk
+	// (profiles/<name>/ literally, and the deck-<name> socket its name
+	// would derive), so the listing keeps one shape for every row.
 	Valid      bool
 	Socket     string
 	ConfigFile string
@@ -68,15 +70,19 @@ func ListProfiles(getenv func(string) string, userHome func() (string, error)) (
 	}
 	sort.Strings(names)
 	for _, name := range names {
-		if err := ValidateProfileName(name); err != nil {
-			listings = append(listings, ProfileListing{Name: name, Valid: false})
-			continue
-		}
+		// resolvePaths only joins name beneath the root, never validates
+		// it; a ReadDir entry name holds no separator and is never "."
+		// or "..", so an invalid name still resolves to its own literal
+		// profiles/<name>/ directories and nothing outside them.
 		paths, err := resolvePaths(getenv, userHome, name)
 		if err != nil {
 			return nil, err
 		}
-		listings = append(listings, newProfileListing(name, socketForProfile(name), paths))
+		listing := newProfileListing(name, socketForProfile(name), paths)
+		if err := ValidateProfileName(name); err != nil {
+			listing.Valid = false
+		}
+		listings = append(listings, listing)
 	}
 	return listings, nil
 }
