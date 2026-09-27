@@ -258,23 +258,29 @@ func (m Model) entryRefusalHolderCheck() tea.Cmd {
 	client := m.tmuxClient
 	sessionID := r.sessionID
 	kind := r.kind
+	// generation (review B1, task 001, R143/R148, SPEC §11.9) is the
+	// generation of THIS refusal instance, stamped at issue time -- see
+	// entryRefusalHolderRecheckDone's own doc comment (tui.go) for why
+	// sessionID+kind alone cannot tell an old, superseded probe reply
+	// apart from one about the refusal currently active.
+	generation := r.generation
 	return func() tea.Msg {
 		ctx := context.Background()
 		windowTarget, err := tmux.SessionName(slug)
 		if err != nil {
-			return entryRefusalHolderRecheckDone{sessionID: sessionID, kind: kind}
+			return entryRefusalHolderRecheckDone{sessionID: sessionID, kind: kind, generation: generation}
 		}
 		switch kind {
 		case entryRefusalAttachedElsewhere:
 			if attached, aerr := client.SessionAttachedCount(ctx, windowTarget); aerr == nil && attached == 0 {
-				return entryRefusalHolderRecheckDone{sessionID: sessionID, kind: kind, reasonGone: true}
+				return entryRefusalHolderRecheckDone{sessionID: sessionID, kind: kind, reasonGone: true, generation: generation}
 			}
 		case entryRefusalOwnedElsewhere:
 			if state, perr := client.ProbeWindowOwnership(ctx, windowTarget); perr == nil && state != tmux.ClaimForeignLive {
-				return entryRefusalHolderRecheckDone{sessionID: sessionID, kind: kind, reasonGone: true}
+				return entryRefusalHolderRecheckDone{sessionID: sessionID, kind: kind, reasonGone: true, generation: generation}
 			}
 		}
-		return entryRefusalHolderRecheckDone{sessionID: sessionID, kind: kind}
+		return entryRefusalHolderRecheckDone{sessionID: sessionID, kind: kind, generation: generation}
 	}
 }
 

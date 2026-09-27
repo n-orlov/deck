@@ -1710,10 +1710,23 @@ type previewFitDone struct {
 // name the refusal the probe was issued against, so a stale reply racing
 // a selection change or a fresh refusal on the same session cannot clear
 // something it says nothing about (guarded in the Update case).
+//
+// generation (review B1, task 001, R143/R148, SPEC §11.9) is
+// Model.entryRefusalGeneration as entryRefusalHolderCheck saw it on the
+// refusal instance the probe was actually ISSUED against -- sessionID and
+// kind alone are not enough: a holder can leave and come back, producing
+// a FRESH refusal of the exact same kind for the exact same session
+// before an old probe's delayed reply lands, and that old reply's own
+// reasonGone can genuinely be true (the holder really had left when the
+// probe ran) without saying anything about the newer instance. Only a
+// reply whose generation still equals the CURRENT refusal's own
+// generation may clear it (checked in the Update case), exactly like
+// previewCaptured's refusalGeneration/clearEntryRefusalIfPreviewLive.
 type entryRefusalHolderRecheckDone struct {
 	sessionID  string
 	kind       entryRefusalKind
 	reasonGone bool
+	generation int
 }
 
 type sessionResumed struct {
@@ -3558,10 +3571,14 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		// SPEC §11.9 (task 008/R143, GH #38): only clears the SAME refusal
 		// this probe was issued against -- a stale reply racing a selection
 		// change (setSelection already clears the refusal outright, so
-		// m.entryRefusal.active would already be false) or a fresh refusal
-		// that has since landed on the same session (kind mismatch) must not
-		// clear something this reply says nothing about.
-		if msg.reasonGone && m.entryRefusal.active && m.entryRefusal.sessionID == msg.sessionID && m.entryRefusal.kind == msg.kind {
+		// m.entryRefusal.active would already be false), a fresh refusal that
+		// has since landed on the same session (kind mismatch), or -- review
+		// B1, task 001, R143/R148 -- a fresh refusal of the exact SAME kind
+		// for the exact same session (a holder that left and came back before
+		// this old probe's reply landed) must not clear something this reply
+		// says nothing about. The generation check is what catches that last
+		// case; sessionID+kind alone cannot.
+		if msg.reasonGone && m.entryRefusal.active && m.entryRefusal.sessionID == msg.sessionID && m.entryRefusal.kind == msg.kind && msg.generation == m.entryRefusal.generation {
 			m.clearEntryRefusal()
 		}
 		return m, nil
