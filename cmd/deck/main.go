@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -32,7 +33,19 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return 0
 	}
 	isHook := len(args) == 2 && args[1] == "_hook"
-	settings, err := config.Load()
+	var positional string
+	if !isHook {
+		var ok bool
+		positional, ok = parseProfileArgs(args[1:], stderr)
+		if !ok {
+			return 2
+		}
+		if err := validateResolvedProfile(positional, os.Getenv); err != nil {
+			fmt.Fprintln(stderr, err)
+			return 2
+		}
+	}
+	settings, err := config.LoadFromProfile(os.Getenv, os.UserHomeDir, positional)
 	if err != nil {
 		fmt.Fprintln(stderr, "deck configuration:", err)
 		if isHook {
@@ -221,6 +234,46 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return 0
 	}
 	return 0
+}
+
+// parseProfileArgs parses the CLI arguments after the program name into
+// deck's optional single positional profile argument (SPEC §3.4). Flags are
+// recognized before the positional: any argument starting with "-" that
+// reaches here (isVersionRequest and the hidden "_hook" verb are both
+// checked by the caller first) is unknown and is reported exactly as SPEC's
+// own example (`error: unknown flag -x`); a second non-flag argument is
+// rejected the same way (`deck work home` is an error). Both cases exit 2
+// before anything below this call touches disk or tmux.
+func parseProfileArgs(rest []string, stderr io.Writer) (positional string, ok bool) {
+	for _, arg := range rest {
+		if strings.HasPrefix(arg, "-") {
+			fmt.Fprintf(stderr, "error: unknown flag %s\n", arg)
+			return "", false
+		}
+		if positional != "" {
+			fmt.Fprintf(stderr, "error: at most one profile argument, got %q and %q\n", positional, arg)
+			return "", false
+		}
+		positional = arg
+	}
+	return positional, true
+}
+
+// validateResolvedProfile runs SPEC §3.4's one validator against whichever
+// source ResolveProfileName would actually select (positional argument,
+// then DECK_PROFILE, then DefaultProfile, which always passes and is never
+// itself validated). It is called before config.LoadFromProfile so an
+// invalid name -- "Work", "a.b", a 17-character name -- is rejected before
+// resolvePaths, store.Open or any tmux client is ever reached, whether the
+// bad name arrived as the positional argument or as DECK_PROFILE.
+func validateResolvedProfile(positional string, getenv func(string) string) error {
+	if positional != "" {
+		return config.ValidateProfileName(positional)
+	}
+	if env := getenv("DECK_PROFILE"); env != "" {
+		return config.ValidateProfileNameEnv(env)
+	}
+	return nil
 }
 
 // preFrameTombstoneSweep is task 010's store-open call site, extracted so
