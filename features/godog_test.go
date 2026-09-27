@@ -119,6 +119,7 @@ func initializeScenario(sc *godog.ScenarioContext) {
 	registerProfileCreationSteps(sc)
 	registerProfileHookIsolationSteps(sc)
 	registerProfileSideBySideSteps(sc)
+	registerProfileDefaultUnchangedSteps(sc)
 	sc.Step(`^the Godog harness is available$`, func() error { return nil })
 	sc.Step(`^the private tmux server is killed$`, func(ctx context.Context) error {
 		harness, err := scenarioHarness(ctx)
