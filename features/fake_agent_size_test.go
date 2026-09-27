@@ -260,21 +260,34 @@ func theFakeAgentRecordedSizesAre(ctx context.Context, kind, want string) error 
 // point of a count assertion is to catch an off-by-one, and a step that only
 // ever asserted a lower bound could not.
 //
-// It SETTLES BEFORE IT READS (R65). This step used to sample the counter
-// through waitForSigwinchCount, which returned the instant it first observed
-// want -- unsound in both directions, and observed failing both ways: a late
-// SIGWINCH from an earlier step arriving after an "exactly 0" was read
-// (preview.feature:147, "received 1 SIGWINCH signals, want exactly 0", in
+// It SETTLES BEFORE IT READS (R65), and since task 005/R151 it settles the
+// COUNTER ITSELF -- through waitForSettledCount/assertSettledCountEquals
+// (features/settle_counter_test.go) -- rather than a proxy for it.
+//
+// This step used to sample the counter through waitForSigwinchCount, which
+// returned the instant it first observed want -- unsound in both
+// directions, and observed failing both ways: a late SIGWINCH from an
+// earlier step arriving after an "exactly 0" was read (preview.feature:147,
+// "received 1 SIGWINCH signals, want exactly 0", in
 // docs/reports/phase3e-408-stability-10-at-75861e0/README.md item 2), and an
-// awaited one still in flight when an "exactly 1" was read. The fix is to
-// wait for the observable consequence of every render still in flight -- no
-// further PTY output for a quiet window, ScreenDriver.WaitForQuiescence,
-// which is what the passive fit's own resize-window convergence loop
-// (internal/tui/tui.go's previewFit -> tmux.Client.FitWindowToPane) shows up
-// as on a deck client's pty -- and only THEN read the counter ONCE and
-// compare for equality. Deliberately NOT a poll-until-want loop: that would
-// turn "exactly 1" into "at least 1" and "exactly 0" into no assertion at
-// all, and would pass a product that fires five SIGWINCH or none.
+// awaited one still in flight when an "exactly 1" was read. A later fix
+// (R65) settled on the observable consequence of every render still in
+// flight instead -- no further PTY output for a quiet window on this
+// scenario's own deck CLIENT(s), ScreenDriver.WaitForQuiescence -- and only
+// THEN read the counter once. That proxy has a gap the R151 audit
+// (/run/ralphd/artifacts/R151-audit.txt) names: a scenario with no deck
+// client at all (features/interactive_sigwinch_budget.feature drives tmux
+// directly and puts the fixture in a bare tmux pane) has nothing for the
+// client-quiescence wait to settle, so it read the counter file exactly
+// once with no settling whatsoever. Polling the counter FILE itself until
+// it stops changing removes the proxy -- and its gap -- entirely: it is a
+// direct wait on the exact fact being asserted, sound whether or not this
+// scenario happens to have a deck client running.
+//
+// Deliberately NOT a poll-until-want loop: that would turn "exactly 1" into
+// "at least 1" and "exactly 0" into no assertion at all, and would pass a
+// product that fires five SIGWINCH or none. assertSettledCountEquals only
+// characterises stability before it compares, once, with plain equality.
 func theFakeAgentReceivedExactlySigwinchSignals(ctx context.Context, kind string, want int) error {
 	h, err := scenarioHarness(ctx)
 	if err != nil {
@@ -284,46 +297,31 @@ func theFakeAgentReceivedExactlySigwinchSignals(ctx context.Context, kind string
 	if !ok {
 		return fmt.Errorf("unknown fake agent kind %q", kind)
 	}
-	if err := h.settleClients(ctx, captureSettledQuietWindow); err != nil {
-		return fmt.Errorf("settle before reading fake %q agent's SIGWINCH count: %w", kind, err)
-	}
 	path := filepath.Join(h.Home, "log", spec.sigwinchCountLog)
-	got, err := readSigwinchCount(path)
-	if err != nil {
-		return err
-	}
-	if got != want {
-		return fmt.Errorf("fake %q agent received %d SIGWINCH signals, want exactly %d", kind, got, want)
+	if _, err := assertSettledCountEquals(sigwinchSettleDeadline, sigwinchSettleWindow, sigwinchSettlePoll, func() (int, error) {
+		return readSigwinchCount(path)
+	}, want); err != nil {
+		return fmt.Errorf("fake %q agent SIGWINCH count: %w", kind, err)
 	}
 	return nil
 }
 
-// settleClients waits until every still-running pty client this scenario
-// started has produced no new output for quietFor, reusing
-// ScreenDriver.WaitForQuiescence (features/pty_driver_test.go) rather than
-// writing a second waiter. A client that has already exited can produce no
-// further output, so it is skipped instead of reported as an error: the
-// scenarios that assert a SIGWINCH count are allowed to have closed a client
-// first, and "gone" is a stronger form of "quiet".
-//
-// Scenarios with no pty client at all (interactive_sigwinch_budget.feature
-// drives tmux directly and puts the fixture in a bare tmux pane) settle
-// nothing here and read the counter once, which is exactly what that
-// feature's own load-bearing inter-step pauses were written for -- see its
-// header comment. The read stays a single exact comparison either way.
-func (h *ScenarioHarness) settleClients(ctx context.Context, quietFor time.Duration) error {
-	for _, client := range h.clients {
-		select {
-		case <-client.done:
-			continue
-		default:
-		}
-		if _, err := client.WaitForQuiescence(ctx, false, quietFor); err != nil {
-			return err
-		}
-	}
-	return nil
-}
+// sigwinchSettleWindow is how long the fake agent's own dedicated SIGWINCH
+// counter file must read the same value before
+// theFakeAgentReceivedExactlySigwinchSignals treats it as settled -- long
+// enough to catch a signal already in flight (the same 400ms
+// captureSettledQuietWindow used, before task 005/R151, to settle this
+// step's own proxy), short enough that a passing scenario is not made
+// noticeably slower.
+const sigwinchSettleWindow = 400 * time.Millisecond
+
+// sigwinchSettleDeadline bounds the total wait: if the counter file is
+// STILL changing when this elapses, the step fails loudly instead of
+// comparing an unsettled read.
+const sigwinchSettleDeadline = 3 * time.Second
+
+// sigwinchSettlePoll paces re-sampling of the counter file while waiting.
+const sigwinchSettlePoll = 20 * time.Millisecond
 
 // readSigwinchCount reads path's bare decimal integer, treating a missing
 // file (no SIGWINCH observed yet) as 0, exactly like
