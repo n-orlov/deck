@@ -32,3 +32,26 @@ func TestSessionContextEnvExportsProfileDefaultAndNamed(t *testing.T) {
 		t.Fatalf("DECK_PROFILE for Service.Profile=%q = %q (present %v), want present with %q", "acme", got, present, "acme")
 	}
 }
+
+// TestSessionContextEnvDeckHomeIsTheDataRoot pins SPEC §6.1's "DECK_HOME
+// and DECK_PROFILE name the data root and the profile a hook writes to":
+// a named profile's Service exports its DataRoot, never its own
+// profiles/<name>/ DeckHome, as the pane's DECK_HOME (so _hook resolving
+// DECK_PROFILE beneath it lands back on this profile), and a Service with
+// no DataRoot set (the default profile's fixtures) keeps DeckHome, the
+// same value for the flat default layout.
+func TestSessionContextEnvDeckHomeIsTheDataRoot(t *testing.T) {
+	session := store.Session{ID: "s1", Name: "n1", Slug: "n1", CWD: "/work/a", Agent: "shell"}
+
+	named := Service{DeckHome: "/root/profiles/acme", DataRoot: "/root", Profile: "acme"}
+	env := named.sessionContextEnv(session, LaunchKindCreate)
+	if env["DECK_HOME"] != "/root" || env["DECK_PROFILE"] != "acme" {
+		t.Fatalf("named profile DECK_HOME/DECK_PROFILE = %q/%q, want %q/%q", env["DECK_HOME"], env["DECK_PROFILE"], "/root", "acme")
+	}
+
+	unset := Service{DeckHome: "/home/deck"}
+	env = unset.sessionContextEnv(session, LaunchKindCreate)
+	if env["DECK_HOME"] != "/home/deck" {
+		t.Fatalf("DECK_HOME with no DataRoot = %q, want DeckHome %q", env["DECK_HOME"], "/home/deck")
+	}
+}

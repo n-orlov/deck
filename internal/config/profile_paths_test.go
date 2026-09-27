@@ -210,3 +210,56 @@ func TestThemesDirSharedAcrossProfiles(t *testing.T) {
 		t.Fatalf("ThemesDir(named profile's config) = %q, want %q", theme.ThemesDir(named.Paths.ConfigFile), want)
 	}
 }
+
+// TestDataRootIsTheSharedRootAndRoundTripsThroughAPaneEnvironment pins
+// SPEC §6.1's "DECK_HOME and DECK_PROFILE name the data root and the
+// profile a hook writes to": Settings.DataRoot is the root every profile
+// nests under (never a named profile's own profiles/<name>/ directory),
+// and a hook process whose environment carries exactly that pair --
+// DECK_HOME=DataRoot, DECK_PROFILE=<name>, no positional -- resolves the
+// very state.db the launching profile opened, in both modes, default
+// included. Before this existed a named pane carried
+// DECK_HOME=$root/profiles/<name> and its hook resolved
+// $root/profiles/<name>/profiles/<name>/, a profile that does not exist.
+func TestDataRootIsTheSharedRootAndRoundTripsThroughAPaneEnvironment(t *testing.T) {
+	fixedHome := func() (string, error) { return "/oracle-home", nil }
+	cases := []struct {
+		name     string
+		env      map[string]string
+		profile  string
+		wantRoot string
+	}{
+		{name: "deck home named", env: map[string]string{"DECK_HOME": "/oracle-deck-home"}, profile: "acme", wantRoot: "/oracle-deck-home"},
+		{name: "deck home default", env: map[string]string{"DECK_HOME": "/oracle-deck-home"}, profile: "", wantRoot: "/oracle-deck-home"},
+		{name: "xdg named", env: map[string]string{}, profile: "acme", wantRoot: "/oracle-home/.local/share/deck"},
+		{name: "xdg default", env: map[string]string{}, profile: "default", wantRoot: "/oracle-home/.local/share/deck"},
+		{name: "xdg data home named", env: map[string]string{"XDG_DATA_HOME": "/xdg-data"}, profile: "work", wantRoot: "/xdg-data/deck"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			launched, err := LoadFromProfile(environment(tc.env), fixedHome, tc.profile)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if launched.DataRoot != tc.wantRoot {
+				t.Fatalf("DataRoot = %q, want %q", launched.DataRoot, tc.wantRoot)
+			}
+			paneEnv := map[string]string{}
+			for key, value := range tc.env {
+				paneEnv[key] = value
+			}
+			paneEnv["DECK_HOME"] = launched.DataRoot
+			paneEnv["DECK_PROFILE"] = launched.Profile
+			hook, err := LoadFromProfile(environment(paneEnv), failIfCalled(t), "")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if hook.Profile != launched.Profile {
+				t.Fatalf("hook profile = %q, want %q", hook.Profile, launched.Profile)
+			}
+			if hook.Paths.StateDB != launched.Paths.StateDB {
+				t.Fatalf("hook StateDB = %q, want the launching profile's own %q", hook.Paths.StateDB, launched.Paths.StateDB)
+			}
+		})
+	}
+}
