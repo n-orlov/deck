@@ -2,6 +2,7 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -15,6 +16,7 @@ import (
 	"syscall"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/x/term"
 	"github.com/n-orlov/deck/internal/agent"
 	"github.com/n-orlov/deck/internal/audit"
 	"github.com/n-orlov/deck/internal/config"
@@ -43,6 +45,21 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		if err := validateResolvedProfile(positional, os.Getenv); err != nil {
 			fmt.Fprintln(stderr, err)
 			return 2
+		}
+		// SPEC §3.4's launch order is validate -> confirm if unknown -> create
+		// -> launch: the name above is already syntactically valid, so this is
+		// the one remaining gate before config.LoadFromProfile (and therefore
+		// store.Open/tmux) below ever touches this profile's directories.
+		resolved := config.ResolveProfileName(positional, os.Getenv)
+		exists, err := config.ProfileExists(os.Getenv, os.UserHomeDir, resolved)
+		if err != nil {
+			fmt.Fprintln(stderr, "deck profile:", err)
+			return 0
+		}
+		if !exists {
+			if code := confirmAndCreateProfile(resolved, os.Getenv, os.UserHomeDir, stdin, stderr); code != 0 {
+				return code
+			}
 		}
 	}
 	settings, err := config.LoadFromProfile(os.Getenv, os.UserHomeDir, positional)
@@ -274,6 +291,41 @@ func validateResolvedProfile(positional string, getenv func(string) string) erro
 		return config.ValidateProfileNameEnv(env)
 	}
 	return nil
+}
+
+// confirmAndCreateProfile implements SPEC §3.4's typo guard for a profile
+// name that validateResolvedProfile already accepted as syntactically
+// valid but config.ProfileExists (run by the caller, run()) found no
+// directory for yet: "an unknown valid name asks once on the terminal ...
+// and only y creates it; anything else exits 1 and creates nothing ...
+// [if] stdin is not a terminal deck refuses with the same message, exit 1,
+// and creates nothing." It returns 0 to let run() continue to
+// config.LoadFromProfile/launch, or the exit code run() must return
+// immediately (always 1 here -- SPEC names no other code for this path).
+func confirmAndCreateProfile(profile string, getenv func(string) string, userHome func() (string, error), stdin io.Reader, stderr io.Writer) int {
+	known, err := config.KnownProfiles(getenv, userHome)
+	if err != nil {
+		fmt.Fprintln(stderr, "deck profile:", err)
+		return 1
+	}
+	prompt := fmt.Sprintf("deck: no profile %q yet (known: %s). Create it? [y/N]", profile, strings.Join(known, ", "))
+	file, isFile := stdin.(*os.File)
+	if !isFile || !term.IsTerminal(file.Fd()) {
+		// Non-terminal stdin: refuse with the same message, without ever
+		// waiting to read an answer that could never arrive interactively.
+		fmt.Fprintln(stderr, prompt)
+		return 1
+	}
+	fmt.Fprint(stderr, prompt+" ")
+	answer, _ := bufio.NewReader(stdin).ReadString('\n')
+	if strings.ToLower(strings.TrimSpace(answer)) != "y" {
+		return 1
+	}
+	if err := config.CreateProfile(getenv, userHome, profile); err != nil {
+		fmt.Fprintln(stderr, "deck profile:", err)
+		return 1
+	}
+	return 0
 }
 
 // preFrameTombstoneSweep is task 010's store-open call site, extracted so

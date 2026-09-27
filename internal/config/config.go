@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -439,6 +440,112 @@ func profileRoot(root, profile string) string {
 		return root
 	}
 	return filepath.Join(root, "profiles", profile)
+}
+
+// ProfilesRoot returns the data root's profiles/ directory (SPEC §3.4):
+// $XDG_DATA_HOME/deck/profiles/, or $DECK_HOME/profiles/ -- independent of
+// which profile the caller is currently launching. ProfileExists,
+// KnownProfiles and CreateProfile all resolve a specific profile's own
+// directory beneath this same root.
+func ProfilesRoot(getenv func(string) string, userHome func() (string, error)) (string, error) {
+	defaultPaths, err := resolvePaths(getenv, userHome, DefaultProfile)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(defaultPaths.DataDir, "profiles"), nil
+}
+
+// ProfileExists reports whether profile already has a directory under the
+// data root's profiles/ (SPEC §3.4: "whether a profile exists is a
+// directory scan ... there is no registry to drift from the disk").
+// DefaultProfile (and "", which ResolveProfileName never actually
+// produces) always exists -- it is the flat layout, and profiles/default/
+// is never created or looked for.
+func ProfileExists(getenv func(string) string, userHome func() (string, error), profile string) (bool, error) {
+	if profile == "" || profile == DefaultProfile {
+		return true, nil
+	}
+	root, err := ProfilesRoot(getenv, userHome)
+	if err != nil {
+		return false, err
+	}
+	info, err := os.Stat(filepath.Join(root, profile))
+	if err != nil {
+		if os.IsNotExist(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	return info.IsDir(), nil
+}
+
+// KnownProfiles lists every already-known profile name, default first, for
+// SPEC §3.4's creation prompt ("known: default, work"): default (always
+// known) followed by every directory found under the data root's
+// profiles/, sorted. This is a bare directory listing -- no name
+// validation and no state.db is opened; --profiles' own listing (task 015)
+// is the one place an invalid directory name is filtered and flagged.
+func KnownProfiles(getenv func(string) string, userHome func() (string, error)) ([]string, error) {
+	root, err := ProfilesRoot(getenv, userHome)
+	if err != nil {
+		return nil, err
+	}
+	known := []string{DefaultProfile}
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return known, nil
+		}
+		return nil, err
+	}
+	names := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		if entry.IsDir() {
+			names = append(names, entry.Name())
+		}
+	}
+	sort.Strings(names)
+	return append(known, names...), nil
+}
+
+// CreateProfile makes a not-yet-existing profile's config, data and log
+// directories together (SPEC §3.4), then copies the default profile's
+// config.toml once, if it has one, so the two files are independent from
+// then on -- a missing default config leaves the new profile with none
+// either, never an error. state.db and log/'s own contents are left to the
+// normal first-launch path (store.Open, audit.New), exactly as SPEC
+// states; this only makes the directories and copies the one file. Callers
+// (cmd/deck) run this only after SPEC's confirm-if-unknown prompt answered
+// "y" -- it never itself asks or checks ProfileExists.
+func CreateProfile(getenv func(string) string, userHome func() (string, error), profile string) error {
+	paths, err := resolvePaths(getenv, userHome, profile)
+	if err != nil {
+		return err
+	}
+	defaultPaths, err := resolvePaths(getenv, userHome, DefaultProfile)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(paths.DataDir, 0o700); err != nil {
+		return fmt.Errorf("create profile %q data directory: %w", profile, err)
+	}
+	if err := os.MkdirAll(filepath.Dir(paths.ConfigFile), 0o755); err != nil {
+		return fmt.Errorf("create profile %q config directory: %w", profile, err)
+	}
+	if err := os.MkdirAll(paths.LogDir, 0o700); err != nil {
+		return fmt.Errorf("create profile %q log directory: %w", profile, err)
+	}
+	data, err := os.ReadFile(defaultPaths.ConfigFile)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return fmt.Errorf("read default profile config: %w", err)
+	}
+	if err := os.WriteFile(paths.ConfigFile, data, 0o600); err != nil {
+		return fmt.Errorf("copy default config for profile %q: %w", profile, err)
+	}
+	return nil
 }
 
 func milliseconds(raw string, fallback int, name string) (time.Duration, error) {
