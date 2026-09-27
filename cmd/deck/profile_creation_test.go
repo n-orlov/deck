@@ -116,21 +116,38 @@ func assertNoProfileDir(t *testing.T, home, name string) {
 }
 
 // TestDeckBinaryProfileCreationDeclinedThroughPTY pins SPEC §3.4: on a real
-// terminal, any answer other than "y" (here "n") to the creation prompt
-// exits 1 and creates nothing.
+// terminal, "only y creates it; anything else exits 1 and creates nothing".
+// "n" is the plain decline; "Y", "yes", " y" and an empty line are the
+// near-misses a case-folding or prefix/trim-happy check would wrongly
+// accept, so each must also exit 1 with no profiles/work directory.
 func TestDeckBinaryProfileCreationDeclinedThroughPTY(t *testing.T) {
 	binary := buildDeckProfileCreationTestBinary(t)
-	home := t.TempDir()
-	terminal, output, done, cancel := startProfileCreationPTY(t, binary, home)
-	defer cancel()
-	if _, err := terminal.Write([]byte("n\n")); err != nil {
-		t.Fatal(err)
+	for _, tc := range []struct{ name, answer string }{
+		{"n", "n\n"},
+		{"uppercase Y", "Y\n"},
+		{"yes", "yes\n"},
+		{"leading space y", " y\n"},
+		{"empty line", "\n"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			// Parallel: each subtest spends ~5s before the prompt in
+			// bubbletea's init-time background-colour query, which this
+			// bare pty never answers; the subtests share nothing but the
+			// read-only binary.
+			t.Parallel()
+			home := t.TempDir()
+			terminal, output, done, cancel := startProfileCreationPTY(t, binary, home)
+			defer cancel()
+			if _, err := terminal.Write([]byte(tc.answer)); err != nil {
+				t.Fatal(err)
+			}
+			code := waitForProcessExit(t, done, 5*time.Second)
+			if code != 1 {
+				t.Fatalf("deck work, answered %q, exit = %d, want 1\noutput: %q", tc.answer, code, output.String())
+			}
+			assertNoProfileDir(t, home, "work")
+		})
 	}
-	code := waitForProcessExit(t, done, 5*time.Second)
-	if code != 1 {
-		t.Fatalf("deck work, answered n, exit = %d, want 1\noutput: %q", code, output.String())
-	}
-	assertNoProfileDir(t, home, "work")
 }
 
 // TestDeckBinaryProfileCreationAcceptedThroughPTY pins SPEC §3.4's "y"

@@ -318,7 +318,10 @@ func confirmAndCreateProfile(profile string, getenv func(string) string, userHom
 	}
 	fmt.Fprint(stderr, prompt+" ")
 	answer, _ := bufio.NewReader(stdin).ReadString('\n')
-	if strings.ToLower(strings.TrimSpace(answer)) != "y" {
+	// SPEC §3.4: "only y creates it" -- exactly a lowercase y, with only
+	// the line terminator stripped. "Y", "yes", " y" and an empty line are
+	// all "anything else" and exit 1 creating nothing.
+	if strings.TrimRight(answer, "\r\n") != "y" {
 		return 1
 	}
 	if err := config.CreateProfile(getenv, userHome, profile); err != nil {
