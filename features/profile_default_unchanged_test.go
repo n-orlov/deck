@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -32,6 +33,8 @@ func registerProfileDefaultUnchangedSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^the default install header for deck client "([^"]+)" reads exactly "([^"]+)"$`, defaultInstallHeaderReadsExactly)
 	sc.Step(`^the default install session "([^"]+)" is a live tmux session on socket "deck"$`, defaultInstallSessionIsLiveOnSocketDeck)
 	sc.Step(`^the default install's config\.toml still contains the marker "([^"]+)"$`, defaultInstallConfigStillContainsMarker)
+	sc.Step(`^deck client "([^"]+)" draws ASCII chrome, which only the default install's flat config\.toml turns on$`, defaultInstallClientDrawsASCIIChrome)
+	sc.Step(`^the default install session "([^"]+)"'s live pane environment has "([^"]+)" set to "([^"]+)" by the flat config\.toml's \[env\] table$`, defaultInstallPaneEnvironmentHasConfigValue)
 	sc.Step(`^the default install's flat state database holds exactly the sessions "([^"]+)" and "([^"]+)"$`, defaultInstallStateDatabaseHoldsExactlySessions)
 	sc.Step(`^the default install's flat log directory holds a deck\.jsonl file$`, defaultInstallLogDirectoryHoldsJSONLFile)
 	sc.Step(`^no profiles directory exists under the default install's temp config, data or state roots$`, defaultInstallHasNoProfilesDirectories)
@@ -92,14 +95,24 @@ func startDefaultInstallClient(ctx context.Context, h *ScenarioHarness, name str
 	if !registered {
 		h.extraSockets = append(h.extraSockets, "deck")
 	}
+	// DECK_ASCII= clears h.Environment's own DECK_ASCII=1 default (exec
+	// keeps the last duplicate key, and config's getenv treats an empty
+	// value as unset), so ASCII chrome can only come from the flat
+	// config.toml's [ui] ascii = true -- the observable
+	// defaultInstallClientDrawsASCIIChrome relies on to prove that file is
+	// the one actually loaded, not merely left on disk.
 	client, err := h.StartNamedClient(ctx, name,
 		"DECK_HOME=", "HOME="+h.defaultInstallHome,
 		"XDG_CONFIG_HOME=", "XDG_DATA_HOME=", "XDG_STATE_HOME=",
-		"DECK_TMUX_SOCKET=")
+		"DECK_TMUX_SOCKET=", "DECK_ASCII=")
 	if err != nil {
 		return err
 	}
-	return client.WaitForFrame(ctx, false, "deck - sessions")
+	// Ready on the header text rather than the "deck - sessions" title:
+	// the title's dash is ASCII only when the flat config.toml's [ui] ascii
+	// was loaded, and that is for defaultInstallClientDrawsASCIIChrome to
+	// report by name, not for a readiness wait to time out on.
+	return client.WaitForFrame(ctx, false, "socket: deck")
 }
 
 // defaultInstallSeeded is this scenario's own "Given": it creates the temp
@@ -125,7 +138,12 @@ func defaultInstallSeeded(ctx context.Context, marker, name, sessionName string)
 	if err := os.MkdirAll(configDir, 0o700); err != nil {
 		return fmt.Errorf("pre-create default install config directory: %w", err)
 	}
-	content := fmt.Sprintf("# %s\nascii = true\n", marker)
+	// Two settings deck can only have learned from THIS file: [ui] ascii
+	// (the harness's own DECK_ASCII=1 override is cleared for these
+	// clients, and deck's default is Unicode chrome) and an [env] entry
+	// no other layer supplies, which config [env] hands to every pane deck
+	// creates (SPEC §6.1). Both are asserted after the restart.
+	content := fmt.Sprintf("# %s\n[ui]\nascii = true\n\n[env]\n%s = %q\n", marker, defaultInstallEnvKey, marker)
 	if err := os.WriteFile(filepath.Join(configDir, "config.toml"), []byte(content), 0o600); err != nil {
 		return fmt.Errorf("pre-write default install config.toml: %w", err)
 	}
@@ -156,9 +174,9 @@ func defaultInstallRestarted(ctx context.Context, name string) error {
 // example a regression that grew a "profile: default · " prefix in front,
 // which SPEC never wants for the default profile). This instead finds the
 // one sidebar row whose FULL trimmed cell text is want, byte for byte,
-// splitting on the ASCII vertical divider "|" this scenario's own
-// DECK_ASCII=1 default (h.Environment's own default, never overridden
-// here) renders (box().vertical, internal/tui/panel.go).
+// splitting on the ASCII vertical divider "|" (box().vertical,
+// internal/tui/panel.go) that the flat config.toml's [ui] ascii = true
+// turns on for these clients (DECK_ASCII is cleared for them).
 func defaultInstallHeaderReadsExactly(ctx context.Context, name, want string) error {
 	h, err := scenarioHarness(ctx)
 	if err != nil {
@@ -239,9 +257,11 @@ func defaultInstallSessionIsLiveOnSocketDeck(ctx context.Context, name string) e
 
 // defaultInstallConfigStillContainsMarker asserts the flat config.toml
 // defaultInstallSeeded pre-wrote is still on disk, at the exact flat path a
-// real install uses, and still carries the marker -- proof the flat config
-// path is the one this scenario's clients actually read/kept, never moved
-// or replaced by some profiles/-nested file.
+// real install uses, and still carries the marker -- it was never moved or
+// replaced by some profiles/-nested file. It is only the "kept" half: the
+// "actually loaded" half is defaultInstallClientDrawsASCIIChrome and
+// defaultInstallPaneEnvironmentHasConfigValue, which observe settings deck
+// could only have read from this file.
 func defaultInstallConfigStillContainsMarker(ctx context.Context, marker string) error {
 	h, err := scenarioHarness(ctx)
 	if err != nil {
@@ -256,6 +276,83 @@ func defaultInstallConfigStillContainsMarker(ctx context.Context, marker string)
 		return fmt.Errorf("default install config.toml at %q does not contain marker %q:\n%s", path, marker, data)
 	}
 	return nil
+}
+
+// defaultInstallEnvKey is the [env] key defaultInstallSeeded writes into
+// the flat config.toml; nothing else in the harness or the sibling
+// container's environment defines it.
+const defaultInstallEnvKey = "DECK_DEFAULT_INSTALL_MARKER"
+
+// defaultInstallClientDrawsASCIIChrome proves the running client LOADED
+// the flat config.toml rather than merely leaving it on disk: these
+// clients run with DECK_ASCII cleared, deck's own default is Unicode
+// box-drawing (internal/tui/panel.go box()), so the ASCII "+"/"|" chrome
+// appears only if [ui] ascii = true was read from $HOME/.config/deck's
+// config.toml. The frame must hold the ASCII corner and divider and none
+// of the Unicode border glyphs.
+func defaultInstallClientDrawsASCIIChrome(ctx context.Context, name string) error {
+	h, err := scenarioHarness(ctx)
+	if err != nil {
+		return err
+	}
+	client, err := h.Client(name)
+	if err != nil {
+		return err
+	}
+	frame := client.Frame(false)
+	for _, glyph := range []string{"╭", "╮", "╰", "╯", "─", "│"} {
+		if strings.Contains(frame, glyph) {
+			return fmt.Errorf("deck client %q draws Unicode border glyph %q, so [ui] ascii = true from the flat config.toml was not applied:\n%s", name, glyph, frame)
+		}
+	}
+	if !strings.Contains(frame, "+") || !strings.Contains(frame, "|") {
+		return fmt.Errorf("deck client %q frame has no ASCII \"+\"/\"|\" chrome from the flat config.toml's [ui] ascii = true:\n%s", name, frame)
+	}
+	return nil
+}
+
+// defaultInstallPaneEnvironmentHasConfigValue reads the live pane
+// process's own /proc/<pid>/environ for session name on the literal socket
+// "deck" and requires key=want: a value only the flat config.toml's [env]
+// table supplies, so a pane created by the restarted client carrying it
+// proves that client resolved and loaded $HOME/.config/deck/config.toml.
+func defaultInstallPaneEnvironmentHasConfigValue(ctx context.Context, name, key, want string) error {
+	h, err := scenarioHarness(ctx)
+	if err != nil {
+		return err
+	}
+	if value, ok := os.LookupEnv(key); ok {
+		return fmt.Errorf("test process already defines %s=%q, so the pane's value could not prove the flat config.toml supplied it", key, value)
+	}
+	slug, err := defaultInstallSessionSlug(ctx, h, name)
+	if err != nil {
+		return err
+	}
+	target := "deck_" + slug
+	commandCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	output, err := exec.CommandContext(commandCtx, "tmux", "-L", "deck", "list-panes", "-t", target, "-F", "#{pane_pid}").CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("tmux -L deck list-panes -t %s: %w: %s", target, err, strings.TrimSpace(string(output)))
+	}
+	pidText := strings.TrimSpace(string(output))
+	pid, err := strconv.Atoi(pidText)
+	if err != nil {
+		return fmt.Errorf("parse pane_pid %q for default install session %q: %w", pidText, name, err)
+	}
+	raw, err := os.ReadFile(fmt.Sprintf("/proc/%d/environ", pid))
+	if err != nil {
+		return fmt.Errorf("read /proc/%d/environ for default install session %q: %w", pid, name, err)
+	}
+	for _, entry := range strings.Split(string(raw), "\x00") {
+		if k, v, ok := strings.Cut(entry, "="); ok && k == key {
+			if v != want {
+				return fmt.Errorf("default install session %q pane has %s=%q, want %q from the flat config.toml's [env]", name, key, v, want)
+			}
+			return nil
+		}
+	}
+	return fmt.Errorf("default install session %q pane environment has no %s at all, so the flat config.toml's [env] table was not loaded", name, key)
 }
 
 // defaultInstallStateDatabaseHoldsExactlySessions asserts the flat state.db
