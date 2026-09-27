@@ -36,7 +36,11 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	}
 	isHook := len(args) == 2 && args[1] == "_hook"
 	var positional string
-	if !isHook {
+	if isHook {
+		if !refuseBadHookProfile(os.Getenv, os.UserHomeDir, stderr) {
+			return 1
+		}
+	} else {
 		var ok bool
 		positional, ok = parseProfileArgs(args[1:], stderr)
 		if !ok {
@@ -402,6 +406,45 @@ func startClockStepTrigger(clock *config.Clock, stderr io.Writer) func() {
 		signal.Stop(requests)
 		close(done)
 	}
+}
+
+// refuseBadHookProfile implements SPEC §3.4's _hook profile guard: "every
+// pane carries DECK_PROFILE ... and _hook resolves its paths from it with
+// the same resolver the TUI uses ... If the pane's DECK_PROFILE is invalid,
+// or names a profile whose directory no longer exists, _hook writes
+// nothing, creates nothing, never falls back to default's database ...
+// prints one line on stderr naming the pane and the profile, and exits
+// exactly 1." It runs before config.LoadFromProfile (and therefore before
+// store.Open or any tmux client) is ever reached, so a rejection here
+// touches nothing on disk. It returns true when the pane's profile
+// resolved cleanly (default included) and the caller may continue to
+// config.LoadFromProfile/runHook; false means the caller must return exit
+// code 1 immediately, having already reported the one stderr line.
+func refuseBadHookProfile(getenv func(string) string, userHome func() (string, error), stderr io.Writer) bool {
+	// _hook never takes a positional argument, so this is exactly the
+	// resolution DECK_PROFILE (or default, unset) produces for the pane.
+	profile := config.ResolveProfileName("", getenv)
+	if err := validateResolvedProfile("", getenv); err != nil {
+		reportHookProfileRefusal(stderr, getenv, profile, err)
+		return false
+	}
+	exists, err := config.ProfileExists(getenv, userHome, profile)
+	if err != nil {
+		reportHookProfileRefusal(stderr, getenv, profile, err)
+		return false
+	}
+	if !exists {
+		reportHookProfileRefusal(stderr, getenv, profile, fmt.Errorf("profile %q has no directory", profile))
+		return false
+	}
+	return true
+}
+
+// reportHookProfileRefusal prints refuseBadHookProfile's single required
+// stderr line, naming both TMUX_PANE (identifying which pane the hook fired
+// from, empty when unset) and the profile that failed to resolve.
+func reportHookProfileRefusal(stderr io.Writer, getenv func(string) string, profile string, err error) {
+	fmt.Fprintf(stderr, "deck hook: TMUX_PANE=%q profile %q: %v\n", getenv("TMUX_PANE"), profile, err)
 }
 
 // runHook is intentionally selected before opening the normal application
