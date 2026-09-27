@@ -25,6 +25,11 @@ const (
 	DefaultStaleAfter    = 45 * time.Second
 	DefaultUndoMS        = 10000
 	DefaultDeleteGraceMS = 60000
+	// DefaultProfile is the flat, unnamed layout and socket "deck" (SPEC
+	// §3.4): the profile `deck`/`deck default`/an unset DECK_PROFILE all
+	// resolve to, byte-for-byte, with no migration and profiles/default/
+	// never created.
+	DefaultProfile = "default"
 )
 
 // Paths are the locations used by deck at runtime. DECK_HOME deliberately
@@ -39,7 +44,12 @@ type Paths struct {
 
 // Settings contains the supported determinism and polling controls.
 type Settings struct {
-	Paths     Paths
+	Paths Paths
+	// Profile is the resolved profile name this Load/LoadFrom(Profile) call
+	// selected (SPEC §3.4): DefaultProfile ("default") when nothing named
+	// another one, otherwise the positional/DECK_PROFILE name that won
+	// ResolveProfileName's precedence. Never empty.
+	Profile   string
 	Socket    string
 	Clock     *Clock
 	IDs       *IDGenerator
@@ -184,12 +194,41 @@ type Settings struct {
 	File FileConfig
 }
 
-// Load reads only documented DECK_ controls from env.
+// Load reads only documented DECK_ controls from env, resolving to the
+// default profile (this entry point has no positional argument to offer).
 func Load() (Settings, error) { return LoadFrom(os.Getenv, os.UserHomeDir) }
 
 // LoadFrom exists to make environment resolution independently testable.
+// It resolves the active profile from DECK_PROFILE alone; LoadFromProfile
+// is the form that also honours a positional CLI argument ahead of it.
 func LoadFrom(getenv func(string) string, userHome func() (string, error)) (Settings, error) {
-	paths, err := resolvePaths(getenv, userHome)
+	return LoadFromProfile(getenv, userHome, "")
+}
+
+// ResolveProfileName resolves which profile a launch selects, per SPEC
+// §3.4's stated precedence: the positional CLI argument first, then
+// DECK_PROFILE, then DefaultProfile. An empty DECK_PROFILE is unset, never
+// an (invalid) empty profile name -- callers never see "" out of this
+// function.
+func ResolveProfileName(positional string, getenv func(string) string) string {
+	if positional != "" {
+		return positional
+	}
+	if env := getenv("DECK_PROFILE"); env != "" {
+		return env
+	}
+	return DefaultProfile
+}
+
+// LoadFromProfile is LoadFrom's positional-argument-aware form: positional
+// is deck's optional `deck [<profile>]` CLI argument (SPEC §3.4), resolved
+// against DECK_PROFILE and DefaultProfile by ResolveProfileName ahead of
+// everything else this function does. Every other rule -- env overrides,
+// file loading, theme resolution -- is identical to LoadFrom, just against
+// the resolved profile's own paths and socket.
+func LoadFromProfile(getenv func(string) string, userHome func() (string, error), positional string) (Settings, error) {
+	profile := ResolveProfileName(positional, getenv)
+	paths, err := resolvePaths(getenv, userHome, profile)
 	if err != nil {
 		return Settings{}, err
 	}
@@ -216,9 +255,16 @@ func LoadFrom(getenv func(string) string, userHome func() (string, error)) (Sett
 	if err != nil {
 		return Settings{}, err
 	}
+	// DECK_TMUX_SOCKET always wins outright (SPEC §3.4); otherwise the
+	// default profile keeps socket "deck" byte-for-byte and any named
+	// profile derives "deck-<name>".
 	socket := getenv("DECK_TMUX_SOCKET")
 	if socket == "" {
-		socket = DefaultSocket
+		if profile == DefaultProfile {
+			socket = DefaultSocket
+		} else {
+			socket = "deck-" + profile
+		}
 	}
 	if strings.ContainsAny(socket, "/\x00") {
 		return Settings{}, fmt.Errorf("DECK_TMUX_SOCKET must be a tmux socket name, not a path")
@@ -307,7 +353,7 @@ func LoadFrom(getenv func(string) string, userHome func() (string, error)) (Sett
 		envOverrides = nil
 	}
 	return Settings{
-		Paths: paths, Socket: socket, Clock: clock, IDs: NewIDGenerator(getenv("DECK_ID_SEED")),
+		Paths: paths, Profile: profile, Socket: socket, Clock: clock, IDs: NewIDGenerator(getenv("DECK_ID_SEED")),
 		Reconcile: reconcile, Preview: preview, Undo: undo, DeleteGrace: deleteGrace, StaleAfter: fileCfg.StaleAfter, CaptureMinInterval: fileCfg.CaptureMinInterval, InteractiveMS: interactiveMS, InteractiveTransport: interactiveTransport,
 		ASCII: ascii, Animation: animation, Color: color, ColorDepth: colorDepth, AllowYolo: fileCfg.AllowYolo, YoloDefault: fileCfg.YoloDefault, Env: fileCfg.Env, Mouse: mouse,
 		DefaultGroupFirst:  fileCfg.DefaultGroupFirst,
@@ -351,8 +397,16 @@ func HistoryFile(home, sessionID string) string {
 	return filepath.Join(home, "history", sessionID)
 }
 
-func resolvePaths(getenv func(string) string, userHome func() (string, error)) (Paths, error) {
+// resolvePaths resolves Paths for the given (already-resolved) profile
+// name: the default profile is the flat layout unchanged, byte-for-byte;
+// any other name gets "profiles/<name>" inserted after "deck/" in XDG mode,
+// or after DECK_HOME directly, per SPEC §3.4's table. It never validates
+// name -- ValidateProfileName is the one validator SPEC §3.4 names, and
+// every caller here runs it (or accepts DefaultProfile, which always
+// passes) before resolvePaths is reached.
+func resolvePaths(getenv func(string) string, userHome func() (string, error), profile string) (Paths, error) {
 	if root := getenv("DECK_HOME"); root != "" {
+		root = profileRoot(root, profile)
 		return Paths{Home: root, DataDir: root, ConfigFile: filepath.Join(root, "config.toml"), LogDir: filepath.Join(root, "log"), StateDB: filepath.Join(root, "state.db")}, nil
 	}
 	home, err := userHome()
@@ -371,8 +425,20 @@ func resolvePaths(getenv func(string) string, userHome func() (string, error)) (
 	if state == "" {
 		state = filepath.Join(home, ".local", "state")
 	}
-	data = filepath.Join(data, "deck")
-	return Paths{Home: data, DataDir: data, ConfigFile: filepath.Join(config, "deck", "config.toml"), LogDir: filepath.Join(state, "deck", "log"), StateDB: filepath.Join(data, "state.db")}, nil
+	data = profileRoot(filepath.Join(data, "deck"), profile)
+	configDeck := profileRoot(filepath.Join(config, "deck"), profile)
+	stateDeck := profileRoot(filepath.Join(state, "deck"), profile)
+	return Paths{Home: data, DataDir: data, ConfigFile: filepath.Join(configDeck, "config.toml"), LogDir: filepath.Join(stateDeck, "log"), StateDB: filepath.Join(data, "state.db")}, nil
+}
+
+// profileRoot inserts "profiles/<name>" after root for any profile other
+// than the default/unnamed one (SPEC §3.4's table): the default profile is
+// the flat layout, byte-for-byte, and profiles/default/ is never created.
+func profileRoot(root, profile string) string {
+	if profile == "" || profile == DefaultProfile {
+		return root
+	}
+	return filepath.Join(root, "profiles", profile)
 }
 
 func milliseconds(raw string, fallback int, name string) (time.Duration, error) {

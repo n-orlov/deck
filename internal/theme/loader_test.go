@@ -251,3 +251,42 @@ func TestThemesDirDerivesFromConfigFilePath(t *testing.T) {
 		t.Fatalf("ThemesDir = %q, want %q", got, want)
 	}
 }
+
+// TestThemesDirSharedByNamedProfiles pins SPEC §3.4's "user themes are
+// shared: every profile discovers them in the default profile's themes/
+// directory ... because a theme is colour data, not state." A named
+// profile's own config.toml lives one "profiles/<name>" segment deeper
+// than the default profile's (per the same section's path table); ThemesDir
+// must still resolve to the shared, default-profile themes/ directory --
+// never a per-profile profiles/<name>/themes/ -- for both the XDG and the
+// DECK_HOME layouts, and for any profile name.
+func TestThemesDirSharedByNamedProfiles(t *testing.T) {
+	cases := []struct {
+		name       string
+		configFile string
+		want       string
+	}{
+		{
+			name:       "xdg named profile",
+			configFile: "/home/user/.config/deck/profiles/work/config.toml",
+			want:       filepath.Join("/home/user/.config/deck", "themes"),
+		},
+		{
+			name:       "deck home named profile",
+			configFile: "/oracle-deck-home/profiles/work/config.toml",
+			want:       filepath.Join("/oracle-deck-home", "themes"),
+		},
+		{
+			name:       "xdg default profile unaffected",
+			configFile: "/home/user/.config/deck/config.toml",
+			want:       filepath.Join("/home/user/.config/deck", "themes"),
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := ThemesDir(tc.configFile); got != tc.want {
+				t.Fatalf("ThemesDir(%q) = %q, want %q", tc.configFile, got, tc.want)
+			}
+		})
+	}
+}

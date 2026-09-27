@@ -106,8 +106,21 @@ func peekDeclaredName(data []byte) string {
 // layout, and DECK_HOME/themes under the DECK_HOME override — the same
 // directory config.toml itself lives in either way, so scenarios and
 // installations that redirect one redirect the other identically.
+//
+// A named profile's config.toml lives one "profiles/<name>" segment deeper
+// (SPEC §3.4) than the default profile's, but themes are shared: "every
+// profile discovers them in the default profile's themes/ directory ...
+// because a theme is colour data, not state." So when configFile's
+// directory's parent is named "profiles", ThemesDir strips that
+// "profiles/<name>" pair before appending "themes", landing on exactly the
+// same directory the default profile's own configFile would derive —
+// regardless of which profile is actually running.
 func ThemesDir(configFile string) string {
-	return filepath.Join(filepath.Dir(configFile), "themes")
+	dir := filepath.Dir(configFile)
+	if parent := filepath.Dir(dir); filepath.Base(parent) == "profiles" {
+		dir = filepath.Dir(parent)
+	}
+	return filepath.Join(dir, "themes")
 }
 
 // Resolve picks the active theme by declared name, given the themes
