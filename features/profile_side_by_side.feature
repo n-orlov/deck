@@ -14,6 +14,8 @@ Feature: Profiles: two named profiles run side by side, each on its own socket a
     And deck client "a" screen does not contain "already exists"
     And deck client "b" screen contains "shared"
     And deck client "b" screen does not contain "already exists"
+    And deck client "a" sidebar lists exactly one session row, named "shared"
+    And deck client "b" sidebar lists exactly one session row, named "shared"
     And deck client "a" screen contains "profile: a · socket: deck-a"
     And the profile "a" session "shared" is a live tmux session on socket "deck-a"
     And the profile "b" session "shared" is a live tmux session on socket "deck-b"
