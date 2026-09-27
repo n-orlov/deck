@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -961,4 +962,178 @@ func TestLaterHolderRecheckStillClearsRefusal(t *testing.T) {
 			t.Fatalf("drawn preview still contains NOT ATTACHED after the refusal cleared:\n%s", joined)
 		}
 	})
+}
+
+// TestReloadIssuedBeforeStoppedRefusalCannotDismissIt is task 002's own
+// (R143/R148, SPEC §11.9) reload-side counterpart to
+// TestIndependentCaptureFromBeforeRefusalCannotDismissIt above: the async
+// clear source under test here is sessionsLoaded/clearEntryRefusalIfSession
+// Started, not previewCaptured, but the race is the same shape --
+//
+//  1. a reload is ISSUED (m.loadSessions bound and called) while the
+//     session is genuinely running, producing a sessionsLoaded message
+//     that reports the session running;
+//  2. the session is THEN stopped (a real store.UpdateSessionStatus
+//     transition, not a fixture field poke), and a LATER reload is
+//     issued and applied, so m.sessions now correctly shows it stopped;
+//  3. Enter is refused with the stopped kind against that up-to-date
+//     state;
+//  4. the message from step 1 -- issued before the refusal ever
+//     existed, still reporting the session running -- is delivered
+//     LAST, after the refusal.
+//
+// Without the generation stamp (task 002's own fix), step 4's message
+// would satisfy clearEntryRefusalIfSessionStarted's canReachPane check
+// (its own snapshot says "running") and incorrectly dismiss a refusal it
+// never observed the reason for. With the stamp, its generation (0, from
+// before setEntryRefusal ever ran) is strictly less than the refusal's,
+// so it must be ignored -- the refusal stays active and the rendered
+// preview still contains NOT ATTACHED.
+func TestReloadIssuedBeforeStoppedRefusalCannotDismissIt(t *testing.T) {
+	home := t.TempDir()
+	db, err := store.OpenPath(home, filepath.Join(home, "state.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	ctx := context.Background()
+	if _, err := db.CreateSession(ctx, store.CreateSessionInput{
+		ID: "sess-early-reload", Name: "earlyreload", CWD: "/work",
+		Agent: "claude", CapturedPath: "/bin", Status: "running", StatusSource: "hook",
+		StatusAt: 1, CreatedAt: 1,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	m := New(db, config.Settings{}, "")
+	m.width, m.height = 100, 30
+	m.tmuxClient = tmux.Client{Socket: "dummy"}
+	if _, h := m.previewContentSize(); h < interactiveMinInnerRows {
+		t.Fatalf("test assumption violated: preview content height %d is below the %d-row floor", h, interactiveMinInnerRows)
+	}
+
+	// Step 1: issue (execute) a reload right now, while the session is
+	// still genuinely running, and before any refusal exists.
+	earlyMsgRaw := m.loadSessions()
+	earlyMsg, ok := earlyMsgRaw.(sessionsLoaded)
+	if !ok || earlyMsg.err != nil || len(earlyMsg.sessions) != 1 || earlyMsg.sessions[0].Status != "running" {
+		t.Fatalf("fixture: early reload = %+v (ok=%v), want one running session", earlyMsgRaw, ok)
+	}
+
+	// Apply that first reload so m.sessions/m.selected are actually
+	// populated, exactly like a normal startup load.
+	next, _ := m.Update(earlyMsgRaw)
+	m = next.(Model)
+	if len(m.sessions) != 1 || !m.hasSelectedSession() {
+		t.Fatalf("fixture: model has no selected session after the initial load: %+v", m.sessions)
+	}
+
+	// Step 2: the session is stopped for real, and a LATER reload is
+	// issued and applied so m.sessions catches up.
+	if err := db.UpdateSessionStatus(ctx, store.StatusUpdateInput{
+		SessionID: "sess-early-reload", Status: "stopped", Source: "tmux", At: 20,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	laterMsgRaw := m.loadSessions()
+	laterMsg, ok := laterMsgRaw.(sessionsLoaded)
+	if !ok || len(laterMsg.sessions) != 1 || laterMsg.sessions[0].Status != "stopped" {
+		t.Fatalf("fixture: later reload = %+v (ok=%v), want one stopped session", laterMsgRaw, ok)
+	}
+	next, _ = m.Update(laterMsgRaw)
+	m = next.(Model)
+	session, ok := m.selectedSession()
+	if !ok || session.Status != "stopped" {
+		t.Fatalf("fixture: selected session after the later reload = (%+v, %v), want stopped", session, ok)
+	}
+
+	// Step 3: Enter is refused with the stopped kind, against this
+	// up-to-date state.
+	next, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = next.(Model)
+	if !m.entryRefusal.active || m.entryRefusal.kind != entryRefusalStopped || m.entryRefusal.sessionID != "sess-early-reload" {
+		t.Fatalf("Enter against the now-stopped session = %+v, want an active stopped refusal", m.entryRefusal)
+	}
+
+	// Step 4: the EARLIER, pre-refusal reload's message -- still saying
+	// the session is running -- is delivered LAST.
+	next, _ = m.Update(earlyMsgRaw)
+	m = next.(Model)
+	if !m.entryRefusal.active || m.entryRefusal.kind != entryRefusalStopped {
+		t.Fatalf("a reload issued BEFORE the current stopped refusal dismissed it on late delivery: %+v, want the still-applicable banner to remain", m.entryRefusal)
+	}
+	if _, ok := m.activeEntryRefusalForSelection(); !ok {
+		t.Fatalf("banner is not showing after the stale, pre-refusal reload was correctly ignored")
+	}
+	joined := drawnPreviewJoined(t, m)
+	if !strings.Contains(joined, "NOT ATTACHED") {
+		t.Fatalf("drawn preview does not contain NOT ATTACHED after the stale reload was ignored:\n%s", joined)
+	}
+}
+
+// TestReloadAfterStoppedRefusalClearsWhenSessionStarts is task 002's
+// positive companion to the test above: a reload issued AFTER the
+// current stopped refusal already exists, whose own result shows the
+// session running again, must still clear the banner -- the generation
+// gate added by task 002 only rejects reloads issued BEFORE the refusal,
+// never a genuinely later one, exactly mirroring
+// clearEntryRefusalIfPreviewLive's own "a genuinely later tick" half.
+func TestReloadAfterStoppedRefusalClearsWhenSessionStarts(t *testing.T) {
+	home := t.TempDir()
+	db, err := store.OpenPath(home, filepath.Join(home, "state.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	ctx := context.Background()
+	if _, err := db.CreateSession(ctx, store.CreateSessionInput{
+		ID: "sess-later-reload", Name: "laterreload", CWD: "/work",
+		Agent: "shell", CapturedPath: "/bin", Status: "stopped", StatusSource: "hook",
+		StatusAt: 1, CreatedAt: 1,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	m := New(db, config.Settings{}, "")
+	m.width, m.height = 100, 30
+	m.tmuxClient = tmux.Client{Socket: "dummy"}
+
+	next, _ := m.Update(m.loadSessions())
+	m = next.(Model)
+	session, ok := m.selectedSession()
+	if !ok || session.Status != "stopped" {
+		t.Fatalf("fixture: selected session after the initial load = (%+v, %v), want stopped", session, ok)
+	}
+
+	next, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = next.(Model)
+	if !m.entryRefusal.active || m.entryRefusal.kind != entryRefusalStopped || m.entryRefusal.sessionID != "sess-later-reload" {
+		t.Fatalf("Enter against the stopped session = %+v, want an active stopped refusal", m.entryRefusal)
+	}
+
+	// The session starts for real, and a reload is issued AFTER the
+	// refusal already exists.
+	if err := db.UpdateSessionStatus(ctx, store.StatusUpdateInput{
+		SessionID: "sess-later-reload", Status: "running", Source: "tmux", At: 30,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	laterMsgRaw := m.loadSessions()
+	laterMsg, ok := laterMsgRaw.(sessionsLoaded)
+	if !ok || len(laterMsg.sessions) != 1 || laterMsg.sessions[0].Status != "running" {
+		t.Fatalf("fixture: later reload = %+v (ok=%v), want one running session", laterMsgRaw, ok)
+	}
+
+	next, _ = m.Update(laterMsgRaw)
+	m = next.(Model)
+	if m.entryRefusal.active {
+		t.Fatalf("a reload issued AFTER the refusal, reporting the session started, did not clear it: %+v", m.entryRefusal)
+	}
+	if _, ok := m.activeEntryRefusalForSelection(); ok {
+		t.Fatalf("banner still showing after a genuinely later reload observed the session running again")
+	}
+	joined := drawnPreviewJoined(t, m)
+	if strings.Contains(joined, "NOT ATTACHED") {
+		t.Fatalf("drawn preview still contains NOT ATTACHED after the refusal cleared:\n%s", joined)
+	}
 }

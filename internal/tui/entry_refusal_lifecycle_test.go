@@ -271,7 +271,7 @@ func TestEntryRefusalClearsWhenStoppedSessionStarts(t *testing.T) {
 	m.selected = rowCursor(0)
 	m.setEntryRefusal("sess-started-1", entryRefusalStopped, stoppedSessionRefusalTail)
 
-	next, _ := m.Update(sessionsLoaded{sessions: []store.Session{
+	next, _ := m.Update(sessionsLoaded{generation: m.entryRefusalGeneration, sessions: []store.Session{
 		{ID: "sess-started-1", Name: "wasstopped", Slug: "wasstopped", Status: "running"},
 	}})
 	got := next.(Model)
@@ -285,7 +285,7 @@ func TestEntryRefusalClearsWhenStoppedSessionStarts(t *testing.T) {
 	m2.baseSessions = m2.sessions
 	m2.selected = rowCursor(0)
 	m2.setEntryRefusal("sess-started-2", entryRefusalStopped, stoppedSessionRefusalTail)
-	next2, _ := m2.Update(sessionsLoaded{sessions: []store.Session{
+	next2, _ := m2.Update(sessionsLoaded{generation: m2.entryRefusalGeneration, sessions: []store.Session{
 		{ID: "sess-started-2", Name: "stillstopped", Slug: "stillstopped", Status: "stopped"},
 	}})
 	got2 := next2.(Model)

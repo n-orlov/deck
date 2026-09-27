@@ -1424,6 +1424,18 @@ type sessionsLoaded struct {
 	// value, exactly like archivedSessionsLoaded's own error handling.
 	groups    []store.Group
 	groupsErr error
+	// generation (task 002, R143/R148, SPEC §11.9) is
+	// Model.entryRefusalGeneration as loadSessions saw it at the moment
+	// this reload was ISSUED, not whenever the result happens to land --
+	// m.loadSessions is a value-receiver method value, so the Model it
+	// closes over is a snapshot taken at bind time, letting it read this
+	// field before the tea.Cmd ever runs. clearEntryRefusalIfSessionStarted
+	// (entry_refusal.go) uses it exactly like capturePreview's own
+	// capturedAtGeneration/clearEntryRefusalIfPreviewLive: a reload issued
+	// BEFORE the currently active stopped refusal existed must never clear
+	// it just because its result happens to land after the session was
+	// since stopped and reloaded again.
+	generation int
 }
 
 // Tick types are deliberately separate: reconciliation refreshes durable rows,
@@ -2104,8 +2116,12 @@ func (m Model) Init() tea.Cmd {
 }
 
 func (m Model) loadSessions() tea.Msg {
+	// generation (task 002, R143/R148, SPEC §11.9): captured here, at the
+	// moment this reload is ISSUED -- see sessionsLoaded.generation's own
+	// doc comment above for why m being a value receiver makes this safe.
+	generation := m.entryRefusalGeneration
 	if m.store == nil {
-		return sessionsLoaded{}
+		return sessionsLoaded{generation: generation}
 	}
 	rows, err := m.store.ListSessions(context.Background())
 	// cure-01-02: fetched on the SAME reload as sessions (never a separate
@@ -2114,7 +2130,7 @@ func (m Model) loadSessions() tea.Msg {
 	// see groupSessions' own comment for why m.sessions alone cannot answer
 	// "does this defined group have zero members right now".
 	groups, groupsErr := m.store.ListGroups(context.Background())
-	return sessionsLoaded{sessions: rows, err: err, groups: groups, groupsErr: groupsErr}
+	return sessionsLoaded{sessions: rows, err: err, groups: groups, groupsErr: groupsErr, generation: generation}
 }
 
 // archivedSessionsLoaded carries task 123's fresh ListArchivedSessions
@@ -2769,7 +2785,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			// tick finds the reason gone (... the session started)" for the
 			// entryRefusalStopped kind -- read against the JUST-refreshed
 			// m.sessions above, not the pre-reload snapshot.
-			m.clearEntryRefusalIfSessionStarted()
+			m.clearEntryRefusalIfSessionStarted(msg.generation)
 			// cure-01-01-3 (R143/R148, SPEC §11.9): every other lifetime edge
 			// this reload can cause -- the preserve-by-id dance landing on a
 			// DIFFERENT session (never possible by id, but the clamp-to-last

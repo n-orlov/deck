@@ -99,8 +99,24 @@ func (m *Model) clearEntryRefusal() {
 // below, which needs a live tmux probe rather than m.sessions' own
 // status. A session that has since left m.sessions entirely (deleted
 // mid-refusal) is left alone too -- there is nothing to have "started".
-func (m *Model) clearEntryRefusalIfSessionStarted() {
+//
+// loadedAtGeneration (task 002, R143/R148, SPEC §11.9) is the
+// Model.entryRefusalGeneration value sessionsLoaded/loadSessions stamped
+// onto the reload command at the moment it was ISSUED, not whenever its
+// result happens to land -- the exact same mechanism
+// clearEntryRefusalIfPreviewLive's capturedAtGeneration already uses for
+// previewCaptured. A reload issued BEFORE the currently active stopped
+// refusal existed carries a generation strictly less than
+// m.entryRefusal.generation, and must be refused here exactly like a
+// stale preview capture: "a later tick finds the reason gone" names an
+// observation made AFTER the refusal it would dismiss, never a stale
+// snapshot from before the session was ever stopped, even if the session
+// happens to look started again in THIS particular result.
+func (m *Model) clearEntryRefusalIfSessionStarted(loadedAtGeneration int) {
 	if !m.entryRefusal.active || m.entryRefusal.kind != entryRefusalStopped {
+		return
+	}
+	if loadedAtGeneration < m.entryRefusal.generation {
 		return
 	}
 	for _, s := range m.sessions {
