@@ -34,6 +34,9 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		printVersion(stdout)
 		return 0
 	}
+	if isProfilesRequest(args) {
+		return runProfilesListing(os.Getenv, os.UserHomeDir, stdout)
+	}
 	isHook := len(args) == 2 && args[1] == "_hook"
 	var positional string
 	if isHook {
@@ -80,6 +83,14 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 			return 1
 		}
 		return 0
+	}
+
+	// SPEC §3.4: "last used" (deck --profiles' own listing) is the mtime
+	// of a last_used marker the TUI touches in the profile's data root at
+	// launch, default included. Best-effort, like the tombstone sweep
+	// below -- an unwritable data root must never stop deck from starting.
+	if err := config.TouchLastUsed(settings.Paths); err != nil {
+		fmt.Fprintln(stderr, "deck last used:", err)
 	}
 
 	stopClockStep := startClockStepTrigger(settings.Clock, stderr)
