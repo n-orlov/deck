@@ -17,7 +17,14 @@ Feature: §11.8 mouse bindings and the [ui] mouse / DECK_MOUSE opt-out (requirem
     Given deck client "A" is started
     When deck client "A" creates shell session "click-enter-alpha"
     And deck client "A" creates shell session "click-enter-bravo"
-    And within one configured reconcile interval deck client "A" screen contains "running"
+    # Settle EACH shell row by name, not just "screen contains running"
+    # generically -- a generic wait is satisfied the moment either row
+    # promotes, so the other can still be mid-flight "starting" (shell's
+    # own tmux-liveness promotion, SPEC SS7) when it is clicked and its
+    # frame captured, then promote later and break the byte-exact replay
+    # match below (task 004, R150).
+    And within one configured reconcile interval deck client "A" row "click-enter-alpha" contains "running"
+    And within one configured reconcile interval deck client "A" row "click-enter-bravo" contains "running"
     And deck client "A" clicks on the row containing "click-enter-bravo"
     Then deck client "A" has session "click-enter-bravo" selected
     And deck client "A" screen contains "click-enter-bravo"
@@ -78,7 +85,14 @@ Feature: §11.8 mouse bindings and the [ui] mouse / DECK_MOUSE opt-out (requirem
     Given deck client "A" is started
     When deck client "A" creates shell session "padding-noop-alpha"
     And deck client "A" creates shell session "padding-noop-bravo"
-    And within one configured reconcile interval deck client "A" screen contains "running"
+    # Settle EACH shell row by name, not just "screen contains running"
+    # generically -- a generic wait is satisfied the moment either row
+    # promotes, so the other can still be mid-flight "starting" (shell's
+    # own tmux-liveness promotion, SPEC SS7) when the frame below is
+    # captured, then promote later and break the byte-exact replay match
+    # (task 004, R150).
+    And within one configured reconcile interval deck client "A" row "padding-noop-alpha" contains "running"
+    And within one configured reconcile interval deck client "A" row "padding-noop-bravo" contains "running"
     And deck client "A" selects session "padding-noop-alpha"
     Then deck client "A" has session "padding-noop-alpha" selected
     And deck client "A" captures its frame as "before-padding-click"
