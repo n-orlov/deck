@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"testing"
 	"time"
 
 	"github.com/cucumber/godog"
@@ -30,6 +31,7 @@ import (
 func registerProfileSideBySideSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^deck client "([^"]+)" is started for the existing profile "([^"]+)" on its own derived socket$`, startClientForExistingProfileOnDerivedSocket)
 	sc.Step(`^the profile "([^"]+)" session "([^"]+)" is a live tmux session on socket "([^"]+)"$`, profileSessionIsLiveTMuxSessionOnSocket)
+	sc.Step(`^deck client "([^"]+)" sidebar lists exactly one session row, named "([^"]+)"$`, clientSidebarListsExactlyOneSessionRowNamed)
 	sc.Step(`^the profile "([^"]+)" state database holds exactly one session row, named "([^"]+)"$`, profileStateDatabaseHoldsExactlyOneSessionRowNamed)
 }
 
@@ -128,4 +130,140 @@ func profileStateDatabaseHoldsExactlyOneSessionRowNamed(ctx context.Context, pro
 		return fmt.Errorf("profile %q state database's one row is not named %q: %w", profile, name, err)
 	}
 	return nil
+}
+
+// clientSidebarListsExactlyOneSessionRowNamed is this scenario's own
+// "each deck lists only its own session" screen evidence. A bare "screen
+// contains <name>" cannot detect a leak here: both profiles deliberately
+// share one session name, so a deck that also listed the OTHER profile's
+// row would still contain the name. So this step first waits out one full
+// reconcile interval (every pass that could pick up a foreign row has run
+// and rendered), then reads ONLY the sidebar column of the emulator grid --
+// the text between a content row's left border and the sidebar/preview
+// divider, so nothing the preview pane echoes can count -- and requires:
+//   - exactly one sidebar row whose text (after the "> " selection marker)
+//     is the session name followed by its status, and
+//   - the group headers' own "(N)" member counts sum to exactly 1, so a
+//     foreign row filed under some other group (or any extra session row
+//     at all, whatever its name) fails too.
+func clientSidebarListsExactlyOneSessionRowNamed(ctx context.Context, clientName, name string) error {
+	timer := time.NewTimer(scenarioReconcileInterval + 100*time.Millisecond)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+	}
+	h, err := scenarioHarness(ctx)
+	if err != nil {
+		return err
+	}
+	client, err := h.Client(clientName)
+	if err != nil {
+		return err
+	}
+	frame := client.Frame(false)
+	if err := sidebarListsExactlyOneSessionRowNamed(frame, name); err != nil {
+		return fmt.Errorf("deck client %q: %w:\n%s", clientName, err, frame)
+	}
+	return nil
+}
+
+// sidebarListsExactlyOneSessionRowNamed is the step's whole verdict on one
+// frame: exactly one sidebar row names name, and the group headers count
+// exactly one session in total.
+func sidebarListsExactlyOneSessionRowNamed(frame, name string) error {
+	rows, groupTotal, headers, err := sidebarSessionRowCounts(frame, name)
+	if err != nil {
+		return err
+	}
+	if rows != 1 {
+		return fmt.Errorf("sidebar lists %d rows named %q, want exactly 1", rows, name)
+	}
+	if headers == 0 || groupTotal != 1 {
+		return fmt.Errorf("sidebar group headers (%d of them) count %d sessions in total, want exactly 1", headers, groupTotal)
+	}
+	return nil
+}
+
+// sidebarSessionRowCounts parses frame's sidebar column (the text between
+// each content row's left border and the sidebar/preview divider) and
+// returns how many rows name session name, the sum of every group header's
+// "(N)" member count, and how many group headers there were.
+func sidebarSessionRowCounts(frame, name string) (rows, groupTotal, headers int, err error) {
+	for _, line := range strings.Split(frame, "\n") {
+		cells := strings.Split(line, "\u2502") // "│": left border, divider, right border
+		if len(cells) < 3 {
+			continue
+		}
+		text := strings.TrimSpace(cells[1])
+		header, expanded := strings.CutPrefix(text, "\u25be ")           // "▾ "
+		collapsedHeader, collapsed := strings.CutPrefix(text, "\u25b8 ") // "▸ "
+		if expanded || collapsed {
+			if collapsed {
+				header = collapsedHeader
+			}
+			open := strings.LastIndex(header, "(")
+			if open < 0 || !strings.HasSuffix(header, ")") {
+				return 0, 0, 0, fmt.Errorf("group header %q has no (N) member count", text)
+			}
+			var n int
+			if _, err := fmt.Sscanf(header[open:], "(%d)", &n); err != nil {
+				return 0, 0, 0, fmt.Errorf("group header %q: parse member count: %w", text, err)
+			}
+			headers++
+			groupTotal += n
+			continue
+		}
+		entry := strings.TrimPrefix(text, "> ")
+		if entry == name || strings.HasPrefix(entry, name+" ") {
+			rows++
+		}
+	}
+	return rows, groupTotal, headers, nil
+}
+
+// TestSidebarSessionRowCountsDetectsAForeignRow pins that R156's sidebar
+// step actually fails when a deck lists the OTHER profile's same-named
+// session: the base frame is the sidebar a real profile-"a" client renders
+// in profile_side_by_side.feature, and each leaked variant adds one foreign
+// "shared" row (same group, another group) that a bare "screen contains"
+// check could never tell apart. Preview-pane text naming the session must
+// not count as a row either.
+func TestSidebarSessionRowCountsDetectsAForeignRow(t *testing.T) {
+	const (
+		top    = "╭ deck — sessions ─────────────────┬──────────────────────╮"
+		header = "│ profile: a · socket: deck-a      │ $                    │"
+		group  = "│ ▾ default  (%d)                   │                      │"
+		row    = "│ %s shared running                 │                      │"
+		when   = "│   2s ago                         │                      │"
+		blank  = "│                                  │                      │"
+		bottom = "╰──────────────────────────────────┴──────────────────────╯"
+	)
+	join := func(lines ...string) string { return strings.Join(lines, "\n") }
+	cases := []struct {
+		name                string
+		frame               string
+		wantRows, wantTotal int
+	}{
+		{"own row only", join(top, header, fmt.Sprintf(group, 1), fmt.Sprintf(row, ">"), when, blank, bottom), 1, 1},
+		{"foreign row in the same group", join(top, header, fmt.Sprintf(group, 2), fmt.Sprintf(row, ">"), when, fmt.Sprintf(row, " "), when, bottom), 2, 2},
+		{"foreign row in another group", join(top, header, fmt.Sprintf(group, 1), fmt.Sprintf(row, ">"), when,
+			"│ ▸ other  (1)                     │                      │", bottom), 1, 2},
+		{"preview names the session", join(top, header, fmt.Sprintf(group, 1), fmt.Sprintf(row, ">"), when,
+			"│                                  │ shared running       │", bottom), 1, 1},
+	}
+	for _, tc := range cases {
+		rows, total, headers, err := sidebarSessionRowCounts(tc.frame, "shared")
+		if err != nil {
+			t.Fatalf("%s: %v", tc.name, err)
+		}
+		if rows != tc.wantRows || total != tc.wantTotal || headers == 0 {
+			t.Fatalf("%s: rows=%d total=%d headers=%d, want rows=%d total=%d headers>0", tc.name, rows, total, headers, tc.wantRows, tc.wantTotal)
+		}
+		err = sidebarListsExactlyOneSessionRowNamed(tc.frame, "shared")
+		if wantPass := tc.wantRows == 1 && tc.wantTotal == 1; (err == nil) != wantPass {
+			t.Fatalf("%s: step verdict err=%v, want pass=%v", tc.name, err, wantPass)
+		}
+	}
 }
