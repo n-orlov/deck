@@ -59,6 +59,11 @@ type entryRefusalState struct {
 	sessionID string
 	kind      entryRefusalKind
 	reason    string
+	// generation is cure-01-02-3's (R143/R148, SPEC §11.9) stamp of
+	// Model.entryRefusalGeneration at the moment THIS refusal was set --
+	// see that field's own comment (tui.go) for the full mechanism it
+	// drives.
+	generation int
 }
 
 // setEntryRefusal is the ONE place every entry-refusal call site in the
@@ -69,7 +74,8 @@ type entryRefusalState struct {
 // can ALSO leave m.attachError set, because this clears it in the same
 // call.
 func (m *Model) setEntryRefusal(sessionID string, kind entryRefusalKind, reason string) {
-	m.entryRefusal = entryRefusalState{active: true, sessionID: sessionID, kind: kind, reason: reason}
+	m.entryRefusalGeneration++
+	m.entryRefusal = entryRefusalState{active: true, sessionID: sessionID, kind: kind, reason: reason, generation: m.entryRefusalGeneration}
 	m.attachError = ""
 }
 
@@ -155,11 +161,28 @@ func (m *Model) clearEntryRefusalIfRoomGrew() {
 // false) or whose probe itself failed (err != nil): "the reason gone" means
 // a live pane was actually observed, not merely that a tick happened to
 // fire.
-func (m *Model) clearEntryRefusalIfPreviewLive(sessionID string, err error, live bool) {
+//
+// capturedAtGeneration (cure-01-02-3, R143/R148, SPEC §11.9) is the
+// Model.entryRefusalGeneration value capturePreview stamped onto the
+// command at the moment it was ISSUED, not whenever its reply happens to
+// land. A capture issued BEFORE the currently active refusal existed --
+// including one issued while the pane was still live, well before Enter
+// was ever refused -- carries a generation strictly less than
+// m.entryRefusal.generation, and is refused here exactly like a
+// session-ID mismatch: "a later tick finds the reason gone" names an
+// observation made AFTER the refusal it would dismiss, never a stale
+// result from before it, and never a result for a refusal that has since
+// been superseded by a newer one (same or different session) even if
+// this reply is still, coincidentally, naming the currently-refused
+// session ID.
+func (m *Model) clearEntryRefusalIfPreviewLive(sessionID string, err error, live bool, capturedAtGeneration int) {
 	if !m.entryRefusal.active || m.entryRefusal.kind != entryRefusalNoLivePane {
 		return
 	}
 	if m.entryRefusal.sessionID != sessionID {
+		return
+	}
+	if capturedAtGeneration < m.entryRefusal.generation {
 		return
 	}
 	if err != nil || !live {

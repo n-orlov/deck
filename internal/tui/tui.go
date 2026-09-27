@@ -422,7 +422,20 @@ type Model struct {
 	// attachError itself is untouched for every OTHER footer note (Cannot
 	// kill/archive/restart/..., which R143 never claims).
 	entryRefusal entryRefusalState
-	resumeNote   string
+	// entryRefusalGeneration is cure-01-02-3's (R143/R148, SPEC §11.9) own
+	// monotonic counter: setEntryRefusal (entry_refusal.go) increments it
+	// and stamps the NEW value onto entryRefusal.generation every time a
+	// refusal is set, never on clear. capturePreview stamps each outgoing
+	// previewCaptured command with whatever generation is current at the
+	// moment the tmux call is ISSUED, so a reply that lands after a fresh
+	// refusal has since superseded it (or after the same refusal has since
+	// been cleared and re-set for the same session) carries a generation
+	// strictly less than m.entryRefusal.generation by the time it arrives
+	// -- exactly the signal clearEntryRefusalIfPreviewLive needs to refuse
+	// a stale, pre-refusal (or pre-supersession) capture the chance to
+	// dismiss a banner it never actually observed the reason for.
+	entryRefusalGeneration int
+	resumeNote             string
 	// selectionCopyNote is the drag-to-copy success counterpart to
 	// attachError's failure message (task 207, steering 018's "adjacent"
 	// item): commitInteractiveSelection sets it on a successful
@@ -1636,6 +1649,12 @@ type previewCaptured struct {
 	sessionID string
 	capture   tmux.PreviewCapture
 	err       error
+	// refusalGeneration (cure-01-02-3, R143/R148, SPEC §11.9) is
+	// Model.entryRefusalGeneration as capturePreview saw it at the moment
+	// this command was ISSUED -- see clearEntryRefusalIfPreviewLive's own
+	// comment (entry_refusal.go) for what it is compared against on
+	// arrival.
+	refusalGeneration int
 }
 
 // uiStatePersisted reports the outcome of persisting layout_mode or
@@ -2123,9 +2142,10 @@ func (m Model) capturePreview() tea.Cmd {
 	}
 	session, _ := m.selectedSession()
 	capture := m.previewCapture
+	generation := m.entryRefusalGeneration
 	return func() tea.Msg {
 		result, err := capture(context.Background(), session.Slug)
-		return previewCaptured{sessionID: session.ID, capture: result, err: err}
+		return previewCaptured{sessionID: session.ID, capture: result, err: err, refusalGeneration: generation}
 	}
 }
 
@@ -3562,7 +3582,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		// "a later tick finds the reason gone" clause -- this tick's capture
 		// (never a selection move or a keypress) is the only way liveness for
 		// the refused session is ever re-observed.
-		m.clearEntryRefusalIfPreviewLive(msg.sessionID, msg.err, msg.capture.Live)
+		m.clearEntryRefusalIfPreviewLive(msg.sessionID, msg.err, msg.capture.Live, msg.refusalGeneration)
 		return m, nil
 	case animationTick:
 		if !m.settings.Animation {

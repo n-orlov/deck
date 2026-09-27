@@ -151,6 +151,137 @@ func TestReviewNoLivePaneRefusalClearsWhenTickFindsRespawnedPane(t *testing.T) {
 	}
 }
 
+// TestIndependentCaptureFromBeforeRefusalCannotDismissIt is cure-01-02-3's
+// (R143/R148, SPEC §11.9) own real-private-tmux Model.Update regression:
+// clearEntryRefusalIfPreviewLive used to accept ANY successful same-session
+// previewCaptured, even one whose underlying tmux capture-pane call was
+// issued BEFORE the refusal it would go on to clear ever existed --
+// exactly the race a slow reply from a tick issued while the pane was
+// still alive can produce once the pane dies and Enter is refused before
+// that old reply lands. This drives a genuine capturePreview call while
+// the pane is alive, HOLDS its real result, deadens the SAME real pane,
+// obtains a fresh no-live-pane refusal via a real Enter through
+// Model.Update, and only THEN delivers the held stale result: the banner
+// must remain, because a real PreviewPane probe issued now would still
+// report live=false. A genuinely later tick's own fresh capture (issued
+// AFTER the refusal exists, once the pane is respawned alive) still
+// clears it -- the fix must not also break the ordinary recovery path
+// TestReviewNoLivePaneRefusalClearsWhenTickFindsRespawnedPane above
+// already covers.
+func TestIndependentCaptureFromBeforeRefusalCannotDismissIt(t *testing.T) {
+	socket := selectionTestSocket("norefusal2")
+	target, err := tmux.SessionName("norefusal2")
+	if err != nil {
+		t.Fatalf("SessionName: %v", err)
+	}
+	newDyingSelectionPane(t, socket, target, 80, 24)
+
+	client := tmux.Client{Socket: socket}
+	waitForPreviewPaneLiveness(t, client, "norefusal2", true)
+
+	m := New(nil, config.Settings{}, "")
+	m.width, m.height = 100, 30
+	if _, height := m.previewContentSize(); height < interactiveMinInnerRows {
+		t.Fatalf("test assumption violated: preview content height %d is below the %d-row floor", height, interactiveMinInnerRows)
+	}
+	m.tmuxClient = client
+	m.previewCapture = func(ctx context.Context, slug string) (tmux.PreviewCapture, error) {
+		return client.CapturePreview(ctx, slug)
+	}
+	m.sessions = []store.Session{{ID: "sess-nolive-2", Name: "norefusal2", Slug: "norefusal2", Status: "waiting"}}
+	m.baseSessions = m.sessions
+	m.selected = rowCursor(0)
+
+	// A genuine capture while the pane is still alive -- this is the reply
+	// that will be held and delivered LATE, after the refusal it predates.
+	cmd := m.capturePreview()
+	if cmd == nil {
+		t.Fatalf("fixture: capturePreview returned nil while the pane is alive and selected")
+	}
+	staleMsg, ok := cmd().(previewCaptured)
+	if !ok || staleMsg.err != nil || !staleMsg.capture.Live || staleMsg.sessionID != "sess-nolive-2" {
+		t.Fatalf("fixture: capture while alive = %+v, want a live success for sess-nolive-2", staleMsg)
+	}
+
+	deadenSelectionPane(t, socket, target)
+	waitForPreviewPaneLiveness(t, client, "norefusal2", false)
+
+	next, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = next.(Model)
+	if !m.entryRefusal.active || m.entryRefusal.kind != entryRefusalNoLivePane || m.entryRefusal.sessionID != "sess-nolive-2" {
+		t.Fatalf("↵ against the now-dead pane = %+v, want a fresh no-live-pane refusal for sess-nolive-2", m.entryRefusal)
+	}
+	if staleMsg.refusalGeneration >= m.entryRefusal.generation {
+		t.Fatalf("fixture: the pre-refusal capture's own generation (%d) is not strictly less than the fresh refusal's (%d) -- the race this test exists to prove is not actually set up", staleMsg.refusalGeneration, m.entryRefusal.generation)
+	}
+
+	// Deliver the STALE, pre-refusal result. It must not dismiss a banner
+	// it never observed the reason for -- a real probe against the pane
+	// right now would still say live=false.
+	next, _ = m.Update(staleMsg)
+	m = next.(Model)
+	if !m.entryRefusal.active {
+		t.Fatalf("a capture issued BEFORE the current refusal cleared it on late delivery: %+v, want the still-applicable banner to remain", m.entryRefusal)
+	}
+	if live, ok, perr := client.PreviewPane(context.Background(), "norefusal2"); ok || perr != nil {
+		t.Fatalf("sanity: the real pane is not actually dead right now (live=%v ok=%v err=%v) -- the stale-result race this test proves would be vacuous", live, ok, perr)
+	}
+	if _, ok := m.activeEntryRefusalForSelection(); !ok {
+		t.Fatalf("banner is not showing after the stale capture was correctly refused")
+	}
+
+	// A genuinely LATER tick -- issued after the refusal exists, once the
+	// pane is actually respawned alive -- must still clear it.
+	respawnAlivePane(t, socket, target)
+	waitForPreviewPaneLiveness(t, client, "norefusal2", true)
+
+	m = runOnePreviewTick(t, m)
+	if m.entryRefusal.active {
+		t.Fatalf("a genuinely later tick's own live capture did not clear the refusal: %+v", m.entryRefusal)
+	}
+	if _, ok := m.activeEntryRefusalForSelection(); ok {
+		t.Fatalf("banner still showing after a genuinely later tick observed the respawned pane live")
+	}
+}
+
+// TestIndependentRefusalSupersedesStaleCaptureForSameSession is
+// cure-01-02-3's non-tmux unit-level companion: a capture whose
+// refusalGeneration names an EARLIER refusal for the exact same session
+// (the refusal was cleared and a fresh one set again for that same
+// session, rather than a brand-new session entirely) must not clear the
+// newer refusal either -- "results for a superseded refusal cannot clear
+// a newer refusal" is a generation check, not merely a session-identity
+// check, and TestReviewNoLivePaneRefusalIgnoresAnotherSessionsCapture
+// above only ever proves the session-identity half.
+func TestIndependentRefusalSupersedesStaleCaptureForSameSession(t *testing.T) {
+	m := New(nil, config.Settings{}, "")
+	m.sessions = []store.Session{{ID: "sess-a", Name: "a", Slug: "a", Status: "running"}}
+	m.selected = rowCursor(0)
+
+	m.setEntryRefusal("sess-a", entryRefusalNoLivePane, "no live pane")
+	staleGeneration := m.entryRefusal.generation
+
+	// The refusal clears (e.g. the tick's own successful capture at the
+	// time), and a FRESH refusal for the SAME session is set again later.
+	m.clearEntryRefusal()
+	m.setEntryRefusal("sess-a", entryRefusalNoLivePane, "no live pane")
+	if m.entryRefusal.generation <= staleGeneration {
+		t.Fatalf("fixture: re-set refusal's generation (%d) is not strictly greater than the stale one's (%d)", m.entryRefusal.generation, staleGeneration)
+	}
+
+	next, _ := m.Update(previewCaptured{sessionID: "sess-a", capture: tmux.PreviewCapture{Live: true}, refusalGeneration: staleGeneration})
+	got := next.(Model)
+	if !got.entryRefusal.active {
+		t.Fatalf("a capture naming the OLD, superseded refusal's generation cleared the newer refusal for the same session: %+v", got.entryRefusal)
+	}
+
+	next, _ = got.Update(previewCaptured{sessionID: "sess-a", capture: tmux.PreviewCapture{Live: true}, refusalGeneration: got.entryRefusal.generation})
+	got2 := next.(Model)
+	if got2.entryRefusal.active {
+		t.Fatalf("a capture naming the CURRENT refusal's own generation did not clear it: %+v", got2.entryRefusal)
+	}
+}
+
 // TestReviewNoLivePaneRefusalIgnoresAnotherSessionsCapture proves the
 // sessionID guard in clearEntryRefusalIfPreviewLive: a live capture for a
 // DIFFERENT session than the one refused must never clear this refusal,
@@ -161,13 +292,13 @@ func TestReviewNoLivePaneRefusalIgnoresAnotherSessionsCapture(t *testing.T) {
 	m.selected = rowCursor(0)
 	m.setEntryRefusal("sess-a", entryRefusalNoLivePane, "no live pane")
 
-	next, _ := m.Update(previewCaptured{sessionID: "sess-b", capture: tmux.PreviewCapture{Live: true}})
+	next, _ := m.Update(previewCaptured{sessionID: "sess-b", capture: tmux.PreviewCapture{Live: true}, refusalGeneration: m.entryRefusal.generation})
 	got := next.(Model)
 	if !got.entryRefusal.active {
 		t.Fatalf("entryRefusal cleared by a live capture naming a DIFFERENT session (sess-b), want sess-a's refusal untouched")
 	}
 
-	next2, _ := got.Update(previewCaptured{sessionID: "sess-a", capture: tmux.PreviewCapture{Live: true}})
+	next2, _ := got.Update(previewCaptured{sessionID: "sess-a", capture: tmux.PreviewCapture{Live: true}, refusalGeneration: got.entryRefusal.generation})
 	got2 := next2.(Model)
 	if got2.entryRefusal.active {
 		t.Fatalf("entryRefusal is still active after a live capture for the SAME session: %+v, want cleared", got2.entryRefusal)
