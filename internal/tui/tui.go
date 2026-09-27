@@ -2112,7 +2112,21 @@ func (m Model) Init() tea.Cmd {
 	if m.settings.Animation {
 		commands = append(commands, tea.Tick(m.settings.Preview, func(t time.Time) tea.Msg { return animationTick(t) }))
 	}
+	// task 016/R155, SPEC's "Display" bullet: a named profile sets the
+	// terminal title `deck: <name>`; default sets none, as it never has --
+	// so this command is only ever appended, never appended-then-cleared.
+	if m.isNamedProfile() {
+		commands = append(commands, tea.SetWindowTitle(fmt.Sprintf("deck: %s", m.settings.Profile)))
+	}
 	return tea.Batch(commands...)
+}
+
+// isNamedProfile reports whether m's settings resolved to a profile other
+// than default (SPEC §3.4/R155): Settings.Profile is documented as "never
+// empty" (config.go), but the empty check is kept anyway so a zero-value
+// Settings in a hand-built test Model reads as default rather than named.
+func (m Model) isNamedProfile() bool {
+	return m.settings.Profile != "" && m.settings.Profile != config.DefaultProfile
 }
 
 func (m Model) loadSessions() tea.Msg {
@@ -5815,6 +5829,35 @@ func (m Model) elideToWidth(s string, budget int) string {
 	return truncateToWidth(s, budget-stringWidth(marker)) + marker
 }
 
+// sidebarSocketHeaderText is the sidebar's socket/profile header line
+// (SPEC's "Display" bullet, R155, `internal/tui/tui.go:6100` in the PRD's
+// own line reference): default's line stays exactly "socket: <socket>" --
+// byte-identical to every render before this task -- while a named
+// profile's line grows a "profile: <name> · " prefix in front of it. When
+// the combined line does not fit contentWidth, the socket half elides
+// FIRST (via elideToWidth, so a real clip still gets `…`/`...`) because the
+// profile name is what matters at a glance; only if eliding the socket half
+// down to nothing still does not make room does the profile half itself
+// get elided too, so the line is never wider than contentWidth regardless
+// of how narrow the sidebar gets.
+func (m Model) sidebarSocketHeaderText(contentWidth int) string {
+	socketPart := fmt.Sprintf("socket: %s", m.settings.Socket)
+	if !m.isNamedProfile() {
+		return socketPart
+	}
+	profilePart := fmt.Sprintf("profile: %s", m.settings.Profile)
+	sep := m.glyph(" · ", " - ")
+	full := profilePart + sep + socketPart
+	if stringWidth(full) <= contentWidth {
+		return full
+	}
+	budget := contentWidth - stringWidth(profilePart) - stringWidth(sep)
+	if budget <= 0 {
+		return m.elideToWidth(profilePart, contentWidth)
+	}
+	return profilePart + sep + m.elideToWidth(socketPart, budget)
+}
+
 // renderSideBySideFrame draws two panels sharing one seam (SPEC requirement
 // 18): the sidebar draws its top/left/bottom borders only, and the
 // preview's own left border is the seam, so there is exactly one vertical
@@ -6110,7 +6153,7 @@ type sidebarEntry struct {
 func (m Model) sidebarEntries(contentWidth int) []sidebarEntry {
 	var entries []sidebarEntry
 	if m.settings.Socket != "" {
-		for _, line := range wrapText(fmt.Sprintf("socket: %s", m.settings.Socket), contentWidth) {
+		for _, line := range wrapText(m.sidebarSocketHeaderText(contentWidth), contentWidth) {
 			entries = append(entries, sidebarEntry{text: line})
 		}
 	}
