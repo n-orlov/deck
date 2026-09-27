@@ -237,6 +237,13 @@ type ScenarioHarness struct {
 	// byte-identical and row-count-identical after a hook fired against the
 	// first profile's own session.
 	profileDatabaseSnapshots map[string]profileDatabaseSnapshot
+
+	// extraSockets are additional private tmux socket names a scenario
+	// handed to a second, independent deck (task 014, R154: profile B's
+	// deck runs on its own socket beside profile A's on h.Socket). Close
+	// kills and probes each one exactly like h.Socket itself, so a second
+	// profile's server can never outlive the scenario.
+	extraSockets []string
 }
 
 var scenarioSequence atomic.Uint64
@@ -499,6 +506,20 @@ func (h *ScenarioHarness) Close() error {
 	}
 	if probe() {
 		problems = append(problems, fmt.Errorf("private tmux socket %q still responds after teardown", h.Socket))
+	}
+	for _, socket := range h.extraSockets {
+		killCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		output, err := exec.CommandContext(killCtx, "tmux", "-L", socket, "kill-server").CombinedOutput()
+		cancel()
+		if err != nil && !strings.Contains(string(output), "no server running") && !strings.Contains(string(output), "No such file") {
+			problems = append(problems, fmt.Errorf("kill extra private tmux server %q: %w: %s", socket, err, strings.TrimSpace(string(output))))
+		}
+		probeCtx, cancel := context.WithTimeout(context.Background(), time.Second)
+		responds := exec.CommandContext(probeCtx, "tmux", "-L", socket, "list-sessions").Run() == nil
+		cancel()
+		if responds {
+			problems = append(problems, fmt.Errorf("extra private tmux socket %q still responds after teardown", socket))
+		}
 	}
 
 	removeHome := os.RemoveAll
