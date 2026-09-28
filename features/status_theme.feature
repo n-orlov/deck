@@ -23,6 +23,11 @@ Feature: the seven §7 status tokens colour the sidebar's status word (task 014)
     When deck client "A" creates shell session "tok-anchor"
     Then within one configured reconcile interval deck client "A" screen contains "running"
     When deck client "A" creates shell session "tok-target"
+    # Settle tok-target BY NAME (R150): the generic "running" wait above
+    # was already satisfied by tok-anchor, and a still-transient
+    # "starting" tok-target could otherwise satisfy the starting-token
+    # scenario's own screen wait, then promote before its colour check.
+    And within one configured reconcile interval deck client "A" row "tok-target" contains "running"
     And deck client "A" creates claude session "tok-agent" with permission profile "safe"
     And deck client "A" selects session "tok-anchor"
 
