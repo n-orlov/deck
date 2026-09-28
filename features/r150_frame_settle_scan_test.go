@@ -47,12 +47,19 @@ import (
 //     status. No count of displayed shells or sessions makes it
 //     unambiguous, so only a row-scoped wait naming the shell counts.
 //   - even a row-scoped wait is session-specific only when nothing else on
-//     that sidebar row can satisfy it: not when the shell's own name
-//     contains "running", and not when another displayed session's name
-//     contains the shell's name. The runtime row steps
-//     (frameSidebarRowContains) search the sidebar cell alone, never the
-//     whole terminal line, so the preview sharing that line cannot
-//     satisfy them either.
+//     that sidebar can satisfy it. The runtime row steps
+//     (frameSessionRowShows, features/status_probe_test.go) read the
+//     sidebar cell alone, never the whole terminal line (so the preview
+//     sharing that line cannot satisfy them), skip group headers, and parse
+//     the named session's own row exactly -- its name, then its own badge
+//     run -- so neither a name containing "running" nor another session's
+//     name containing this one can false-settle them at runtime
+//     (cure-01-01-3). The scan still rejects both shapes in feature text,
+//     the same two the runtime regression
+//     (TestR150NamedCallbacksVerifyTheRequestedSessionsOwnStatus) pins as
+//     never settling until the row's own status arrives: a settle whose
+//     text is ambiguous to a reader stays out of the scenarios, so guard
+//     and runtime agree that such names never prove a status.
 //
 // The scan does not flag every generic "running" wait -- only the
 // combinations that make a whole-screen frame waypoint race a shell's
@@ -233,21 +240,23 @@ func scanFeatureFileForUnsettledFrameCapture(path string) ([]string, error) {
 }
 
 // r150RowSettleIsSessionSpecific reports whether a row-scoped
-// `row "<name>" contains "running"` wait can only be satisfied by name's own
-// sidebar row showing its own "running" status. The runtime step
-// (frameSidebarRowContains) matches a sidebar cell containing both strings,
-// so the wait is ambiguous when name itself contains "running" (the row's
-// name alone satisfies it, whatever the status) or when another session
-// displayed at that point -- shell or agent -- has a name containing name
-// (that other row, with its own "running" status, satisfies it too).
+// `row "<name>" contains "running"` wait is unambiguous feature text: name
+// itself does not contain "running", and no other session displayed at
+// that point -- shell or agent -- has a name containing name. The runtime
+// matcher (frameSessionRowShows) no longer lets either shape false-settle
+// (it parses the named row exactly and disambiguates against the store's
+// session names; TestR150NamedCallbacksVerifyTheRequestedSessionsOwnStatus
+// pins that), but the guard keeps refusing them as settle text, so the two
+// agree: such a wait never counts as proof of the shell's own status here,
+// and never passes on another session's name there.
 //
 // cure-01-01-3: a GROUP's name is deliberately never checked here, even
 // though a group could be named e.g. "alpha-running" while shell "alpha"
-// is still starting -- frameSidebarRowContains now excludes every group
-// header cell outright (sidebarCellIsGroupHeader,
-// features/status_probe_test.go), so no group name, however it reads, can
-// ever satisfy a row-scoped wait at runtime. A row-scoped settle naming
-// the shell itself is genuinely durable regardless of any group's name.
+// is still starting -- the runtime matcher skips every group header cell
+// outright (sidebarCellIsGroupHeader, features/status_probe_test.go), so no
+// group name, however it reads, can ever satisfy a row-scoped wait at
+// runtime. A row-scoped settle naming the shell itself is genuinely
+// durable regardless of any group's name.
 func r150RowSettleIsSessionSpecific(name string, shells, agents map[string]bool) bool {
 	if strings.Contains(name, "running") {
 		return false

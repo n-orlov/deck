@@ -62,24 +62,7 @@ func registerInteractiveScrollSteps(sc *godog.ScenarioContext) {
 // window is kept rather than narrowed, since nothing about this assertion
 // depends on the row being caught inside a narrow slice any more.
 func clientRowContainsAcrossSeveralProbeCycles(ctx context.Context, clientName, rowName, want string) error {
-	h, err := assertionHarness(ctx)
-	if err != nil {
-		return err
-	}
-	client, err := h.Client(clientName)
-	if err != nil {
-		return err
-	}
-	deadline := time.Now().Add(4 * (attachScrollProbeStaleAfter + scenarioReconcileInterval))
-	for {
-		if frameSidebarRowContains(client.Frame(false), rowName, want) {
-			return nil
-		}
-		if time.Now().After(deadline) {
-			return fmt.Errorf("client %q row %q did not contain %q across several probe/repair cycles\nframe:\n%s", clientName, rowName, want, client.Frame(false))
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
+	return waitForClientSessionRow(ctx, clientName, rowName, want, 4*(attachScrollProbeStaleAfter+scenarioReconcileInterval), "across several probe/repair cycles")
 }
 
 // clientTypesNumberedLoopIntoInteractivePane types a shell for-loop that
