@@ -240,6 +240,14 @@ func scanFeatureFileForUnsettledFrameCapture(path string) ([]string, error) {
 // name alone satisfies it, whatever the status) or when another session
 // displayed at that point -- shell or agent -- has a name containing name
 // (that other row, with its own "running" status, satisfies it too).
+//
+// cure-01-01-3: a GROUP's name is deliberately never checked here, even
+// though a group could be named e.g. "alpha-running" while shell "alpha"
+// is still starting -- frameSidebarRowContains now excludes every group
+// header cell outright (sidebarCellIsGroupHeader,
+// features/status_probe_test.go), so no group name, however it reads, can
+// ever satisfy a row-scoped wait at runtime. A row-scoped settle naming
+// the shell itself is genuinely durable regardless of any group's name.
 func r150RowSettleIsSessionSpecific(name string, shells, agents map[string]bool) bool {
 	if strings.Contains(name, "running") {
 		return false
