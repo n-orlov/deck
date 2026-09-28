@@ -192,6 +192,28 @@ func TestR150GuardRejectsTransientAndUnsettledShellWaypoints(t *testing.T) {
     And deck client "A" exits cleanly
 `,
 		},
+		{
+			name: "running_agent_beside_new_shell",
+			// cure-01-01-2 (review): an already-running claude AGENT session
+			// -- confirmed running via a generic wait, before any shell
+			// exists -- sits beside a brand-new shell. The second generic
+			// "running" wait's pass proves nothing about the new shell's own
+			// starting->running promotion: it can be (and, on the shipped
+			// pre-fix scanner, was) satisfied by the agent's own still-
+			// "running" text alone. The shell must still be flagged
+			// unsettled at the capture that follows.
+			feature: `Feature: fixture
+  Scenario: a generic running wait cannot settle a new shell while an agent session is already running
+    Given a fake "claude" binary is on PATH for future deck clients
+    And deck client "A" is started
+    When deck client "A" creates claude session "mixed-running-agent" with permission profile "safe"
+    And within one configured reconcile interval deck client "A" screen contains "running"
+    When deck client "A" creates shell session "mixed-running-agent-new-shell"
+    And deck client "A" screen contains "running"
+    And deck client "A" captures its frame as "mixed-running-frame"
+    Then deck client "A" frame still matches the captured "mixed-running-frame" frame
+`,
+		},
 	}
 
 	for _, tc := range cases {
@@ -309,6 +331,26 @@ func TestR150GuardAcceptsValidSettlesAndDurableTransientAssertions(t *testing.T)
     And within one configured reconcile interval deck client "A" screen contains "running"
     And deck client "A" captures its frame as "solo-frame"
     Then deck client "A" frame still matches the captured "solo-frame" frame
+`,
+		},
+		{
+			name: "generic_running_wait_settles_shell_created_before_any_agent_session",
+			// cure-01-01-2: the new otherSessions check must not turn into a
+			// blanket ban on mixing shells and agents in one scenario -- only
+			// on trusting a generic wait that runs AFTER some other session
+			// already exists. Here the shell's own generic wait settles it
+			// while it is still the only session of any kind on screen; the
+			// agent session created afterward changes nothing about that
+			// already-recorded settle.
+			feature: `Feature: fixture
+  Scenario: a generic wait settles the shell before any agent session exists
+    Given a fake "claude" binary is on PATH for future deck clients
+    And deck client "A" is started
+    When deck client "A" creates shell session "first-shell"
+    And within one configured reconcile interval deck client "A" screen contains "running"
+    And deck client "A" creates claude session "later-agent" with permission profile "safe"
+    And deck client "A" captures its frame as "first-shell-frame"
+    Then deck client "A" frame still matches the captured "first-shell-frame" frame
 `,
 		},
 	}
