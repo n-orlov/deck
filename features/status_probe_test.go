@@ -2,6 +2,7 @@ package features
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -14,6 +15,8 @@ import (
 	"unicode/utf8"
 
 	"github.com/cucumber/godog"
+
+	"github.com/n-orlov/deck/internal/theme"
 )
 
 const probeClock = "2025-01-02T03:04:05Z"
@@ -237,39 +240,213 @@ func sessionHasOneLosingProbeEvent(ctx context.Context, name, kind string) error
 	}
 }
 
-// frameSidebarRowContains reports whether some SIDEBAR ROW (never a group
-// header) of frame (a plain-text client frame) contains both rowName and
-// want. Only the sidebar panel's own cell of each terminal line is
-// searched -- the text between the line's first and second vertical
-// border glyph ("|" in the harness's ASCII frames, "│" otherwise) -- never
-// the whole terminal line: the preview panel shares every terminal line
-// with the sidebar, so a whole-line match would let a session's own pane
-// output ("running" printed by the shell, say) on the same terminal row
-// as that session's sidebar row satisfy a row-scoped status wait the row
-// itself never showed (R150, cure-01-01-2: a settle must be
-// session-specific).
-//
-// R150/cure-01-01-3: a GROUP HEADER cell is excluded too, even though it
-// lives in the very same sidebar column session rows do. A group's own
-// name is user-chosen and unrelated to any session's status -- naming a
-// group "alpha-running" while session "alpha" is still "starting" made
-// this helper's plain substring match treat the header's rendered
-// "alpha-running  (1)" (groupHeaderText, internal/tui/group.go) as a true
-// settle of row "alpha" contains "running", when alpha's own row still
-// read "starting": a named wait must verify the NAMED SESSION's own
-// status, never another sidebar line's text, whatever it happens to
-// contain. sidebarCellIsGroupHeader's doc explains the discriminator.
+// frameSidebarRowContains reports whether the named session's OWN sidebar
+// row in frame (a plain-text client frame) shows want as one of its own
+// status badges -- the status word itself, its hook/probe quality word
+// ("live"/"sampled"), its unseen glyph ("●"/"!") or its archived badge.
+// It is frameSessionRowShows with no other session names known; see that
+// function for the exact matching rule.
 func frameSidebarRowContains(frame, rowName, want string) bool {
+	return frameSessionRowShows(frame, rowName, want, nil)
+}
+
+// frameSessionRowShows is the one matcher every registered named status
+// callback (clientRowContainsWithinReconcile,
+// clientRowContainsWithinThreeSeconds,
+// clientRowContainsAcrossSeveralProbeCycles) settles on. A named wait must
+// verify the NAMED SESSION's own status, never any other text that happens
+// to share the frame (R150, cure-01-01-2/3), so it matches no substring at
+// all:
+//
+//   - Only the sidebar panel's own cell of each terminal line is read (the
+//     text between the line's first and second vertical border glyph), never
+//     the whole line: the preview panel shares every terminal line with the
+//     sidebar, and a session's pane output printing "running" there is not
+//     its status (cure-01-01-2).
+//   - A group header cell is never a session row (sidebarCellIsGroupHeader):
+//     group "alpha-running" says nothing about session alpha
+//     (cure-01-01-3).
+//   - A session row's first line is exactly the rendering sidebarRowLines
+//     (internal/tui/tui.go) produces: the selection gutter ("> " or two
+//     spaces), the session's name, one space, then the badge run
+//     `[unseen] [quality] <status> [archived]`. The cell must START with
+//     rowName followed by a space -- so "alpha-helper running" and
+//     "running-alpha starting" are simply not row "alpha" -- and the rest
+//     of the cell must parse as exactly that badge run (sidebarRowBadges),
+//     so a name's own words are never read as a status: "running-alpha
+//     starting" shows "starting" for row "running-alpha", nothing else.
+//   - Session names may contain spaces, so a cell reading "alpha sampled
+//     running" could be session "alpha" (quality sampled, status running)
+//     or session "alpha sampled" (status running) -- the frame alone cannot
+//     tell them apart. knownNames (the store's own session names) settles
+//     it: the LONGEST known name the cell's text parses under owns the
+//     cell, and the cell counts for rowName only when rowName is that
+//     owner.
+func frameSessionRowShows(frame, rowName, want string, knownNames []string) bool {
+	if rowName == "" || want == "" {
+		return false
+	}
 	for _, line := range strings.Split(frame, "\n") {
 		cell, ok := sidebarCell(line)
 		if !ok || sidebarCellIsGroupHeader(cell) {
 			continue
 		}
-		if strings.Contains(cell, rowName) && strings.Contains(cell, want) {
-			return true
+		text := strings.TrimLeft(cell, " ")
+		text = strings.TrimPrefix(text, "> ")
+		badges, ok := sidebarRowBadges(text, rowName)
+		if !ok {
+			continue
+		}
+		owned := true
+		for _, other := range knownNames {
+			if len(other) > len(rowName) && other != rowName {
+				if _, parses := sidebarRowBadges(text, other); parses {
+					owned = false
+					break
+				}
+			}
+		}
+		if !owned {
+			continue
+		}
+		for _, b := range badges {
+			if b == want {
+				return true
+			}
 		}
 	}
 	return false
+}
+
+// sidebarRowBadges parses text (a sidebar cell with its leading pad and
+// selection gutter already removed) as session name's own first row line,
+// "<name> <badge run>", and returns the badge run's COMPLETE fields. It
+// fails unless text starts with name plus a space and the remainder is
+// exactly sidebarRowLines' badge run: an optional unseen glyph ("●" or
+// "!"), an optional quality word ("live"/"sampled", statusSourceQuality),
+// exactly one status word (one of theme.StatusTokens, SPEC §7's seven),
+// and an optional archived badge ("▣" or "[archived]"), in that order and
+// nothing else.
+//
+// A row too wide for the sidebar is ellipsised at its end (elideToWidth's
+// "…"/"..." marker, internal/tui/tui.go): the run then stops at a last
+// field ending in that marker, whose visible prefix must still be a prefix
+// of a token allowed at that position. Only the fields BEFORE it count as
+// badges -- so "codex-purge-remove live run..." shows its own quality badge
+// "live" but no readable status, and a status wait on it keeps waiting.
+func sidebarRowBadges(text, name string) ([]string, bool) {
+	if !strings.HasPrefix(text, name+" ") {
+		return nil, false
+	}
+	fields := strings.Fields(text[len(name)+1:])
+	statuses := make([]string, 0, len(theme.StatusTokens))
+	for _, st := range theme.StatusTokens {
+		statuses = append(statuses, string(st))
+	}
+	positions := []struct {
+		allowed  []string
+		required bool
+	}{
+		{[]string{"\u25cf", "!"}, false},
+		{[]string{"live", "sampled"}, false},
+		{statuses, true},
+		{[]string{"\u25a3", "[archived]"}, false},
+	}
+	truncatedPrefix := func(field string) (string, bool) {
+		for _, marker := range []string{"\u2026", "..."} {
+			if strings.HasSuffix(field, marker) {
+				return strings.TrimSuffix(field, marker), true
+			}
+		}
+		return "", false
+	}
+	i := 0
+	for p, pos := range positions {
+		if i == len(fields) {
+			if pos.required {
+				return nil, false
+			}
+			continue
+		}
+		if prefix, cut := truncatedPrefix(fields[i]); cut && i == len(fields)-1 {
+			// The ellipsis ends the visible run: its prefix must fit some
+			// token allowed from this position on.
+			for _, later := range positions[p:] {
+				for _, a := range later.allowed {
+					if strings.HasPrefix(a, prefix) {
+						return fields[:i], true
+					}
+				}
+			}
+			return nil, false
+		}
+		matched := false
+		for _, a := range pos.allowed {
+			if fields[i] == a {
+				matched = true
+				break
+			}
+		}
+		if matched {
+			i++
+		} else if pos.required {
+			return nil, false
+		}
+	}
+	if i != len(fields) {
+		return nil, false
+	}
+	return fields, true
+}
+
+// waitForClientSessionRow polls client clientName's frame until
+// session rowName's own sidebar row shows want (frameSessionRowShows,
+// disambiguated against every session name the state database holds at
+// each poll) or window elapses; the error names within, the caller's own
+// description of that window.
+func waitForClientSessionRow(ctx context.Context, clientName, rowName, want string, window time.Duration, within string) error {
+	h, err := assertionHarness(ctx)
+	if err != nil {
+		return err
+	}
+	client, err := h.Client(clientName)
+	if err != nil {
+		return err
+	}
+	db, err := openObservedDatabase(h)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	deadline := time.Now().Add(window)
+	for {
+		names, nameErr := storeSessionNames(ctx, db)
+		if nameErr == nil && frameSessionRowShows(client.Frame(false), rowName, want, names) {
+			return nil
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("client %q row %q did not contain %q %s (session names err=%v)\nframe:\n%s", clientName, rowName, want, within, nameErr, client.Frame(false))
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+// storeSessionNames returns every session name the state database holds.
+func storeSessionNames(ctx context.Context, db *sql.DB) ([]string, error) {
+	rows, err := db.QueryContext(ctx, `SELECT name FROM sessions`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var names []string
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, err
+		}
+		names = append(names, name)
+	}
+	return names, rows.Err()
 }
 
 // sidebarGroupHeaderSuffixRe matches groupHeaderText's own trailing member
@@ -310,24 +487,7 @@ func sidebarCell(line string) (string, bool) {
 }
 
 func clientRowContainsWithinReconcile(ctx context.Context, clientName, rowName, want string) error {
-	h, err := assertionHarness(ctx)
-	if err != nil {
-		return err
-	}
-	client, err := h.Client(clientName)
-	if err != nil {
-		return err
-	}
-	deadline := time.Now().Add(scenarioReconcileInterval + 250*time.Millisecond)
-	for {
-		if frameSidebarRowContains(client.Frame(false), rowName, want) {
-			return nil
-		}
-		if time.Now().After(deadline) {
-			return fmt.Errorf("client %q row %q did not contain %q within reconcile interval\nframe:\n%s", clientName, rowName, want, client.Frame(false))
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
+	return waitForClientSessionRow(ctx, clientName, rowName, want, scenarioReconcileInterval+250*time.Millisecond, "within reconcile interval")
 }
 
 func raceFreshHookAgainstProbe(ctx context.Context, victim, emitter string) error {

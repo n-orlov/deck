@@ -64,6 +64,7 @@ func TestR150RowCallbackIgnoresGroupHeaderText(t *testing.T) {
 			screen.Write([]byte(frame))
 			driver := &ScreenDriver{screen: screen}
 			h := &ScenarioHarness{Home: t.TempDir(), namedClients: map[string]*ScreenDriver{"A": driver}}
+			writeSyntheticSessionNames(t, h.Home, "alpha")
 			ctx := context.WithValue(context.Background(), scenarioHarnessKey{}, h)
 			err := clientRowContainsWithinReconcile(ctx, "A", "alpha", "running")
 			t.Logf("frame=%q err=%v", driver.Frame(false), err)

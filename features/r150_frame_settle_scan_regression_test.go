@@ -271,8 +271,11 @@ func TestR150GuardRejectsTransientAndUnsettledShellWaypoints(t *testing.T) {
 		{
 			name: "row_settle_on_a_name_containing_running",
 			// A row-scoped wait whose shell name itself contains "running"
-			// is satisfied by the row's name alone, while the row still
-			// shows "starting" -- not a session-specific settle.
+			// is ambiguous settle text (a substring matcher would be
+			// satisfied by the row's name alone while it still shows
+			// "starting"); the runtime matcher refuses that false settle
+			// (TestR150NamedCallbacksVerifyTheRequestedSessionsOwnStatus)
+			// and the guard refuses it as a settle.
 			feature: `Feature: fixture
   Scenario: the shell's own name satisfies its row wait
     Given deck client "A" is started
@@ -284,8 +287,11 @@ func TestR150GuardRejectsTransientAndUnsettledShellWaypoints(t *testing.T) {
 		},
 		{
 			name: "row_settle_name_is_contained_in_another_running_row",
-			// Row "alpha"'s wait also matches the already-running row
-			// "alpha-agent", so it proves nothing about shell "alpha".
+			// Row "alpha"'s wait text also names the already-running row
+			// "alpha-agent" as a substring, so it is ambiguous settle text;
+			// the runtime matcher refuses that false settle
+			// (TestR150NamedCallbacksVerifyTheRequestedSessionsOwnStatus)
+			// and the guard refuses it as a settle.
 			feature: `Feature: fixture
   Scenario: another row's name contains the shell's name
     Given a fake "claude" binary is on PATH for future deck clients
@@ -454,7 +460,7 @@ func TestR150GuardAcceptsValidSettlesAndDurableTransientAssertions(t *testing.T)
 			name: "grouped_named_wait_is_genuinely_durable_despite_the_group_name",
 			// cure-01-01-3: a session-specific row wait naming the shell itself
 			// is durable whatever a GROUP happens to be named, because the
-			// runtime row helper (frameSidebarRowContains) now excludes group
+			// runtime row matcher (frameSessionRowShows) excludes group
 			// header cells entirely (sidebarCellIsGroupHeader) -- a group
 			// named "alpha-running" can no longer satisfy a wait on row
 			// "alpha" contains "running" by itself, so this settle proves

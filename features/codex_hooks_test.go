@@ -68,24 +68,7 @@ func deckConfigProbesQuickly(ctx context.Context) error {
 // least one reconcile tick, which the reconcile-interval-only wait
 // (scenarioReconcileInterval + 250ms = 500ms) cannot reach.
 func clientRowContainsWithinThreeSeconds(ctx context.Context, clientName, rowName, want string) error {
-	h, err := assertionHarness(ctx)
-	if err != nil {
-		return err
-	}
-	client, err := h.Client(clientName)
-	if err != nil {
-		return err
-	}
-	deadline := time.Now().Add(3 * time.Second)
-	for {
-		if frameSidebarRowContains(client.Frame(false), rowName, want) {
-			return nil
-		}
-		if time.Now().After(deadline) {
-			return fmt.Errorf("client %q row %q did not contain %q within 3 seconds\nframe:\n%s", clientName, rowName, want, client.Frame(false))
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
+	return waitForClientSessionRow(ctx, clientName, rowName, want, 3*time.Second, "within 3 seconds")
 }
 
 // sessionHasNoConversationID is sessionHasNonEmptyConversationID's negative
