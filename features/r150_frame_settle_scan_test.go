@@ -41,6 +41,16 @@ import (
 //     only when NO other shell in the scenario is already known-settled --
 //     if one is, the wait can be satisfied by that already-running row's
 //     text alone and proves nothing about the one still unconfirmed.
+//   - the same holds when the "other" already-displayed session is not a
+//     shell at all: a claude/codex/pi agent session created earlier in the
+//     scenario can itself already be showing "running" (durably, once its
+//     own hook reports, or transiently through a wait of its own) by the
+//     time a brand-new shell's generic "running" wait runs. That wait's
+//     pass proves nothing about the new shell's own starting->running
+//     promotion, so a generic wait is trusted to settle the sole
+//     unconfirmed shell only when NO other session -- shell OR agent --
+//     has been created anywhere earlier in the scenario (Background
+//     included), not merely when no other SHELL has been settled by name.
 //
 // The scan does not flag every generic "running" wait -- only the
 // combination that actually renders a byte-exact frame twice: a capture
@@ -48,7 +58,8 @@ import (
 // in the SAME scenario) is not a subset of the sessions the scenario
 // settled BY NAME (a "row "<name>" contains "running"" wait, or an
 // unambiguous generic "running" wait -- the scenario's only shell, with no
-// other shell already settled) before that capture. Other frame-shaped
+// other shell already settled AND no other session of any kind, shell or
+// agent, created anywhere earlier in the scenario) before that capture. Other frame-shaped
 // comparisons this file's sibling scenarios use on purpose -- a settled
 // quiescence-based capture ("captures its settled frame as"), or a
 // comparison scoped to the tmux pane/window or the preview panel's own
@@ -90,6 +101,7 @@ var (
 	r150GenericStartingRe  = regexp.MustCompile(`screen contains "starting"`)
 	r150CaptureFrameRe     = regexp.MustCompile(`captures its frame as "([^"]+)"`)
 	r150CompareFrameRe     = regexp.MustCompile(`frame still matches the captured "([^"]+)" frame`)
+	r150AgentCreateRe      = regexp.MustCompile(`creates (?:claude|codex|pi) session "([^"]+)"`)
 )
 
 // scanFeatureFileForUnsettledFrameCapture applies the rule documented on
@@ -141,6 +153,14 @@ func scanFeatureFileForUnsettledFrameCapture(path string) ([]string, error) {
 		steps := append(append([]string{}, bgLines...), sc.lines...)
 		stepLineNos := append(append([]int{}, bgLineNos...), sc.lineNos...)
 		created := map[string]bool{}
+		// otherSessions tracks every claude/codex/pi AGENT session created
+		// anywhere earlier in the scenario (Background included). An agent
+		// session can already be displaying "running" on screen -- durably
+		// once its own hook reports, or through a wait of its own -- by the
+		// time a brand-new shell's generic wait runs, so its mere presence
+		// makes that generic wait ambiguous even though it names no shell
+		// and is never itself required to be "settled by name".
+		otherSessions := map[string]bool{}
 		settled := map[string]bool{}
 		unsettledNames := func() []string {
 			var names []string
@@ -160,6 +180,9 @@ func scanFeatureFileForUnsettledFrameCapture(path string) ([]string, error) {
 			ln := stepLineNos[i]
 			if m := r150ShellCreateRe.FindStringSubmatch(l); m != nil {
 				created[m[1]] = true
+			}
+			if m := r150AgentCreateRe.FindStringSubmatch(l); m != nil {
+				otherSessions[m[1]] = true
 			}
 			// A screen wait on the TRANSIENT "starting" word is a shell
 			// frame waypoint on a state SPEC §7 promotes out of within one
@@ -183,11 +206,14 @@ func scanFeatureFileForUnsettledFrameCapture(path string) ([]string, error) {
 			} else if r150GenericRunningRe.MatchString(l) {
 				// A generic "running" wait settles the sole remaining
 				// unconfirmed shell only when there is exactly one such
-				// shell AND no other shell in the scenario is already
-				// known-settled -- an already-settled row can satisfy this
-				// wait by itself, on its own still-"running" text, proving
-				// nothing about the one that is still unconfirmed.
-				if names := unsettledNames(); len(names) == 1 && len(settled) == 0 {
+				// shell, no other shell in the scenario is already
+				// known-settled, AND no other session -- shell or agent --
+				// has been created anywhere earlier in the scenario. An
+				// already-settled row, or an already-created agent session
+				// that may already be displaying "running" on its own, can
+				// each satisfy this wait by itself, on text unrelated to the
+				// one shell still unconfirmed, proving nothing about it.
+				if names := unsettledNames(); len(names) == 1 && len(settled) == 0 && len(otherSessions) == 0 {
 					settled[names[0]] = true
 				}
 			}
