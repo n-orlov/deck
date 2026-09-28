@@ -6395,6 +6395,28 @@ func (m Model) interactiveTargetSession() (store.Session, bool) {
 	return store.Session{}, false
 }
 
+// interactiveTargetIndex is interactiveTargetSession's own m.sessions
+// index (R157/SPEC §11, cure-01-06): the identical resolution, by the
+// identical identity (m.interactiveWindowTarget, never m.selected/a
+// cursor), for the one caller (revealInteractiveDriftTarget,
+// interactive.go) that also needs the target's current GROUP
+// (sessionGroupID(m.sessions[idx])) to tell whether a header fold has
+// hidden its row -- a question interactiveTargetSession's own
+// store.Session return cannot answer without the index into m.sessions
+// that produced it.
+func (m Model) interactiveTargetIndex() (int, bool) {
+	if !m.interactive || m.interactiveWindowTarget == "" {
+		return 0, false
+	}
+	for i, session := range m.sessions {
+		target, err := tmux.SessionName(session.Slug)
+		if err == nil && target == m.interactiveWindowTarget {
+			return i, true
+		}
+	}
+	return 0, false
+}
+
 // followSelectionViewport scrolls the sidebar viewport (SPEC requirement
 // 52-style) so the CURRENT selection's own entry-line span (its two
 // sidebarLineRow entries, sidebarEntries) ends up fully inside the

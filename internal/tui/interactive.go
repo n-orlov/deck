@@ -445,8 +445,11 @@ func (m Model) exitInteractive() (tea.Model, tea.Cmd) {
 	// use (followSelectionViewport; no second implementation) -- the list
 	// view Ctrl+Q/the empty-sidebar click return to must already show the
 	// selected row, not a viewport left wherever the wheel last drifted it.
+	// R157/cure-01-06: revealInteractiveDriftTarget wraps that same follow
+	// with a target-aware reveal, since exitInteractive is reached WHILE
+	// interactive mode still owns the bound target -- see its own doc.
 	if m.sidebarScrollDrifted {
-		m.followSelectionViewport()
+		m.revealInteractiveDriftTarget()
 		m.sidebarScrollDrifted = false
 	}
 	m.teardownInteractive(context.Background())
@@ -519,8 +522,11 @@ func (m Model) updateInteractive(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		// selected row is on screen again by the time the byte reaches the
 		// dispatcher on this same press. A key neither helper recognises
 		// forwards nothing and must leave the drift exactly where it was.
+		// R157/cure-01-06: revealInteractiveDriftTarget wraps that follow with
+		// a target-aware reveal -- see its own doc for why m.selected can
+		// diverge from the session this input is actually being forwarded to.
 		if m.sidebarScrollDrifted {
-			m.followSelectionViewport()
+			m.revealInteractiveDriftTarget()
 			m.sidebarScrollDrifted = false
 		}
 		m.setInteractiveScrollOffset(0)
@@ -529,13 +535,54 @@ func (m Model) updateInteractive(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 	if payload, ok := interactiveLiteralPayload(msg); ok {
 		if m.sidebarScrollDrifted {
-			m.followSelectionViewport()
+			m.revealInteractiveDriftTarget()
 			m.sidebarScrollDrifted = false
 		}
 		m.setInteractiveScrollOffset(0)
 		_ = interactive.SendKeyRun(ctx, m.interactiveDispatcher, payload)
 	}
 	return m, nil
+}
+
+// revealInteractiveDriftTarget ends a sidebar-wheel drift armed while
+// interactive mode owns the keyboard by bringing the BOUND interactive
+// target's own row into view -- resolved via interactiveTargetIndex
+// (m.interactiveWindowTarget, independent of m.selected), never trusting
+// m.selected directly the way followSelectionViewport's other callers
+// (session_scoped_guard.go, filter.go, settings.go -- all outside
+// interactive mode) still do.
+//
+// R157/SPEC §11, cure-01-06: interactiveTargetSession's own doc comment
+// already names the gap this closes -- a left press on the interactive
+// target's own group header reaches the SAME shared resolver list mode's
+// header click uses (resolveSidebarPress, mouse.go) whether or not
+// m.interactive is true, and setGroupCollapsed re-targets m.selected onto
+// that group's header exactly like list mode, without moving interactive
+// mode's own bound target (m.interactiveWindowTarget) at all -- folding
+// never calls enter/exitInteractive. Left to follow m.selected as-is,
+// followSelectionViewport would then only ever reveal the header the fold
+// left behind, or -- worse, while the target's group is still folded --
+// nothing at all, since a collapsed group hides every one of its rows
+// outright (isSessionVisible) regardless of what the viewport shows.
+//
+// So this expands the target's own group first if it is folded (the one
+// way a hidden row can become visible again at all), points m.selected at
+// the target's row, and only THEN calls followSelectionViewport -- the
+// SAME implementation every other drift-end call site already uses, never
+// a second one here -- restoring the same "selection is the thing on
+// screen" invariant a fold never disturbs outside interactive mode. A
+// target that cannot be resolved (interactive mode already off, or the
+// bound session has since left m.sessions, e.g. deleted mid-session)
+// leaves m.selected untouched and falls back to following it exactly as
+// this whole call chain did before this task.
+func (m *Model) revealInteractiveDriftTarget() {
+	if idx, ok := m.interactiveTargetIndex(); ok {
+		if gid := sessionGroupID(m.sessions[idx]); m.isGroupCollapsed(gid) {
+			m.setGroupCollapsed(gid, false)
+		}
+		m.selected = rowCursor(idx)
+	}
+	m.followSelectionViewport()
 }
 
 // previewContentSize is the exact (contentWidth, contentHeight) box
