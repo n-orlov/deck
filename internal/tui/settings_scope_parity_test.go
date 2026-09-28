@@ -145,7 +145,7 @@ func settingsStageRealEdit(m *Model, f config.Field) {
 			if f.FullKey() != "ui.theme" {
 				break
 			}
-			userThemes, userErrs := theme.DiscoverUserThemes(theme.ThemesDir(m.settings.Paths.ConfigFile))
+			userThemes, userErrs := theme.DiscoverUserThemes(m.settings.ThemesDir)
 			resolved, _ := theme.Resolve(userThemes, userErrs, newRaw)
 			if resolved.Name != beforeThemeName {
 				break

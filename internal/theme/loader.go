@@ -107,20 +107,24 @@ func peekDeclaredName(data []byte) string {
 // directory config.toml itself lives in either way, so scenarios and
 // installations that redirect one redirect the other identically.
 //
-// A named profile's config.toml lives one "profiles/<name>" segment deeper
-// (SPEC §3.4) than the default profile's, but themes are shared: "every
-// profile discovers them in the default profile's themes/ directory ...
-// because a theme is colour data, not state." So when configFile's
-// directory's parent is named "profiles", ThemesDir strips that
-// "profiles/<name>" pair before appending "themes", landing on exactly the
-// same directory the default profile's own configFile would derive —
-// regardless of which profile is actually running.
+// This is a pure, textual derivation from whatever configFile it is
+// given — it never guesses whether configFile belongs to a named profile
+// from the shape of its own path (a directory literally named "profiles"
+// two segments up is not necessarily a profileRoot insertion: a default
+// DECK_HOME is free to end in "profiles/<anything>" on its own, and that
+// installation's themes/ must stay exactly alongside ITS config.toml, not
+// one that a text-only guess strips away — see internal/config's review
+// fix, R152/R157). A named profile's config.toml lives one
+// "profiles/<name>" segment deeper (SPEC §3.4) than the default profile's,
+// but themes are shared: "every profile discovers them in the default
+// profile's themes/ directory ... because a theme is colour data, not
+// state." Producing that shared location for a named profile is the
+// CALLER's job (internal/config.LoadFromProfile resolves the default
+// profile's own config root explicitly, via resolvePaths with
+// DefaultProfile, and calls ThemesDir on THAT path) — never something
+// ThemesDir infers from configFile's text on its own.
 func ThemesDir(configFile string) string {
-	dir := filepath.Dir(configFile)
-	if parent := filepath.Dir(dir); filepath.Base(parent) == "profiles" {
-		dir = filepath.Dir(parent)
-	}
-	return filepath.Join(dir, "themes")
+	return filepath.Join(filepath.Dir(configFile), "themes")
 }
 
 // Resolve picks the active theme by declared name, given the themes

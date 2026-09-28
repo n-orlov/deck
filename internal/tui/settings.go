@@ -471,7 +471,7 @@ func (m *Model) settingsApplyLiveFields(previous config.FileConfig) tea.Cmd {
 		}
 	}
 	if m.settingsEdits.Theme != previous.Theme {
-		userThemes, userErrs := theme.DiscoverUserThemes(theme.ThemesDir(m.settings.Paths.ConfigFile))
+		userThemes, userErrs := theme.DiscoverUserThemes(m.settings.ThemesDir)
 		resolved, reason := theme.Resolve(userThemes, userErrs, m.settingsEdits.Theme)
 		m.settings.Theme = resolved
 		m.settings.ThemeReason = reason
@@ -1494,19 +1494,19 @@ func settingsSetEnum(cfg *config.FileConfig, f config.Field, v string) {
 func (m Model) settingsFieldOptions(f config.Field) []string {
 	switch f.FullKey() {
 	case "ui.theme":
-		return settingsThemeOptions(m.settings.Paths)
+		return settingsThemeOptions(m.settings.ThemesDir)
 	default:
 		return f.EnumValues
 	}
 }
 
-func settingsThemeOptions(paths config.Paths) []string {
+func settingsThemeOptions(themesDir string) []string {
 	var names []string
 	for _, t := range theme.Builtins() {
 		names = append(names, t.Name)
 	}
 	sort.Strings(names)
-	userThemes, _ := theme.DiscoverUserThemes(theme.ThemesDir(paths.ConfigFile))
+	userThemes, _ := theme.DiscoverUserThemes(themesDir)
 	var userNames []string
 	for name := range userThemes {
 		userNames = append(userNames, name)

@@ -1,6 +1,8 @@
 package config
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/n-orlov/deck/internal/theme"
@@ -181,7 +183,10 @@ func TestSettingsExposesResolvedProfileName(t *testing.T) {
 // TestThemesDirSharedAcrossProfiles pins that a named profile's resolved
 // Settings still discovers user themes in the default profile's themes/
 // directory (SPEC §3.4: "a theme is colour data, not state"), never its
-// own profiles/<name>/themes/.
+// own profiles/<name>/themes/. Both profiles' Settings.ThemesDir -- the
+// field LoadFromProfile resolves explicitly against the DEFAULT profile's
+// own root (R152/R157), never guessed from either profile's own
+// Paths.ConfigFile text -- must agree.
 func TestThemesDirSharedAcrossProfiles(t *testing.T) {
 	fixedHome := func() (string, error) { return "/oracle-home", nil }
 
@@ -199,15 +204,105 @@ func TestThemesDirSharedAcrossProfiles(t *testing.T) {
 	if named.Paths.ConfigFile == deft.Paths.ConfigFile {
 		t.Fatalf("expected the two profiles' config files to differ, both were %q", named.Paths.ConfigFile)
 	}
-	// ... but theme.ThemesDir, given each profile's own resolved
-	// ConfigFile, must still land on the exact same shared directory --
-	// this is what LoadFromProfile actually feeds theme.DiscoverUserThemes
-	// for every profile.
-	if got, want := theme.ThemesDir(named.Paths.ConfigFile), theme.ThemesDir(deft.Paths.ConfigFile); got != want {
-		t.Fatalf("ThemesDir(named profile's config) = %q, want %q (the default profile's own)", got, want)
+	// ... but Settings.ThemesDir, resolved by LoadFromProfile for either
+	// profile, must still land on the exact same shared directory -- this
+	// is what LoadFromProfile actually feeds theme.DiscoverUserThemes for
+	// every profile.
+	if got, want := named.ThemesDir, deft.ThemesDir; got != want {
+		t.Fatalf("named profile's ThemesDir = %q, want %q (the default profile's own)", got, want)
 	}
-	if want := "/oracle-home/.config/deck/themes"; theme.ThemesDir(named.Paths.ConfigFile) != want {
-		t.Fatalf("ThemesDir(named profile's config) = %q, want %q", theme.ThemesDir(named.Paths.ConfigFile), want)
+	if want := "/oracle-home/.config/deck/themes"; named.ThemesDir != want {
+		t.Fatalf("named profile's ThemesDir = %q, want %q", named.ThemesDir, want)
+	}
+}
+
+// TestThemesDirSurvivesADefaultRootShapedLikeANamedProfile pins R152/R157's
+// decisive probe: a DEFAULT DECK_HOME that itself ends in
+// "profiles/<dir>" -- an operator's own directory choice, nothing to do
+// with profileRoot's own "profiles/<name>" insertion for a NAMED profile --
+// keeps its own themes/ directory. Guessing profile identity from that
+// path's shape alone (the pre-fix heuristic) would incorrectly strip that
+// segment and land one level too high.
+func TestThemesDirSurvivesADefaultRootShapedLikeANamedProfile(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "profiles", "work")
+	if err := os.MkdirAll(root, 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	unusedHome := func() (string, error) { return "", os.ErrNotExist }
+
+	deft, err := LoadFrom(environment(map[string]string{"DECK_HOME": root}), unusedHome)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := filepath.Join(root, "themes"); deft.ThemesDir != want {
+		t.Fatalf("default DECK_HOME=%q ThemesDir = %q, want %q (its own, unchanged)", root, deft.ThemesDir, want)
+	}
+
+	// A NAMED profile launched against that same root shares exactly that
+	// same directory (SPEC §3.4), not a further ancestor.
+	named, err := LoadFromProfile(environment(map[string]string{"DECK_HOME": root}), unusedHome, "acme")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if named.ThemesDir != deft.ThemesDir {
+		t.Fatalf("named profile ThemesDir = %q, want the default's own %q", named.ThemesDir, deft.ThemesDir)
+	}
+}
+
+// TestDefaultAndNamedLoadTheSameRealUserThemeUnderArbitraryRoot is the
+// end-to-end regression for the same R152/R157 fix: a real user theme file
+// written under an arbitrary default root's themes/ directory -- one that
+// itself happens to end in "profiles/<dir>" -- is discovered and resolved
+// identically by both a plain load of that root (the default profile) and
+// a named profile sharing it, never falling back to the built-in default
+// theme for either.
+func TestDefaultAndNamedLoadTheSameRealUserThemeUnderArbitraryRoot(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "profiles", "work")
+	themesDir := filepath.Join(root, "themes")
+	if err := os.MkdirAll(themesDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	userTheme := "name = \"review-custom\"\nappearance = \"dark\"\n[colors]\n"
+	for _, tok := range theme.AllTokens {
+		userTheme += string(tok) + " = \"#123456\"\n"
+	}
+	if err := os.WriteFile(filepath.Join(themesDir, "custom.toml"), []byte(userTheme), 0o644); err != nil {
+		t.Fatalf("write user theme: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "config.toml"), []byte("[ui]\ntheme = \"review-custom\"\n"), 0o644); err != nil {
+		t.Fatalf("write default config.toml: %v", err)
+	}
+	namedDir := filepath.Join(root, "profiles", "acme")
+	if err := os.MkdirAll(namedDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll named profile dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(namedDir, "config.toml"), []byte("[ui]\ntheme = \"review-custom\"\n"), 0o644); err != nil {
+		t.Fatalf("write named profile config.toml: %v", err)
+	}
+	unusedHome := func() (string, error) { return "", os.ErrNotExist }
+
+	deft, err := LoadFrom(environment(map[string]string{"DECK_HOME": root}), unusedHome)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if deft.Theme == nil || deft.Theme.Name != "review-custom" {
+		gotName := ""
+		if deft.Theme != nil {
+			gotName = deft.Theme.Name
+		}
+		t.Fatalf("default profile theme = %q (reason %q), want %q loaded from its own arbitrary root", gotName, deft.ThemeReason, "review-custom")
+	}
+
+	named, err := LoadFromProfile(environment(map[string]string{"DECK_HOME": root}), unusedHome, "acme")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if named.Theme == nil || named.Theme.Name != "review-custom" {
+		gotName := ""
+		if named.Theme != nil {
+			gotName = named.Theme.Name
+		}
+		t.Fatalf("named profile theme = %q (reason %q), want %q shared from the default root", gotName, named.ThemeReason, "review-custom")
 	}
 }
 

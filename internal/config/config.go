@@ -171,9 +171,21 @@ type Settings struct {
 	// on deck's private socket, independent of Mouse's terminal-side SGR
 	// reporting toggle above. DECK_TMUX_MOUSE overrides the file when set.
 	TmuxMouse bool
+	// ThemesDir is the shared user-themes directory this settings load
+	// discovered from (R152/R157, SPEC §3.4): the DEFAULT profile's own
+	// config root's themes/ subdirectory, resolved explicitly via
+	// resolvePaths(getenv, userHome, DefaultProfile) -- never guessed from
+	// Paths.ConfigFile's own text. A named profile's Settings carries this
+	// exact same value as the default profile's, so every profile shares
+	// one themes/ location regardless of what either profile's own root
+	// happens to be named (including a default root that itself ends in a
+	// "profiles/<dir>" path segment of its own choosing, unrelated to a
+	// profileRoot insertion). internal/tui reads this field directly
+	// instead of recomputing theme.ThemesDir(Paths.ConfigFile) itself.
+	ThemesDir string
 	// Theme is the resolved theme (§11.6) this settings load selected:
 	// config.toml's [ui] theme name resolved against the embedded built-ins
-	// and any user theme discovered under theme.ThemesDir(ConfigFile), via
+	// and any user theme discovered under ThemesDir above, via
 	// theme.Resolve. Never nil -- an empty/unknown/unparseable name resolves
 	// to theme.Default() (see ThemeReason for why, when it fell back).
 	Theme *theme.Theme
@@ -238,10 +250,18 @@ func LoadFromProfile(getenv func(string) string, userHome func() (string, error)
 	if err != nil {
 		return Settings{}, err
 	}
-	dataRoot, err := DataRoot(getenv, userHome)
+	// defaultPaths is the DEFAULT profile's own resolved paths -- always
+	// the flat/unnamed layout unchanged (profileRoot's no-op case),
+	// regardless of which profile is actually launching or what its own
+	// DECK_HOME happens to be named. DataRoot (a pane's DECK_HOME, SPEC
+	// §6.1) and the shared themes/ directory (SPEC §3.4, R152/R157) both
+	// derive from it explicitly here, rather than either being guessed
+	// from the currently-resolved profile's own Paths.ConfigFile text.
+	defaultPaths, err := resolvePaths(getenv, userHome, DefaultProfile)
 	if err != nil {
 		return Settings{}, err
 	}
+	dataRoot := defaultPaths.DataDir
 	clock, err := NewClock(getenv("DECK_CLOCK"), getenv("DECK_CLOCK_STEP"))
 	if err != nil {
 		return Settings{}, err
@@ -357,13 +377,15 @@ func LoadFromProfile(getenv func(string) string, userHome func() (string, error)
 		}
 		envOverrides["interactive_transport"] = "DECK_INTERACTIVE_TRANSPORT"
 	}
-	userThemes, userErrs := theme.DiscoverUserThemes(theme.ThemesDir(paths.ConfigFile))
+	themesDir := theme.ThemesDir(defaultPaths.ConfigFile)
+	userThemes, userErrs := theme.DiscoverUserThemes(themesDir)
 	resolvedTheme, themeReason := theme.Resolve(userThemes, userErrs, fileCfg.Theme)
 	if len(envOverrides) == 0 {
 		envOverrides = nil
 	}
 	return Settings{
 		Paths: paths, DataRoot: dataRoot, Profile: profile, Socket: socket, Clock: clock, IDs: NewIDGenerator(getenv("DECK_ID_SEED")),
+		ThemesDir: themesDir,
 		Reconcile: reconcile, Preview: preview, Undo: undo, DeleteGrace: deleteGrace, StaleAfter: fileCfg.StaleAfter, CaptureMinInterval: fileCfg.CaptureMinInterval, InteractiveMS: interactiveMS, InteractiveTransport: interactiveTransport,
 		ASCII: ascii, Animation: animation, Color: color, ColorDepth: colorDepth, AllowYolo: fileCfg.AllowYolo, YoloDefault: fileCfg.YoloDefault, Env: fileCfg.Env, Mouse: mouse,
 		DefaultGroupFirst:  fileCfg.DefaultGroupFirst,
