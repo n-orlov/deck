@@ -11,6 +11,13 @@ Feature: §3.2/§11.8 a wheel notch in an attached session scrolls the pane, not
   Scenario: a wheel notch scrolls an attached pane's scrollback and leaves the shell's input line untouched
     Given deck client "A" is started
     When deck client "A" creates shell session "attach-scroll-target"
+    # Settle by name before attaching, not just relying on the attach itself
+    # (task cure-01-02, R150): the captured frame below is a byte-exact
+    # baseline, and a still-"starting" row promoting to "running" in the
+    # background after this point (SPEC SS7's shell-only tmux-liveness rule)
+    # would change the sidebar underneath the attached pane before the
+    # later compare, even though neither is on screen at that instant.
+    And within one configured reconcile interval deck client "A" row "attach-scroll-target" contains "running"
     And deck client "A" attaches to the selected session
     And deck client "A" fills the attached pane with more than one screen of scrollback
     And deck client "A" captures its frame as "before-wheel-scroll"

@@ -265,6 +265,12 @@ Feature: The §11.4 dialog contract, asserted per dialog (requirements 7, 8, 9, 
   Scenario: help dialog -- the mouse can neither cancel nor confirm it, at its border, its body or outside it
     Given deck client "A" is started
     When deck client "A" creates shell session "dc-help-mouse"
+    # Settle by name before the takeover opens (task cure-01-02, R150): the
+    # dialog hides the row, but a still-"starting" shell promoting to
+    # "running" in the background (SPEC SS7) after the baseline below is
+    # captured is still a change the reconcile loop could make between the
+    # capture and the later byte-exact compare.
+    And within one configured reconcile interval deck client "A" row "dc-help-mouse" contains "running"
     And the scenario's config.toml is captured as "before-help-mouse-cfg"
     And deck client "A" opens help
     And deck client "A" captures its frame as "before-help-mouse"
@@ -352,6 +358,10 @@ Feature: The §11.4 dialog contract, asserted per dialog (requirements 7, 8, 9, 
   Scenario: rename dialog -- the mouse can neither cancel nor confirm it, at its border, its body or outside it
     Given deck client "A" is started
     When deck client "A" creates shell session "dc-rename-mouse"
+    # Settle by name before the takeover opens (task cure-01-02, R150): see
+    # the help-dialog mouse scenario above for why this still matters behind
+    # a dialog that hides the row.
+    And within one configured reconcile interval deck client "A" row "dc-rename-mouse" contains "running"
     And the scenario's config.toml is captured as "before-rename-mouse-cfg"
     And deck client "A" opens detail for session "dc-rename-mouse"
     And deck client "A" opens the rename dialog
