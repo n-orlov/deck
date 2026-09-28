@@ -34,14 +34,28 @@ func waitForSettledCount(deadline, settleWindow, pollInterval time.Duration, rea
 	if err != nil {
 		return 0, err
 	}
-	settledSince := start
+	// settledSince marks the moment the LAST completed observation was
+	// taken, never the moment the wait began: the initial read above can
+	// itself take arbitrarily long (a slow fixture, a cold cache), and
+	// starting the stability clock from `start` would count that read's
+	// own wall-clock cost as if it were quiet time with no observation
+	// backing it -- reporting settled success after a single read even
+	// though the counter was never actually observed to be unchanged
+	// across settleWindow. Anchoring on the read's completion time means
+	// the quiet window can only ever be satisfied by two or more actual
+	// observations agreeing.
+	settledSince := time.Now()
 	for {
 		now := time.Now()
-		if now.Sub(settledSince) >= settleWindow {
-			return last, nil
-		}
+		// The deadline check comes first: an expired deadline must
+		// never be shadowed by a quiet-window check that could
+		// otherwise still report a stale "settled" success on the
+		// same iteration it expires.
 		if now.Sub(start) >= deadline {
 			return last, fmt.Errorf("counter still moving after %v (last value %d, changed %v ago, want %v of no further change): never settled", deadline, last, now.Sub(settledSince), settleWindow)
+		}
+		if now.Sub(settledSince) >= settleWindow {
+			return last, nil
 		}
 		time.Sleep(pollInterval)
 		cur, err := read()

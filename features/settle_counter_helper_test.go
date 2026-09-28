@@ -1,6 +1,7 @@
 package features
 
 import (
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -75,5 +76,60 @@ func TestAssertSettledCountOffByOneFails(t *testing.T) {
 	got, err := assertSettledCountEquals(2*time.Second, settleCounterTestWindow, settleCounterTestPoll, read, final+1)
 	if err == nil {
 		t.Fatalf("settled one off from what was wanted: want an error, got settled value %d treated as a pass", got)
+	}
+}
+
+// TestReviewCounterStillMovingAtDeadlineWithSlowInitialReadFails pins
+// R151's own probe: a counter that changes on EVERY read, whose very
+// first read is itself slower than the configured settle window (but
+// still well below the deadline), must never be reported settled after
+// that one slow read. Before the fix, waitForSettledCount started its
+// stability clock at the moment the wait began (before the slow initial
+// read even returned) rather than at the moment that read actually
+// completed -- so the slow read's own wall-clock cost alone satisfied
+// the quiet window on the very first loop iteration, with no second
+// observation ever confirming the counter had actually stopped moving.
+func TestReviewCounterStillMovingAtDeadlineWithSlowInitialReadFails(t *testing.T) {
+	var n int32
+	first := true
+	read := func() (int, error) {
+		if first {
+			first = false
+			// The initial read alone outlasts the settle window
+			// (but stays well under the deadline): this is the
+			// exact shape the review probe reported false
+			// quiescence for.
+			time.Sleep(60 * time.Millisecond)
+		}
+		v := atomic.AddInt32(&n, 1)
+		return int(v), nil
+	}
+	got, err := waitForSettledCount(300*time.Millisecond, 40*time.Millisecond, 5*time.Millisecond, read)
+	if err == nil {
+		t.Fatalf("counter still moving on every read, slow initial read: want an error, got settled value %d", got)
+	}
+}
+
+// TestReviewSlowInitialReadBelowDeadlineMustStillSettle pins the second
+// half of R151's probe: a counter still moving on every read, whose slow
+// initial read exceeds the deadline itself (not just the settle window),
+// must fail -- and must fail with the deadline-exceeded contract, never
+// be waved through as a settled success because a stale quiet-window
+// clock happened to already look satisfied.
+func TestReviewSlowInitialReadBelowDeadlineMustStillSettle(t *testing.T) {
+	var n int32
+	first := true
+	read := func() (int, error) {
+		if first {
+			first = false
+			// The initial read alone outlasts the deadline.
+			time.Sleep(50 * time.Millisecond)
+		}
+		v := atomic.AddInt32(&n, 1)
+		return int(v), nil
+	}
+	got, err := waitForSettledCount(40*time.Millisecond, 20*time.Millisecond, 5*time.Millisecond, read)
+	if err == nil {
+		t.Fatalf("initial read alone exceeded the deadline: want an error, got settled value %d", got)
 	}
 }
