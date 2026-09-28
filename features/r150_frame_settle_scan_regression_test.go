@@ -25,6 +25,81 @@ func TestR150GuardRejectsTransientAndUnsettledShellWaypoints(t *testing.T) {
 		feature string
 	}{
 		{
+			name: "reviewer_starting_frame_wait_alone",
+			// Review's first fixture, verbatim: a standalone shell-frame
+			// wait on the transient "starting" word with NO later capture
+			// or compare at all. The wait itself is the flaky waypoint --
+			// the shell promotes to "running" within one reconcile tick, so
+			// the wait races the promotion -- and must be rejected on its
+			// own, not only once some later comparison is seen.
+			feature: `Feature: probe
+  Scenario: regression
+    When deck client "A" creates shell session "alpha"
+    Then deck client "A" screen contains "starting"
+`,
+		},
+		{
+			name: "reviewer_starting_capture",
+			feature: `Feature: probe
+  Scenario: regression
+    When deck client "A" creates shell session "alpha"
+    Then deck client "A" screen contains "starting"
+    And deck client "A" captures its frame as "before"
+    Then deck client "A" frame still matches the captured "before" frame
+`,
+		},
+		{
+			name: "reviewer_no_wait_capture",
+			feature: `Feature: probe
+  Scenario: regression
+    When deck client "A" creates shell session "alpha"
+    And deck client "A" captures its frame as "before"
+    Then deck client "A" frame still matches the captured "before" frame
+`,
+		},
+		{
+			name: "reviewer_already_settled_other_row",
+			feature: `Feature: probe
+  Scenario: regression
+    When deck client "A" creates shell session "alpha"
+    Then within one configured reconcile interval deck client "A" row "alpha" contains "running"
+    When deck client "A" creates shell session "bravo"
+    Then deck client "A" screen contains "running"
+    And deck client "A" captures its frame as "before"
+    Then deck client "A" frame still matches the captured "before" frame
+`,
+		},
+		{
+			name: "row_scoped_starting_wait_on_a_shell",
+			// A row-scoped wait naming a SHELL on "starting" is the same
+			// transient waypoint, whatever else the screen shows.
+			feature: `Feature: fixture
+  Scenario: row-scoped starting wait on a shell
+    When deck client "A" creates shell session "row-transient"
+    Then within one configured reconcile interval deck client "A" row "row-transient" contains "starting"
+`,
+		},
+		{
+			name: "background_shell_left_unsettled_before_starting_wait",
+			// godog runs Background before every scenario, so a shell the
+			// Background creates is displayed in every scenario too:
+			// status_theme.feature's starting-token scenario had exactly
+			// this shape (tok-anchor settled the generic wait, tok-target
+			// never settled by name) until this task settled it.
+			feature: `Feature: fixture
+  Background:
+    Given deck client "A" is started
+    When deck client "A" creates shell session "bg-anchor"
+    Then within one configured reconcile interval deck client "A" screen contains "running"
+    When deck client "A" creates shell session "bg-target"
+    And deck client "A" creates claude session "bg-agent" with permission profile "safe"
+
+  Scenario: generic starting wait while a background shell is unconfirmed
+    When the state database session "bg-agent" has status "starting" 5 seconds ago
+    Then within one configured reconcile interval deck client "A" screen contains "starting"
+`,
+		},
+		{
 			name: "starting_wait_before_capture",
 			// Bug 1: a wait that only ever names the TRANSIENT status word
 			// must never mark the shell it names settled -- a capture right
@@ -173,6 +248,52 @@ func TestR150GuardAcceptsValidSettlesAndDurableTransientAssertions(t *testing.T)
     And the state database session "durable-transient" is "starting" from "tmux" with killed_by_user=0
     And deck client "A" captures its frame as "durable-frame"
     Then deck client "A" frame still matches the captured "durable-frame" frame
+`,
+		},
+		{
+			name: "agent_only_starting_wait_is_durable",
+			// An agent session's "starting" is durable (it holds until the
+			// agent's own hook reports), so a screen wait on it with no
+			// shell displayed is not a transient shell waypoint.
+			feature: `Feature: fixture
+  Scenario: an agent's starting word is not a shell waypoint
+    Given a fake "claude" binary is on PATH for future deck clients
+    And deck client "A" is started
+    When deck client "A" creates claude session "agent-only" with permission profile "safe"
+    Then deck client "A" screen contains "starting"
+    And within one configured reconcile interval deck client "A" row "agent-only" contains "starting"
+`,
+		},
+		{
+			name: "starting_wait_after_every_shell_settled_by_name",
+			// Once every displayed shell (Background ones included) is
+			// settled BY NAME, "starting" on screen can only come from a
+			// durable source -- status_theme.feature's fixed shape.
+			feature: `Feature: fixture
+  Background:
+    Given deck client "A" is started
+    When deck client "A" creates shell session "fixed-anchor"
+    Then within one configured reconcile interval deck client "A" screen contains "running"
+    When deck client "A" creates shell session "fixed-target"
+    And within one configured reconcile interval deck client "A" row "fixed-target" contains "running"
+    And deck client "A" creates claude session "fixed-agent" with permission profile "safe"
+
+  Scenario: generic starting wait with every shell settled
+    When the state database session "fixed-agent" has status "starting" 5 seconds ago
+    Then within one configured reconcile interval deck client "A" screen contains "starting"
+    And deck client "A" captures its frame as "fixed-frame"
+    Then deck client "A" frame still matches the captured "fixed-frame" frame
+`,
+		},
+		{
+			name: "store_only_transient_assertion_on_a_shell",
+			// A store-only "starting" assertion on a created shell names
+			// no screen at all, so it is never a frame waypoint.
+			feature: `Feature: fixture
+  Scenario: store-only starting assertion on a shell
+    When deck client "A" creates shell session "store-transient"
+    Then the state database contains session "store-transient" with status "starting"
+    And within one configured reconcile interval the state database session "store-transient" is "starting" from "tmux" with killed_by_user=0
 `,
 		},
 		{
