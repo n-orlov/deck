@@ -64,6 +64,21 @@ func buildDeckProfileCreationTestBinary(t *testing.T) string {
 // answer.
 func startProfileCreationPTY(t *testing.T, binary, home string) (terminal *os.File, output *ptyOutput, done <-chan error, cancel func()) {
 	t.Helper()
+	terminal, output, done, cancel = launchProfileCreationPTY(t, binary, home)
+	waitForScreen(t, output, done, `deck: no profile "work" yet (known: default). Create it? [y/N]`)
+	return terminal, output, done, cancel
+}
+
+// launchProfileCreationPTY starts the deck binary against an unknown named
+// profile ("work") over a real pty and returns immediately, without
+// waiting for the confirmation prompt -- unlike startProfileCreationPTY,
+// so a caller that needs two such processes racing the SAME unknown
+// profile (R153's two-pending-confirmations regression) can get both
+// running concurrently before either one's own ~5s terminal-query delay
+// has elapsed, rather than paying that delay twice in series and starving
+// the first process's own context timeout.
+func launchProfileCreationPTY(t *testing.T, binary, home string) (terminal *os.File, output *ptyOutput, done <-chan error, cancel func()) {
+	t.Helper()
 	ctx, cancelCtx := context.WithTimeout(context.Background(), 10*time.Second)
 	cmd := exec.CommandContext(ctx, binary, "work")
 	cmd.Env = append(os.Environ(), "DECK_HOME="+home, "NO_COLOR=1", "DECK_ASCII=1", "DECK_ANIM=0", "TERM=xterm-256color", "SHELL=/bin/sh")
@@ -79,7 +94,6 @@ func startProfileCreationPTY(t *testing.T, binary, home string) (terminal *os.Fi
 		doneCh <- cmd.Wait()
 		cancelCtx()
 	}()
-	waitForScreen(t, out, doneCh, `deck: no profile "work" yet (known: default). Create it? [y/N]`)
 	return terminal, out, doneCh, func() {
 		cancelCtx()
 		terminal.Close()
@@ -229,6 +243,90 @@ func TestDeckBinaryProfileCreationWithNoDefaultConfigCreatesNoConfigFile(t *test
 	}
 	if _, err := os.Stat(filepath.Join(workData, "config.toml")); !os.IsNotExist(err) {
 		t.Fatalf("profiles/work/config.toml stat = %v, want os.IsNotExist", err)
+	}
+}
+
+// TestReviewTwoPendingConfirmationsDoNotOverwriteProfileConfig pins R153:
+// two real deck processes racing the same not-yet-known profile can both
+// reach SPEC §3.4's confirm prompt before either creates anything (both
+// saw config.ProfileExists == false, or one's directory only appeared
+// while the other was already waiting on its own prompt). Answering the
+// first process's prompt "y" creates profiles/work and its config.toml
+// copy; something -- the profile's own owner, in this scenario -- then
+// edits that file. Answering the SECOND, already-pending process's prompt
+// "y" must not re-copy the default config over those edited bytes: R153's
+// bug was a plain os.ReadFile+os.WriteFile in config.CreateProfile, which
+// silently clobbered the first owner's edit every time a second launch's
+// confirmation lost the race. The fix makes the copy a race-safe
+// create-if-absent (os.OpenFile with O_CREATE|O_EXCL): a second, later
+// caller for the same profile finds the file already there and leaves it
+// exactly as found, no matter how its own confirmation happened to be
+// pending when the first one won.
+func TestReviewTwoPendingConfirmationsDoNotOverwriteProfileConfig(t *testing.T) {
+	binary := buildDeckProfileCreationTestBinary(t)
+	home := t.TempDir()
+	defaultConfig := "# default\n[ui]\nascii = true\n"
+	if err := os.WriteFile(filepath.Join(home, "config.toml"), []byte(defaultConfig), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	// Both processes reach the confirm prompt for the same unknown profile
+	// before either has created anything -- the "two pending confirmations"
+	// this regression is named for. Launched together, before waiting on
+	// either one's own ~5s terminal-query delay, so they are genuinely
+	// racing rather than serialized (and so neither starves the other's own
+	// 10s process context while this goroutine waits on the first).
+	terminal1, output1, done1, cancel1 := launchProfileCreationPTY(t, binary, home)
+	defer cancel1()
+	terminal2, output2, done2, cancel2 := launchProfileCreationPTY(t, binary, home)
+	defer cancel2()
+	prompt := `deck: no profile "work" yet (known: default). Create it? [y/N]`
+	waitForScreen(t, output1, done1, prompt)
+	waitForScreen(t, output2, done2, prompt)
+
+	workConfig := filepath.Join(home, "profiles", "work", "config.toml")
+
+	// The first owner's "y" creates the profile and its default-copied
+	// config; that owner then edits it -- e.g. a settings save between
+	// launch and this profile's next start.
+	if _, err := terminal1.Write([]byte("y\n")); err != nil {
+		t.Fatal(err)
+	}
+	waitForFileContent(t, workConfig, []byte(defaultConfig), 5*time.Second)
+	editedConfig := []byte("# edited by profile work's own owner\n[ui]\nascii = false\n")
+	if err := os.WriteFile(workConfig, editedConfig, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	// The second, already-pending confirmation's "y" must not re-copy the
+	// default config over the edit above.
+	if _, err := terminal2.Write([]byte("y\n")); err != nil {
+		t.Fatal(err)
+	}
+	assertFileContentStaysStable(t, workConfig, editedConfig, 1*time.Second)
+
+	cancel1()
+	cancel2()
+	<-done1
+	<-done2
+	_, _ = output1, output2
+}
+
+// assertFileContentStaysStable polls path for window, failing the test the
+// moment its bytes stop matching want -- catching a re-copy landing at any
+// point inside the window, not only a snapshot taken once at the end.
+func assertFileContentStaysStable(t *testing.T, path string, want []byte, window time.Duration) {
+	t.Helper()
+	deadline := time.Now().Add(window)
+	for time.Now().Before(deadline) {
+		got, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("read %s during settle window: %v", path, err)
+		}
+		if !bytes.Equal(got, want) {
+			t.Fatalf("content of %s changed during settle window: got %q, want it to stay %q", path, got, want)
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 }
 
