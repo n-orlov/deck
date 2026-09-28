@@ -563,7 +563,21 @@ func KnownProfiles(getenv func(string) string, userHome func() (string, error)) 
 // normal first-launch path (store.Open, audit.New), exactly as SPEC
 // states; this only makes the directories and copies the one file. Callers
 // (cmd/deck) run this only after SPEC's confirm-if-unknown prompt answered
-// "y" -- it never itself asks or checks ProfileExists.
+// "y" -- it never itself asks or checks ProfileExists, and two concurrent
+// launches can legitimately both reach here for the same not-yet-known
+// profile (both saw ProfileExists == false, or the directory appeared only
+// while each was independently waiting on its own confirmation prompt).
+// The directory MkdirAlls above are already idempotent under that race.
+// The config.toml copy is the one step that would not be without care: a
+// second launch's plain read-then-write would silently overwrite whatever
+// bytes the first launch's owner (or its user, editing config.toml between
+// launch and this profile's next start) had already put there. The
+// os.OpenFile(O_CREATE|O_EXCL) below makes "copy the default config" a
+// single race-safe create-if-absent: at most one caller's Write ever lands,
+// and every later caller -- including one whose confirmation prompt raced
+// against, and lost to, another launch's whole CreateProfile -- silently
+// keeps whatever the winner (or its editor) left in place instead of
+// clobbering it.
 func CreateProfile(getenv func(string) string, userHome func() (string, error), profile string) error {
 	paths, err := resolvePaths(getenv, userHome, profile)
 	if err != nil {
@@ -589,7 +603,19 @@ func CreateProfile(getenv func(string) string, userHome func() (string, error), 
 		}
 		return fmt.Errorf("read default profile config: %w", err)
 	}
-	if err := os.WriteFile(paths.ConfigFile, data, 0o600); err != nil {
+	file, err := os.OpenFile(paths.ConfigFile, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+	if err != nil {
+		if os.IsExist(err) {
+			// Another launch (or a lost confirmation race against one) already
+			// created this profile's config.toml -- possibly already edited by
+			// now. Leave it exactly as found; the default copy happens at most
+			// once per profile, ever, no matter how many launches raced here.
+			return nil
+		}
+		return fmt.Errorf("create profile %q config: %w", profile, err)
+	}
+	defer file.Close()
+	if _, err := file.Write(data); err != nil {
 		return fmt.Errorf("copy default config for profile %q: %w", profile, err)
 	}
 	return nil
