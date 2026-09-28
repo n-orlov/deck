@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"syscall"
 	"time"
@@ -236,24 +237,59 @@ func sessionHasOneLosingProbeEvent(ctx context.Context, name, kind string) error
 	}
 }
 
-// frameSidebarRowContains reports whether some SIDEBAR row of frame (a
-// plain-text client frame) contains both rowName and want. Only the
-// sidebar panel's own cell of each terminal line is searched -- the text
-// between the line's first and second vertical border glyph ("|" in the
-// harness's ASCII frames, "│" otherwise) -- never the whole terminal
-// line: the preview panel shares every terminal line with the sidebar, so
-// a whole-line match would let a session's own pane output ("running"
-// printed by the shell, say) on the same terminal row as that session's
-// sidebar row satisfy a row-scoped status wait the row itself never
-// showed (R150, cure-01-01-2: a settle must be session-specific).
+// frameSidebarRowContains reports whether some SIDEBAR ROW (never a group
+// header) of frame (a plain-text client frame) contains both rowName and
+// want. Only the sidebar panel's own cell of each terminal line is
+// searched -- the text between the line's first and second vertical
+// border glyph ("|" in the harness's ASCII frames, "│" otherwise) -- never
+// the whole terminal line: the preview panel shares every terminal line
+// with the sidebar, so a whole-line match would let a session's own pane
+// output ("running" printed by the shell, say) on the same terminal row
+// as that session's sidebar row satisfy a row-scoped status wait the row
+// itself never showed (R150, cure-01-01-2: a settle must be
+// session-specific).
+//
+// R150/cure-01-01-3: a GROUP HEADER cell is excluded too, even though it
+// lives in the very same sidebar column session rows do. A group's own
+// name is user-chosen and unrelated to any session's status -- naming a
+// group "alpha-running" while session "alpha" is still "starting" made
+// this helper's plain substring match treat the header's rendered
+// "alpha-running  (1)" (groupHeaderText, internal/tui/group.go) as a true
+// settle of row "alpha" contains "running", when alpha's own row still
+// read "starting": a named wait must verify the NAMED SESSION's own
+// status, never another sidebar line's text, whatever it happens to
+// contain. sidebarCellIsGroupHeader's doc explains the discriminator.
 func frameSidebarRowContains(frame, rowName, want string) bool {
 	for _, line := range strings.Split(frame, "\n") {
 		cell, ok := sidebarCell(line)
-		if ok && strings.Contains(cell, rowName) && strings.Contains(cell, want) {
+		if !ok || sidebarCellIsGroupHeader(cell) {
+			continue
+		}
+		if strings.Contains(cell, rowName) && strings.Contains(cell, want) {
 			return true
 		}
 	}
 	return false
+}
+
+// sidebarGroupHeaderSuffixRe matches groupHeaderText's own trailing member
+// count (internal/tui/group.go: "<chevron> <name>  (<n>)", SPEC §11's
+// "every header carries its member count, including (0)") -- a
+// whitespace-then-parenthesised-integer tail that no SESSION ROW's own
+// rendered text (sidebarRowLines) ever produces: badges use brackets
+// (profileBadgeSegment's "[profile]"), never parens, and neither the
+// status word nor the relative age ever ends in "(<n>)". One or two
+// spaces before the paren both match (groupHeaderText renders two; a
+// synthetic test frame may render one), since the count itself, not its
+// exact spacing, is what makes a line a header.
+var sidebarGroupHeaderSuffixRe = regexp.MustCompile(`\s\(\d+\)\s*$`)
+
+// sidebarCellIsGroupHeader reports whether cell (as extracted by
+// sidebarCell) renders a group header line rather than a session row --
+// see sidebarGroupHeaderSuffixRe's own doc for the discriminator this
+// relies on.
+func sidebarCellIsGroupHeader(cell string) bool {
+	return sidebarGroupHeaderSuffixRe.MatchString(cell)
 }
 
 // sidebarCell returns the text between line's first and second vertical

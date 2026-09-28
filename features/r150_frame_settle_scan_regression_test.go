@@ -450,6 +450,27 @@ func TestR150GuardAcceptsValidSettlesAndDurableTransientAssertions(t *testing.T)
     Then deck client "A" frame still matches the captured "first-shell-frame" frame
 `,
 		},
+		{
+			name: "grouped_named_wait_is_genuinely_durable_despite_the_group_name",
+			// cure-01-01-3: a session-specific row wait naming the shell itself
+			// is durable whatever a GROUP happens to be named, because the
+			// runtime row helper (frameSidebarRowContains) now excludes group
+			// header cells entirely (sidebarCellIsGroupHeader) -- a group
+			// named "alpha-running" can no longer satisfy a wait on row
+			// "alpha" contains "running" by itself, so this settle proves
+			// alpha's own row exactly like any other named settle, and the
+			// guard need not flag the coincidence as ambiguous any more (see
+			// TestR150RowCallbackIgnoresGroupHeaderText for the runtime half).
+			feature: `Feature: fixture
+  Scenario: a group named after the shell's own settle text is not ambiguous
+    Given deck client "A" is started
+    When deck client "A" creates shell session "alpha"
+    And the state database session "alpha" is in group "alpha-running"
+    And within one configured reconcile interval deck client "A" row "alpha" contains "running"
+    And deck client "A" captures its frame as "grouped-frame"
+    Then deck client "A" frame still matches the captured "grouped-frame" frame
+`,
+		},
 	}
 
 	for _, tc := range cases {
