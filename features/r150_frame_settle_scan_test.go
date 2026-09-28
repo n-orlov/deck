@@ -37,29 +37,31 @@ import (
 //     the scan checks every capture's own outstanding-shell set directly,
 //     rather than only bothering to look once some earlier generic wait was
 //     seen.
-//   - a generic "running" wait settles the sole remaining unconfirmed shell
-//     only when NO other shell in the scenario is already known-settled --
-//     if one is, the wait can be satisfied by that already-running row's
-//     text alone and proves nothing about the one still unconfirmed.
-//   - the same holds when the "other" already-displayed session is not a
-//     shell at all: a claude/codex/pi agent session created earlier in the
-//     scenario can itself already be showing "running" (durably, once its
-//     own hook reports, or transiently through a wait of its own) by the
-//     time a brand-new shell's generic "running" wait runs. That wait's
-//     pass proves nothing about the new shell's own starting->running
-//     promotion, so a generic wait is trusted to settle the sole
-//     unconfirmed shell only when NO other session -- shell OR agent --
-//     has been created anywhere earlier in the scenario (Background
-//     included), not merely when no other SHELL has been settled by name.
+//   - a generic "screen contains "running"" wait NEVER settles a shell
+//     (cure-01-01-2). It passes on the first "running" anywhere on the
+//     screen: another shell's already-settled row, an agent session's own
+//     row (a claude/codex/pi session created earlier can already show
+//     "running" durably, once its hook reports), or the preview panel,
+//     which renders the selected shell's own pane output and so shows
+//     "running" the moment that pane prints it, whatever the shell's
+//     status. No count of displayed shells or sessions makes it
+//     unambiguous, so only a row-scoped wait naming the shell counts.
+//   - even a row-scoped wait is session-specific only when nothing else on
+//     that sidebar row can satisfy it: not when the shell's own name
+//     contains "running", and not when another displayed session's name
+//     contains the shell's name. The runtime row steps
+//     (frameSidebarRowContains) search the sidebar cell alone, never the
+//     whole terminal line, so the preview sharing that line cannot
+//     satisfy them either.
 //
 // The scan does not flag every generic "running" wait -- only the
-// combination that actually renders a byte-exact frame twice: a capture
-// step whose own session set (every distinct shell session created earlier
-// in the SAME scenario) is not a subset of the sessions the scenario
-// settled BY NAME (a "row "<name>" contains "running"" wait, or an
-// unambiguous generic "running" wait -- the scenario's only shell, with no
-// other shell already settled AND no other session of any kind, shell or
-// agent, created anywhere earlier in the scenario) before that capture. Other frame-shaped
+// combinations that make a whole-screen frame waypoint race a shell's
+// promotion: a "starting" frame wait (above), or a capture step whose own
+// session set (every distinct shell session created earlier in the SAME
+// scenario, Background included) is not a subset of the shells the
+// scenario settled BY NAME (a session-specific
+// "row "<name>" contains "running"" wait) before that capture, later
+// compared byte-for-byte. Other frame-shaped
 // comparisons this file's sibling scenarios use on purpose -- a settled
 // quiescence-based capture ("captures its settled frame as"), or a
 // comparison scoped to the tmux pane/window or the preview panel's own
@@ -154,13 +156,10 @@ func scanFeatureFileForUnsettledFrameCapture(path string) ([]string, error) {
 		stepLineNos := append(append([]int{}, bgLineNos...), sc.lineNos...)
 		created := map[string]bool{}
 		// otherSessions tracks every claude/codex/pi AGENT session created
-		// anywhere earlier in the scenario (Background included). An agent
-		// session can already be displaying "running" on screen -- durably
-		// once its own hook reports, or through a wait of its own -- by the
-		// time a brand-new shell's generic wait runs, so its mere presence
-		// makes that generic wait ambiguous even though it names no shell
-		// and is never itself required to be "settled by name".
-		otherSessions := map[string]bool{}
+		// anywhere earlier in the scenario (Background included): its row's
+		// name can make a row-scoped wait on a shell ambiguous (see
+		// r150RowSettleIsSessionSpecific).
+		otherSessions := map[string]bool{} // agent sessions created so far
 		settled := map[string]bool{}
 		unsettledNames := func() []string {
 			var names []string
@@ -201,21 +200,19 @@ func scanFeatureFileForUnsettledFrameCapture(path string) ([]string, error) {
 						path, ln, sc.title, strings.Join(names, ", ")))
 				}
 			}
-			if m := r150RowSettleRe.FindStringSubmatch(l); m != nil {
+			// Only a ROW-scoped "running" wait naming the shell itself can
+			// settle it -- a generic "screen contains "running"" wait never
+			// does, however few sessions are displayed (see the doc comment
+			// above: another row, or the preview panel showing the shell's
+			// own pane output, can satisfy it on text unrelated to the
+			// shell's own status). And even a row-scoped wait is only
+			// session-specific when no other text on that row can satisfy
+			// it: not when the shell's own name already contains "running",
+			// and not when another session displayed at that point has a
+			// name containing this one's (its row would match the same
+			// wait).
+			if m := r150RowSettleRe.FindStringSubmatch(l); m != nil && r150RowSettleIsSessionSpecific(m[1], created, otherSessions) {
 				settled[m[1]] = true
-			} else if r150GenericRunningRe.MatchString(l) {
-				// A generic "running" wait settles the sole remaining
-				// unconfirmed shell only when there is exactly one such
-				// shell, no other shell in the scenario is already
-				// known-settled, AND no other session -- shell or agent --
-				// has been created anywhere earlier in the scenario. An
-				// already-settled row, or an already-created agent session
-				// that may already be displaying "running" on its own, can
-				// each satisfy this wait by itself, on text unrelated to the
-				// one shell still unconfirmed, proving nothing about it.
-				if names := unsettledNames(); len(names) == 1 && len(settled) == 0 && len(otherSessions) == 0 {
-					settled[names[0]] = true
-				}
 			}
 			// Every capture snapshots its own outstanding-shell set directly,
 			// whether or not the scenario ever waited on anything at all.
@@ -233,4 +230,26 @@ func scanFeatureFileForUnsettledFrameCapture(path string) ([]string, error) {
 		}
 	}
 	return out, nil
+}
+
+// r150RowSettleIsSessionSpecific reports whether a row-scoped
+// `row "<name>" contains "running"` wait can only be satisfied by name's own
+// sidebar row showing its own "running" status. The runtime step
+// (frameSidebarRowContains) matches a sidebar cell containing both strings,
+// so the wait is ambiguous when name itself contains "running" (the row's
+// name alone satisfies it, whatever the status) or when another session
+// displayed at that point -- shell or agent -- has a name containing name
+// (that other row, with its own "running" status, satisfies it too).
+func r150RowSettleIsSessionSpecific(name string, shells, agents map[string]bool) bool {
+	if strings.Contains(name, "running") {
+		return false
+	}
+	for _, set := range []map[string]bool{shells, agents} {
+		for other := range set {
+			if other != name && strings.Contains(other, name) {
+				return false
+			}
+		}
+	}
+	return true
 }

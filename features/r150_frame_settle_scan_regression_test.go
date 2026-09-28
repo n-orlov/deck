@@ -3,6 +3,7 @@ package features
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -19,6 +20,10 @@ import (
 // classes (plus mouse.feature's own historical pre-fix scenario, task 004's
 // commit 04847650c6, as the fifth, concrete, non-synthetic case) and must
 // come back with at least one violation from scanFeatureFileForUnsettledFrameCapture.
+// cure-01-01-2 adds the ambiguous-settle class: a generic "running" wait
+// satisfiable by an already-running agent row or by the preview panel's
+// own text (so no generic wait settles a shell any more), and row-scoped
+// waits whose row text can be satisfied by a name rather than a status.
 func TestR150GuardRejectsTransientAndUnsettledShellWaypoints(t *testing.T) {
 	cases := []struct {
 		name    string
@@ -214,6 +219,85 @@ func TestR150GuardRejectsTransientAndUnsettledShellWaypoints(t *testing.T) {
     Then deck client "A" frame still matches the captured "mixed-running-frame" frame
 `,
 		},
+		{
+			name: "preview_may_satisfy_generic_running_without_shell_row",
+			// cure-01-01-2 (verifier): the shell's own pane prints
+			// "running", which the preview panel renders for the selected
+			// shell whatever its status. A generic "running" wait then
+			// passes on the preview's text alone, proving nothing about the
+			// shell's own row -- so it must never settle the shell, even
+			// when the shell is the only session on screen.
+			feature: `Feature: fixture
+  Scenario: preview text satisfies a generic running wait
+    Given deck client "A" is started
+    When deck client "A" creates shell session "preview-shell"
+    And the private tmux pane for session "preview-shell" prints "running"
+    And within one configured reconcile interval deck client "A" screen contains "running"
+    And deck client "A" captures its frame as "preview-frame"
+    Then deck client "A" frame still matches the captured "preview-frame" frame
+`,
+		},
+		{
+			name: "sole_shell_generic_running_wait",
+			// The same generic wait with no explicit print: the preview
+			// shows the shell's live pane, whose output the scenario does
+			// not control, so the sole-shell generic shortcut is rejected
+			// too (it was an accepted control before cure-01-01-2).
+			feature: `Feature: fixture
+  Scenario: the only shell created, settled only by a generic wait
+    Given deck client "A" is started
+    When deck client "A" creates shell session "solo-generic"
+    And within one configured reconcile interval deck client "A" screen contains "running"
+    And deck client "A" captures its frame as "solo-generic-frame"
+    Then deck client "A" frame still matches the captured "solo-generic-frame" frame
+`,
+		},
+		{
+			name: "generic_running_wait_before_any_agent_session",
+			// The former "shell created before any agent" control: a
+			// generic wait with no other session yet displayed is still
+			// satisfiable by the shell's own preview, so it is rejected.
+			feature: `Feature: fixture
+  Scenario: a generic wait before any agent session exists
+    Given a fake "claude" binary is on PATH for future deck clients
+    And deck client "A" is started
+    When deck client "A" creates shell session "early-shell"
+    And within one configured reconcile interval deck client "A" screen contains "running"
+    And deck client "A" creates claude session "early-later-agent" with permission profile "safe"
+    And deck client "A" captures its frame as "early-shell-frame"
+    Then deck client "A" frame still matches the captured "early-shell-frame" frame
+`,
+		},
+		{
+			name: "row_settle_on_a_name_containing_running",
+			// A row-scoped wait whose shell name itself contains "running"
+			// is satisfied by the row's name alone, while the row still
+			// shows "starting" -- not a session-specific settle.
+			feature: `Feature: fixture
+  Scenario: the shell's own name satisfies its row wait
+    Given deck client "A" is started
+    When deck client "A" creates shell session "running-name"
+    And within one configured reconcile interval deck client "A" row "running-name" contains "running"
+    And deck client "A" captures its frame as "running-name-frame"
+    Then deck client "A" frame still matches the captured "running-name-frame" frame
+`,
+		},
+		{
+			name: "row_settle_name_is_contained_in_another_running_row",
+			// Row "alpha"'s wait also matches the already-running row
+			// "alpha-agent", so it proves nothing about shell "alpha".
+			feature: `Feature: fixture
+  Scenario: another row's name contains the shell's name
+    Given a fake "claude" binary is on PATH for future deck clients
+    And deck client "A" is started
+    When deck client "A" creates claude session "alpha-agent" with permission profile "safe"
+    And within one configured reconcile interval deck client "A" row "alpha-agent" contains "running"
+    When deck client "A" creates shell session "alpha"
+    And within one configured reconcile interval deck client "A" row "alpha" contains "running"
+    And deck client "A" captures its frame as "alpha-frame"
+    Then deck client "A" frame still matches the captured "alpha-frame" frame
+`,
+		},
 	}
 
 	for _, tc := range cases {
@@ -295,7 +379,7 @@ func TestR150GuardAcceptsValidSettlesAndDurableTransientAssertions(t *testing.T)
   Background:
     Given deck client "A" is started
     When deck client "A" creates shell session "fixed-anchor"
-    Then within one configured reconcile interval deck client "A" screen contains "running"
+    Then within one configured reconcile interval deck client "A" row "fixed-anchor" contains "running"
     When deck client "A" creates shell session "fixed-target"
     And within one configured reconcile interval deck client "A" row "fixed-target" contains "running"
     And deck client "A" creates claude session "fixed-agent" with permission profile "safe"
@@ -319,35 +403,48 @@ func TestR150GuardAcceptsValidSettlesAndDurableTransientAssertions(t *testing.T)
 `,
 		},
 		{
-			name: "single_shell_generic_running_wait_is_unambiguous",
-			// A generic "running" wait genuinely is unambiguous, and so may
-			// still settle its shell, when it is the scenario's ONLY shell
-			// and no other row is already known-settled (mouse.feature's
-			// own preview-wheel-no-op scenario relies on exactly this).
+			name: "single_shell_settled_by_name",
+			// cure-01-01-2: the sole shell's own session-specific settle --
+			// what replaces the generic wait the guard no longer trusts even
+			// for one shell (preview.feature's and mouse.feature's
+			// passive-preview wheel no-op scenarios use exactly this).
 			feature: `Feature: fixture
-  Scenario: the only shell created settles the generic wait unambiguously
+  Scenario: the only shell created is settled by its own row
     Given deck client "A" is started
     When deck client "A" creates shell session "solo-shell"
-    And within one configured reconcile interval deck client "A" screen contains "running"
+    And within one configured reconcile interval deck client "A" row "solo-shell" contains "running"
     And deck client "A" captures its frame as "solo-frame"
     Then deck client "A" frame still matches the captured "solo-frame" frame
 `,
 		},
 		{
-			name: "generic_running_wait_settles_shell_created_before_any_agent_session",
-			// cure-01-01-2: the new otherSessions check must not turn into a
-			// blanket ban on mixing shells and agents in one scenario -- only
-			// on trusting a generic wait that runs AFTER some other session
-			// already exists. Here the shell's own generic wait settles it
-			// while it is still the only session of any kind on screen; the
-			// agent session created afterward changes nothing about that
-			// already-recorded settle.
+			name: "shell_settled_by_name_beside_running_agent",
+			// cure-01-01-2: a shell beside an already-running agent session
+			// is fine once the shell's OWN row is waited on -- the guard
+			// bans ambiguous generic settles, not mixing shells and agents.
 			feature: `Feature: fixture
-  Scenario: a generic wait settles the shell before any agent session exists
+  Scenario: a new shell beside a running agent is settled by its own row
+    Given a fake "claude" binary is on PATH for future deck clients
+    And deck client "A" is started
+    When deck client "A" creates claude session "mixed-agent" with permission profile "safe"
+    And within one configured reconcile interval deck client "A" screen contains "running"
+    When deck client "A" creates shell session "mixed-shell"
+    And within one configured reconcile interval deck client "A" row "mixed-shell" contains "running"
+    And deck client "A" captures its frame as "mixed-frame"
+    Then deck client "A" frame still matches the captured "mixed-frame" frame
+`,
+		},
+		{
+			name: "shell_settled_by_name_before_agent_session",
+			// A shell settled by its own row stays settled when an agent
+			// session is created afterward, and a later name-scoped settle
+			// is unaffected by names that do not contain it.
+			feature: `Feature: fixture
+  Scenario: a shell settled by name before any agent session exists
     Given a fake "claude" binary is on PATH for future deck clients
     And deck client "A" is started
     When deck client "A" creates shell session "first-shell"
-    And within one configured reconcile interval deck client "A" screen contains "running"
+    And within one configured reconcile interval deck client "A" row "first-shell" contains "running"
     And deck client "A" creates claude session "later-agent" with permission profile "safe"
     And deck client "A" captures its frame as "first-shell-frame"
     Then deck client "A" frame still matches the captured "first-shell-frame" frame
@@ -380,4 +477,36 @@ func writeR150Fixture(t *testing.T, content string) string {
 		t.Fatalf("write fixture: %v", err)
 	}
 	return path
+}
+
+// TestR150RowStepSearchesTheSidebarCellOnly (cure-01-01-2) pins the runtime
+// half of a session-specific settle: the row-scoped status steps
+// (frameSidebarRowContains) must not be satisfied by preview-panel text
+// that merely shares a terminal line with the named session's sidebar row.
+func TestR150RowStepSearchesTheSidebarCellOnly(t *testing.T) {
+	frame := strings.Join([]string{
+		"+ deck - sessions -----------------+  alpha --------------------------------+",
+		"| socket: deck_test_123_2          | $ echo running                        |",
+		"| v default  (1)                   | running                               |",
+		"| > alpha starting                 | running                               |",
+		"|   1s ago                         | $                                     |",
+		"+----------------------------------+---------------------------------------+",
+	}, "\n")
+	if frameSidebarRowContains(frame, "alpha", "running") {
+		t.Fatalf("row \"alpha\" still shows \"starting\"; the preview's \"running\" on the same terminal line must not satisfy the row step:\n%s", frame)
+	}
+	if !frameSidebarRowContains(frame, "alpha", "starting") {
+		t.Fatalf("row \"alpha\" shows \"starting\" in its own sidebar cell; the row step must match it:\n%s", frame)
+	}
+	settled := strings.Replace(frame, "> alpha starting ", "> alpha running  ", 1)
+	if !frameSidebarRowContains(settled, "alpha", "running") {
+		t.Fatalf("row \"alpha\" shows \"running\" in its own sidebar cell; the row step must match it:\n%s", settled)
+	}
+	unicode := strings.NewReplacer("|", "│").Replace(settled)
+	if !frameSidebarRowContains(unicode, "alpha", "running") {
+		t.Fatalf("the row step must read the sidebar cell of a Unicode-bordered frame too:\n%s", unicode)
+	}
+	if frameSidebarRowContains(strings.NewReplacer("|", "│").Replace(frame), "alpha", "running") {
+		t.Fatalf("Unicode-bordered preview text must not satisfy the row step either")
+	}
 }

@@ -72,10 +72,8 @@ func clientRowContainsAcrossSeveralProbeCycles(ctx context.Context, clientName, 
 	}
 	deadline := time.Now().Add(4 * (attachScrollProbeStaleAfter + scenarioReconcileInterval))
 	for {
-		for _, line := range strings.Split(client.Frame(false), "\n") {
-			if strings.Contains(line, rowName) && strings.Contains(line, want) {
-				return nil
-			}
+		if frameSidebarRowContains(client.Frame(false), rowName, want) {
+			return nil
 		}
 		if time.Now().After(deadline) {
 			return fmt.Errorf("client %q row %q did not contain %q across several probe/repair cycles\nframe:\n%s", clientName, rowName, want, client.Frame(false))

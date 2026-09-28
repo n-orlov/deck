@@ -78,10 +78,8 @@ func clientRowContainsWithinThreeSeconds(ctx context.Context, clientName, rowNam
 	}
 	deadline := time.Now().Add(3 * time.Second)
 	for {
-		for _, line := range strings.Split(client.Frame(false), "\n") {
-			if strings.Contains(line, rowName) && strings.Contains(line, want) {
-				return nil
-			}
+		if frameSidebarRowContains(client.Frame(false), rowName, want) {
+			return nil
 		}
 		if time.Now().After(deadline) {
 			return fmt.Errorf("client %q row %q did not contain %q within 3 seconds\nframe:\n%s", clientName, rowName, want, client.Frame(false))

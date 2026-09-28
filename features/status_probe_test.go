@@ -10,6 +10,7 @@ import (
 	"strings"
 	"syscall"
 	"time"
+	"unicode/utf8"
 
 	"github.com/cucumber/godog"
 )
@@ -235,6 +236,43 @@ func sessionHasOneLosingProbeEvent(ctx context.Context, name, kind string) error
 	}
 }
 
+// frameSidebarRowContains reports whether some SIDEBAR row of frame (a
+// plain-text client frame) contains both rowName and want. Only the
+// sidebar panel's own cell of each terminal line is searched -- the text
+// between the line's first and second vertical border glyph ("|" in the
+// harness's ASCII frames, "│" otherwise) -- never the whole terminal
+// line: the preview panel shares every terminal line with the sidebar, so
+// a whole-line match would let a session's own pane output ("running"
+// printed by the shell, say) on the same terminal row as that session's
+// sidebar row satisfy a row-scoped status wait the row itself never
+// showed (R150, cure-01-01-2: a settle must be session-specific).
+func frameSidebarRowContains(frame, rowName, want string) bool {
+	for _, line := range strings.Split(frame, "\n") {
+		cell, ok := sidebarCell(line)
+		if ok && strings.Contains(cell, rowName) && strings.Contains(cell, want) {
+			return true
+		}
+	}
+	return false
+}
+
+// sidebarCell returns the text between line's first and second vertical
+// border glyph, and false when the line has fewer than two.
+func sidebarCell(line string) (string, bool) {
+	isBorder := func(r rune) bool { return r == '|' || r == '│' }
+	start := strings.IndexFunc(line, isBorder)
+	if start < 0 {
+		return "", false
+	}
+	_, w := utf8.DecodeRuneInString(line[start:])
+	rest := line[start+w:]
+	end := strings.IndexFunc(rest, isBorder)
+	if end < 0 {
+		return "", false
+	}
+	return rest[:end], true
+}
+
 func clientRowContainsWithinReconcile(ctx context.Context, clientName, rowName, want string) error {
 	h, err := assertionHarness(ctx)
 	if err != nil {
@@ -246,10 +284,8 @@ func clientRowContainsWithinReconcile(ctx context.Context, clientName, rowName, 
 	}
 	deadline := time.Now().Add(scenarioReconcileInterval + 250*time.Millisecond)
 	for {
-		for _, line := range strings.Split(client.Frame(false), "\n") {
-			if strings.Contains(line, rowName) && strings.Contains(line, want) {
-				return nil
-			}
+		if frameSidebarRowContains(client.Frame(false), rowName, want) {
+			return nil
 		}
 		if time.Now().After(deadline) {
 			return fmt.Errorf("client %q row %q did not contain %q within reconcile interval\nframe:\n%s", clientName, rowName, want, client.Frame(false))

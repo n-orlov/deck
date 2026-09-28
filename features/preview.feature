@@ -281,7 +281,7 @@ Feature: The preview capture engine and its visible behaviour
     # not re-asserted here.
     Given deck client "solo" is started
     And deck client "solo" creates shell session "alpha"
-    And within one configured reconcile interval deck client "solo" screen contains "running"
+    And within one configured reconcile interval deck client "solo" row "alpha" contains "running"
     And deck client "solo" captures its frame as "before-preview-gesture"
     When deck client "solo" scrolls the wheel up at column 70 row 15
     And deck client "solo" scrolls the wheel down at column 70 row 15
