@@ -85,6 +85,12 @@ Feature: Undo toast after x, and the dd delete/tombstone chord
   Scenario: the dd confirm dialog obeys the §11.4 contract -- the mouse can neither cancel nor confirm it, at its border, its body or outside it
     Given deck client "A" is started
     And deck client "A" creates shell session "dd-mouse"
+    # Settle by name before the confirm dialog opens (task cure-01-02,
+    # R150): the dialog hides the row, but a still-"starting" shell
+    # promoting to "running" in the background (SPEC SS7) after the
+    # baseline below is captured is still a change the reconcile loop
+    # could make between the capture and the later byte-exact compare.
+    And within one configured reconcile interval deck client "A" row "dd-mouse" contains "running"
     When deck client "A" presses dd
     Then deck client "A" screen contains "Conversation:"
     When deck client "A" captures its frame as "before-dd-mouse"

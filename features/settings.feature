@@ -262,6 +262,12 @@ Feature: The `,` settings takeover (requirement 48)
     When deck client "A" creates shell session "mouse-guard"
     Then the state database contains session "mouse-guard"
     And the state database has exactly 1 sessions
+    # Settle by name before the takeover opens (task cure-01-02, R150): the
+    # takeover hides the row, but a still-"starting" shell promoting to
+    # "running" in the background (SPEC SS7) after the baseline below is
+    # captured is still a change the reconcile loop could make between the
+    # capture and the later byte-exact compare.
+    And within one configured reconcile interval deck client "A" row "mouse-guard" contains "running"
     When deck client "A" sends ","
     Then deck client "A" screen contains "Categories"
     When deck client "A" captures its frame as "settings-open-mouse"
