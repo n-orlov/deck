@@ -111,7 +111,7 @@ Feature: The §11.4 dialog contract, asserted per dialog (requirements 7, 8, 9, 
   Scenario: detail dialog -- the mouse can neither cancel nor confirm it, at its border, its body or outside it
     Given deck client "A" is started
     When deck client "A" creates shell session "dc-detail-mouse"
-    Then within one configured reconcile interval deck client "A" screen contains "running"
+    Then within one configured reconcile interval deck client "A" row "dc-detail-mouse" contains "running"
     When the scenario's config.toml is captured as "before-detail-mouse-cfg"
     And deck client "A" opens detail for session "dc-detail-mouse"
     Then deck client "A" screen contains "detail"
