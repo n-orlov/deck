@@ -252,34 +252,41 @@ func TestThemesDirDerivesFromConfigFilePath(t *testing.T) {
 	}
 }
 
-// TestThemesDirSharedByNamedProfiles pins SPEC §3.4's "user themes are
-// shared: every profile discovers them in the default profile's themes/
-// directory ... because a theme is colour data, not state." A named
-// profile's own config.toml lives one "profiles/<name>" segment deeper
-// than the default profile's (per the same section's path table); ThemesDir
-// must still resolve to the shared, default-profile themes/ directory --
-// never a per-profile profiles/<name>/themes/ -- for both the XDG and the
-// DECK_HOME layouts, and for any profile name.
-func TestThemesDirSharedByNamedProfiles(t *testing.T) {
+// TestThemesDirIsAPureTextualDerivation pins that ThemesDir never infers
+// profile identity from configFile's own path shape (R152/R157): a path
+// whose parent directory happens to be literally named "profiles" -- for
+// instance a default DECK_HOME an operator chose to end in
+// "profiles/<dir>" of their own accord, unrelated to any profileRoot
+// insertion -- keeps its own themes/ alongside it, byte-for-byte, exactly
+// like any other path. Producing the SHARED default-profile location for
+// an actually-named profile is internal/config.LoadFromProfile's job (it
+// resolves the default profile's own root explicitly and calls ThemesDir
+// on THAT path instead) -- see TestThemesDirSharedAcrossProfiles in
+// internal/config for that end of the fix.
+func TestThemesDirIsAPureTextualDerivation(t *testing.T) {
 	cases := []struct {
 		name       string
 		configFile string
 		want       string
 	}{
 		{
-			name:       "xdg named profile",
-			configFile: "/home/user/.config/deck/profiles/work/config.toml",
+			name:       "xdg default profile",
+			configFile: "/home/user/.config/deck/config.toml",
 			want:       filepath.Join("/home/user/.config/deck", "themes"),
 		},
 		{
-			name:       "deck home named profile",
-			configFile: "/oracle-deck-home/profiles/work/config.toml",
+			name:       "deck home default profile",
+			configFile: "/oracle-deck-home/config.toml",
 			want:       filepath.Join("/oracle-deck-home", "themes"),
 		},
 		{
-			name:       "xdg default profile unaffected",
-			configFile: "/home/user/.config/deck/config.toml",
-			want:       filepath.Join("/home/user/.config/deck", "themes"),
+			// R152/R157's decisive probe: a default root that itself ends
+			// in "profiles/<dir>" is not a named-profile insertion, and
+			// must keep its OWN themes/ rather than one stripped off a
+			// guessed ancestor.
+			name:       "default root that itself ends in profiles/<dir>",
+			configFile: "/tmp/oracle/profiles/work/config.toml",
+			want:       filepath.Join("/tmp/oracle/profiles/work", "themes"),
 		},
 	}
 	for _, tc := range cases {

@@ -27,7 +27,7 @@ func themePickerTestModel(t *testing.T) (Model, string) {
 	if !ok {
 		t.Fatalf("default builtin %q missing", theme.DefaultName)
 	}
-	m := New(nil, config.Settings{Color: true, Theme: def, Paths: config.Paths{ConfigFile: path}}, "")
+	m := New(nil, config.Settings{Color: true, Theme: def, Paths: config.Paths{ConfigFile: path}, ThemesDir: theme.ThemesDir(path)}, "")
 	m.width, m.height = 120, 30
 	m.sessions = []store.Session{
 		{ID: "s1", Name: "alpha", Agent: "shell", Status: "running", CWD: "/repo/alpha"},

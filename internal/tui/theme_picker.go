@@ -29,7 +29,7 @@ import (
 // ordering, and neither hand-maintains a second theme name list next to
 // theme.Builtins()/theme.DiscoverUserThemes.
 func (m Model) themePickerNames() []string {
-	return settingsThemeOptions(m.settings.Paths)
+	return settingsThemeOptions(m.settings.ThemesDir)
 }
 
 // themePickerCandidateTheme resolves m.themePickerValue back to a real
@@ -46,7 +46,7 @@ func (m Model) themePickerCandidateTheme() *theme.Theme {
 	if t, ok := theme.Builtin(m.themePickerValue); ok {
 		return t
 	}
-	userThemes, _ := theme.DiscoverUserThemes(theme.ThemesDir(m.settings.Paths.ConfigFile))
+	userThemes, _ := theme.DiscoverUserThemes(m.settings.ThemesDir)
 	if t, ok := userThemes[m.themePickerValue]; ok {
 		return t
 	}
