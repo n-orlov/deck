@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/n-orlov/deck/internal/config"
 )
 
 // tempDeckEnv points every root deck's config resolution can reach --
@@ -135,6 +137,83 @@ func TestRunRejectsInvalidProfileNameBeforeDisk(t *testing.T) {
 				t.Fatalf("run(deck) with DECK_PROFILE=%s exit = %d, want 2 (stderr=%q)", name, code, stderr)
 			}
 			assertEmptyDirs(t, env)
+		})
+	}
+}
+
+// TestRunRejectsExplicitEmptyProfileArgument pins R152/SPEC §3.4: an
+// explicitly empty positional argument (`deck ""`) is a provided argument,
+// not an absent one, so it must be validated (and rejected: 0 characters is
+// below the 1-16 character rule) exactly like any other invalid name --
+// exit 2, no profile-creation prompt, and nothing written to disk -- rather
+// than being treated as though no argument had been given and falling
+// through to DECK_PROFILE/default. Each case runs with and without
+// DECK_PROFILE set, to confirm the explicit empty argument always wins over
+// (and is validated ahead of) whatever DECK_PROFILE would otherwise
+// resolve to -- including a DECK_PROFILE that is itself unset (empty), so
+// this also pins that an empty DECK_PROFILE alone (no positional argument
+// at all) still means "unset" and never reaches this validator.
+func TestRunRejectsExplicitEmptyProfileArgument(t *testing.T) {
+	cases := []struct {
+		name string
+		args []string
+	}{
+		{name: "deck ''", args: []string{""}},
+		{name: "deck '' work", args: []string{"", "work"}},
+		{name: "deck '' ''", args: []string{"", ""}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name+"/DECK_PROFILE unset", func(t *testing.T) {
+			env := tempDeckEnv(t)
+			code, _, stderr := runWithEnv(t, env, tc.args...)
+			if code != 2 {
+				t.Fatalf("run(%s) exit = %d, want 2 (stderr=%q)", tc.name, code, stderr)
+			}
+			assertEmptyDirs(t, env)
+		})
+		t.Run(tc.name+"/DECK_PROFILE=work", func(t *testing.T) {
+			env := append(tempDeckEnv(t), "DECK_PROFILE=work")
+			code, _, stderr := runWithEnv(t, env, tc.args...)
+			if code != 2 {
+				t.Fatalf("run(%s) with DECK_PROFILE=work exit = %d, want 2 (stderr=%q)", tc.name, code, stderr)
+			}
+			assertEmptyDirs(t, env)
+		})
+	}
+}
+
+// TestValidateResolvedProfileEmptyEnvironmentIsUnset pins the documented
+// empty-environment-as-unset rule this task's own regression above must not
+// erode: when no positional argument was supplied at all (parseProfileArgs'
+// own provided == false, never a stand-in produced by an explicitly empty
+// argument), an absent or empty DECK_PROFILE must still resolve as unset --
+// validateResolvedProfile returns nil, exactly as if DECK_PROFILE had never
+// been set -- never the rejection an explicitly empty positional argument
+// gets. This exercises validateResolvedProfile directly (the function the
+// exit-2 cases above go through too) so the assertion covers the exact
+// boundary the bug lived on, without launching the rest of run().
+func TestValidateResolvedProfileEmptyEnvironmentIsUnset(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		deckProfile string
+		set         bool
+	}{
+		{name: "DECK_PROFILE unset", set: false},
+		{name: "DECK_PROFILE=''", deckProfile: "", set: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			getenv := func(key string) string {
+				if key == "DECK_PROFILE" && tc.set {
+					return tc.deckProfile
+				}
+				return ""
+			}
+			if err := validateResolvedProfile("", false, getenv); err != nil {
+				t.Fatalf("validateResolvedProfile(\"\", false, ...) with %s = %v, want nil (unset)", tc.name, err)
+			}
+			if got := config.ResolveProfileName("", getenv); got != config.DefaultProfile {
+				t.Fatalf("ResolveProfileName(\"\", ...) with %s = %q, want default %q", tc.name, got, config.DefaultProfile)
+			}
 		})
 	}
 }
