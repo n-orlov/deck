@@ -44,12 +44,12 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 			return 1
 		}
 	} else {
-		var ok bool
-		positional, ok = parseProfileArgs(args[1:], stderr)
+		var ok, provided bool
+		positional, provided, ok = parseProfileArgs(args[1:], stderr)
 		if !ok {
 			return 2
 		}
-		if err := validateResolvedProfile(positional, os.Getenv); err != nil {
+		if err := validateResolvedProfile(positional, provided, os.Getenv); err != nil {
 			fmt.Fprintln(stderr, err)
 			return 2
 		}
@@ -276,32 +276,47 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 // reaches here (isVersionRequest and the hidden "_hook" verb are both
 // checked by the caller first) is unknown and is reported exactly as SPEC's
 // own example (`error: unknown flag -x`); a second non-flag argument is
-// rejected the same way (`deck work home` is an error). Both cases exit 2
-// before anything below this call touches disk or tmux.
-func parseProfileArgs(rest []string, stderr io.Writer) (positional string, ok bool) {
+// rejected the same way (`deck work home` is an error, and so is `deck ""
+// work` and `deck "" ""` -- the count of positional arguments is what
+// matters, not whether any of them happens to be empty). Both cases exit 2
+// before anything below this call touches disk or tmux. provided reports
+// whether exactly one positional argument was actually supplied on argv,
+// so the caller can tell an explicitly empty argument (`deck ""`, provided
+// == true, positional == "") apart from no argument at all (provided ==
+// false, positional == "") -- collapsing the two let an explicitly empty
+// profile slip through as though it were unset.
+func parseProfileArgs(rest []string, stderr io.Writer) (positional string, provided bool, ok bool) {
 	for _, arg := range rest {
 		if strings.HasPrefix(arg, "-") {
 			fmt.Fprintf(stderr, "error: unknown flag %s\n", arg)
-			return "", false
+			return "", false, false
 		}
-		if positional != "" {
+		if provided {
 			fmt.Fprintf(stderr, "error: at most one profile argument, got %q and %q\n", positional, arg)
-			return "", false
+			return "", false, false
 		}
 		positional = arg
+		provided = true
 	}
-	return positional, true
+	return positional, provided, true
 }
 
 // validateResolvedProfile runs SPEC §3.4's one validator against whichever
 // source ResolveProfileName would actually select (positional argument,
 // then DECK_PROFILE, then DefaultProfile, which always passes and is never
 // itself validated). It is called before config.LoadFromProfile so an
-// invalid name -- "Work", "a.b", a 17-character name -- is rejected before
-// resolvePaths, store.Open or any tmux client is ever reached, whether the
-// bad name arrived as the positional argument or as DECK_PROFILE.
-func validateResolvedProfile(positional string, getenv func(string) string) error {
-	if positional != "" {
+// invalid name -- "Work", "a.b", a 17-character name, or an explicitly
+// empty positional argument (`deck ""`) -- is rejected before resolvePaths,
+// store.Open or any tmux client is ever reached, whether the bad name
+// arrived as the positional argument or as DECK_PROFILE. positionalProvided
+// must be exactly parseProfileArgs' own provided result: when true, the
+// positional argument is validated even when it is empty (SPEC's 1-16
+// character rule makes an empty name invalid, never a stand-in for unset);
+// only when no positional argument was supplied at all does an empty
+// DECK_PROFILE fall back to unset, per SPEC's documented
+// empty-environment-as-unset rule.
+func validateResolvedProfile(positional string, positionalProvided bool, getenv func(string) string) error {
+	if positionalProvided {
 		return config.ValidateProfileName(positional)
 	}
 	if env := getenv("DECK_PROFILE"); env != "" {
@@ -436,7 +451,7 @@ func refuseBadHookProfile(getenv func(string) string, userHome func() (string, e
 	// _hook never takes a positional argument, so this is exactly the
 	// resolution DECK_PROFILE (or default, unset) produces for the pane.
 	profile := config.ResolveProfileName("", getenv)
-	if err := validateResolvedProfile("", getenv); err != nil {
+	if err := validateResolvedProfile("", false, getenv); err != nil {
 		reportHookProfileRefusal(stderr, getenv, profile, err)
 		return false
 	}
