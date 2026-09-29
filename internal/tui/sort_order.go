@@ -33,15 +33,53 @@ const (
 func sortSessionsByOrder(previous, incoming []store.Session, order string) []store.Session {
 	switch order {
 	case SortOrderCreated:
-		return sortSessionsStable(previous, incoming, lessByCreatedStable(previous))
+		return sortSessionsStable(previous, incoming, pinnedFirst(lessByCreatedStable(previous)))
 	case SortOrderActivity:
-		return sortSessionsStable(previous, incoming, lessByActivityStable(previous))
+		return sortSessionsStable(previous, incoming, pinnedFirst(lessByActivityStable(previous)))
 	case SortOrderName:
-		return sortSessionsStable(previous, incoming, lessByNameStable(previous))
+		return sortSessionsStable(previous, incoming, pinnedFirst(lessByNameStable(previous)))
 	case SortOrderAttention:
 		return sortSessionsByAttentionStable(previous, incoming)
 	default:
 		return sortSessionsByAttentionStable(previous, incoming)
+	}
+}
+
+// pinnedRank is the R160 pinned-tier primary key: 0 for a pinned session
+// (store.Session.PinnedAt != 0, task 002/003's schemaV8 column and
+// SetSessionsPinned -- any nonzero value means pinned, 0 means not, exactly
+// as that column's own doc comment defines it), 1 otherwise. Pinned sorts
+// first, so the lower rank wins.
+func pinnedRank(s store.Session) int {
+	if s.PinnedAt != 0 {
+		return 0
+	}
+	return 1
+}
+
+// pinnedFirst wraps a less function with the R160 pinned tier as the TRUE
+// primary key, sitting above whatever primary key less itself compares on
+// (attention rank, CreatedAt, StatusAt or Name) and above that less
+// function's own previous-position tie-break (previousPositionKey) --
+// PRD phase4f-sidebar-pins.md's own gotcha: "the pinned key must sit above
+// that [previous-frame] preference, or a freshly pinned row will stay where
+// it was until an unrelated reorder". This is the ONE place the pinned
+// tier is derived (R160: "Implement it once ... Do not re-derive it per
+// order") -- every one of sortSessionsByOrder's four branches and
+// sortSessionsByAttentionStable itself (below, and the two tui.go call
+// sites that invoke it directly for the attention order) apply the exact
+// same pinnedRank comparison via this one wrapper, never a hand-rolled
+// copy. Within either tier (both pinned or both unpinned), less decides
+// the order unchanged, including its own id tie-break, so the combined
+// order stays total: pinnedRank is a two-value equivalence, so composing
+// it in front of an already-strict-weak-ordering less cannot introduce the
+// 3-cycle hazard attentionLessStable's doc comment warns about.
+func pinnedFirst(less func(a, b store.Session) bool) func(a, b store.Session) bool {
+	return func(a, b store.Session) bool {
+		if pa, pb := pinnedRank(a), pinnedRank(b); pa != pb {
+			return pa < pb
+		}
+		return less(a, b)
 	}
 }
 
