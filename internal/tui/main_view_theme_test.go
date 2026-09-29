@@ -101,7 +101,7 @@ func TestSelectedSidebarRowUsesSelectionBackground(t *testing.T) {
 	view := m.View()
 	term := renderSettingsToEmulator(t, view, m.width, m.height)
 
-	row := findRowContaining(t, term, "> alpha")
+	row := findRowContaining(t, term, "> \u25d0 alpha")
 	col := findCol(t, term, row, "alpha")
 	bg, ok := cellBgHex(t, term, col, row)
 	if !ok {
@@ -111,7 +111,7 @@ func TestSelectedSidebarRowUsesSelectionBackground(t *testing.T) {
 		t.Fatalf("selected row background = %s, want selection token %s", bg, selHex)
 	}
 
-	otherRow := findRowContaining(t, term, "  beta")
+	otherRow := findRowContaining(t, term, "  \u25d0 beta")
 	otherCol := findCol(t, term, otherRow, "beta")
 	if otherBg, ok := cellBgHex(t, term, otherCol, otherRow); ok && otherBg == selHex {
 		t.Fatalf("unselected row %q also carries the selection background %s", "beta", otherBg)
@@ -127,7 +127,7 @@ func TestGroupHeaderRendersInGroupToken(t *testing.T) {
 
 	view := m.View()
 	term := renderSettingsToEmulator(t, view, m.width, m.height)
-	row := findRowContaining(t, term, "> alpha")
+	row := findRowContaining(t, term, "> \u25d0 alpha")
 	// alpha's workspace header ("alpha", the basename of /repo/alpha) is
 	// on the row directly above its own session row (task 014's grouping
 	// preserves each session's relative position; alpha is m.sessions[0]).
@@ -234,7 +234,7 @@ func TestInteractiveModeSelectedRowUsesSelectionIdle(t *testing.T) {
 	view := m.View()
 	term := renderSettingsToEmulator(t, view, m.width, m.height)
 
-	row := findRowContaining(t, term, "> alpha")
+	row := findRowContaining(t, term, "> \u25d0 alpha")
 	col := findCol(t, term, row, "alpha")
 	bg, ok := cellBgHex(t, term, col, row)
 	if !ok {

@@ -43,7 +43,7 @@ func TestSidebarNameRendersInTitleToken(t *testing.T) {
 
 	view := m.View()
 	term := renderSettingsToEmulator(t, view, m.width, m.height)
-	row := findRowContaining(t, term, "> alpha")
+	row := findRowContaining(t, term, "> \u25d0 alpha")
 	col := findCol(t, term, row, "alpha")
 	fg, ok := cellFgHex(t, term, col, row)
 	if !ok {
@@ -121,7 +121,7 @@ func TestSidebarQualityBadgeRendersDimmed(t *testing.T) {
 
 	view := m.View()
 	term := renderSettingsToEmulator(t, view, m.width, m.height)
-	row := findRowContaining(t, term, "> alpha")
+	row := findRowContaining(t, term, "> \u25d0 alpha")
 	col := findCol(t, term, row, "live")
 	fg, ok := cellFgHex(t, term, col, row)
 	if !ok {

@@ -194,12 +194,12 @@ Feature: theme rendering end-to-end (requirement 49)
   Scenario: NO_COLOR renders every theme monochrome, with a session's status carried by its glyph alone
     Given a long-running fake "claude" binary is on PATH for future deck clients
     And deck client "mono49" is started
-    When deck client "mono49" creates claude session "mono49 session" with permission profile "safe"
-    And fake Claude session "mono49 session" fires "SessionStart" for itself using injected identity:
+    When deck client "mono49" creates claude session "mono49 row" with permission profile "safe"
+    And fake Claude session "mono49 row" fires "SessionStart" for itself using injected identity:
       | source | fresh |
-    And fake Claude session "mono49 session" fires "Notification" for itself using injected identity:
+    And fake Claude session "mono49 row" fires "Notification" for itself using injected identity:
       | notification_type | permission_prompt |
-    Then within one configured reconcile interval deck client "mono49" row "mono49 session" contains "waiting"
+    Then within one configured reconcile interval deck client "mono49" row "mono49 row" contains "waiting"
     And deck client "mono49" frame has no colour anywhere
     And deck client "mono49" exits cleanly
 

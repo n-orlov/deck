@@ -22,19 +22,19 @@ Feature: Forced entry into interactive mode answers a waiting row
     Given a long-running fake "claude" binary is on PATH for future deck clients
     And deck client "A" is started
     And deck client "B" is started
-    When deck client "A" creates claude session "contested entry" with permission profile "safe"
-    Then within one configured reconcile interval deck client "B" screen contains "contested entry"
-    When the released running hook fires for session "contested entry"
-    And deck client "A" selects session "contested entry"
+    When deck client "A" creates claude session "contested row" with permission profile "safe"
+    Then within one configured reconcile interval deck client "B" screen contains "contested row"
+    When the released running hook fires for session "contested row"
+    And deck client "A" selects session "contested row"
     And deck client "A" enters interactive mode
     Then deck client "A" screen contains "Ctrl+Q"
-    When the released waiting hook fires for session "contested entry"
-    Then the state database session "contested entry" is "waiting" from "hook" with acknowledged=0, notify_epoch=0, and 0 attached events
-    And within one configured reconcile interval deck client "B" row "contested entry" contains "waiting"
-    When deck client "B" selects session "contested entry"
+    When the released waiting hook fires for session "contested row"
+    Then the state database session "contested row" is "waiting" from "hook" with acknowledged=0, notify_epoch=0, and 0 attached events
+    And within one configured reconcile interval deck client "B" row "contested row" contains "waiting"
+    When deck client "B" selects session "contested row"
     And deck client "B" forces entry into interactive mode
     Then deck client "B" screen contains "Ctrl+Q"
-    And the state database session "contested entry" is "running" from "user" with acknowledged=1, notify_epoch=1, and 1 attached event
+    And the state database session "contested row" is "running" from "user" with acknowledged=1, notify_epoch=1, and 1 attached event
     # B's steal displaced A out of interactive mode entirely (task 118's
     # previewTick fast path/async backstop, raised on A's OWN model without
     # A doing anything): A is now looking at the lost-attach dialog (task

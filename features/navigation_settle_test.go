@@ -35,24 +35,26 @@ import (
 // instead -- both now use this helper's own "g" reset like the other
 // caller always did.
 func navigateToRowByName(ctx context.Context, client *ScreenDriver, want string) error {
-	marker := "> " + want
+	// frameHasSelectedRowNamed skips the row's status glyph and pin marker
+	// (SPEC §11 line 1: gutter, status glyph, pin marker, name).
+	selected := func() bool { return frameHasSelectedRowNamed(client.Frame(false), want) }
 	for attempt := 0; attempt < 50; attempt++ {
 		if err := sendNavKeySettled(ctx, client, "g"); err != nil {
 			return err
 		}
-		if strings.Contains(client.Frame(false), marker) {
+		if selected() {
 			return nil
 		}
 		for step := 0; step < attempt; step++ {
 			if err := sendNavKeySettled(ctx, client, "\x1b[B"); err != nil { // down arrow
 				return err
 			}
-			if strings.Contains(client.Frame(false), marker) {
+			if selected() {
 				return nil
 			}
 		}
 	}
-	return fmt.Errorf("never selected session %q (marker %q not found):\n%s", want, marker, client.Frame(false))
+	return fmt.Errorf("never selected session %q (no selected sidebar row names it):\n%s", want, client.Frame(false))
 }
 
 // navKeySettleWindow bounds how long sendNavKeySettled will wait for a

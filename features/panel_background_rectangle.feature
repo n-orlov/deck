@@ -37,8 +37,9 @@ Feature: A selected/striped sidebar row's background fills a real rectangle, and
   "> " + the FULL name (never rendered once truncated), and the plain
   "screen shows sessions in this order" step needs a substring that
   actually appears on the frame -- so its rec-bbb row uses the literal
-  truncated prefix ("rec-bbb-selected-session-wi", the text this fixture
-  is shown to render before the ellipsis), not the full 79-character
+  truncated prefix ("rec-bbb-selected-session", a prefix of the text
+  this fixture renders before the ellipsis once line 1's status glyph
+  takes its two columns, SPEC §11), not the full 79-character
   name, while still proving the ordering. Reaching rec-bbb's row for the
   background assertions instead relies on task 301's newest-session
   auto-select landing on rec-ddd-stripe (position 3, alphabetically
@@ -65,8 +66,9 @@ Feature: A selected/striped sidebar row's background fills a real rectangle, and
   (79 characters) against a sidebar content width of 32 columns
   (width-3, per panel.go's sidebarContentLine) -- provably long enough
   that its first line truncates, per padTrunc's own ellipsis rule (the
-  rendered first line is observed as "rec-bbb-selected-session-wi...",
-  i.e. 28 characters of the name plus a 3-character ellipsis, at the
+  rendered first line was observed as "rec-bbb-selected-session-wi...",
+  i.e. 28 characters of the name plus a 3-character ellipsis, before
+  R160's status glyph took two of those columns, at the
   35-column sidebar_width/100-column terminal this file uses), giving
   the selection-background rectangle assertion something to leak past
   if the R58 fixes were ever reverted.
@@ -91,7 +93,7 @@ Feature: A selected/striped sidebar row's background fills a real rectangle, and
     Then within one configured reconcile interval deck client "A" screen contains "running"
     And deck client "A" screen shows sessions in this order:
       | rec-aaa                       |
-      | rec-bbb-selected-session-wi   |
+      | rec-bbb-selected-session      |
       | rec-ccc                       |
       | rec-ddd-stripe                |
     When deck client "A" sends "k"

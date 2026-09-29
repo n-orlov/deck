@@ -6646,9 +6646,9 @@ func (m Model) sidebarGutterBar(selected, marked bool) (string, string) {
 		m.canvasBackground(barTok, m.colorToken(theme.Background, glyph2))
 }
 
-// sidebarRowLines is one session's two-line row: glyph/marker, name, its
-// unseen glyph and status/quality badges on the first line (SPEC §11.3,
-// task 012 — no reason text), and its bare creation age plus its
+// sidebarRowLines is one session's two-line row: its status glyph, the
+// pin marker on a pinned row (R160), name, its unseen glyph and
+// status/quality badges on the first line (SPEC §11.3, task 012 — no reason text), and its bare creation age plus its
 // permission-profile badge, in that order, on the second (R120: the age
 // carries no `created ` label and the profile badge trails it as the
 // line's last segment, with env↻/launch↻ still ahead of the age). It
@@ -6729,7 +6729,18 @@ func (m Model) sidebarRowLines(index int, session store.Session, stripe bool) ([
 	// any separate width bookkeeping here, and an unpinned row appends
 	// nothing at all, reserving no column (SPEC: "An unpinned row
 	// reserves no column").
-	segs := make([]settingsRowSegment, 0, 3)
+	//
+	// SPEC §11's fixed line-1 order is gutter, status glyph, pin marker,
+	// name: the status glyph (sidebarStatusGlyph, one column, in the
+	// status's own token) always leads the row text, so the shape of the
+	// list is readable before any text is, and the marker slots between
+	// it and the name.
+	statusTok := theme.Text
+	if t, ok := statusToken(session.Status); ok {
+		statusTok = t
+	}
+	segs := make([]settingsRowSegment, 0, 4)
+	segs = append(segs, settingsRowSegment{Text: m.sidebarStatusGlyph(session.Status) + " ", Tok: statusTok})
 	if session.PinnedAt != 0 {
 		segs = append(segs, settingsRowSegment{Text: m.glyph("\u2726", "*") + " ", Tok: theme.Accent})
 	}
@@ -6745,10 +6756,6 @@ func (m Model) sidebarRowLines(index int, session store.Session, stripe bool) ([
 	}
 	if quality := statusSourceQuality(session.StatusSource); quality != "" {
 		parts = append(parts, settingsRowSegment{Text: quality, Tok: theme.Dimmed})
-	}
-	statusTok := theme.Text
-	if t, ok := statusToken(session.Status); ok {
-		statusTok = t
 	}
 	parts = append(parts, settingsRowSegment{Text: session.Status, Tok: statusTok})
 	// SPEC requirement 27: archived_at is a FLAG, never a status -- the
@@ -6814,6 +6821,33 @@ func (m Model) sidebarRowLines(index int, session store.Session, stripe bool) ([
 	}
 	line2 := m.settingsRenderRowOpen(line2Segs)
 	return []string{line1, line2}, []string{gutter1, gutter2}, bg
+}
+
+// sidebarStatusGlyph is SPEC §11's one-column status glyph for a row's
+// line 1: `●` waiting, `◐` running, `○` idle, `◌` starting, `■` stopped,
+// `✗` error (none East-Asian-Wide). Under DECK_ASCII/[ui] ascii the
+// fallback is one pure-ASCII column each -- `?` waiting, `~` running,
+// `o` idle, `.` starting, `#` stopped, `x` error -- chosen to collide with
+// no other sidebar cue (`>` the selection gutter, `*` the pin and mark
+// markers, `!` the unseen marker). archived_at is a flag, not a status
+// (SPEC requirement 27), so an archived row keeps its status glyph here
+// and carries `▣` as its own badge. An unknown status renders the idle
+// shape rather than widening the column.
+func (m Model) sidebarStatusGlyph(status string) string {
+	switch status {
+	case "waiting":
+		return m.glyph("\u25cf", "?")
+	case "running":
+		return m.glyph("\u25d0", "~")
+	case "starting":
+		return m.glyph("\u25cc", ".")
+	case "stopped":
+		return m.glyph("\u25a0", "#")
+	case "error":
+		return m.glyph("\u2717", "x")
+	default:
+		return m.glyph("\u25cb", "o")
+	}
 }
 
 // sidebarRowBackground (task 321/R58b) answers which background token, if

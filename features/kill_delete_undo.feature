@@ -326,7 +326,7 @@ Feature: Undo toast after x, and the dd delete/tombstone chord
     Then deck client "A" screen contains "bk-one running"
     And deck client "A" row "bk-one" is marked
     When deck client "A" sends "j"
-    Then deck client "A" screen contains "> bk-two running"
+    Then deck client "A" screen contains "> ~ bk-two running"
     When deck client "A" sends "m"
     Then deck client "A" screen contains "bk-one running"
     And deck client "A" row "bk-one" is marked
@@ -365,7 +365,7 @@ Feature: Undo toast after x, and the dd delete/tombstone chord
     Then deck client "A" screen contains "bd-one running"
     And deck client "A" row "bd-one" is marked
     When deck client "A" sends "j"
-    Then deck client "A" screen contains "> bd-two running"
+    Then deck client "A" screen contains "> ~ bd-two running"
     When deck client "A" sends "m"
     Then deck client "A" screen contains "bd-one running"
     And deck client "A" row "bd-one" is marked
@@ -405,7 +405,7 @@ Feature: Undo toast after x, and the dd delete/tombstone chord
     Then deck client "A" screen contains "bu-one running"
     And deck client "A" row "bu-one" is marked
     When deck client "A" sends "j"
-    Then deck client "A" screen contains "> bu-two running"
+    Then deck client "A" screen contains "> ~ bu-two running"
     When deck client "A" sends "m"
     Then deck client "A" screen contains "bu-one running"
     And deck client "A" row "bu-one" is marked

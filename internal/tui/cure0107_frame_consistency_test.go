@@ -25,7 +25,8 @@ func TestLayoutCycleKeepsTheSelectedRowInView(t *testing.T) {
 	last := len(m.sessions) - 1
 	m.selected = rowCursor(last)
 	m.followSelectionViewport()
-	want := "> " + m.sessions[last].Name
+	// SPEC §11 line 1: gutter, status glyph, name.
+	want := "> " + m.sidebarStatusGlyph(m.sessions[last].Status) + " " + m.sessions[last].Name
 	if view := m.View(); !strings.Contains(view, want) {
 		t.Fatalf("precondition: selected row %q not in view before any layout change:\n%s", want, view)
 	}
