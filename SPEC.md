@@ -56,7 +56,7 @@ worktree per task. What's actually needed is three things:
 | **R4** | **N concurrent TUIs, one host.** Desktop plus several SSH ttys, hopping between machines mid-task. | State lives in tmux + SQLite (WAL). No process is authoritative, no process is required. Whole-list rewrites from in-memory state are a forbidden pattern; every mutation is a targeted `UPDATE`. Launches take a row lease so two TUIs can't double-start one session. |
 | **R5** | **Lightweight, portable.** One static binary plus tmux, on any Linux. | Go, no cgo, no node, no browser, no Docker, no root, no daemon. systemd is *optional*. No assumption about shell, distro, terminal, or network. |
 | **R6** | **Four agents:** Claude Code, Pi / oh-my-pi, Codex CLI, and a plain `bash` shell session. | Adapter interface with capability degradation — hooks where they exist, pane heuristics where they don't, and honest UI about the difference. |
-| **R7** | **TUI-only.** All actions in the UI: create, resume, kill, delete, env edit, permission mode, pin, search, config. | Discoverability is a feature, not a nicety: inline help, no hidden verbs a user needs. |
+| **R7** | **TUI-only.** All actions in the UI: create, resume, kill, delete, env edit, permission mode, conversation lock, sidebar pin, search, config. | Discoverability is a feature, not a nicety: inline help, no hidden verbs a user needs. |
 | **R8** | **Black-box testable, BDD-specified.** Every behaviour in this spec is expressed as Gherkin and verified against the **real binary** driven through a real terminal, with no in-process hooks and no test-only code paths in the product. | The binary must be *drivable* (keystrokes in) and *observable* (rendered screen, tmux state, files, outbound webhooks, structured log) from outside. Determinism controls — state dir redirection, frozen clock, fixed tick, no animation, no colour — are documented, supported configuration, not test scaffolding (§13). |
 
 ### Non-goals (out — do not add)
@@ -387,6 +387,7 @@ CREATE TABLE sessions (
   created_at         INTEGER NOT NULL,
   last_attached_at   INTEGER NOT NULL DEFAULT 0,
   archived_at        INTEGER NOT NULL DEFAULT 0,
+  pinned_at          INTEGER NOT NULL DEFAULT 0, -- sidebar pin (§11); 0 = not pinned, else when it was pinned
   deleted_at         INTEGER NOT NULL DEFAULT 0  -- tombstone; purged after grace (§9.2)
 );
 
@@ -495,8 +496,8 @@ permissive is not a profile, it is a wish.
   that's why it needs a badge visible in the list, in the detail pane, and in every
   notification body.
 - `yolo` is offered when `allow_yolo = true` in config (default false), and then needs no
-  further ceremony: choosing it in the create modal, or switching to it with `P`, takes
-  effect directly. With `yolo_default = true` (default false) the create modal opens already
+  further ceremony: choosing it in the create modal, or switching to it with `P` inside
+  the `i` detail dialog (§11.4), takes effect directly. With `yolo_default = true` (default false) the create modal opens already
   on `yolo`; it is inert while `allow_yolo` is false, and settings says so on the row rather
   than silently ignoring it. The gate is a deployment decision, not a per-launch speed bump —
   a confirm on every create trains the user to press it, and the safeguard that survives
@@ -1057,8 +1058,11 @@ every session reads `stopped · resumable`, and `r` brings one back:
   the live pane. A crash verdict that outlives its pane silently removes the row from
   reconciliation and blocks the hook transitions that would correct it, which is the same
   "spent verdict outranks everything forever" bug as the one above.
-- Pinning, for forcing a specific conversation: pin sets `resume_state = pinned` and is
-  sticky across restarts; a one-shot "start fresh" reverts to `auto` afterwards.
+- **Locking a conversation** (the *resume mode*, reached with `c` inside the `i` detail dialog,
+  §11.4), for forcing a specific conversation: a lock sets `resume_state = pinned` and is
+  sticky across restarts; a one-shot "start fresh" reverts to `auto` afterwards. The stored
+  value keeps its historical name `pinned`, but the UI calls this a *lock* and never a pin:
+  "pin" in the UI means only §11's sidebar pin, which is unrelated to resume.
 - `shell` sessions "resume" by recreating the shell with their history file, replayed
   scrollback, and last known working directory (§9.4). A shell session never re-runs a
   previous command on resume.
@@ -1446,6 +1450,16 @@ hold them side by side.
     per-session output clock, and inventing one is a schema change, not a sort option.
   - `name` — `name` ascending, case-insensitively, so `Api` and `api` sort together.
 
+  **Pinned sessions come first within their group, in every order.** `p` pins or unpins
+  (§11's pin rule below); a pinned row (`pinned_at ≠ 0`) sorts above every unpinned row of
+  the same group, `waiting` and `error` rows included — a pin is the user saying "this one
+  first", and an attention tier that outranked it would make the pin a suggestion, exactly
+  as a hidden status tier would make a non-attention order one. Inside each tier the
+  configured order above applies unchanged, including its `id` tie-break, so the order stays
+  total. A pin never moves a row to another group and never reorders groups. Attention stays
+  reachable regardless: the attention-walk key and the collapsed strip's count are
+  order-independent and still reach a `waiting` row below a pinned one.
+
   Every order is total: each falls back to `id` ascending on a tie, so a re-sort can never
   swap two rows out from under an in-flight keyboard idiom (§11's marked-set navigation
   depends on this, and a coin-flip tie-break has already caused one defect — see the
@@ -1497,7 +1511,8 @@ hold them side by side.
   satisfied once, by the first load that contains the row, and a later reload does not
   re-steal a selection the user has since moved. If the session never appears, nothing moves.
 - **A session is a two-line row, and the order within each line is fixed.** Line 1 carries
-  the §11.3 gutter, the status glyph, the name, then the unseen marker, the live/sampled
+  the §11.3 gutter, the status glyph, the pin marker `✦` (ASCII `*`) on a pinned row only,
+  the name, then the unseen marker, the live/sampled
   quality badge (§3) and the status word. Line 2 carries the gutter, `env↻` and `launch↻`
   when either is dirty, the row's age, and the permission badge for non-`safe` **last**. The
   transient badges come before the age because they are news; the permission badge is
@@ -1510,6 +1525,17 @@ hold them side by side.
   of §11.3's gutter bar, with the selection arrow on the first, so both cues coexist. A badge
   at the end of line 1's badge run is the first thing truncation drops, which loses the cue
   precisely when the sidebar is too narrow to count marked rows by eye.
+- **The sidebar pin.** `p` on a session row toggles its pin: it sets `pinned_at` to now, or
+  back to 0, as one targeted `UPDATE` (§4). There is no dialog and no confirm — `p` again is
+  the undo. With a marked set, `p` acts on the whole set: it unpins them all when every
+  marked row is pinned, and pins them all otherwise. A pin is machine-local list state, like
+  the group list: it lives in `state.db`, never in `config.toml`, so the keypress rewrites no
+  file (§6.5). It survives restart, kill and resume, rename, archive and a group move, and a
+  `dd` restore brings the row back pinned, because the pin is a column on the row itself. A
+  pin records no event: it is how the list is arranged, not something that happened to the
+  session. A pinned row shows `✦` before its name, drawn in the `accent` token; under
+  `NO_COLOR` the glyph alone carries it, as the status glyphs do. `i` shows `pinned: yes`/`no`
+  and also toggles it with `p`.
 - Status glyphs `●` waiting · `◐` running · `○` idle · `◌` starting · `■` stopped ·
   `✗` error · `▣` archived. One column, always in the same column, so the shape of the
   list is readable before any text is. **No glyph deck renders may have East Asian Width
@@ -1620,9 +1646,9 @@ hold them side by side.
 
 Keymap: `↵` attach · `space` next needing attention · `Y` acknowledge · `n` new · `r`
 resume/start · `R` restart preserving conversation · `x` kill (undo toast) · `dd` delete ·
-`s` send message (§11.1) · `i` session detail (§11.4 — **rename and the launch-inputs editor
-are actions inside it**, not top-level keys) · `e` env editor · `P` permission profile ·
-`p` pin conversation · `E` event log · `f` find (§12) · `F` force-attach the interactive preview (§11.9) · `/`
+`s` send message (§11.1) · `i` session detail (§11.4 — **rename, the launch-inputs editor, the
+group move, the permission profile `P` and the conversation lock `c` are actions inside it**,
+not top-level keys) · `e` env editor · `p` pin/unpin in the sidebar (§11) · `E` event log · `f` find (§12) · `F` force-attach the interactive preview (§11.9) · `/`
 filter list · `m` mark · `z` snooze · `A` archive
 (confirms, §9.2) · `U` unarchive (§9.2) · `u` undo · `g`/`G` top/bottom · `c` fold/unfold the
 group under the cursor, `←`/`→` fold/unfold explicitly (§11) · `,` settings
@@ -1840,8 +1866,9 @@ truncated-but-honest frame beats an unpredictable one.
   footer that will drift out of agreement with the behaviour it advertises.
 - **The footer's fixed set is curated for the keys worth a whole line of the frame.** It
   carries navigation, `↵`, `a`, `Y`, `n`, `x`, `r`, `R`, `dd`, the eligible one of `A`/`U`,
-  `,`, `i`, `?` and `q`. Rarely-used per-row actions — the permission switcher `P`, pin `p` —
-  stay bound, stay in the `?` overlay and in §11's keymap, and stay out of the footer: one
+  `,`, `i`, `?` and `q`. Rarely-used per-row actions — the sidebar pin `p`, and the actions
+  that live inside `i` — stay bound, stay in the `?` overlay and in §11's keymap, and stay out
+  of the footer: one
   line is a budget, and spending it on keys a user presses monthly crowds out `dd`, `U` and
   `,`. `U` in particular has to be there when it applies, because it is the reversal of an
   action that otherwise looks one-way, and `,` because settings has no other visible entry
@@ -1932,8 +1959,10 @@ it does**: §11.3's "never list a key that is not bound" applies here too, so a 
 unbuilt behaviour is simply absent rather than a stub that opens onto nothing
 (`docs/PLAN.md` is where each one is assigned to a phase). Create session · session detail
 `i` — which is where §5's degradation reason and §7's `last_message` live, and from which
-**rename** and the **launch-inputs editor** are reached · confirm (kill, delete, purge,
-archive) · delete options (tombstone vs purge) · permission profile picker · pin conversation ·
+**rename**, the **launch-inputs editor**, the group move, the **permission profile picker**
+(`P`), the **conversation lock** (`c`, §9.1) and the sidebar pin toggle (`p`) are reached — a
+top-level `P` is unbound · confirm (kill, delete, purge, archive) · delete options (tombstone
+vs purge) ·
 send message (§11.1) · env editor · **launch-inputs editor** (§6.2 — `pre_launch`,
 `post_destroy`, `launch_args`, `login_shell`; every field labelled *restart-to-apply*. The two
 hook lines are shown verbatim rather than masked — they are commands, not values, and §6.4's
@@ -1976,7 +2005,7 @@ the TUI must be the place it is edited.
   it has already committed is worse than no prompt.
 - **Scope is labelled per field**: global (`config.toml`), or per-session override where
   one exists (§6.1). A field that only takes effect on the next launch says
-  *restart-to-apply*, consistent with §6.2 and `P` (§5). A setting that claims to have
+  *restart-to-apply*, consistent with §6.2 and the permission profile switch (§5). A setting that claims to have
   taken effect on a live pane when it has not is the same class of lie as a fabricated
   status.
 - Settings edits configuration and nothing else: it cannot create, kill or resume a session,
