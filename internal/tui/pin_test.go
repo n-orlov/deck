@@ -11,8 +11,10 @@ import (
 
 // Task 008 moved every one of these tests off a bare top-level `p` onto
 // `i` then `c`: the conversation lock chooser is now reachable only from
-// inside the `i` detail dialog (there is no top-level "p" case left in
-// Model.Update's main switch at all -- see rename.go's own case "c").
+// inside the `i` detail dialog (there is no top-level "p" case in
+// Model.Update's main switch that opens IT any more -- see rename.go's
+// own case "c"; task 010 later gives a bare top-level "p" a completely
+// different job, the sidebar pin toggle, which never opens this chooser).
 // Each test below opens detail first, asserting it actually opened,
 // exactly the same way profile_switch_test.go's own tests do for `P`.
 

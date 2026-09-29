@@ -194,6 +194,12 @@ func assertInertOnHeaderAfterEveryKey(t *testing.T, name string, setup func(m Mo
 // guardSessionScopedKey's own map already lists them, and an unbound key
 // is trivially, uninterestingly inert either way; the real content of
 // this test is the rest.
+//
+// task 010 adds "p" (SPEC §11's pin rule, R159) to this table -- both the
+// plain and marked-set shapes, mirroring "x"/"x (marked)" above -- since a
+// header cursor must gate the marked-set batch exactly like the single-row
+// path, with no exemption to carve out (guardSessionScopedKey's own doc
+// comment; cure-01-01 already settled this question for x/dd).
 func TestSessionScopedKeysAreInertOnAHeader(t *testing.T) {
 	cases := []struct {
 		name  string
@@ -203,6 +209,11 @@ func TestSessionScopedKeysAreInertOnAHeader(t *testing.T) {
 		{name: "enter", keys: []string{"enter"}},
 		{name: "a", keys: []string{"a"}},
 		{name: "x", keys: []string{"x"}},
+		{name: "p", keys: []string{"p"}},
+		{name: "p (marked)", keys: []string{"p"}, setup: func(m Model) Model {
+			m.marked = map[string]bool{"s1": true}
+			return m
+		}},
 		// task cure-01-01 (F1, R137): x with a non-empty mark set used to be
 		// exempt from the header guard (task 112's batch path). Pinned here
 		// alongside the unmarked case above so the two can never drift apart
