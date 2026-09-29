@@ -6721,7 +6721,19 @@ func (m Model) sidebarRowLines(index int, session store.Session, stripe bool) ([
 	// trailing \x1b[0m clear that background again immediately (the
 	// gotcha theme_color.go's foregroundSGR/backgroundSGR doc already
 	// warns about).
-	segs := []settingsRowSegment{{Text: session.Name + " ", Tok: nameTok}}
+	// R160/task 006: a pinned row's `✦` marker (ASCII `*` under
+	// DECK_ASCII/[ui] ascii) sits immediately before the name, drawn in
+	// `accent`, its own settingsRowSegment ahead of the name's -- so it
+	// rides the same padTrunc budget as everything else on this line
+	// (SPEC: "The name truncation budget accounts for the marker") without
+	// any separate width bookkeeping here, and an unpinned row appends
+	// nothing at all, reserving no column (SPEC: "An unpinned row
+	// reserves no column").
+	segs := make([]settingsRowSegment, 0, 3)
+	if session.PinnedAt != 0 {
+		segs = append(segs, settingsRowSegment{Text: m.glyph("\u2726", "*") + " ", Tok: theme.Accent})
+	}
+	segs = append(segs, settingsRowSegment{Text: session.Name + " ", Tok: nameTok})
 	var parts []settingsRowSegment
 	if !session.Acknowledged && (session.Status == "waiting" || session.Status == "error") {
 		unseen := m.glyph("●", "!")
