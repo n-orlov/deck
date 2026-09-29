@@ -127,8 +127,14 @@ func lessByAttention(a, b store.Session) bool {
 // (len(previous)) so among themselves -- and against nothing else -- ID
 // still breaks the tie; two rows that share a real previous position never
 // reach the ID compare at all.
+// R160's pinned tier (PRD phase4f-sidebar-pins.md) is applied here via
+// pinnedFirst (internal/tui/sort_order.go, sortSessionsByOrder's own doc
+// comment) so both of this function's callers -- sortSessionsByOrder's
+// own SortOrderAttention branch, and the two tui.go call sites that
+// invoke sortSessionsByAttentionStable directly for the attention order
+// -- get the exact same pinned-first behaviour without re-deriving it.
 func sortSessionsByAttentionStable(previous, incoming []store.Session) []store.Session {
-	return sortSessionsStable(previous, incoming, attentionLessStable(previous))
+	return sortSessionsStable(previous, incoming, pinnedFirst(attentionLessStable(previous)))
 }
 
 // attentionLessStable is sortSessionsByAttentionStable's own less function,
