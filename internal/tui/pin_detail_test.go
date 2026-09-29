@@ -183,12 +183,12 @@ func TestDetailCLocksConversation(t *testing.T) {
 		got, _ = model.Update(key("c"))
 		model = got.(Model)
 		if model.pinning {
-			t.Fatal("c opened the lock chooser for a shell session, which has no conversation id to pin or restart fresh")
+			t.Fatal("c opened the lock chooser for a shell session, which has no conversation id to lock or restart fresh")
 		}
 		if !model.detail {
 			t.Fatal("c's refusal closed the detail dialog underneath it")
 		}
-		if !strings.Contains(model.attachError, "no conversation id to pin or restart fresh") {
+		if !strings.Contains(model.attachError, "no conversation id to lock or restart fresh") {
 			t.Fatalf("attachError = %q, want canPinResume's own refusal wording", model.attachError)
 		}
 	})

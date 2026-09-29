@@ -10019,10 +10019,11 @@ Keys
     candidate, Enter confirms; P switch the permission profile of the
     selected session, reachable only from inside detail; only takes
     effect on the next launch or resume ("restart to apply"), never the
-    live pane; c inside detail pins the selected session's conversation id
-    so future resumes always reuse it, or launches a one-shot fresh conversation
-    (reverts to normal auto-resume afterward, it does not stay pinned or
-    cleared), reachable only from inside detail
+    live pane; c inside detail changes the resume mode to lock onto the
+    selected session's own conversation id so future resumes always reuse it,
+    or launches a one-shot fresh conversation (reverts to normal auto-resume
+    afterward, it does not stay locked or cleared), reachable only from
+    inside detail
   e open the env editor for the selected session: every key deck resolved a
     layer for, its effective value, and which layer won -- server env,
     captured_path, config [env] or session env (SPEC §6.1/§6.3); j/k select
