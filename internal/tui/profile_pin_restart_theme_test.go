@@ -36,8 +36,9 @@ func task020ProfileModel(t *testing.T) Model {
 	return got.(Model)
 }
 
-// task020PinModel opens the `p` dialog on a claude session with a
-// conversation id at 80x24 with colour enabled.
+// task020PinModel opens the `c` lock chooser (task 008: reachable only
+// from inside `i` detail, formerly a top-level `p`) on a claude session
+// with a conversation id at 80x24 with colour enabled.
 func task020PinModel(t *testing.T) Model {
 	t.Helper()
 	m := NewWithShellCreatorAttacherKillerResumerProfileSwitcherAndResumeModer(
@@ -49,7 +50,8 @@ func task020PinModel(t *testing.T) Model {
 	m.width, m.height = 80, 24
 	m.sessions = []store.Session{{ID: "s1", Name: "alpha", Agent: "claude", Status: "running", ConversationID: "conv-1", ResumeState: "auto"}}
 	m.selected = rowCursor(0)
-	got, _ := m.Update(key("p"))
+	got, _ := m.Update(key("i"))
+	got, _ = got.(Model).Update(key("c"))
 	return got.(Model)
 }
 

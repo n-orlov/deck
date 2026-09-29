@@ -205,10 +205,11 @@ Feature: The §11.4 dialog contract, asserted per dialog (requirements 7, 8, 9, 
     And deck client "A" opens the pin dialog for session "dc-pin"
     And deck client "A" cycles the open dialog's field right
     Then deck client "A" screen contains "pinned (left/right cycles"
-    When deck client "A" closes the dialog with escape
+    When deck client "A" closes the pin dialog with escape
     Then the state database session "dc-pin" has resume mode "auto"
     And the scenario's config.toml still matches the captured "before-pin-esc"
-    When deck client "A" exits cleanly
+    When deck client "A" closes the dialog with escape
+    And deck client "A" exits cleanly
 
   Scenario: pin dialog -- enter submits the cycled value
     Given a fake "claude" binary is on PATH for future deck clients
@@ -216,9 +217,10 @@ Feature: The §11.4 dialog contract, asserted per dialog (requirements 7, 8, 9, 
     When deck client "A" creates claude session "dc-pin2" with permission profile "safe"
     And deck client "A" opens the pin dialog for session "dc-pin2"
     And deck client "A" cycles the open dialog's field right
-    And deck client "A" submits the open dialog
+    And deck client "A" submits the pin dialog
     Then the state database session "dc-pin2" has resume mode "pinned"
-    When deck client "A" exits cleanly
+    When deck client "A" closes the dialog with escape
+    And deck client "A" exits cleanly
 
   Scenario: pin dialog -- the mouse can neither cancel nor confirm it, at its border, its body or outside it
     Given a fake "claude" binary is on PATH for future deck clients
@@ -250,7 +252,8 @@ Feature: The §11.4 dialog contract, asserted per dialog (requirements 7, 8, 9, 
     And the state database session "dc-pin-mouse" has resume mode "auto"
     And the state database session "dc-pin-mouse" has 0 attached events
     And the scenario's config.toml still matches the captured "before-pin-mouse-cfg"
-    When deck client "A" closes the dialog with escape
+    When deck client "A" closes the pin dialog with escape
+    And deck client "A" closes the dialog with escape
     And deck client "A" exits cleanly
 
   Scenario: help dialog -- esc changes nothing (it has no fields to alter)

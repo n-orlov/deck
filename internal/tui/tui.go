@@ -4315,24 +4315,6 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				restarted, outcome, err := m.restart(context.Background(), sessionID)
 				return sessionRestarted{session: restarted, outcome: outcome, err: err}
 			}
-		case "p":
-			if m.resumeMode == nil {
-				return m, nil
-			}
-			// task 013/D.2: the guard above already refused this keypress
-			// when the cursor has no selected session.
-			session, _ := m.selectedSession()
-			if !m.canPinResume(session) {
-				m.attachError = "Cannot change resume mode: " + session.Agent + " has no conversation id to pin or restart fresh"
-				return m, nil
-			}
-			m.pinning = true
-			m.pinValue = session.ResumeState
-			if m.pinValue == "" {
-				m.pinValue = "auto"
-			}
-			m.pinNote = ""
-			return m, nil
 		case "e":
 			// SPEC §6.1/§6.3, task 020: opens for any selected session (unlike
 			// `P`/`p`, which gate on adapter capabilities) since every session,
@@ -10029,9 +10011,6 @@ Keys
     exists and relaunches it with the same resume argv and conversation id
     (never a fresh conversation); this is the only action that applies a
     pending env↻ edit to the new pane and clears env↻ once it is up
-  p pin the selected session's conversation id so future resumes always
-    reuse it, or launch a one-shot fresh conversation (reverts to normal
-    auto-resume afterward, it does not stay pinned or cleared)
   i toggle detail view for the selected session; r inside it renames the
     session's display name only -- the tmux session keeps its own name
     (deck_<slug>), never renamed, so a rename can never move or disturb a
@@ -10040,7 +10019,10 @@ Keys
     candidate, Enter confirms; P switch the permission profile of the
     selected session, reachable only from inside detail; only takes
     effect on the next launch or resume ("restart to apply"), never the
-    live pane
+    live pane; c inside detail pins the selected session's conversation id
+    so future resumes always reuse it, or launches a one-shot fresh conversation
+    (reverts to normal auto-resume afterward, it does not stay pinned or
+    cleared), reachable only from inside detail
   e open the env editor for the selected session: every key deck resolved a
     layer for, its effective value, and which layer won -- server env,
     captured_path, config [env] or session env (SPEC §6.1/§6.3); j/k select

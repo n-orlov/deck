@@ -55,7 +55,7 @@ var helpStyleHeaders = map[string]bool{
 var helpKeycapTokens = map[string]bool{
 	"↑/↓": true, "j/k": true, "↵": true, "a": true, "F": true, "Y": true, "n": true,
 	"x": true, "u": true, "dd": true, "A": true, "U": true, "m": true, "r": true,
-	"R": true, "p": true, "i": true, "e": true, "E": true,
+	"R": true, "i": true, "e": true, "E": true,
 	"/": true, "space": true, "c": true, "g": true, "G": true, ",": true,
 	"t": true, "|": true, "<": true, ">": true, "?": true, "q": true,
 	"Ctrl+C": true, "PgUp/PgDn": true, "or": true,

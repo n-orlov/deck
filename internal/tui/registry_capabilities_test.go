@@ -114,14 +114,15 @@ func TestRegistryDrivenCapabilities_ProfileBadgeCreateAndPin(t *testing.T) {
 		t.Fatalf("profileSwitchValue after cycling = %q, want %q", m.profileSwitchValue, "open")
 	}
 
-	// Reset and exercise the `p` pin dialog: it must open because the
-	// adapter declares AssignsConversationID, purely via the registry. `p`
-	// is a top-level binding, unlike `P`, so detail is closed first too.
+	// Exercise the `c` lock chooser: it must open because the adapter
+	// declares AssignsConversationID, purely via the registry. `c` is
+	// reachable only from inside the `i` detail dialog (task 008), exactly
+	// like `P` above -- detail is still open from the P exercise above, so
+	// no re-open is needed.
 	m.profileSwitching = false
-	m.detail = false
-	updated, _ = m.Update(key("p"))
+	updated, _ = m.Update(key("c"))
 	m = updated.(Model)
 	if !m.pinning {
-		t.Fatal("p did not open the pin dialog for a registry adapter that AssignsConversationID")
+		t.Fatal("c did not open the lock chooser for a registry adapter that AssignsConversationID")
 	}
 }
