@@ -20,7 +20,7 @@ import (
 )
 
 // SchemaVersion is the newest schema understood by this binary.
-const SchemaVersion = 7
+const SchemaVersion = 8
 
 // DefaultLayoutMode and DefaultSidebarWidth are the documented degrade-to
 // values a missing ui_state row implies (SPEC §11.2): ui_state is
@@ -302,6 +302,12 @@ type Session struct {
 	// is (yet) no restore -- requirement 33's `/` filter (task 123) is how an
 	// archived row is reached again, not an undo.
 	ArchivedAt int64
+	// PinnedAt is the sessions.pinned_at column verbatim (task 002, the
+	// sidebar pin `p`, phase 4f, GH #51): zero for a never-pinned row, and
+	// the wall-clock millisecond the pin was set at once a row has been
+	// pinned. Like ArchivedAt/DeletedAt, it is a FLAG-with-timestamp rather
+	// than a Status transition -- nothing here writes or reads Status.
+	PinnedAt int64
 }
 
 // CapturedPathAdvisory reports whether this row's CapturedPath is advisory
@@ -584,7 +590,7 @@ func scanSession(row interface {
 		&session.NotifyEpoch, &lastMessage, &acknowledged, &launchArgsJSON, &envJSON, &preLaunch, &postDestroy,
 		&loginShell, &session.PermissionProfile, &permissionProfileReason, &conversationID, &resumePin, &session.ResumeState,
 		&groupID, &groupName, &session.LastProbeAt, &envDirty, &session.DeletedAt, &session.ArchivedAt, &launchDirty,
-		&leaseOwner); err != nil {
+		&leaseOwner, &session.PinnedAt); err != nil {
 		return Session{}, err
 	}
 	// Only the generation half is surfaced: the launcher identity is lease
@@ -631,7 +637,7 @@ const sessionColumns = `sessions.id, sessions.name, slug, cwd, agent, captured_p
 		killed_by_user, pane_exit_status, crash_tail, notify_epoch, last_message, acknowledged,
 		launch_args, env, pre_launch, post_destroy, login_shell, permission_profile, permission_profile_reason, conversation_id, resume_pin, resume_state,
 		sessions.group_id, groups.name, last_probe_at, env_dirty, deleted_at, archived_at, launch_dirty,
-		COALESCE(launch_lease_owner, '')`
+		COALESCE(launch_lease_owner, ''), pinned_at`
 
 // sessionsFromClause is every sessionColumns-backed query's shared FROM:
 // a LEFT JOIN against groups so GroupName resolves (or reads back empty
@@ -2268,6 +2274,13 @@ func (s *Store) migrate(version int) error {
 				return fmt.Errorf("create schema v7: %w", err)
 			}
 		}
+		fallthrough
+	case 7:
+		for _, statement := range schemaV8 {
+			if _, err := tx.Exec(statement); err != nil {
+				return fmt.Errorf("create schema v8: %w", err)
+			}
+		}
 	default:
 		return fmt.Errorf("no migration path from schema version %d", version)
 	}
@@ -2419,6 +2432,18 @@ var schemaV7 = []string{
 	`CREATE TABLE IF NOT EXISTS groups (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE COLLATE NOCASE)`,
 	`ALTER TABLE sessions ADD COLUMN group_id INTEGER`,
 	`ALTER TABLE sessions DROP COLUMN workspace`,
+}
+
+// schemaV8 adds sessions.pinned_at (task 002, the sidebar pin `p`, phase
+// 4f, GH #51): the wall-clock millisecond timestamp a session was pinned
+// at, zero for a never-pinned row -- mirroring ArchivedAt/DeletedAt's own
+// zero-means-unset INTEGER NOT NULL DEFAULT 0 shape rather than a
+// nullable TEXT. It is a single ALTER TABLE ADD COLUMN against the
+// existing sessions table, touching no other column and no other row
+// value, applied on top of schemaV1-7 for a fresh database and
+// standalone for an existing v1-v7 database.
+var schemaV8 = []string{
+	`ALTER TABLE sessions ADD COLUMN pinned_at INTEGER NOT NULL DEFAULT 0`,
 }
 
 // getUIState returns the persisted value for key, or def when no row exists
