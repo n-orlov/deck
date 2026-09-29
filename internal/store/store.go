@@ -1251,6 +1251,48 @@ func (s *Store) SetSessionGroup(ctx context.Context, sessionID string, groupID i
 		`UPDATE sessions SET group_id = ? WHERE id = ?`, groupIDArg)
 }
 
+// SetSessionsPinned pins or unpins a batch of sidebar sessions (task 003,
+// SPEC §11.3's sidebar pin `p`, phase 4f) in ONE transaction: one
+// `UPDATE sessions SET pinned_at = ? WHERE id = ?` per id in `ids`, all
+// committed together or, on any single id's failure, none of them applied
+// at all (defer tx.Rollback() below undoes every earlier iteration's
+// UPDATE in the same call the moment any later one errors). `at` (the
+// store clock, exactly like every other mutator here) is written verbatim
+// when pinned is true; unpinning always writes 0, never `at`, so pinned_at
+// only ever holds a real pin timestamp or the zero "not pinned" sentinel
+// CreateSession's schemaV8 default already establishes. Unlike
+// mutateSessionWithEvent's single-row mutators, this records no event at
+// all: a pin/unpin is UI-only sidebar-ordering state, not an auditable
+// session lifecycle transition, so the events table is untouched by this
+// call in every case, including a rolled-back one. An id absent from
+// `sessions` (already deleted, e.g.) simply UPDATEs zero rows and is not
+// an error -- callers pass ids they already believe exist, so treating a
+// races-with-a-delete miss as fatal would abort every other id's pin in
+// the same batch for no benefit.
+func (s *Store) SetSessionsPinned(ctx context.Context, ids []string, pinned bool, at int64) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	value := int64(0)
+	if pinned {
+		value = at
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin set sessions pinned: %w", err)
+	}
+	defer tx.Rollback()
+	for _, id := range ids {
+		if _, err := tx.ExecContext(ctx, `UPDATE sessions SET pinned_at = ? WHERE id = ?`, value, id); err != nil {
+			return fmt.Errorf("set pinned for session %q: %w", id, err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit set sessions pinned: %w", err)
+	}
+	return nil
+}
+
 // SetResumePin pins a session to resume a specific conversation id going
 // forward (resume_state=pinned), sticky across restarts until changed again.
 func (s *Store) SetResumePin(ctx context.Context, sessionID, conversationID, source string, at int64) error {
