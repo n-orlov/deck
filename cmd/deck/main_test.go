@@ -471,7 +471,7 @@ func TestDeckBinaryEmptyHelpAndQuitThroughPTY(t *testing.T) {
 	// Every new key, create-modal field and control this phase added must be
 	// visible through a real PTY, not merely via View() in internal/tui.
 	for _, present := range []string{
-		"Y acknowledge", "clear its unseen marker", "r resume", "P switch the permission profile", "p pin the selected session",
+		"Y acknowledge", "clear its unseen marker", "r resume", "P switch the permission profile", "p toggle the pin on the selected session",
 		"R restart the selected non-stopped session", "same resume argv and conversation id",
 		"resumed agents", "starting - awaiting", "live shells", "become \"running\"", "starting elsewhere", // DECK_ASCII=1 replaces \u00b7 with '-'
 		"Name", "Working directory", "Agent", "Permission profile", "Launch args", "Env",
