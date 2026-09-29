@@ -34,7 +34,9 @@ import (
 // detailView's own footer text "i or Esc closes detail"), "r" (this
 // task's additional load-bearing key, declared inline exactly as §11.4
 // allows), "l" (task 023's own load-bearing key, opening the
-// launch-inputs editor exactly as "r" opens rename), pgup/
+// launch-inputs editor exactly as "r" opens rename), "P" (task 007's
+// permission-profile picker, moved here from a top-level binding -- see
+// its own case below), pgup/
 // pgdown (task 078's whole-dialog scroll, requirement 39 residual) and
 // "q"/"ctrl+c" (task 079: a bare q while m.detail is true used to be a
 // silent no-op here -- helpText's own "q or Ctrl+C quit deck" line in
@@ -117,6 +119,36 @@ func (m Model) updateDetailView(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.moveGroupOptions = m.computeAvailableGroups()
 		m.moveGroupValue = sessionGroupID(session)
 		m.moveGroupNote = ""
+	case "P":
+		// Task 007 (SPEC §5/§8): the permission-profile picker, reachable
+		// ONLY from inside `i` detail as of this task -- there is no
+		// top-level "P" case anymore (it used to sit alongside "r"/"R"/"p"
+		// in Model.Update's main switch). Unlike "r"/"l"/"detail:g" above,
+		// this reaches no guardSessionScopedKey at all: "P" was removed
+		// from sessionScopedKeys outright (session_scoped_guard.go) rather
+		// than given a synthetic "detail:P" entry, because updateDetailView
+		// is only ever reached with a session already selected -- the
+		// top-level "i" case that sets m.detail true only does so after its
+		// own guardSessionScopedKey("i") has already refused a header
+		// cursor, and m.selected cannot change while m.detail is true
+		// (every key routes through this function first). The explicit ok
+		// check below is a defensive belt only, mirroring submitRename's
+		// own len(m.sessions)==0 guard, never a reachable refusal path in
+		// practice.
+		session, ok := m.selectedSession()
+		if !ok {
+			return m, nil
+		}
+		if m.profileSwitch == nil {
+			return m, nil
+		}
+		if !m.canSwitchProfile(session) {
+			m.attachError = "Cannot change permission profile: " + session.Agent + " has no permission profile"
+			return m, nil
+		}
+		m.profileSwitching = true
+		m.profileSwitchValue = session.PermissionProfile
+		m.profileSwitchNote = ""
 	case "pgup":
 		// Task 078 (requirement 39 residual): the whole dialog scrolls
 		// uniformly via detailBody's own content, never a per-field bound.

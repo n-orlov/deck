@@ -18,8 +18,8 @@ import (
 // dialog's one left/right-cycle target ("New:"/"Choice:") carrying the
 // same `selection` treatment a selected list row does.
 
-// task020ProfileModel opens the `P` dialog on a claude session at 80x24
-// with colour enabled.
+// task020ProfileModel opens the `P` dialog (task 007: reachable only from
+// inside `i` detail) on a claude session at 80x24 with colour enabled.
 func task020ProfileModel(t *testing.T) Model {
 	t.Helper()
 	m := NewWithShellCreatorAttacherKillerResumerAndProfileSwitcher(
@@ -31,7 +31,8 @@ func task020ProfileModel(t *testing.T) Model {
 	m.width, m.height = 80, 24
 	m.sessions = []store.Session{{ID: "s1", Name: "alpha", Agent: "claude", Status: "running", PermissionProfile: "safe"}}
 	m.selected = rowCursor(0)
-	got, _ := m.Update(key("P"))
+	got, _ := m.Update(key("i"))
+	got, _ = got.(Model).Update(key("P"))
 	return got.(Model)
 }
 

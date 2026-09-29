@@ -87,9 +87,16 @@ func TestRegistryDrivenCapabilities_ProfileBadgeCreateAndPin(t *testing.T) {
 		t.Fatalf("createProfileOptionsFor = %v, want [lockdown open]", options)
 	}
 
-	// The `P` profile-switch dialog must open (the adapter is applicable)
-	// and its view must list only the adapter's declared profiles.
-	updated, _ := m.Update(key("P"))
+	// The `P` profile-switch dialog is reachable only from inside the `i`
+	// detail dialog (task 007) -- it must open there (the adapter is
+	// applicable) and its view must list only the adapter's declared
+	// profiles.
+	updated, _ := m.Update(key("i"))
+	m = updated.(Model)
+	if !m.detail {
+		t.Fatal("i did not open the detail dialog")
+	}
+	updated, _ = m.Update(key("P"))
 	m = updated.(Model)
 	if !m.profileSwitching {
 		t.Fatal("P did not open the profile switch dialog for a registry-only adapter")
@@ -108,8 +115,10 @@ func TestRegistryDrivenCapabilities_ProfileBadgeCreateAndPin(t *testing.T) {
 	}
 
 	// Reset and exercise the `p` pin dialog: it must open because the
-	// adapter declares AssignsConversationID, purely via the registry.
+	// adapter declares AssignsConversationID, purely via the registry. `p`
+	// is a top-level binding, unlike `P`, so detail is closed first too.
 	m.profileSwitching = false
+	m.detail = false
 	updated, _ = m.Update(key("p"))
 	m = updated.(Model)
 	if !m.pinning {

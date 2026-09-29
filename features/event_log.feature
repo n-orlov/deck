@@ -16,7 +16,8 @@ Feature: The E event log: newest first, kind/reason/bounded payload, masked env 
     And deck client "A" creates claude session "eventlog-profile" with permission profile "safe"
     And deck client "A" opens the permission profile dialog for session "eventlog-profile"
     And deck client "A" cycles the open dialog's field right
-    And deck client "A" submits the open dialog
+    And deck client "A" submits the permission profile dialog
+    And deck client "A" closes the dialog with escape
     And deck client "A" creates shell session "eventlog-envkey"
     And deck client "A" opens the env editor for session "eventlog-envkey"
     And deck client "A" edits the highlighted env key to "eventlog-env-value"
