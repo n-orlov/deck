@@ -19,6 +19,8 @@ import (
 // typed.
 func registerDialogsSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^deck client "([^"]+)" opens the permission profile dialog for session "([^"]+)"$`, clientOpensProfileSwitchDialogForSession)
+	sc.Step(`^deck client "([^"]+)" closes the permission profile dialog with escape$`, clientClosesProfileSwitchDialogWithEscape)
+	sc.Step(`^deck client "([^"]+)" submits the permission profile dialog$`, clientSubmitsProfileSwitchDialog)
 	sc.Step(`^deck client "([^"]+)" opens the pin dialog for session "([^"]+)"$`, clientOpensPinDialogForSession)
 	sc.Step(`^deck client "([^"]+)" opens help$`, clientOpensHelp)
 	sc.Step(`^deck client "([^"]+)" closes the dialog with escape$`, clientClosesDialogWithEscape)
@@ -39,7 +41,8 @@ func registerDialogsSteps(sc *godog.ScenarioContext) {
 }
 
 // clientOpensProfileSwitchDialogForSession selects the named row and sends
-// `P` (SPEC §5/§11.4), the only way profileSwitchView opens.
+// `i` then `P` (task 007, SPEC §5/§8/§11.4): `P` is reachable only from
+// inside the `i` detail dialog, never as a bare top-level key.
 func clientOpensProfileSwitchDialogForSession(ctx context.Context, clientName, sessionName string) error {
 	if err := clientSelectsSessionByName(ctx, clientName, sessionName); err != nil {
 		return err
@@ -52,10 +55,59 @@ func clientOpensProfileSwitchDialogForSession(ctx context.Context, clientName, s
 	if err != nil {
 		return err
 	}
+	if err := client.Send("i"); err != nil {
+		return err
+	}
+	if err := client.WaitForFrame(ctx, false, sessionName+" detail"); err != nil {
+		return err
+	}
 	if err := client.Send("P"); err != nil {
 		return err
 	}
 	return client.WaitForFrame(ctx, false, "Change permission profile")
+}
+
+// clientClosesProfileSwitchDialogWithEscape sends the shared §11.4 esc key
+// and waits for the permission-profile picker's own "Change permission
+// profile" title to leave the screen -- task 007 moved this picker's esc
+// target to detailView (m.detail stays true underneath it), never all the
+// way out to the main session list, exactly like
+// clientClosesRenameDialogWithEscape's own reasoning -- so "deck -
+// sessions" never (re)appears here either.
+func clientClosesProfileSwitchDialogWithEscape(ctx context.Context, clientName string) error {
+	h, err := assertionHarness(ctx)
+	if err != nil {
+		return err
+	}
+	client, err := h.Client(clientName)
+	if err != nil {
+		return err
+	}
+	if err := client.Send("\x1b"); err != nil {
+		return err
+	}
+	return client.WaitForFrameGone(ctx, false, "Change permission profile")
+}
+
+// clientSubmitsProfileSwitchDialog sends the shared §11.4 enter key and
+// waits for the picker's own title to leave the screen, exactly like
+// clientClosesProfileSwitchDialogWithEscape's own wait condition -- a
+// successful switch returns to detailView too (m.detail stays true), not
+// to the main list, so this cannot reuse clientSubmitsOpenDialog's "deck -
+// sessions" wait either.
+func clientSubmitsProfileSwitchDialog(ctx context.Context, clientName string) error {
+	h, err := assertionHarness(ctx)
+	if err != nil {
+		return err
+	}
+	client, err := h.Client(clientName)
+	if err != nil {
+		return err
+	}
+	if err := client.Send("\r"); err != nil {
+		return err
+	}
+	return client.WaitForFrameGone(ctx, false, "Change permission profile")
 }
 
 // clientOpensPinDialogForSession selects the named row and sends `p` (SPEC

@@ -187,12 +187,13 @@ func assertInertOnHeaderAfterEveryKey(t *testing.T, name string, setup func(m Mo
 
 // TestSessionScopedKeysAreInertOnAHeader is task 013/D.2's table: every key
 // SPEC's keymap and the PRD name as session-scoped (enter, a, x, dd, r, R,
-// i, e, P, p, s, z, Y, m, A, U, plus the `i` detail dialog's own move-group
-// `g`) must do nothing at all with the cursor on a header. "s"/"z" are not
-// wired to anything yet in this codebase (out of scope this phase) -- they
-// are included because guardSessionScopedKey's own map already lists them,
-// and an unbound key is trivially, uninterestingly inert either way; the
-// real content of this test is the other fifteen.
+// i, e, p, s, z, Y, m, A, U, plus the `i` detail dialog's own move-group
+// `g` and permission-profile `P`) must do nothing at all with the cursor
+// on a header. "s"/"z" are not wired to anything yet in this codebase
+// (out of scope this phase) -- they are included because
+// guardSessionScopedKey's own map already lists them, and an unbound key
+// is trivially, uninterestingly inert either way; the real content of
+// this test is the rest.
 func TestSessionScopedKeysAreInertOnAHeader(t *testing.T) {
 	cases := []struct {
 		name  string
@@ -225,7 +226,6 @@ func TestSessionScopedKeysAreInertOnAHeader(t *testing.T) {
 		{name: "R", keys: []string{"R"}},
 		{name: "i", keys: []string{"i"}},
 		{name: "e", keys: []string{"e"}},
-		{name: "P", keys: []string{"P"}},
 		{name: "p", keys: []string{"p"}},
 		{name: "s", keys: []string{"s"}},
 		{name: "z", keys: []string{"z"}},
@@ -246,6 +246,18 @@ func TestSessionScopedKeysAreInertOnAHeader(t *testing.T) {
 			return m
 		}},
 		{name: "detail l (launch inputs)", keys: []string{"l"}, setup: func(m Model) Model {
+			m.detail = true
+			return m
+		}},
+		// task 007: "P" moved from a top-level binding into detailView's own
+		// case -- there is no top-level "P" case left to be trivially inert
+		// by omission, so the meaningful assertion now is that the detail
+		// dialog's own "P" case leaves a header cursor (reached here only by
+		// this test's direct m.detail=true setup, never in practice --
+		// updateDetailView is unreachable with a header cursor the normal
+		// way, since the top-level "i" that opens it is itself
+		// guardSessionScopedKey-refused on a header) inert too.
+		{name: "detail P (permission profile picker)", keys: []string{"P"}, setup: func(m Model) Model {
 			m.detail = true
 			return m
 		}},

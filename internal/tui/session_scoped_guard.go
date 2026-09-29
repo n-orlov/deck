@@ -39,9 +39,16 @@ package tui
 // header exactly like "enter" -- returning before the drift check ever
 // runs -- while leaving the selected-session case (refuse always false
 // there) byte-for-byte unchanged.
+//
+// task 007: "P" was removed from this map (it used to sit here for the
+// top-level permission-profile switch, which no longer exists -- "P" now
+// only opens the picker from inside the `i` detail dialog, rename.go's
+// own case "P", which never routes through this guard at all: see that
+// case's own doc comment for why it needs no synthetic "detail:P" entry
+// either). "p" (top-level resume-mode pin) is unrelated and stays.
 var sessionScopedKeys = map[string]bool{
 	"enter": true, "a": true, "x": true, "d": true, "r": true, "R": true,
-	"i": true, "e": true, "P": true, "p": true, "Y": true, "m": true,
+	"i": true, "e": true, "p": true, "Y": true, "m": true,
 	"A": true, "U": true, "s": true, "z": true, "l": true, "F": true,
 	"detail:g": true,
 }

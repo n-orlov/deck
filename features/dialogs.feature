@@ -148,7 +148,7 @@ Feature: The §11.4 dialog contract, asserted per dialog (requirements 7, 8, 9, 
     And deck client "A" opens the permission profile dialog for session "dc-profile"
     And deck client "A" cycles the open dialog's field right
     Then deck client "A" screen contains "plan (left/right cycles"
-    When deck client "A" closes the dialog with escape
+    When deck client "A" closes the permission profile dialog with escape
     Then the state database session "dc-profile" has permission profile "safe"
     And the scenario's config.toml still matches the captured "before-profile-esc"
     When deck client "A" exits cleanly
@@ -159,7 +159,7 @@ Feature: The §11.4 dialog contract, asserted per dialog (requirements 7, 8, 9, 
     When deck client "A" creates claude session "dc-profile2" with permission profile "safe"
     And deck client "A" opens the permission profile dialog for session "dc-profile2"
     And deck client "A" cycles the open dialog's field right
-    And deck client "A" submits the open dialog
+    And deck client "A" submits the permission profile dialog
     Then the state database session "dc-profile2" has permission profile "plan"
     When deck client "A" exits cleanly
 
@@ -193,7 +193,7 @@ Feature: The §11.4 dialog contract, asserted per dialog (requirements 7, 8, 9, 
     And the state database session "dc-profile-mouse" has permission profile "safe"
     And the state database session "dc-profile-mouse" has 0 attached events
     And the scenario's config.toml still matches the captured "before-profile-mouse-cfg"
-    When deck client "A" closes the dialog with escape
+    When deck client "A" closes the permission profile dialog with escape
     And deck client "A" exits cleanly
 
   Scenario: pin dialog -- esc after altering its field leaves the persisted resume mode untouched
