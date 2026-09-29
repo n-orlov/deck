@@ -7373,6 +7373,32 @@ func (m Model) profileSwitchView() string {
 // brand-new conversation exactly once, then revert to auto).
 var resumeModeOptions = []string{"auto", "pinned", "fresh-once"}
 
+// resumeModeLabel is the UI's name for a stored resume_state value. The
+// stored value keeps its historical name "pinned", but SPEC §9.1 says the
+// UI calls that mode a *lock* and never a pin ("pin" in the UI means only
+// §11's sidebar pin), so every place the chooser shows a mode -- Current:,
+// New:, the cycle list, the explanatory sentence -- goes through this one
+// mapping. The value cycled, submitted and persisted stays "pinned".
+func resumeModeLabel(state string) string {
+	if state == "pinned" {
+		return "locked"
+	}
+	return state
+}
+
+// resumeModeOptionLabels is resumeModeOptions as the chooser displays them.
+func resumeModeOptionLabels() []string {
+	out := make([]string, len(resumeModeOptions))
+	for i, o := range resumeModeOptions {
+		out[i] = resumeModeLabel(o)
+	}
+	return out
+}
+
+// resumeModeExplanation is the chooser's explanatory sentence, shared by the
+// plain and styled bodies so the two can never disagree.
+const resumeModeExplanation = "locked always resumes this session's own current conversation id, sticky\nacross a deck restart. fresh-once starts a brand-new conversation exactly\nonce, then reverts to auto. Neither changes a running pane."
+
 // updatePinDialog handles keys while the `p` pin/start-fresh dialog is open
 // (task 021). It only ever cycles a locally-held candidate resume_state
 // and, on confirmation, persists it through m.resumeMode; it never issues
@@ -7417,9 +7443,9 @@ func (m Model) pinBody() string {
 	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "Change resume mode for %s\n\n", session.Name)
-	fmt.Fprintf(&b, "%s\n", m.detailField("Current:   ", state))
-	fmt.Fprintf(&b, "%s\n", m.detailField("New:       ", fmt.Sprintf("%s (left/right cycles: %s)", m.pinValue, strings.Join(resumeModeOptions, ", "))))
-	b.WriteString("\npinned always resumes this session's own current conversation id, sticky\nacross a deck restart. fresh-once starts a brand-new conversation exactly\nonce, then reverts to auto. Neither changes a running pane.\n")
+	fmt.Fprintf(&b, "%s\n", m.detailField("Current:   ", resumeModeLabel(state)))
+	fmt.Fprintf(&b, "%s\n", m.detailField("New:       ", fmt.Sprintf("%s (left/right cycles: %s)", resumeModeLabel(m.pinValue), strings.Join(resumeModeOptionLabels(), ", "))))
+	b.WriteString("\n" + resumeModeExplanation + "\n")
 	b.WriteString("\nLeft/Right cycles · Enter confirms · Esc cancels\n")
 	if m.pinNote != "" {
 		fmt.Fprintf(&b, "\n%s\n", m.pinNote)
@@ -7480,10 +7506,10 @@ func (m Model) styledPinBody() string {
 
 	colorWhole(theme.Title, fmt.Sprintf("Change resume mode for %s", session.Name))
 	out = append(out, "")
-	colorField("Current:   ", state, false)
-	colorField("New:       ", fmt.Sprintf("%s (left/right cycles: %s)", m.pinValue, strings.Join(resumeModeOptions, ", ")), true)
+	colorField("Current:   ", resumeModeLabel(state), false)
+	colorField("New:       ", fmt.Sprintf("%s (left/right cycles: %s)", resumeModeLabel(m.pinValue), strings.Join(resumeModeOptionLabels(), ", ")), true)
 	out = append(out, "")
-	colorWhole(theme.Dimmed, "pinned always resumes this session's own current conversation id, sticky\nacross a deck restart. fresh-once starts a brand-new conversation exactly\nonce, then reverts to auto. Neither changes a running pane.")
+	colorWhole(theme.Dimmed, resumeModeExplanation)
 	out = append(out, "")
 	colorFooterLine("Left/Right cycles · Enter confirms · Esc cancels")
 	if m.pinNote != "" {

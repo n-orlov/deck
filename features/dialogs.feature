@@ -204,7 +204,7 @@ Feature: The §11.4 dialog contract, asserted per dialog (requirements 7, 8, 9, 
     When the scenario's config.toml is captured as "before-pin-esc"
     And deck client "A" opens the pin dialog for session "dc-pin"
     And deck client "A" cycles the open dialog's field right
-    Then deck client "A" screen contains "pinned (left/right cycles"
+    Then deck client "A" screen contains "locked (left/right cycles"
     When deck client "A" closes the pin dialog with escape
     Then the state database session "dc-pin" has resume mode "auto"
     And the scenario's config.toml still matches the captured "before-pin-esc"
@@ -229,7 +229,7 @@ Feature: The §11.4 dialog contract, asserted per dialog (requirements 7, 8, 9, 
     And the scenario's config.toml is captured as "before-pin-mouse-cfg"
     And deck client "A" opens the pin dialog for session "dc-pin-mouse"
     And deck client "A" cycles the open dialog's field right
-    Then deck client "A" screen contains "pinned (left/right cycles"
+    Then deck client "A" screen contains "locked (left/right cycles"
     When deck client "A" captures its frame as "before-pin-mouse"
     # column 1 row 1: the dialog's own top-left border corner.
     And deck client "A" clicks at column 1 row 1
