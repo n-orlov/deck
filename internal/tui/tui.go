@@ -8389,6 +8389,17 @@ func (m Model) detailBody() string {
 	fmt.Fprintf(&b, "%s\n", m.detailField("Agent:              ", session.Agent))
 	fmt.Fprintf(&b, "%s\n", m.detailField("Working directory:  ", session.CWD))
 	fmt.Fprintf(&b, "%s\n", m.detailField("Group:              ", sessionGroupLabel(session)))
+	// Task 011 (SPEC §11's pin rule, R159's own detail-dialog leg):
+	// pinned mirrors sessionsPinned's own store field (session.PinnedAt !=
+	// 0 means pinned, task 002/003's schemaV8 column), plain "yes"/"no"
+	// text rather than a glyph -- the sidebar row already carries the ✦
+	// marker (task 006) for an at-a-glance signal; this field is the
+	// dialog's own explicit, unambiguous statement of the same fact.
+	pinnedText := "no"
+	if session.PinnedAt != 0 {
+		pinnedText = "yes"
+	}
+	fmt.Fprintf(&b, "%s\n", m.detailField("Pinned:             ", pinnedText))
 	if session.CapturedPathAdvisory() {
 		fmt.Fprintf(&b, "%s\n", m.detailField("Captured PATH:      ", "advisory only (login_shell overrides PATH; SPEC \u00a76.3)"))
 	}
@@ -8487,7 +8498,7 @@ func (m Model) detailBody() string {
 	// three keys: SPEC §11.3's fixed set is closed there, and SPEC.md is
 	// read-only to this job -- see footerLegend's own doc comment.
 	b.WriteString("\n" + m.glyph("header cursor: c folds/unfolds its group · ← folds it · → unfolds it", "header cursor: c folds/unfolds its group - left folds it - right unfolds it") + "\n")
-	b.WriteString(m.glyph("r renames · l edits launch inputs · g moves group · i or Esc closes detail", "r renames - l edits launch inputs - g moves group - i or Esc closes detail") + "\n")
+	b.WriteString(m.glyph("P switches permission profile · c changes resume mode · p toggles pinned · r renames · l edits launch inputs · g moves group · i or Esc closes detail", "P switches permission profile - c changes resume mode - p toggles pinned - r renames - l edits launch inputs - g moves group - i or Esc closes detail") + "\n")
 	return b.String()
 }
 
