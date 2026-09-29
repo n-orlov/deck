@@ -53,9 +53,18 @@ package tui
 // under "c" (rename.go's own case "c"), which never routes through this
 // guard at all for the same reason "P" does not (see that case's own doc
 // comment).
+//
+// task 010 (SPEC §11's pin rule, R159): "p" is back in this map, for a
+// completely different action than the one task 008 removed -- the
+// sidebar pin toggle, singly or over the marked set (tui.go's own case
+// "p"), never the old lock chooser. It is session-scoped exactly like
+// every other entry here: a header cursor refuses it, marks or no marks,
+// the same way cure-01-01 made "x" and "dd" refuse on a header regardless
+// of a non-empty mark set -- there is no batch exemption to carve out for
+// "p" either.
 var sessionScopedKeys = map[string]bool{
 	"enter": true, "a": true, "x": true, "d": true, "r": true, "R": true,
-	"i": true, "e": true, "Y": true, "m": true,
+	"i": true, "e": true, "Y": true, "m": true, "p": true,
 	"A": true, "U": true, "s": true, "z": true, "l": true, "F": true,
 	"detail:g": true,
 }

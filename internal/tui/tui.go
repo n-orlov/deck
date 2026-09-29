@@ -1469,6 +1469,38 @@ type undoExpired int
 
 type sessionAcknowledged struct{ err error }
 
+// sessionsPinned carries top-level `p`'s tea.Cmd result back (task 010,
+// SPEC §11's pin rule/R159): setSessionsPinnedCmd already performed the
+// store write -- store.SetSessionsPinned -- by the time this message
+// exists; Update's own case "p" never touches the store directly, only
+// decides which ids and which direction (pin vs unpin) the returned
+// tea.Cmd should act on.
+type sessionsPinned struct{ err error }
+
+// setSessionsPinnedCmd builds the tea.Cmd top-level `p` returns for the
+// given ids: nil (no-op) when there is no store or no id to act on,
+// otherwise a closure that calls store.SetSessionsPinned exactly once,
+// with the store clock's current time when pinned is true (unpinning
+// always writes 0, SetSessionsPinned's own contract, so the timestamp
+// this passes is simply ignored on that branch). The write happens only
+// when the returned func runs -- never while Update itself is still on
+// the stack -- matching every other store-mutating keypress here (x, dd,
+// A, ...): a tea.Cmd is scheduled, never called inline.
+func (m Model) setSessionsPinnedCmd(ids []string, pinned bool) tea.Cmd {
+	if m.store == nil || len(ids) == 0 {
+		return nil
+	}
+	db := m.store
+	clock := m.settings.Clock
+	return func() tea.Msg {
+		now := time.Now()
+		if clock != nil {
+			now = clock.Now()
+		}
+		return sessionsPinned{err: db.SetSessionsPinned(context.Background(), ids, pinned, now.UnixMilli())}
+	}
+}
+
 // sessionDeleted carries task 105's dd submit result back: kill the live
 // pane (if any) and tombstone the row (store.SoftDeleteSession). A
 // successful delete reloads the session list so the now-tombstoned row
@@ -2988,6 +3020,19 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			m.undoSessionID, m.undoSessionName = "", ""
 		}
 		return m, nil
+	case sessionsPinned:
+		// task 010 (SPEC §11's pin rule, R159): the store write already
+		// happened inside the tea.Cmd (setSessionsPinnedCmd) that produced
+		// this message -- this case only reports the outcome and reloads,
+		// mirroring sessionAcknowledged just below. A pin/unpin never opens
+		// an undo toast (SPEC names none for it, unlike x/A/dd) -- pressing
+		// p again is its own undo.
+		if msg.err != nil {
+			m.attachError = "Cannot update pin: " + msg.err.Error()
+			return m, nil
+		}
+		m.attachError = ""
+		return m, m.loadSessions
 	case sessionAcknowledged:
 		if msg.err != nil {
 			m.attachError = "Cannot acknowledge: " + msg.err.Error()
@@ -4081,6 +4126,39 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			} else {
 				m.marked[id] = true
 			}
+		case "p":
+			// task 010 (SPEC §11's pin rule, R159): the write happens only
+			// in the returned tea.Cmd (setSessionsPinnedCmd) -- this case
+			// itself never calls the store, only decides which ids and
+			// which direction. A non-empty mark set switches the whole
+			// batch to whichever direction the SPEC rule names ("unpins
+			// them all when every marked row is pinned, and pins them all
+			// otherwise") -- mirroring x's own marked-set-vs-single-row
+			// split above, but, unlike x/dd, p never clears m.marked: SPEC
+			// names no such side effect for it, so a mark set survives a
+			// p press exactly as it survives everything but x, dd and esc.
+			if len(m.marked) > 0 {
+				sessions := m.markedSessions()
+				if len(sessions) == 0 {
+					return m, nil
+				}
+				pin := false
+				for _, s := range sessions {
+					if s.PinnedAt == 0 {
+						pin = true
+						break
+					}
+				}
+				ids := make([]string, len(sessions))
+				for i, s := range sessions {
+					ids[i] = s.ID
+				}
+				return m, m.setSessionsPinnedCmd(ids, pin)
+			}
+			// task 013/D.2: the guard above already refused this keypress
+			// when the cursor has no selected session.
+			session, _ := m.selectedSession()
+			return m, m.setSessionsPinnedCmd([]string{session.ID}, session.PinnedAt == 0)
 		case "A":
 			// R72 (issue #10), SPEC.md:752: `A` writes NOTHING on the keypress.
 			// It only opens the confirm dialog below, whose Enter then performs
@@ -10002,6 +10080,12 @@ Keys
     act on the whole batch instead of just the selected row, and ONE u
     restores the entire batch in one action; the marks clear on that
     action and on Esc
+  p toggle the pin on the selected session: pinned rows sort first within
+    their own group, above waiting/error, under every sort order, marked
+    with ✦ before the name; p again unpins it, no dialog and no confirm;
+    with the mark set non-empty, p acts on the whole set instead of just
+    the selected row -- unpinning it when every marked row is already
+    pinned, pinning it otherwise -- and does not clear the marks
   r resume the selected stopped session with its own agent argv (never
     --continue or "most recent"); resumed agents read "starting · awaiting
     signal" until a hook or sampled probe reports ready, while live shells

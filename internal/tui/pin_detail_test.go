@@ -2,7 +2,6 @@ package tui
 
 import (
 	"context"
-	"reflect"
 	"strings"
 	"testing"
 
@@ -16,13 +15,21 @@ import (
 // inside the `i` detail dialog, exactly like rename.go's "r"/"l"/"g"/"P"
 // before it (task007's own profile_switch_detail_test.go is the direct
 // template for this file).
+//
+// task 010 (SPEC §11's pin rule, R159) later rebinds a bare top-level `p`
+// to a completely different action -- the sidebar pin toggle -- so the
+// test below no longer asserts that `p` is a pure no-op (it now dispatches
+// a tea.Cmd and, once that Cmd runs, mutates pinned_at); it keeps proving
+// only what is still true: `p` never resurrects the OLD lock chooser task
+// 008 moved to `i` then `c`. The pin toggle itself is proved separately
+// (sidebar_pin_test.go's TestPTogglesPin/TestPMarkedSetMixedPinsAllThenUnpinsAll).
 
-// TestTopLevelPNoLongerOpensLockChooser proves a bare top-level "p" (the
-// cursor resting on a session row, m.detail false) opens nothing and
-// mutates nothing -- there is no case "p" left anywhere in Model.Update's
-// main list-mode switch (only rename.go's own case "c", reachable only
-// once m.detail is already true).
-func TestTopLevelPNoLongerOpensLockChooser(t *testing.T) {
+// TestTopLevelPDoesNotOpenTheLockChooser proves a bare top-level "p" (the
+// cursor resting on a session row, m.detail false) never opens the
+// conversation lock chooser or the detail dialog, and never invokes
+// resumeMode -- whatever else task 010's own pin toggle does with the
+// keypress.
+func TestTopLevelPDoesNotOpenTheLockChooser(t *testing.T) {
 	var called bool
 	model := NewWithShellCreatorAttacherKillerResumerProfileSwitcherAndResumeModer(
 		nil, config.Settings{}, "", nil, nil, nil, nil, nil, nil,
@@ -33,24 +40,17 @@ func TestTopLevelPNoLongerOpensLockChooser(t *testing.T) {
 	)
 	model.sessions = []store.Session{{ID: "s1", Name: "alpha", Agent: "claude", Status: "running", ConversationID: "conv-1", ResumeState: "auto"}}
 	model.selected = rowCursor(0)
-	before := modelSnapshotForEquality(model)
 
-	got, cmd := model.Update(key("p"))
+	got, _ := model.Update(key("p"))
 	after, ok := got.(Model)
 	if !ok {
 		t.Fatalf("Update(p) returned %T, not tui.Model", got)
-	}
-	if cmd != nil {
-		t.Fatal("a top-level p dispatched a tea.Cmd; it must be a pure no-op")
 	}
 	if after.pinning {
 		t.Fatal("a top-level p opened the lock chooser")
 	}
 	if after.detail {
 		t.Fatal("a top-level p opened the detail dialog")
-	}
-	if got := modelSnapshotForEquality(after); !reflect.DeepEqual(got, before) {
-		t.Fatalf("a top-level p mutated the model: %s", strings.Join(differingModelFields(before, got), "; "))
 	}
 	if called {
 		t.Fatal("a top-level p invoked resumeMode")
