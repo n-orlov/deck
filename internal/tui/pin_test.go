@@ -113,7 +113,7 @@ func TestPinDialogEscCancelsWithoutPersisting(t *testing.T) {
 }
 
 // TestPinDialogNotOfferedForShell proves `c` refuses to open the dialog
-// for a shell session, which has no conversation id to pin or restart
+// for a shell session, which has no conversation id to lock or restart
 // fresh, staying on the detail view underneath it (canPinResume's
 // refusal message) rather than closing anything.
 func TestPinDialogNotOfferedForShell(t *testing.T) {

@@ -59,7 +59,7 @@ func TestEmptyAndHelpViewsAreDiscoverable(t *testing.T) {
 		"r resume", "resumed agents", "starting · awaiting", "live shells", "become \"running\"", "starting elsewhere",
 		"P switch the permission profile", "restart to apply", "live pane",
 		"R restart the selected non-stopped session", "same resume argv and conversation id",
-		"c inside detail pins", "one-shot fresh conversation", "auto-resume",
+		"c inside detail changes the resume mode to lock onto", "one-shot fresh conversation", "auto-resume",
 		"Permission profile", "Pre-launch command", "loading secrets",
 		"Login shell", "Launch args", "allow_yolo",
 		"waiting column goes quiet", "questions/needs-input",

@@ -171,7 +171,7 @@ func (m Model) updateDetailView(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		if !m.canPinResume(session) {
-			m.attachError = "Cannot change resume mode: " + session.Agent + " has no conversation id to pin or restart fresh"
+			m.attachError = "Cannot change resume mode: " + session.Agent + " has no conversation id to lock or restart fresh"
 			return m, nil
 		}
 		m.pinning = true
