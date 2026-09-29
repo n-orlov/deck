@@ -45,10 +45,17 @@ package tui
 // only opens the picker from inside the `i` detail dialog, rename.go's
 // own case "P", which never routes through this guard at all: see that
 // case's own doc comment for why it needs no synthetic "detail:P" entry
-// either). "p" (top-level resume-mode pin) is unrelated and stays.
+// either).
+//
+// task 008: "p" was removed from this map the same way -- it used to sit
+// here for the top-level resume-mode lock chooser, which no longer exists
+// either: the chooser now opens only from inside the `i` detail dialog
+// under "c" (rename.go's own case "c"), which never routes through this
+// guard at all for the same reason "P" does not (see that case's own doc
+// comment).
 var sessionScopedKeys = map[string]bool{
 	"enter": true, "a": true, "x": true, "d": true, "r": true, "R": true,
-	"i": true, "e": true, "p": true, "Y": true, "m": true,
+	"i": true, "e": true, "Y": true, "m": true,
 	"A": true, "U": true, "s": true, "z": true, "l": true, "F": true,
 	"detail:g": true,
 }

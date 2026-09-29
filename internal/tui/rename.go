@@ -149,6 +149,37 @@ func (m Model) updateDetailView(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.profileSwitching = true
 		m.profileSwitchValue = session.PermissionProfile
 		m.profileSwitchNote = ""
+	case "c":
+		// Task 008 (SPEC §8/§9.3): the conversation lock chooser (formerly
+		// the top-level `p` pin/start-fresh dialog), reachable ONLY from
+		// inside `i` detail as of this task, exactly like "P" above --
+		// there is no top-level "c" case for this anymore either (the
+		// top-level `c` in Model.Update's main switch is the unrelated
+		// group-header collapse toggle, task 119/014; the two never
+		// collide because m.detail's own dispatch in Update returns
+		// through updateDetailView -- this case -- before that switch is
+		// ever reached, exactly the same guarantee "g"/"detail:g" already
+		// rely on above). Same defensive belt-and-ok-check reasoning as
+		// "P": updateDetailView is only ever reached with a session
+		// already selected, so this ok check is never actually refused in
+		// practice.
+		session, ok := m.selectedSession()
+		if !ok {
+			return m, nil
+		}
+		if m.resumeMode == nil {
+			return m, nil
+		}
+		if !m.canPinResume(session) {
+			m.attachError = "Cannot change resume mode: " + session.Agent + " has no conversation id to pin or restart fresh"
+			return m, nil
+		}
+		m.pinning = true
+		m.pinValue = session.ResumeState
+		if m.pinValue == "" {
+			m.pinValue = "auto"
+		}
+		m.pinNote = ""
 	case "pgup":
 		// Task 078 (requirement 39 residual): the whole dialog scrolls
 		// uniformly via detailBody's own content, never a per-field bound.
