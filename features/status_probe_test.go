@@ -292,7 +292,7 @@ func frameSessionRowShows(frame, rowName, want string, knownNames []string) bool
 			continue
 		}
 		text := strings.TrimLeft(cell, " ")
-		text = strings.TrimPrefix(text, "> ")
+		text = stripSidebarRowLead(strings.TrimPrefix(text, "> "))
 		badges, ok := sidebarRowBadges(text, rowName)
 		if !ok {
 			continue
@@ -313,6 +313,52 @@ func frameSessionRowShows(frame, rowName, want string, knownNames []string) bool
 			if b == want {
 				return true
 			}
+		}
+	}
+	return false
+}
+
+// sidebarRowLeadGlyphs is every status glyph sidebarRowLines
+// (internal/tui/tui.go, sidebarStatusGlyph) leads a session row's line 1
+// with, in both glyph modes: SPEC §11's `●◐○◌■✗` and their DECK_ASCII
+// fallbacks `?~o.#x`.
+var sidebarRowLeadGlyphs = []string{"\u25cf", "\u25d0", "\u25cb", "\u25cc", "\u25a0", "\u2717", "?", "~", "o", ".", "#", "x"}
+
+// stripSidebarRowLead removes a session row's line-1 lead -- SPEC §11's
+// fixed order is gutter, status glyph, pin marker (`✦`, ASCII `*`, pinned
+// rows only), name -- from text whose gutter is already gone, leaving the
+// row's own "<name> <badge run>". Text without a leading status glyph is
+// returned unchanged (line 2, a group header, or a synthetic test frame).
+func stripSidebarRowLead(text string) string {
+	for _, g := range sidebarRowLeadGlyphs {
+		if rest, ok := strings.CutPrefix(text, g+" "); ok {
+			for _, pin := range []string{"\u2726 ", "* "} {
+				if r, ok := strings.CutPrefix(rest, pin); ok {
+					return r
+				}
+			}
+			return rest
+		}
+	}
+	return text
+}
+
+// frameHasSelectedRowNamed reports whether frame's sidebar holds a
+// selected ("> "-gutter) session row whose name starts with name, once
+// its status glyph and pin marker (stripSidebarRowLead) are skipped --
+// the row-lead-aware replacement for a bare "> "+name substring search.
+func frameHasSelectedRowNamed(frame, name string) bool {
+	if name == "" {
+		return false
+	}
+	for _, line := range strings.Split(frame, "\n") {
+		cell, ok := sidebarCell(line)
+		if !ok {
+			continue
+		}
+		rest, selected := strings.CutPrefix(strings.TrimLeft(cell, " "), "> ")
+		if selected && strings.HasPrefix(stripSidebarRowLead(rest), name) {
+			return true
 		}
 	}
 	return false

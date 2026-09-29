@@ -141,14 +141,15 @@ func clientHasSessionSelected(ctx context.Context, clientName, sessionName strin
 	if err != nil {
 		return err
 	}
-	marker := "> " + sessionName
 	// The keypress that moved selection (e.g. `space`) has already been sent
 	// by a prior step, but its render has not necessarily landed in the
 	// emulator grid yet -- poll the same way clientScreenContainsBefore does,
 	// rather than reading the frame exactly once and racing the render.
 	wait, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	if err := client.WaitForFrame(wait, false, marker); err != nil {
+	// frameHasSelectedRowNamed skips the row's status glyph and pin marker
+	// (SPEC §11 line 1: gutter, status glyph, pin marker, name).
+	if _, err := client.WaitForFrameFunc(wait, false, func(frame string) bool { return frameHasSelectedRowNamed(frame, sessionName) }); err != nil {
 		return fmt.Errorf("deck client %q does not have session %q selected: %w", clientName, sessionName, err)
 	}
 	return nil

@@ -86,10 +86,10 @@ Feature: Every pane carries its own session's DECK_SESSION_* context (R104, SPEC
     Given a fake "claude" binary is on PATH for future deck clients
     And the deck config runs global pre_launch command "echo global-prelaunch-failure-marker >&2; exit 9"
     And deck client "A" is started
-    When deck client "A" creates claude session "failing global hook target" with permission profile "safe"
+    When deck client "A" creates claude session "global hook target" with permission profile "safe"
     Then within one configured reconcile interval deck client "A" screen contains "error"
-    And the state database session "failing global hook target" has an event of kind "tmux.pane_dead" with reason containing "exited with status 9"
-    When deck client "A" opens detail for session "failing global hook target"
+    And the state database session "global hook target" has an event of kind "tmux.pane_dead" with reason containing "exited with status 9"
+    When deck client "A" opens detail for session "global hook target"
     Then deck client "A" screen contains "global-prelaunch-failure-marker"
     # The fake claude fixture's first line of output is its own banner, so
     # the same retained-pane tail that shows the hook's stderr proves the

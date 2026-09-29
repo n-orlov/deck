@@ -33,22 +33,22 @@ Feature: post_destroy teardown hooks fire on A/dd, never on x, exactly once
     # editor's one-line hook field and the undo toast must render unwrapped
     # for a literal-substring frame wait to see them.
     Given deck client "A" is started with terminal size 100x40
-    And deck client "A" creates shell session "teardown-archive-undo"
-    When deck client "A" opens the launch inputs editor for session "teardown-archive-undo"
+    And deck client "A" creates shell session "td-archive-undo"
+    When deck client "A" opens the launch inputs editor for session "td-archive-undo"
     And deck client "A" types "echo $DECK_SESSION_NAME >> $DECK_HOME/pd.txt" into the post-destroy field
     And deck client "A" submits the launch inputs editor
     And deck client "A" closes detail
-    When deck client "A" presses A on its selected session "teardown-archive-undo"
+    When deck client "A" presses A on its selected session "td-archive-undo"
     And deck client "A" submits the open dialog
-    Then the state database session "teardown-archive-undo" is archived
+    Then the state database session "td-archive-undo" is archived
     And deck client "A" screen contains "Killed and archived"
-    And the teardown hook artefact file contains exactly one line "teardown-archive-undo"
-    When deck client "A" undoes the archive with u for "teardown-archive-undo"
+    And the teardown hook artefact file contains exactly one line "td-archive-undo"
+    When deck client "A" undoes the archive with u for "td-archive-undo"
     Then deck client "A" screen contains "the next r rebuilds"
-    And deck client "A" screen contains "teardown-archive-undo stopped"
-    And the state database session "teardown-archive-undo" is not archived
-    And the state database session "teardown-archive-undo" is "stopped" from "user" with killed_by_user=1
-    And the teardown hook artefact file contains exactly one line "teardown-archive-undo"
+    And deck client "A" screen contains "td-archive-undo stopped"
+    And the state database session "td-archive-undo" is not archived
+    And the state database session "td-archive-undo" is "stopped" from "user" with killed_by_user=1
+    And the teardown hook artefact file contains exactly one line "td-archive-undo"
     When deck client "A" exits cleanly
 
   Scenario: a failing teardown hook never blocks dd, and its failure lands durably in the event log
@@ -84,7 +84,7 @@ Feature: post_destroy teardown hooks fire on A/dd, never on x, exactly once
     Then deck client "A" screen contains "td-bulk-one running"
     And deck client "A" row "td-bulk-one" is marked
     When deck client "A" sends "j"
-    Then deck client "A" screen contains "> td-bulk-two running"
+    Then deck client "A" screen contains "> ~ td-bulk-two running"
     When deck client "A" sends "m"
     Then deck client "A" screen contains "td-bulk-one running"
     And deck client "A" row "td-bulk-one" is marked

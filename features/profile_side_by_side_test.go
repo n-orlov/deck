@@ -215,7 +215,7 @@ func sidebarSessionRowCounts(frame, name string) (rows, groupTotal, headers int,
 			groupTotal += n
 			continue
 		}
-		entry := strings.TrimPrefix(text, "> ")
+		entry := stripSidebarRowLead(strings.TrimPrefix(text, "> "))
 		if entry == name || strings.HasPrefix(entry, name+" ") {
 			rows++
 		}

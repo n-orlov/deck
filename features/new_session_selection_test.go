@@ -3,7 +3,6 @@ package features
 import (
 	"context"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/cucumber/godog"
@@ -45,9 +44,8 @@ func clientStillHasSessionSelectedAfterReconcileInterval(ctx context.Context, cl
 	if err != nil {
 		return err
 	}
-	marker := "> " + sessionName
 	frame := client.Frame(false)
-	if !strings.Contains(frame, marker) {
+	if !frameHasSelectedRowNamed(frame, sessionName) {
 		return fmt.Errorf("deck client %q does not have session %q selected after a reconcile interval:\n%s", clientName, sessionName, frame)
 	}
 	return nil
