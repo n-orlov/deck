@@ -45,6 +45,48 @@ func TestLockChooserWording(t *testing.T) {
 		assertLockWording(t, "the lock chooser's title", title)
 	})
 
+	// SPEC §9.1: the stored value keeps its historical name "pinned", but
+	// the UI calls this a lock and never a pin. The chooser's whole body --
+	// Current:, New:, the cycle list and the explanatory sentence, plain
+	// and styled -- must therefore show the lock mode as "locked" and carry
+	// no "pin" at all, whatever the stored or candidate value is. The
+	// submitted value stays "pinned" (TestDetailCLocksConversation).
+	t.Run("chooser body", func(t *testing.T) {
+		for _, stored := range []string{"auto", "pinned", "fresh-once"} {
+			for _, candidate := range resumeModeOptions {
+				model := NewWithShellCreatorAttacherKillerResumerProfileSwitcherAndResumeModer(
+					nil, config.Settings{}, "", nil, nil, nil, nil, nil, nil,
+					func(ctx context.Context, id, mode string) (store.Session, error) {
+						return store.Session{}, nil
+					},
+				)
+				model.sessions = []store.Session{{ID: "s1", Name: "alpha", Agent: "claude", Status: "running", ConversationID: "conv-1", ResumeState: stored, ResumePin: "conv-1"}}
+				model.selected = rowCursor(0)
+				model.pinning = true
+				model.pinValue = candidate
+
+				for _, body := range []struct{ name, text string }{
+					{"plain", model.pinBody()},
+					{"styled", stripANSI(model.styledPinBody())},
+					{"rendered view", stripANSI(model.pinView())},
+				} {
+					if strings.Contains(strings.ToLower(body.text), "pin") {
+						t.Fatalf("stored=%s candidate=%s: %s chooser body still says \"pin\":\n%s", stored, candidate, body.name, body.text)
+					}
+					if !strings.Contains(body.text, "locked") {
+						t.Fatalf("stored=%s candidate=%s: %s chooser body never names the lock mode \"locked\":\n%s", stored, candidate, body.name, body.text)
+					}
+				}
+				if stored == "pinned" && !strings.Contains(model.pinBody(), "Current:   locked") {
+					t.Fatalf("a locked session's Current: row does not read locked:\n%s", model.pinBody())
+				}
+				if candidate == "pinned" && !strings.Contains(model.pinBody(), "New:       locked (left/right cycles") {
+					t.Fatalf("the lock candidate's New: row does not read locked:\n%s", model.pinBody())
+				}
+			}
+		}
+	})
+
 	t.Run("canPinResume refusal message", func(t *testing.T) {
 		model := NewWithShellCreatorAttacherKillerResumerProfileSwitcherAndResumeModer(
 			nil, config.Settings{}, "", nil, nil, nil, nil, nil, nil,

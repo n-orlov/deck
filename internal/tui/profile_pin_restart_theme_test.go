@@ -253,8 +253,8 @@ func TestPinTokensMatchSpec(t *testing.T) {
 		t.Fatalf("title foreground = %q ok=%v, want title token %s", fg, ok, titleHex)
 	}
 
-	dimRow := findRowContaining(t, term, "pinned always resumes")
-	dimCol := findCol(t, term, dimRow, "pinned")
+	dimRow := findRowContaining(t, term, "locked always resumes")
+	dimCol := findCol(t, term, dimRow, "locked")
 	if fg, ok := cellFgHex(t, term, dimCol, dimRow); !ok || fg != dimmedHex {
 		t.Fatalf("explanation foreground = %q ok=%v, want dimmed token %s", fg, ok, dimmedHex)
 	}

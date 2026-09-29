@@ -17,7 +17,7 @@ import (
 // assigned conversation id (e.g. shell) cannot be pinned.
 func (s Service) PinResume(ctx context.Context, sessionID string) (store.Session, error) {
 	if s.Store == nil || s.Clock == nil {
-		return store.Session{}, errors.New("pinning a resume conversation requires a store and clock")
+		return store.Session{}, errors.New("locking a resume conversation requires a store and clock")
 	}
 	if sessionID == "" {
 		return store.Session{}, errors.New("session id is required")
@@ -27,7 +27,7 @@ func (s Service) PinResume(ctx context.Context, sessionID string) (store.Session
 		return store.Session{}, fmt.Errorf("get session %q: %w", sessionID, err)
 	}
 	if session.ConversationID == "" {
-		return store.Session{}, fmt.Errorf("session %q has no conversation id to pin", session.Name)
+		return store.Session{}, fmt.Errorf("session %q has no conversation id to lock", session.Name)
 	}
 	if err := s.Store.SetResumePin(ctx, sessionID, session.ConversationID, "user", s.Clock.Now().UnixMilli()); err != nil {
 		return store.Session{}, err
@@ -39,7 +39,7 @@ func (s Service) PinResume(ctx context.Context, sessionID string) (store.Session
 // resume the session's own last-known conversation, clearing any pin.
 func (s Service) SetResumeAuto(ctx context.Context, sessionID string) (store.Session, error) {
 	if s.Store == nil || s.Clock == nil {
-		return store.Session{}, errors.New("clearing a resume pin requires a store and clock")
+		return store.Session{}, errors.New("clearing a conversation lock requires a store and clock")
 	}
 	if sessionID == "" {
 		return store.Session{}, errors.New("session id is required")
