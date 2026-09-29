@@ -180,6 +180,29 @@ func (m Model) updateDetailView(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.pinValue = "auto"
 		}
 		m.pinNote = ""
+	case "p":
+		// Task 011 (SPEC §11's pin rule, R159's own detail-dialog leg):
+		// the sidebar pin toggle, reachable from inside `i` detail exactly
+		// like "P"/"c" above, in addition to (never instead of) the
+		// top-level `p` binding (tui.go's own case "p", task 010) -- the two
+		// never collide for the same reason "c" and the top-level group
+		// collapse toggle do not: m.detail's own dispatch in Update returns
+		// through updateDetailView before the top-level switch is ever
+		// reached. detailBody's own "Pinned:" field (tui.go) reads
+		// session.PinnedAt straight from m.sessions, so the still-open dialog
+		// reflects the new value the instant the reload this schedules
+		// lands (sessionsPinned's own case in Update, tui.go, never touches
+		// m.detail). Same defensive belt-and-ok-check reasoning as "P"/"c":
+		// updateDetailView is only ever reached with a session already
+		// selected, so this ok check is never actually refused in practice.
+		// Unlike the top-level `p`, there is no marked-set batch here --
+		// detail is single-session scoped, m.marked has nothing to do
+		// with it.
+		session, ok := m.selectedSession()
+		if !ok {
+			return m, nil
+		}
+		return m, m.setSessionsPinnedCmd([]string{session.ID}, session.PinnedAt == 0)
 	case "pgup":
 		// Task 078 (requirement 39 residual): the whole dialog scrolls
 		// uniformly via detailBody's own content, never a per-field bound.
