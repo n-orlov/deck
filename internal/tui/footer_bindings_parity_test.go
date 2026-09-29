@@ -283,17 +283,25 @@ func specFooterFixedSetGlyphs(t *testing.T) []string {
 	return glyphs
 }
 
-// specFooterExcludedGlyphs re-parses SPEC.md \u00a711.3's own naming of the two
-// keys that must stay OUT of the footer -- "the permission switcher `P`,
-// pin `p`" -- rather than copying them into a fixed Go list either.
+// specFooterExcludedGlyphs re-parses SPEC.md \u00a711.3's own naming of the
+// rarely-used per-row actions that must stay OUT of the footer -- "the
+// sidebar pin `p`, and the actions that live inside `i`" -- rather than
+// copying them into a fixed Go list either. Only the sidebar pin `p` names
+// a single excluded key directly in backticks; "the actions that live
+// inside `i`" is a category (the permission profile picker, rename, the
+// launch-inputs editor, the group move, the conversation lock -- all
+// reached through `i`, per SPEC.md's own inventory), not a second glyph to
+// exclude -- `i` itself is legitimately IN footerLegend's fixed set (it is
+// how those actions are reached), so treating it as excluded here would
+// contradict the fixed-set sentence this same file already checks.
 func specFooterExcludedGlyphs(t *testing.T) []string {
 	t.Helper()
 	text := specText(t)
-	m := regexp.MustCompile("permission switcher `([^`]+)`, pin `([^`]+)`").FindStringSubmatch(text)
+	m := regexp.MustCompile("the sidebar pin `([^`]+)`, and the actions that live inside `[^`]+`").FindStringSubmatch(text)
 	if m == nil {
-		t.Fatalf("could not find SPEC.md \u00a711.3's \"permission switcher `P`, pin `p`\" exclusion wording -- extraction is broken, not the source")
+		t.Fatalf("could not find SPEC.md \u00a711.3's \"the sidebar pin `p`, and the actions that live inside `i`\" exclusion wording -- extraction is broken, not the source")
 	}
-	return []string{m[1], m[2]}
+	return []string{m[1]}
 }
 
 // TestFooterFixedSetMatchesSpecAndExcludesRareKeys cross-checks
@@ -301,9 +309,10 @@ func specFooterExcludedGlyphs(t *testing.T) []string {
 // directly, in both directions: every glyph the fixed-set sentence
 // requires is present, and neither glyph the exclusion sentence names is.
 // This is what fails if `,` is deleted from footerLegend (missing from
-// the required side) or if `P` is added back to it (present on the
-// excluded side) -- independently of TestFooterEntryEligibilityMatchesRealPredicate
-// above, which also catches the `P` case a different way.
+// the required side) or if `p` (the sidebar pin) is added back to it
+// (present on the excluded side) -- independently of
+// TestFooterEntryEligibilityMatchesRealPredicate above, which also catches
+// the `P` reappearing-unconditionally case a different way.
 func TestFooterFixedSetMatchesSpecAndExcludesRareKeys(t *testing.T) {
 	entries := parseFooterLegendSource(t)
 	present := map[string]bool{}
