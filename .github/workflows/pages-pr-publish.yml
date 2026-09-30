@@ -109,7 +109,8 @@ jobs:
     environment:
       name: github-pages
       url: >-
-        ${{ steps.deployment3.outputs.page_url ||
+        ${{ steps.deployment4.outputs.page_url ||
+        steps.deployment3.outputs.page_url ||
         steps.deployment2.outputs.page_url ||
         steps.deployment1.outputs.page_url }}
     steps:
@@ -131,22 +132,29 @@ jobs:
         with:
           path: site
 
-      # R166 (GH #50): same three-attempt retry with back-off as ci.yml's
+      # R166 (GH #50): same four-attempt retry with back-off as ci.yml's
       # own `publish` job -- see that job's comment for why `outcome`
       # (never overridden by continue-on-error) is what later attempts and
-      # their preceding back-off steps gate on, and why the final attempt
+      # their preceding back-off steps gate on, why the final attempt
       # omits `continue-on-error` so a persistent failure still fails this
-      # job.
-      - name: Deploy to GitHub Pages (attempt 1 of 3)
+      # job, and (R165, GH #50) why the back-off was widened to also
+      # outlast a "deployment already in progress" refusal from GitHub's
+      # Pages API (https://docs.github.com/en/rest/pages/pages) -- this
+      # job runs in a wholly separate *workflow* from ci.yml's own
+      # `publish`, so ci.yml's `concurrency:` group never serializes
+      # against it, and the two can call actions/deploy-pages
+      # (https://github.com/actions/deploy-pages) against the same
+      # `github-pages` environment at the same moment.
+      - name: Deploy to GitHub Pages (attempt 1 of 4)
         id: deployment1
         uses: actions/deploy-pages@v4
         continue-on-error: true
 
       - name: Back off before retry 2
         if: steps.deployment1.outcome == 'failure'
-        run: sleep 15
+        run: sleep 30
 
-      - name: Deploy to GitHub Pages (attempt 2 of 3)
+      - name: Deploy to GitHub Pages (attempt 2 of 4)
         id: deployment2
         if: steps.deployment1.outcome == 'failure'
         uses: actions/deploy-pages@v4
@@ -154,9 +162,19 @@ jobs:
 
       - name: Back off before retry 3
         if: steps.deployment2.outcome == 'failure'
-        run: sleep 30
+        run: sleep 60
 
-      - name: Deploy to GitHub Pages (attempt 3 of 3)
+      - name: Deploy to GitHub Pages (attempt 3 of 4)
         id: deployment3
         if: steps.deployment2.outcome == 'failure'
+        uses: actions/deploy-pages@v4
+        continue-on-error: true
+
+      - name: Back off before retry 4
+        if: steps.deployment3.outcome == 'failure'
+        run: sleep 120
+
+      - name: Deploy to GitHub Pages (attempt 4 of 4)
+        id: deployment4
+        if: steps.deployment3.outcome == 'failure'
         uses: actions/deploy-pages@v4

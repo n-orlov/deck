@@ -18,10 +18,27 @@ permissions:
   contents: read
 
 concurrency:
-  # PR runs on the same ref cancel a superseded run; a push to main and the
-  # nightly/dispatch lane never cancel each other (they queue instead), so a
-  # red main/nightly run is never silently swallowed by a newer one.
-  group: ci-${{ github.workflow }}-${{ github.ref }}
+  # R165 (GH #50): the group folds in github.event_name, and for `push`
+  # also github.sha, on top of the workflow name -- not just github.ref.
+  # Before this, push/schedule/workflow_dispatch all evaluated to the same
+  # `ci-ci-refs/heads/main` group (every one of those events' own
+  # `github.ref` is the default branch), so a push to main queued strictly
+  # behind whatever nightly/dispatch run happened to be in flight, and a
+  # second push before the first one's run finished queued behind that
+  # run too -- one commit's own CI result could be starved for as long as
+  # the schedule/dispatch lane's own ~180-minute timeout. Folding in
+  # github.event_name makes schedule/workflow_dispatch groups differ from
+  # every push group; folding in github.sha (only for push, where every
+  # event already carries a distinct commit) makes two pushes their own,
+  # independent groups, so pushing again to main never waits behind, or
+  # cancels, an earlier push's own still-running result. See GitHub's own
+  # docs, "Control the concurrency of workflows and jobs"
+  # (https://docs.github.com/en/actions/using-jobs/using-concurrency): the
+  # group expression is what decides queue/cancel/run-side-by-side, not
+  # the event type by itself. PR runs on the same PR ref still cancel a
+  # superseded run (github.ref is the PR's own merge ref, already unique
+  # per PR); cancel-in-progress stays true only for pull_request.
+  group: ci-${{ github.workflow }}-${{ github.event_name }}-${{ github.event_name == 'push' && github.sha || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 # Every self-hosted job below repeats this same job-level `if:` (job-level
@@ -319,7 +336,8 @@ jobs:
     environment:
       name: github-pages
       url: >-
-        ${{ steps.deployment3.outputs.page_url ||
+        ${{ steps.deployment4.outputs.page_url ||
+        steps.deployment3.outputs.page_url ||
         steps.deployment2.outputs.page_url ||
         steps.deployment1.outputs.page_url }}
     steps:
@@ -332,16 +350,41 @@ jobs:
       # the final attempt omits it, so a persistent failure still fails
       # this job. `environment.url` above falls back through whichever
       # attempt actually produced a `page_url` output.
-      - name: Deploy to GitHub Pages (attempt 1 of 3)
+      #
+      # R165 (GH #50): bumped from three attempts/45s of total back-off to
+      # four/210s, and this is also what covers GitHub's "a deployment is
+      # already in progress" refusal specifically, not just a generic
+      # 5xx/timeout. The workflow-level `concurrency:` group above now lets
+      # a push, the nightly schedule and a manual dispatch run side by
+      # side (each its own group), and this job's own sibling in
+      # pages-pr-publish.yml (a *different* workflow, so this workflow's
+      # concurrency group never serializes against it at all) can also be
+      # deploying the same `github-pages` environment at the same moment
+      # -- so two `publish` runs racing a real deploy-pages call is an
+      # expected occasional case now, not a rare fluke. GitHub's own REST
+      # docs for the Pages API (https://docs.github.com/en/rest/pages/pages)
+      # state builds/deployments are "limited to one concurrent build per
+      # repository" and a second request while one is in progress is
+      # queued/rejected rather than accepted; actions/deploy-pages' own
+      # source (https://github.com/actions/deploy-pages, action.yml's
+      # `timeout` input, default 600000ms/10 minutes) bounds how long a
+      # single deployment may stay "in progress" before GitHub itself gives
+      # up on it -- chasing that full worst case here would consume this
+      # job's own 10-minute timeout, so the back-off below is deliberately
+      # bounded well under it while still being long enough that a
+      # same-second collision with another run's own deploy (which in
+      # practice settles in well under a minute for a static Pages site)
+      # clears before this job gives up.
+      - name: Deploy to GitHub Pages (attempt 1 of 4)
         id: deployment1
         uses: actions/deploy-pages@v4
         continue-on-error: true
 
       - name: Back off before retry 2
         if: steps.deployment1.outcome == 'failure'
-        run: sleep 15
+        run: sleep 30
 
-      - name: Deploy to GitHub Pages (attempt 2 of 3)
+      - name: Deploy to GitHub Pages (attempt 2 of 4)
         id: deployment2
         if: steps.deployment1.outcome == 'failure'
         uses: actions/deploy-pages@v4
@@ -349,11 +392,21 @@ jobs:
 
       - name: Back off before retry 3
         if: steps.deployment2.outcome == 'failure'
-        run: sleep 30
+        run: sleep 60
 
-      - name: Deploy to GitHub Pages (attempt 3 of 3)
+      - name: Deploy to GitHub Pages (attempt 3 of 4)
         id: deployment3
         if: steps.deployment2.outcome == 'failure'
+        uses: actions/deploy-pages@v4
+        continue-on-error: true
+
+      - name: Back off before retry 4
+        if: steps.deployment3.outcome == 'failure'
+        run: sleep 120
+
+      - name: Deploy to GitHub Pages (attempt 4 of 4)
+        id: deployment4
+        if: steps.deployment3.outcome == 'failure'
         uses: actions/deploy-pages@v4
 
   # R146: exactly one PR comment carrying the report link, created or
