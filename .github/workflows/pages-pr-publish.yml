@@ -41,6 +41,17 @@ on:
   workflow_run:
     workflows: ["ci"]
     types: [completed]
+    # R163 (GH #50 §Definition of done): a `ci` run whose head branch is
+    # `main` (push, schedule or `workflow_dispatch`) already published
+    # synchronously via ci.yml's own `publish` job in that same run, so a
+    # second `pages-pr-publish` run here would be redundant -- exclude it
+    # at the trigger itself instead of relying only on the in-workflow
+    # `gate` job below. `workflow_run` supports `branches`/`branches-ignore`
+    # on the *triggering* workflow's own head branch, exactly like `push`'s
+    # filters (see GitHub's own docs, "Events that trigger workflows" ->
+    # `workflow_run`, and "Workflow syntax for GitHub Actions" ->
+    # `on.<push|pull_request>.<branches|branches-ignore>`).
+    branches-ignore: [main]
 
 permissions:
   contents: read
