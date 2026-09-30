@@ -111,8 +111,44 @@ func clientScreenContains(ctx context.Context, name, want string) error {
 // contract observable. The deadline is one DECK_RECONCILE_MS cadence plus a
 // bounded allowance for the scheduled tick's tmux/SQLite work and PTY render;
 // unlike the general-purpose timeout, it cannot conceal a missed tick.
+//
+// cure-01-01-2/B4: if the wait times out AND a select-then-send is pending
+// for this exact client (pendingKeySend, recorded by
+// clientPressesResumeOnNamedSession/clientPressesRestartOnNamedSession),
+// this redoes that one select-then-send exactly once and gives the awaited
+// text one more full, identical deadline before finally failing -- B4 found
+// a keystroke that can silently never land at all (a background reload or
+// an earlier not-yet-drained keystroke moving the sidebar's selection off
+// the intended row moments after Send returned with no error), which no
+// amount of extra waiting on the ORIGINAL keystroke could ever fix. Every
+// other caller (nothing pending for this client) is unaffected: the first
+// wait's own error is returned unchanged, on the exact same unweakened
+// deadline as before.
 func clientScreenContainsWithinReconcileInterval(ctx context.Context, name, want string) error {
-	return clientScreenContainsBefore(ctx, name, want, reconcileIntervalPollDeadline(scenarioReconcileInterval, racebuild.Enabled))
+	deadline := reconcileIntervalPollDeadline(scenarioReconcileInterval, racebuild.Enabled)
+	firstErr := clientScreenContainsBefore(ctx, name, want, deadline)
+	if firstErr == nil {
+		return nil
+	}
+	h, err := assertionHarness(ctx)
+	if err != nil {
+		return firstErr
+	}
+	pending, ok := h.takePendingKeySend(name)
+	if !ok {
+		return firstErr
+	}
+	client, err := h.Client(name)
+	if err != nil {
+		return firstErr
+	}
+	if err := selectSessionByNameThenSend(ctx, client, pending.want, pending.key); err != nil {
+		return fmt.Errorf("%w (retry of select-then-send %q on %q also failed: %v)", firstErr, pending.key, pending.want, err)
+	}
+	if err := clientScreenContainsBefore(ctx, name, want, deadline); err != nil {
+		return fmt.Errorf("%w (retried select-then-send %q on %q once, per cure-01-01-2/B4, and still: %v)", firstErr, pending.key, pending.want, err)
+	}
+	return nil
 }
 
 // clientScreenStillContainsAfterReconcileInterval is deliberately not a
