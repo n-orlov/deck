@@ -108,7 +108,10 @@ jobs:
       id-token: write
     environment:
       name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+      url: >-
+        ${{ steps.deployment3.outputs.page_url ||
+        steps.deployment2.outputs.page_url ||
+        steps.deployment1.outputs.page_url }}
     steps:
       # The tree ci.yml's own `report` job already merged this PR's
       # `/pr/<n>/` subtree into and pushed, before this workflow_run even
@@ -128,6 +131,32 @@ jobs:
         with:
           path: site
 
-      - name: Deploy to GitHub Pages
-        id: deployment
+      # R166 (GH #50): same three-attempt retry with back-off as ci.yml's
+      # own `publish` job -- see that job's comment for why `outcome`
+      # (never overridden by continue-on-error) is what later attempts and
+      # their preceding back-off steps gate on, and why the final attempt
+      # omits `continue-on-error` so a persistent failure still fails this
+      # job.
+      - name: Deploy to GitHub Pages (attempt 1 of 3)
+        id: deployment1
+        uses: actions/deploy-pages@v4
+        continue-on-error: true
+
+      - name: Back off before retry 2
+        if: steps.deployment1.outcome == 'failure'
+        run: sleep 15
+
+      - name: Deploy to GitHub Pages (attempt 2 of 3)
+        id: deployment2
+        if: steps.deployment1.outcome == 'failure'
+        uses: actions/deploy-pages@v4
+        continue-on-error: true
+
+      - name: Back off before retry 3
+        if: steps.deployment2.outcome == 'failure'
+        run: sleep 30
+
+      - name: Deploy to GitHub Pages (attempt 3 of 3)
+        id: deployment3
+        if: steps.deployment2.outcome == 'failure'
         uses: actions/deploy-pages@v4
