@@ -110,6 +110,18 @@ type ScenarioHarness struct {
 	// re-reading whatever value happens to be there now.
 	preResumeConversationIDs map[string]string
 
+	// pendingKeySends backs cure-01-01-2's B4 retry (features/assertions_test.go's
+	// clientScreenContainsWithinReconcileInterval): clientPressesResumeOnNamedSession
+	// and clientPressesRestartOnNamedSession record, per client name, the
+	// exact select-then-send they just confirmed landed (navigateToRowByName's
+	// own pre-send check passed), so the very next "within one configured
+	// reconcile interval ... screen contains" step -- the one every
+	// resume/restart scenario chains right after -- can redo that one
+	// select-then-send exactly once if the awaited text never appears,
+	// rather than only ever waiting longer for a keystroke that in fact
+	// never landed at all. See pendingKeySend's own doc comment.
+	pendingKeySends map[string]pendingKeySend
+
 	// previewContentSnapshots backs features/interactive_sidebar_wheel.feature
 	// (task 003, R149): a step captures the preview panel's own rendered
 	// text (previewRegion's slice of the frame, mouse_bindings_test.go) so

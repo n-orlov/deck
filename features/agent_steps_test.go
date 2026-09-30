@@ -846,7 +846,11 @@ func clientPressesResumeOnNamedSession(ctx context.Context, clientName, want str
 	if err != nil {
 		return err
 	}
-	return selectSessionByNameThenSend(ctx, client, want, "r")
+	if err := selectSessionByNameThenSend(ctx, client, want, "r"); err != nil {
+		return err
+	}
+	h.recordPendingKeySend(clientName, want, "r")
+	return nil
 }
 
 // clientPressesRestartOnNamedSession is clientPressesResumeOnNamedSession's
@@ -862,7 +866,11 @@ func clientPressesRestartOnNamedSession(ctx context.Context, clientName, want st
 	if err != nil {
 		return err
 	}
-	return selectSessionByNameThenSend(ctx, client, want, "R")
+	if err := selectSessionByNameThenSend(ctx, client, want, "R"); err != nil {
+		return err
+	}
+	h.recordPendingKeySend(clientName, want, "R")
+	return nil
 }
 
 func sessionIDByName(h *ScenarioHarness, name string) (string, error) {
