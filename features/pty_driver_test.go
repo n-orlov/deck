@@ -791,6 +791,15 @@ func TestWaitForFrameAppliesADefaultDeadlineWhenTheCallersContextHasNone(t *test
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("WaitForFrame error = %v, want it to wrap context.DeadlineExceeded", err)
 	}
+	// DEADLINE, not a race-sensitive budget (R164 audit, artifacts/r164/budget-audit.md):
+	// this bound only proves context.WithTimeout's own timer fired promptly against a
+	// driver whose done/updated channels never close, rather than blocking forever;
+	// firing depends on the Go runtime's timer wheel and one select wakeup, not on any
+	// CPU-bound work inside WaitForFrame that -race's extra instrumentation could slow
+	// down. Measured directly (200ms shrunk deadline, -race build): elapsed overshoots
+	// by under 1ms, ~200x inside the 2x (400ms) bound here -- no observed sensitivity to
+	// -race at all, so this is left as a plain deadline check rather than wired to
+	// racebuild.Enabled.
 	if elapsed >= 2*defaultWaitDeadline {
 		t.Fatalf("WaitForFrame took %s, want it bounded near defaultWaitDeadline (%s)", elapsed, defaultWaitDeadline)
 	}
@@ -813,6 +822,9 @@ func TestWaitForFrameAppliesADefaultDeadlineWhenTheCallersContextHasNone(t *test
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("WaitForFrameGone error = %v, want it to wrap context.DeadlineExceeded", err)
 	}
+	// DEADLINE, not a race-sensitive budget: same reasoning as the WaitForFrame check
+	// above (R164 audit) -- WaitForFrameGone shares withDefaultWaitDeadline's timer-based
+	// bound and the same measured ~200x slack under -race.
 	if elapsed >= 2*defaultWaitDeadline {
 		t.Fatalf("WaitForFrameGone took %s, want it bounded near defaultWaitDeadline (%s)", elapsed, defaultWaitDeadline)
 	}

@@ -384,6 +384,14 @@ func sessionsCreatedWithinTwoSeconds(ctx context.Context, first, second string) 
 	if delta < 0 {
 		delta = -delta
 	}
+	// DEADLINE, not a race-sensitive budget (R164 audit, artifacts/r164/budget-audit.md):
+	// the actual gap between these two sessions' persisted created_at timestamps is
+	// dominated by the scenario's own PTY/tmux keystroke round-trips (the create-modal
+	// flow in agent_steps_test.go), not by CPU-bound work store.CreateSession itself does.
+	// Measured directly against this scenario: ~250ms without -race, ~260ms with -race --
+	// under a 4% difference, leaving ~7.7x slack under the 2000ms bound either way. No
+	// meaningful -race sensitivity observed, so this stays a plain deadline check rather
+	// than wired to racebuild.Enabled.
 	const twoSecondsMillis = 2000
 	if delta > twoSecondsMillis {
 		return fmt.Errorf("sessions %q and %q were created %dms apart (created_at %d, %d), want within %dms", first, second, delta, firstCreatedAt, secondCreatedAt, twoSecondsMillis)
