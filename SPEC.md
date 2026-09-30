@@ -173,7 +173,7 @@ undocumented in the UI, excluded from help, and prefixed `_`:
 
 | verb | invoked by | contract |
 |---|---|---|
-| `deck _hook` | agent hook config | reads one JSON object on stdin, writes one status update + one event, then dispatches or enqueues notifications, then — on the non-session-end path only — runs one bounded liveness pass before exiting, which is what "lazily by `_hook`" in §3 and "the next `_hook` invocation" in §7 mean. It never probes: pane heuristics are the TUI's, and putting them on the agent's critical path would also falsify §10.3's second limitation. **Two separate budgets:** the store write completes in < 20 ms **uncontended** (measured on a monotonic clock, §13.1 — under multi-client write contention SQLite may legally hold a writer up to `busy_timeout`, so the budget assertion belongs in a single-writer scenario, not a `@multiclient` one); notification dispatch is bounded separately by the channel timeout (§10.3) and is skipped entirely on the session-end path. |
+| `deck _hook` | agent hook config | reads one JSON object on stdin, writes one status update + one event, then dispatches or enqueues notifications, then — on the non-session-end path only — runs one bounded liveness pass before exiting, which is what "lazily by `_hook`" in §3 and "the next `_hook` invocation" in §7 mean. It never probes: pane heuristics are the TUI's, and putting them on the agent's critical path would also falsify §10.3's second limitation. **Two separate budgets:** the store write completes in < 20 ms **uncontended** (measured on a monotonic clock, §13.1 — under multi-client write contention SQLite may legally hold a writer up to `busy_timeout`, so the budget assertion belongs in a single-writer scenario, not a `@multiclient` one; it is a budget for a normal build, so a `-race` build, several times slower by design, does not assert it); notification dispatch is bounded separately by the channel timeout (§10.3) and is skipped entirely on the session-end path. |
 | `deck _serve-tmux` | optional systemd unit | starts the `deck` tmux server with the right server options and exits. |
 | `deck _debug ...` | developers | inspection helpers, built only with the `debug` build tag. Not in release binaries. |
 
@@ -2590,6 +2590,13 @@ in the help view.
   tag publishes only for a sha whose suite check is green. Only suite runs triggered by a push
   or a pull request count: nightly (schedule) and manual (`workflow_dispatch`) runs alert but
   never gate a release, so a flaky or `-race` nightly cannot block a sha whose push run passed.
+  **Main's Actions history is a truthful signal:** every run on `main` is green unless the code
+  is broken. Every push to `main` gets its own complete run, never cancelled by a later push; the
+  nightly and manual lane never shares a concurrency group with pushes, so a push cannot cancel
+  it; the PR-preview publisher never starts for a `main` run, so it leaves no skipped run behind;
+  and a wall-clock budget (such as `_hook`'s 20 ms, §3.1) is asserted on normal builds only, never on
+  the `-race` build. A transient failure of the hosted Pages deploy is retried, not reported as
+  red. Only a superseded pull-request run is ever cancelled.
 - **tmux.** A real tmux on a per-scenario socket. Steps may assert tmux facts directly
   (`session exists`, `pane command is …`, `environment contains …`) — that's observable
   outside the app. Two of those facts carry §11's central preview guarantee and are
