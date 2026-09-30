@@ -8537,7 +8537,22 @@ func (m Model) detailBody() string {
 	// LAST non-empty line as "the footer legend") keeps meaning what it
 	// always did.
 	if m.attachError != "" {
-		fmt.Fprintf(&b, "\n%s\n", m.attachError)
+		// R162/SPEC §11.4 (cure-01-01-2): every other in-dialog validation
+		// note (profileSwitchNote, pinNote, renameNote, moveGroupNote, ...)
+		// renders in the error token via each dialog's own colorWhole --
+		// this refusal is no different, it was just plain fmt.Fprintf text
+		// before this task. Pre-wrap with wrapDialogLines (the exact split
+		// framedDialogScrollable itself performs on the finished body) and
+		// colour each already-wrapped physical line individually, so no
+		// colorToken span is ever split mid-escape by a LATER word-wrap
+		// pass over this same text (wrapDialogLines is idempotent on a
+		// line that already fits: stringWidth ignores the SGR bytes, so a
+		// line this loop already sized to fit is passed through unchanged).
+		b.WriteString("\n")
+		for _, l := range m.wrapDialogLines(m.attachError) {
+			b.WriteString(m.colorToken(theme.Error, l))
+			b.WriteString("\n")
+		}
 	}
 	b.WriteString("\n" + m.glyph("header cursor: c folds/unfolds its group · ← folds it · → unfolds it", "header cursor: c folds/unfolds its group - left folds it - right unfolds it") + "\n")
 	b.WriteString(m.glyph("P switches permission profile · c changes resume mode · p toggles pinned · r renames · l edits launch inputs · g moves group · i or Esc closes detail", "P switches permission profile - c changes resume mode - p toggles pinned - r renames - l edits launch inputs - g moves group - i or Esc closes detail") + "\n")

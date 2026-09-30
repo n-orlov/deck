@@ -144,6 +144,14 @@ func (m Model) updateDetailView(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		if !m.canSwitchProfile(session) {
 			m.attachError = "Cannot change permission profile: " + session.Agent + " has no permission profile"
+			// cure-01-01-2 (R161): the refusal must be visible in THIS same
+			// frame even when the detail dialog was already scrolled away
+			// from wherever detailBody appends m.attachError (just above the
+			// footer legend, tui.go's detailBody) -- jumping to the body's
+			// own last page (dialogMaxScroll, the same clamp
+			// framedDialogScrollable applies) always lands on that trailing
+			// segment, whether or not the content ever overflowed at all.
+			m.detailScroll = m.dialogMaxScroll(m.detailBody())
 			return m, nil
 		}
 		m.profileSwitching = true
@@ -172,6 +180,11 @@ func (m Model) updateDetailView(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		if !m.canPinResume(session) {
 			m.attachError = "Cannot change resume mode: " + session.Agent + " has no conversation id to lock or restart fresh"
+			// cure-01-01-2 (R161): same reasoning as canSwitchProfile's
+			// refusal above -- jump to the body's own last page so the
+			// refusal (appended just above the footer legend) is visible
+			// immediately, whatever detailScroll the dialog carried in.
+			m.detailScroll = m.dialogMaxScroll(m.detailBody())
 			return m, nil
 		}
 		m.pinning = true
