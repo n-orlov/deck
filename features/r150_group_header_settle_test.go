@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/x/vt"
+	"github.com/n-orlov/deck/internal/racebuild"
 )
 
 // TestR150RowCallbackIgnoresGroupHeaderText (R150, cure-01-01-3) pins the
@@ -99,7 +100,12 @@ func TestR150LiveGroupedSidebarRowSettleProvesActualStatus(t *testing.T) {
 			t.Error(err)
 		}
 	}()
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	// R164 cure (cure-01-01): under -race, the base and rename_only_control
+	// calls to clientRowContainsWithinReconcile below are each expected to
+	// REJECT, burning the full race-widened reconcileIntervalPollDeadline
+	// (task 016) before returning; widen this outer context to accommodate
+	// both, on top of the unchanged 15s normal-build budget.
+	ctx, cancel := context.WithTimeout(context.Background(), r150LiveOuterDeadline(15*time.Second, 2, racebuild.Enabled))
 	defer cancel()
 	ctx = context.WithValue(ctx, scenarioHarnessKey{}, h)
 	must := func(err error) {
