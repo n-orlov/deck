@@ -325,10 +325,42 @@ jobs:
       id-token: write
     environment:
       name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+      url: >-
+        ${{ steps.deployment3.outputs.page_url ||
+        steps.deployment2.outputs.page_url ||
+        steps.deployment1.outputs.page_url }}
     steps:
-      - name: Deploy to GitHub Pages
-        id: deployment
+      # R166 (GH #50): actions/deploy-pages hits GitHub's Pages API, which
+      # occasionally 5xxs or times out transiently; retry up to three times
+      # with back-off before letting the job go red. Every attempt but the
+      # last carries `continue-on-error: true` so a failed attempt's own
+      # `outcome` (unlike `conclusion`, never overridden by
+      # continue-on-error) is still readable by the next attempt's `if:`;
+      # the final attempt omits it, so a persistent failure still fails
+      # this job. `environment.url` above falls back through whichever
+      # attempt actually produced a `page_url` output.
+      - name: Deploy to GitHub Pages (attempt 1 of 3)
+        id: deployment1
+        uses: actions/deploy-pages@v4
+        continue-on-error: true
+
+      - name: Back off before retry 2
+        if: steps.deployment1.outcome == 'failure'
+        run: sleep 15
+
+      - name: Deploy to GitHub Pages (attempt 2 of 3)
+        id: deployment2
+        if: steps.deployment1.outcome == 'failure'
+        uses: actions/deploy-pages@v4
+        continue-on-error: true
+
+      - name: Back off before retry 3
+        if: steps.deployment2.outcome == 'failure'
+        run: sleep 30
+
+      - name: Deploy to GitHub Pages (attempt 3 of 3)
+        id: deployment3
+        if: steps.deployment2.outcome == 'failure'
         uses: actions/deploy-pages@v4
 
   # R146: exactly one PR comment carrying the report link, created or
