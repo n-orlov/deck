@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/cucumber/godog"
+	"github.com/n-orlov/deck/internal/racebuild"
 )
 
 // registerAgentSessionSteps extends the black-box assertion surface with the
@@ -1187,7 +1188,7 @@ func auditHasLaunchRecordCountForSessionWithinReconcileInterval(ctx context.Cont
 	if err != nil {
 		return err
 	}
-	deadline := time.Now().Add(scenarioReconcileInterval + 250*time.Millisecond)
+	deadline := time.Now().Add(reconcileIntervalPollDeadline(scenarioReconcileInterval, racebuild.Enabled))
 	var lastLen int
 	var lastErr error
 	for {

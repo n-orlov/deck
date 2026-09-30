@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/cucumber/godog"
+	"github.com/n-orlov/deck/internal/racebuild"
 	_ "modernc.org/sqlite"
 )
 
@@ -111,7 +112,7 @@ func clientScreenContains(ctx context.Context, name, want string) error {
 // bounded allowance for the scheduled tick's tmux/SQLite work and PTY render;
 // unlike the general-purpose timeout, it cannot conceal a missed tick.
 func clientScreenContainsWithinReconcileInterval(ctx context.Context, name, want string) error {
-	return clientScreenContainsBefore(ctx, name, want, scenarioReconcileInterval+250*time.Millisecond)
+	return clientScreenContainsBefore(ctx, name, want, reconcileIntervalPollDeadline(scenarioReconcileInterval, racebuild.Enabled))
 }
 
 // clientScreenStillContainsAfterReconcileInterval is deliberately not a
