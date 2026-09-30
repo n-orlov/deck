@@ -24,18 +24,69 @@ described under "Publishing a PR's own report" below.
 
 ## Triggers
 
-- `pull_request` -- every job above still runs, but every self-hosted job
-  carries the fork guard (next section). Runs on the same ref cancel a
-  superseded run (`concurrency.cancel-in-progress` is true only for
-  `pull_request`).
+`ci.yml` itself runs for four events (`on:` in the workflow file); a fifth
+run -- `pages-pr-publish.yml` -- is a *second, separate* workflow reacting to
+a `ci` run's own completion, described in full under "Publishing a PR's own
+report" below.
+
+- `pull_request` -- every `ci.yml` job above still runs, but every
+  self-hosted job carries the fork guard (next section); `publish (Pages)`
+  still never runs (gated to `push`/`schedule`/`workflow_dispatch` only).
+  On completion of this run, `pages-pr-publish.yml` fires (its
+  `on.workflow_run.branches-ignore: [main]` matches, because a
+  `pull_request` run's head branch is the PR's own branch, never `main`) and
+  does the PR's own deploy.
 - `push` to `main` -- lint, suite, Allure report, and a Pages publish. A red
-  run notifies. Never cancelled by another `main`/nightly run (they queue).
+  run notifies. On completion of this run, `pages-pr-publish.yml`'s
+  `workflow_run` trigger does *not* fire a publish run: its
+  `branches-ignore: [main]` filter matches on the *triggering* `ci` run's own
+  head branch, and a `push`-to-`main` run's head branch is `main` -- so a
+  `main` run leaves no `pages-pr-publish` run behind at all (not even a
+  skipped one; the workflow simply never starts), which is exactly what lets
+  `main`'s own Actions history stay a run-for-run record of `ci.yml` alone
+  (SPEC.md §13.2, "Main's Actions history is a truthful signal").
 - `schedule` (cron `"17 3 * * *"`, an arbitrary off-hour UTC slot chosen to
   avoid GitHub's own top-of-hour cron congestion) -- the nightly lane: the
   same suite, plus `-race` and `ci/stability.sh`, plus a Pages publish. A red
-  run notifies.
+  run notifies. Its head branch is also `main`, so it likewise starts no
+  `pages-pr-publish` run.
 - `workflow_dispatch` -- manually triggerable, and takes the same nightly
-  path (`-race` + stability) as `schedule`.
+  path (`-race` + stability) as `schedule`. Also runs with `main` as its head
+  branch, so it too starts no `pages-pr-publish` run.
+
+### Concurrency groups and what actually gets cancelled
+
+`ci.yml`'s workflow-level `concurrency:` block:
+
+```
+group: ci-${{ github.workflow }}-${{ github.event_name }}-${{ github.event_name == 'push' && github.sha || github.ref }}
+cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+```
+
+folds in `github.event_name`, and -- for `push` only -- `github.sha`, on top
+of the workflow name. That makes every event's own group distinct:
+
+- Every `push` run's group is unique to its own commit sha
+  (`ci-ci-push-<sha>`), so two pushes to `main` are always two independent
+  groups: pushing again never queues behind, and never cancels, an earlier
+  push's own still-running result.
+- Every `schedule` run shares one group (`ci-ci-schedule-refs/heads/main`),
+  and every `workflow_dispatch` run shares a separate one of its own
+  (`ci-ci-workflow_dispatch-refs/heads/main`) -- so back-to-back nightly runs
+  queue behind each other, and back-to-back manual dispatches queue behind
+  each other, but neither lane's group is shared with `push`'s, or with the
+  other's.
+- Every `pull_request` run's group is unique to its own PR
+  (`github.ref` is that PR's merge ref), so a second run on the *same* PR
+  shares that PR's group with the first.
+
+`cancel-in-progress` is `true` only when `github.event_name == 'pull_request'`
+-- so a superseded run on the same PR is the only run this workflow ever
+cancels. A `push`, `schedule`, or `workflow_dispatch` run is never cancelled
+by another run of any kind (each queues behind its own lane's prior run, if
+any, and runs to completion); it can still fail outright (a red `suite`, or
+the job's own `timeout-minutes`), which is a different outcome from
+`cancelled`.
 
 ## The fork guard
 
@@ -134,6 +185,18 @@ test that fails twice in a row fails the check.
   live PR preview (and vice versa) unless every deploy's own artifact
   already contains the full merged tree -- which is exactly what the
   `report` job assembles before `publish` ever runs.
+- `report` never pushes to `gh-pages` with a plain, unretried `git push`:
+  the merge-and-push step (`ci.yml`'s "Merge this run's report into the
+  persisted site tree and push it to gh-pages") delegates to
+  `ci/pages-persist.sh <site> <report dir> root|pr <n> [max attempts]`
+  (added for R165, GH #50 -- see that script's own header comment). Two
+  reports can legitimately race the same `gh-pages` tip (a push to `main`
+  and an open PR's own preview, or two PRs), so a non-fast-forward push
+  rejection is an expected occasional outcome, not a defect: the script
+  re-fetches `gh-pages`, re-merges this run's own report on top of the
+  newer tree (via `ci/allure-site.sh`, re-staging the report fresh on every
+  attempt), and retries, up to a bounded number of attempts (default 5),
+  before giving up and failing the step.
 - `report` never holds `pages: write`/`id-token: write`; only `publish`
   does, and `publish` runs on `ubuntu-latest` (no self-hosted slot needed to
   make one API call), gated to non-PR events.
@@ -161,6 +224,15 @@ test that fails twice in a row fails the check.
   same "main only" branch policy for free, and it fires automatically the
   moment the PR's own `ci` run completes: caused by, not unrelated to, that
   run, and requiring no later main push, nightly run or manual dispatch.
+- `pages-pr-publish.yml`'s own `on.workflow_run.branches-ignore: [main]`
+  (R163, GH #50) excludes a `main`-headed `ci` run from ever triggering this
+  workflow at all -- a `push`/`schedule`/`workflow_dispatch` run already
+  published synchronously via `ci.yml`'s own `publish` job in that same run,
+  so a second, redundant `pages-pr-publish` run would otherwise start (and
+  immediately no-op past its own `gate` job's `event == 'pull_request'`
+  check) on every single `main` run; filtering it at the trigger means no
+  such run appears in the Actions history at all, not even a fast
+  skipped/no-op one.
 - Its `gate` job calls the Jobs API for the completed run and only proceeds
   when that run's own `report (Allure)` job succeeded (not the run's overall
   conclusion, which can be `failure` on a red `suite` even though `report`
@@ -171,6 +243,53 @@ test that fails twice in a row fails the check.
   it as a fresh Pages artifact, and deploys it -- never touching the PR's
   own head ref/commit, so it carries none of the fork-PR code-execution risk
   the self-hosted fork guard above exists to keep off a fork's head.
+- Both this job's own `actions/deploy-pages` call and `ci.yml`'s own
+  `publish` job's call retry the same way (R166, widened for R165, GH #50):
+  up to **four** attempts, with back-off sleeps of 30s/60s/120s (210s of
+  total back-off) between them. Every attempt but the last carries
+  `continue-on-error: true`, so a failed attempt's own `outcome` (unlike
+  `conclusion`, never overridden by `continue-on-error`) stays readable by
+  the next attempt's `if:`; the final attempt omits it, so a persistent
+  failure still fails the job. `environment.url` falls back through
+  whichever attempt actually produced a `page_url` output
+  (`deployment4 || deployment3 || deployment2 || deployment1`). The back-off
+  was widened from three attempts/45s to cover GitHub's Pages API "one
+  concurrent build per repository" limit specifically: since `ci.yml`'s own
+  concurrency groups now let push/schedule/dispatch run side by side (see
+  "Concurrency groups" above), and this workflow's own deploy runs in an
+  entirely separate workflow from `ci.yml`'s (so `ci.yml`'s concurrency
+  group never serializes against it), two `publish`-style jobs calling
+  `actions/deploy-pages` against the same `github-pages` environment at the
+  same moment is an expected occasional case, not a rare fluke.
+
+## Race builds and wall-clock budgets
+
+SPEC.md §3.1 gives `_hook` a wall-clock budget (store write < 20 ms,
+uncontended) that is asserted "for a normal build ... not [on] a `-race`
+build", and §13.2 repeats it as one of the things that keeps a red `main`
+run a true positive: "a wall-clock budget ... is asserted on normal builds
+only, never on the `-race` build". The nightly/`workflow_dispatch` path
+above is the only path that ever runs with `-race` (`DECK_CI_GO_EXTRA_FLAGS`
+is set to `-race` only for `schedule`/`workflow_dispatch`; `ci/suite.sh`
+switches its `-covermode` to `atomic` automatically whenever that variable
+mentions `-race`) -- so any test asserting a wall-clock budget has to know,
+from inside the test binary itself, whether it is presently running under
+`-race`, without CI having to pass it anything extra.
+
+`internal/racebuild` is that signal: a build-tagged package exposing one
+constant, `racebuild.Enabled` -- `false` in `racebuild_norace.go` (build tag
+`!race`), `true` in `racebuild_race.go` (build tag `race`). A budget
+assertion consults it directly (for example, `features/`'s
+`hookStoreDurationBelow` and `sessionsCreatedGapWithinBudget` helpers) and
+skips the wall-clock comparison whenever it is `true`, rather than loosening
+the budget's own numeric threshold -- so the nightly `-race` run, several
+times slower by design, never turns a real budget into a flaky or
+permanently-red assertion, and the assertion still runs at full strength on
+every `push`/`pull_request` run, which never sets `-race`. A *deadline* (a
+test waiting on an external, polled event, e.g. a pty frame or a process
+exit) is a different kind of assertion from a *budget* (a bound on this
+binary's own uncontended work) and is never exempted this way -- only budget
+assertions consult `racebuild.Enabled`.
 
 ## Coverage
 
