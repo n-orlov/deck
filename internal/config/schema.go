@@ -589,6 +589,47 @@ var Schema = []Field{
 		Scope: ScopeGlobal,
 	},
 	{
+		Section: "ui",
+		Key:     "attach_on_new",
+		Kind:    KindToggle,
+		Default: true,
+		Description: "When true, a successful create from the n modal goes on to " +
+			"enter the interactive preview on the new session, exactly as if " +
+			"enter had been pressed on it (SPEC §11, §11.9) -- once its pane is " +
+			"live, within a few preview ticks, and only in the client that " +
+			"created it. Any key or click before then cancels it, and a refused " +
+			"entry shows the same refusal enter would. false only selects the " +
+			"new session. On by default. DECK_ATTACH_ON_NEW overrides the file " +
+			"when set.",
+		// requirement 19: the shellCreated success path (internal/tui) reads
+		// m.settings.AttachOnNew fresh on every create, and
+		// settingsApplyLiveFields copies a saved change into it, so a ctrl+s
+		// here takes effect on the very next create with no restart -- the
+		// same live-read shape ui.preview_fit above has.
+		Scope: ScopeGlobal,
+	},
+	{
+		Section: "ui",
+		Key:     "attach_on_resume",
+		Kind:    KindToggle,
+		Default: false,
+		Description: "When true, a successful r (resume or start a stopped " +
+			"session) or R (restart it, keeping its conversation) goes on to " +
+			"enter the interactive preview on that session, exactly as if enter " +
+			"had been pressed on it (SPEC §9.1, §11.9) -- once its pane is live, " +
+			"within a few preview ticks, and only in the client that pressed the " +
+			"key. Any key or click before then cancels it, and a refused entry " +
+			"shows the same refusal enter would. U (unarchive) never enters. Off " +
+			"by default, so a resume leaves you in the list. " +
+			"DECK_ATTACH_ON_RESUME overrides the file when set.",
+		// requirement 19: the sessionResumed/sessionRestarted success paths
+		// (internal/tui) read m.settings.AttachOnResume fresh on every
+		// resume and restart, and settingsApplyLiveFields copies a saved
+		// change into it -- the same live-read shape ui.attach_on_new above
+		// has.
+		Scope: ScopeGlobal,
+	},
+	{
 		Section: "",
 		Key:     "pre_launch",
 		Kind:    KindString,

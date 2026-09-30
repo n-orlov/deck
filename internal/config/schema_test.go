@@ -10,12 +10,14 @@ import (
 // task 031's interactive_transport, steer 017 item 2's yolo_default,
 // steer 018 item 4/task 215's preview_fit, task 303's [ui] sort_order,
 // steer 3e-001's event_retention_days, task 332, phase3j task 004's
-// pre_launch, phase3j task 012's post_destroy, and phase4c task 001's
-// [ui] default_group_first):
+// pre_launch, phase3j task 012's post_destroy, phase4c task 001's
+// [ui] default_group_first, and GH #52's [ui] attach_on_new and
+// [ui] attach_on_resume):
 // allow_yolo, yolo_default, stale_after, capture_min_interval,
 // interactive_ms, interactive_transport, tmux_mouse, event_retention_days,
 // pre_launch, post_destroy, [ui] theme, [ui] ascii, [ui] mouse,
-// [ui] default_group_first, [ui] preview_fit,
+// [ui] default_group_first, [ui] preview_fit, [ui] attach_on_new,
+// [ui] attach_on_resume,
 // [ui] sort_order, [ui] recent_cwd_limit, and the
 // [env] table. Adding, removing or renaming a key must be a deliberate edit
 // to this test alongside the schema, never a silent drift.
@@ -34,6 +36,8 @@ func TestSchemaPinsKeySet(t *testing.T) {
 		"ui.mouse",
 		"ui.default_group_first",
 		"ui.preview_fit",
+		"ui.attach_on_new",
+		"ui.attach_on_resume",
 		"ui.preview_paint",
 		"ui.sort_order",
 		"ui.recent_cwd_limit",
@@ -179,6 +183,8 @@ func TestSchemaScopes(t *testing.T) {
 		"ui.mouse":               ScopeGlobal,
 		"ui.default_group_first": ScopeGlobal,
 		"ui.preview_fit":         ScopeGlobal,
+		"ui.attach_on_new":       ScopeGlobal,
+		"ui.attach_on_resume":    ScopeGlobal,
 		"ui.preview_paint":       ScopeGlobal,
 		"ui.sort_order":          ScopeGlobal,
 		"ui.recent_cwd_limit":    ScopeRestartToApply,

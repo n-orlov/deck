@@ -244,6 +244,10 @@ func serializeFieldValue(field Field, cfg FileConfig) string {
 		return strconv.FormatBool(cfg.DefaultGroupFirst)
 	case "ui.preview_fit":
 		return strconv.FormatBool(cfg.PreviewFit)
+	case "ui.attach_on_new":
+		return strconv.FormatBool(cfg.AttachOnNew)
+	case "ui.attach_on_resume":
+		return strconv.FormatBool(cfg.AttachOnResume)
 	case "ui.sort_order":
 		return strconv.Quote(cfg.SortOrder)
 	case "ui.preview_paint":

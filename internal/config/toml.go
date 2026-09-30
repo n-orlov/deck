@@ -30,6 +30,8 @@ type FileConfig struct {
 	Mouse                bool
 	DefaultGroupFirst    bool
 	PreviewFit           bool
+	AttachOnNew          bool
+	AttachOnResume       bool
 	PreviewPaint         string
 	SortOrder            string
 	RecentCwdLimit       int
@@ -153,6 +155,10 @@ func defaultFileConfig() FileConfig {
 			cfg.DefaultGroupFirst, _ = field.Default.(bool)
 		case "ui.preview_fit":
 			cfg.PreviewFit, _ = field.Default.(bool)
+		case "ui.attach_on_new":
+			cfg.AttachOnNew, _ = field.Default.(bool)
+		case "ui.attach_on_resume":
+			cfg.AttachOnResume, _ = field.Default.(bool)
 		case "ui.preview_paint":
 			cfg.PreviewPaint, _ = field.Default.(string)
 		case "ui.sort_order":
@@ -201,6 +207,10 @@ func setField(cfg *FileConfig, field Field, raw, path string, line int) error {
 			cfg.DefaultGroupFirst = value
 		case "ui.preview_fit":
 			cfg.PreviewFit = value
+		case "ui.attach_on_new":
+			cfg.AttachOnNew = value
+		case "ui.attach_on_resume":
+			cfg.AttachOnResume = value
 		}
 	case KindInteger:
 		value, err := parseIntegerValue(field, raw)
