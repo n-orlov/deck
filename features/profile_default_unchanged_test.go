@@ -60,10 +60,11 @@ func defaultInstallStateRoot(home string) string {
 // resolvePaths falls all the way through to $HOME's own defaults, and
 // DECK_TMUX_SOCKET is cleared too so config.go's own DefaultSocket ("deck")
 // applies for real -- this task's own "the session lives on socket deck"
-// criterion. The socket is an ephemeral, sibling-container-local tmux
-// server (see StartNamedClientForNewProfile's own doc comment for why this
-// is never the operator's own machine), registered once in h.extraSockets
-// so Close kills and probes it exactly like every other socket this
+// criterion. deck never reaches an operator "deck" server, though: the
+// socket-alias fixture tmux (socket_alias_test.go, task cure-01-01, R158)
+// records the "deck" deck asked for and moves it onto a private
+// per-scenario socket, registered once in h.extraSockets so Close kills
+// and probes it exactly like every other socket this
 // harness owns. A prior client already registered under name (e.g. this
 // same scenario's own earlier "having already created" seed run, already
 // exited by the time this is called again) is torn down and its map entry
@@ -85,15 +86,14 @@ func startDefaultInstallClient(ctx context.Context, h *ScenarioHarness, name str
 		}
 		delete(h.namedClients, name)
 	}
-	registered := false
-	for _, socket := range h.extraSockets {
-		if socket == "deck" {
-			registered = true
-			break
-		}
-	}
-	if !registered {
-		h.extraSockets = append(h.extraSockets, "deck")
+	// deck's own DefaultSocket ("deck") is still what it derives; the
+	// socket-alias fixture tmux records that and moves the server onto a
+	// private socket, since ci/tmux-guard.sh refuses the operator's "deck"
+	// server outright (task cure-01-01, R158; see socket_alias_test.go).
+	h.registerSocketAlias("deck")
+	aliasPATH, err := h.socketAliasPATHEnv()
+	if err != nil {
+		return err
 	}
 	// DECK_ASCII= clears h.Environment's own DECK_ASCII=1 default (exec
 	// keeps the last duplicate key, and config's getenv treats an empty
@@ -104,13 +104,7 @@ func startDefaultInstallClient(ctx context.Context, h *ScenarioHarness, name str
 	client, err := h.StartNamedClient(ctx, name,
 		"DECK_HOME=", "HOME="+h.defaultInstallHome,
 		"XDG_CONFIG_HOME=", "XDG_DATA_HOME=", "XDG_STATE_HOME=",
-		"DECK_TMUX_SOCKET=", "DECK_ASCII=",
-		// task cure-01-01 (R158)'s narrow, auditable exemption from
-		// ci/tmux-guard.sh's blanket refusal of "-L deck"/"-L deck-*":
-		// this scenario's whole point is proving the plain default
-		// install's socket is literally "deck" for real, always against
-		// a throwaway sibling-container server, never the operator's.
-		"DECK_TEST_ALLOW_NAMESPACED_SOCKET=1")
+		"DECK_TMUX_SOCKET=", "DECK_ASCII=", aliasPATH)
 	if err != nil {
 		return err
 	}
@@ -252,17 +246,18 @@ func defaultInstallSessionIsLiveOnSocketDeck(ctx context.Context, name string) e
 		return err
 	}
 	target := "deck_" + slug
+	// Derivation half: deck itself asked tmux for exactly "deck".
+	if err := h.requireDeckRequestedSocket("deck"); err != nil {
+		return err
+	}
+	// Liveness half: the session is live on the private server the
+	// socket-alias fixture moved "deck" onto (task cure-01-01, R158).
 	commandCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	// This scenario's whole point is proving the plain default install's
-	// socket is literally "deck" for real, so it needs the same
-	// ci/tmux-guard.sh exemption (task cure-01-01, R158) its client launch
-	// carried.
-	queryCmd := exec.CommandContext(commandCtx, "tmux", "-L", "deck", "has-session", "-t", target)
-	queryCmd.Env = append(os.Environ(), "DECK_TEST_ALLOW_NAMESPACED_SOCKET=1")
+	queryCmd := exec.CommandContext(commandCtx, "tmux", "-L", h.socketAlias("deck"), "has-session", "-t", target)
 	output, err := queryCmd.CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("tmux -L deck has-session -t %s: %w: %s", target, err, strings.TrimSpace(string(output)))
+		return fmt.Errorf("tmux -L %s (alias of deck) has-session -t %s: %w: %s", h.socketAlias("deck"), target, err, strings.TrimSpace(string(output)))
 	}
 	return nil
 }
@@ -343,12 +338,12 @@ func defaultInstallPaneEnvironmentHasConfigValue(ctx context.Context, name, key,
 	target := "deck_" + slug
 	commandCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	// See defaultInstallSessionIsLiveOnSocketDeck: same exemption, same reason.
-	listCmd := exec.CommandContext(commandCtx, "tmux", "-L", "deck", "list-panes", "-t", target, "-F", "#{pane_pid}")
-	listCmd.Env = append(os.Environ(), "DECK_TEST_ALLOW_NAMESPACED_SOCKET=1")
+	// The pane lives on the private server behind deck's derived "deck"
+	// (see defaultInstallSessionIsLiveOnSocketDeck).
+	listCmd := exec.CommandContext(commandCtx, "tmux", "-L", h.socketAlias("deck"), "list-panes", "-t", target, "-F", "#{pane_pid}")
 	output, err := listCmd.CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("tmux -L deck list-panes -t %s: %w: %s", target, err, strings.TrimSpace(string(output)))
+		return fmt.Errorf("tmux -L %s (alias of deck) list-panes -t %s: %w: %s", h.socketAlias("deck"), target, err, strings.TrimSpace(string(output)))
 	}
 	pidText := strings.TrimSpace(string(output))
 	pid, err := strconv.Atoi(pidText)
