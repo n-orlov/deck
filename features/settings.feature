@@ -407,8 +407,12 @@ Feature: The `,` settings takeover (requirement 48)
     # the UI category renders after sort_order and before this synthetic
     # Clear Recent Cwds entry, so it is EIGHT again -- without this eighth
     # "j" the cursor stops on "Default Group First" and enter toggles that
-    # flag instead of clearing the history. Grep this feature file
-    # before adding any future ui.* schema field or settings-only entry.
+    # flag instead of clearing the history. GH #52 then added
+    # `[ui] attach_on_new` and `[ui] attach_on_resume` after
+    # default_group_first, making it TEN. Grep this feature file before
+    # adding any future ui.* schema field or settings-only entry.
+    And deck client "A" sends "j"
+    And deck client "A" sends "j"
     And deck client "A" sends "j"
     And deck client "A" sends "j"
     And deck client "A" sends "j"

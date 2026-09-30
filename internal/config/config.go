@@ -155,6 +155,18 @@ type Settings struct {
 	// selected session's window to the preview panel as the list selection
 	// settles. DECK_PREVIEW_FIT overrides the file when set.
 	PreviewFit bool
+	// AttachOnNew mirrors config.toml's [ui] attach_on_new key (default
+	// true, SPEC §11, GH #52): whether a successful create from the `n`
+	// modal goes on to enter the interactive preview (§11.9) on the new
+	// session in the creating client, rather than only selecting it.
+	// DECK_ATTACH_ON_NEW overrides the file when set, the same shape
+	// PreviewFit has.
+	AttachOnNew bool
+	// AttachOnResume mirrors config.toml's [ui] attach_on_resume key
+	// (default false, SPEC §9.1, GH #52): the same auto-entry, armed by a
+	// successful `r` resume or `R` restart in the client that pressed the
+	// key. DECK_ATTACH_ON_RESUME overrides the file when set.
+	AttachOnResume bool
 	// PreviewPaint mirrors config.toml's [ui] preview_paint key (default
 	// "fit", SPEC §11.3): how much of deck's canvas shows through a
 	// previewed pane's captured output -- "fit" paints deck's pair into
@@ -345,6 +357,24 @@ func LoadFromProfile(getenv func(string) string, userHome func() (string, error)
 		}
 		envOverrides["ui.preview_fit"] = "DECK_PREVIEW_FIT"
 	}
+	attachOnNew := fileCfg.AttachOnNew
+	attachOnNewRaw := getenv("DECK_ATTACH_ON_NEW")
+	if attachOnNewRaw != "" {
+		attachOnNew, err = boolEnv(attachOnNewRaw, attachOnNew, "DECK_ATTACH_ON_NEW")
+		if err != nil {
+			return Settings{}, err
+		}
+		envOverrides["ui.attach_on_new"] = "DECK_ATTACH_ON_NEW"
+	}
+	attachOnResume := fileCfg.AttachOnResume
+	attachOnResumeRaw := getenv("DECK_ATTACH_ON_RESUME")
+	if attachOnResumeRaw != "" {
+		attachOnResume, err = boolEnv(attachOnResumeRaw, attachOnResume, "DECK_ATTACH_ON_RESUME")
+		if err != nil {
+			return Settings{}, err
+		}
+		envOverrides["ui.attach_on_resume"] = "DECK_ATTACH_ON_RESUME"
+	}
 	previewPaint := fileCfg.PreviewPaint
 	if raw := getenv("DECK_PREVIEW_PAINT"); raw != "" {
 		previewPaint, err = previewPaintEnv(raw)
@@ -393,6 +423,8 @@ func LoadFromProfile(getenv func(string) string, userHome func() (string, error)
 		PostDestroy:        fileCfg.PostDestroy,
 		SortOrder:          fileCfg.SortOrder,
 		PreviewFit:         previewFit,
+		AttachOnNew:        attachOnNew,
+		AttachOnResume:     attachOnResume,
 		PreviewPaint:       previewPaint,
 		TmuxMouse:          tmuxMouse,
 		RecentCwdLimit:     fileCfg.RecentCwdLimit,

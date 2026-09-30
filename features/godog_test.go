@@ -162,6 +162,7 @@ func initializeScenario(sc *godog.ScenarioContext) {
 	registerInteractiveSigwinchBudgetSteps(sc)
 	registerInteractiveOptionTableSteps(sc)
 	registerInteractiveFocusSteps(sc)
+	registerAutoEnterSteps(sc)
 	registerInteractiveRefusalsSteps(sc)
 	registerInteractiveScrollSteps(sc)
 	registerInteractiveSelectionSteps(sc)

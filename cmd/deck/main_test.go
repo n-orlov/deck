@@ -265,8 +265,12 @@ func startDeckPTYClient(t *testing.T, binary, home, socket string, reconcile tim
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
 	cmd := exec.CommandContext(ctx, binary)
+	// DECK_ATTACH_ON_NEW=0 (GH #52): these clients create a session with
+	// `n` and then drive the list, which [ui] attach_on_new's default
+	// auto-entry would hand to the new pane instead.
 	cmd.Env = append(os.Environ(), "DECK_HOME="+home, "DECK_TMUX_SOCKET="+socket,
-		"DECK_RECONCILE_MS="+fmt.Sprint(reconcile.Milliseconds()), "NO_COLOR=1", "DECK_ASCII=1", "DECK_ANIM=0", "TERM=xterm-256color", "SHELL=/bin/sh")
+		"DECK_RECONCILE_MS="+fmt.Sprint(reconcile.Milliseconds()), "NO_COLOR=1", "DECK_ASCII=1", "DECK_ANIM=0", "TERM=xterm-256color", "SHELL=/bin/sh",
+		"DECK_ATTACH_ON_NEW=0")
 	terminal, err := pty.StartWithSize(cmd, &pty.Winsize{Rows: 24, Cols: 100})
 	if err != nil {
 		cancel()

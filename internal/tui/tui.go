@@ -407,6 +407,18 @@ type Model struct {
 	// appears at all (session immediately gone), the field is harmlessly
 	// left set forever rather than panicking or forcing a selection.
 	pendingSelectSessionID string
+	// pendingAutoEnterSessionID/pendingAutoEnterTicks are GH #52's
+	// auto-enter intent (SPEC §11's newly-created bullet, §9.1): the id of
+	// a session this client just created from `n` or brought back with
+	// `r`/`R`, which it will enter the interactive preview on once it is
+	// selected and its pane is live, and how many previewTicks that wait
+	// has left. Armed only when [ui] attach_on_new (create) or
+	// [ui] attach_on_resume (resume/restart) is on, cancelled by any key or
+	// mouse report, consumed by the one attempt it makes -- see
+	// auto_enter.go. In-memory on this Model only, so no other client ever
+	// acts on it.
+	pendingAutoEnterSessionID string
+	pendingAutoEnterTicks     int
 	// startCWD is the directory deck itself was started in (os.Getwd() at
 	// New(), best-effort -- "" on error), used to prefill the create
 	// modal's cwd field when §11.7's recent_cwds history is empty.
@@ -1777,6 +1789,12 @@ type sessionResumed struct {
 	session store.Session
 	outcome service.ResumeOutcome
 	err     error
+	// fromResumeKey marks a resume the user asked for with `r` (GH #52,
+	// SPEC §9.1): only that one may arm [ui] attach_on_resume's
+	// auto-enter. `u`'s undo of an `x` reaches the same message and
+	// resumes exactly like `r`, but it is not a resume the user aimed at a
+	// session to work in it, so it leaves this false.
+	fromResumeKey bool
 }
 
 // sessionRestarted carries the result of task 022's `R` restart: a
@@ -2944,6 +2962,10 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		// selection itself is applied once loadSessions' own
 		// sessionsLoaded actually contains it, never here.
 		m.pendingSelectSessionID = msg.session.ID
+		// GH #52: the same create also arms the auto-enter intent
+		// (armAutoEnter, auto_enter.go), keyed by the same id, under
+		// [ui] attach_on_new.
+		m.armAutoEnter(msg.session.ID, m.settings.AttachOnNew)
 		// Task 024 (SPEC.md:1364-1367): a create only ever promotes the
 		// default on SUCCESS, never on submit -- this is the one branch
 		// where that already holds (the err != nil branch above returns
@@ -3410,6 +3432,13 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.session.ID == m.previewFitSessionID {
 			m.previewFitSessionID = ""
 		}
+		// GH #52 (SPEC §9.1): a pane was actually started, so an `r` arms
+		// the auto-enter intent under [ui] attach_on_resume -- the same
+		// intent a create arms (auto_enter.go), waiting for this client's
+		// list to show the row no longer stopped and its pane live.
+		if msg.fromResumeKey {
+			m.armAutoEnter(msg.session.ID, m.settings.AttachOnResume)
+		}
 		return m, m.loadSessions
 	case sessionRestarted:
 		if msg.err != nil {
@@ -3465,6 +3494,11 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.session.ID == m.previewFitSessionID {
 			m.previewFitSessionID = ""
 		}
+		// GH #52 (SPEC §9.1): `R` -- directly or through the shell
+		// restart/inject-instead choice, the only two senders of this
+		// message -- arms the same auto-enter intent `r` does, under the
+		// same [ui] attach_on_resume.
+		m.armAutoEnter(msg.session.ID, m.settings.AttachOnResume)
 		return m, m.loadSessions
 	case envInjected:
 		// Task 023's inject-instead: unlike Restart, nothing was killed or
@@ -3567,6 +3601,14 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		// already honoured end-to-end even though the panel still shows its
 		// pre-capture placeholder.
 		cmds := []tea.Cmd{tea.Tick(m.settings.Preview, func(t time.Time) tea.Msg { return previewTick(t) })}
+		// GH #52: the auto-enter intent spends its tick budget here, first,
+		// so an entry it fires is already in force for the capture and
+		// passive fit below (previewFit stands down while interactive).
+		var enterCmd tea.Cmd
+		m, enterCmd = m.tickAutoEnter()
+		if enterCmd != nil {
+			cmds = append(cmds, enterCmd)
+		}
 		if cmd := m.capturePreview(); cmd != nil {
 			cmds = append(cmds, cmd)
 		}
@@ -3675,13 +3717,18 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		// (never a selection move or a keypress) is the only way liveness for
 		// the refused session is ever re-observed.
 		m.clearEntryRefusalIfPreviewLive(msg.sessionID, msg.err, msg.capture.Live, msg.refusalGeneration)
-		return m, nil
+		// GH #52: a live capture of the selected target is what the
+		// auto-enter intent waits for.
+		return m.captureAutoEnter(msg)
 	case animationTick:
 		if !m.settings.Animation {
 			return m, nil
 		}
 		return m, tea.Tick(m.settings.Preview, func(t time.Time) tea.Msg { return animationTick(t) })
 	case tea.KeyMsg:
+		// GH #52: any key at all cancels a pending auto-enter, before any
+		// layer below gets to act on it (auto_enter.go).
+		m.cancelAutoEnter()
 		if msg.Type == tea.KeyRunes && len(msg.Runes) > 1 && !msg.Paste {
 			// Bubble Tea's own PTY reader coalesces multiple keystrokes that
 			// land in the same read into a single KeyMsg whose Runes holds
@@ -4361,7 +4408,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			sessionID := session.ID
 			return m, func() tea.Msg {
 				resumed, outcome, err := m.resume(context.Background(), sessionID)
-				return sessionResumed{session: resumed, outcome: outcome, err: err}
+				return sessionResumed{session: resumed, outcome: outcome, err: err, fromResumeKey: true}
 			}
 		case "R":
 			if m.restart == nil {
@@ -4566,6 +4613,9 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			return m.attachSelected()
 		}
 	case tea.MouseMsg:
+		// GH #52: any mouse report -- a click, a drag, a wheel notch --
+		// cancels a pending auto-enter, exactly as any key does.
+		m.cancelAutoEnter()
 		// [ui] mouse / DECK_MOUSE (requirement 3, 37): bubbletea's own input
 		// reader decodes an SGR/X10 mouse report from raw input bytes
 		// unconditionally, regardless of whether tea.WithMouseCellMotion
@@ -10113,7 +10163,11 @@ Keys
   a attach the selected running session (full-screen, like Ctrl+Q never
     happened -- ↵ enters interactive mode instead)
   Y acknowledge the selected waiting/error session, clear its unseen marker
-  n create a session (shell, or an agent: claude or pi)
+  n create a session (shell, or an agent: claude or pi); once the new
+    session's pane is live, deck enters interactive mode on it exactly
+    as ↵ would, refusals included -- [ui] attach_on_new, on by
+    default; any key or click before then cancels it, and
+    attach_on_new = false only selects the new session
   x kill the selected running session; a toast naming undo stays visible
     for DECK_UNDO_MS afterward
   u undo the most recent x within its DECK_UNDO_MS window: resumes that
@@ -10158,7 +10212,10 @@ Keys
     --continue or "most recent"); resumed agents read "starting · awaiting
     signal" until a hook or sampled probe reports ready, while live shells
     become "running" on reconciliation; a client that loses the launch-lease
-    race sees "starting elsewhere" instead of an error
+    race sees "starting elsewhere" instead of an error; with
+    [ui] attach_on_resume on (off by default) a successful r, or R below,
+    then enters interactive mode on the session once its pane is live,
+    exactly as n does under attach_on_new
   R restart the selected non-stopped session: kills its live pane if one
     exists and relaunches it with the same resume argv and conversation id
     (never a fresh conversation); this is the only action that applies a

@@ -45,3 +45,23 @@ Feature: Interactive mode's focus indicator is unmistakable, including under NO_
     When deck client "plain" leaves interactive mode
     Then deck client "plain" screen contains "deck - sessions"
     And deck client "plain" exits cleanly
+
+  # GH #52 (SPEC §11's newly-created bullet, §11.9): a create from `n` goes
+  # straight on into the interactive preview on the new session in the
+  # creating client, through `↵`'s own entry, once its pane is live. The
+  # shared harness turns [ui] attach_on_new off for every other scenario,
+  # so this one turns it back on first.
+  @gh-52-attach-on-new
+  Scenario: a create from n enters the interactive preview on the new session, and Ctrl+Q returns to the list with it selected
+    Given every deck client in this scenario enters the interactive preview on create
+    And deck client "born" is started
+    When deck client "born" creates shell session "born-live"
+    Then deck client "born" screen contains "Ctrl+Q to leave"
+    And deck client "born" screen contains "born-live interactive"
+    When deck client "born" types the line "echo typed-$((6*7))-reached" into the interactive preview
+    Then deck client "born" screen contains "typed-42-reached"
+    When deck client "born" leaves interactive mode
+    Then deck client "born" screen contains "deck - sessions"
+    And deck client "born" has session "born-live" selected
+    And deck client "born" screen does not contain "Ctrl+Q to leave"
+    And deck client "born" exits cleanly

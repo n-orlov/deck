@@ -284,6 +284,13 @@ func (h *ScenarioHarness) Environment(extra ...string) []string {
 		"DECK_TMUX_SOCKET=" + h.Socket,
 		"DECK_ASCII=1", "DECK_ANIM=0",
 		"DECK_RECONCILE_MS=" + fmt.Sprintf("%d", scenarioReconcileInterval.Milliseconds()), "DECK_PREVIEW_MS=50",
+		// GH #52: [ui] attach_on_new is on by default, which would carry
+		// every scenario's create straight into interactive mode and hand
+		// its next list key to the new pane. Scenarios are written against
+		// the list, so the shared fixture turns it off; the scenarios that
+		// are about it turn it back on (attachOnNewIsEnabled), and the
+		// later entry wins because exec keeps the last of a duplicated key.
+		"DECK_ATTACH_ON_NEW=0",
 	}
 	// NO_COLOR=1 is the default so every scenario that does not care about
 	// colour keeps seeing plain text, but a requirement-1 scenario that does

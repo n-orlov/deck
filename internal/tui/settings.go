@@ -446,6 +446,18 @@ func (m *Model) settingsApplyLiveFields(previous config.FileConfig) tea.Cmd {
 	if _, overridden := m.settings.EnvOverrides["ui.preview_fit"]; !overridden && m.settingsEdits.PreviewFit != previous.PreviewFit {
 		m.settings.PreviewFit = m.settingsEdits.PreviewFit
 	}
+	// ui.attach_on_new/ui.attach_on_resume (GH #52): the shellCreated and
+	// sessionResumed/sessionRestarted success paths read these members on
+	// every create, resume and restart, so the next one after a save
+	// already follows them. Guarded by EnvOverrides like ui.preview_fit,
+	// whose DECK_PREVIEW_FIT shape DECK_ATTACH_ON_NEW/DECK_ATTACH_ON_RESUME
+	// copy.
+	if _, overridden := m.settings.EnvOverrides["ui.attach_on_new"]; !overridden && m.settingsEdits.AttachOnNew != previous.AttachOnNew {
+		m.settings.AttachOnNew = m.settingsEdits.AttachOnNew
+	}
+	if _, overridden := m.settings.EnvOverrides["ui.attach_on_resume"]; !overridden && m.settingsEdits.AttachOnResume != previous.AttachOnResume {
+		m.settings.AttachOnResume = m.settingsEdits.AttachOnResume
+	}
 	// ui.preview_paint: repaintForeignDefaults reads this member on every
 	// previewed row, so the next preview tick after a save already paints
 	// the new way -- the ScopeGlobal claim its schema entry makes. Guarded
@@ -1340,6 +1352,8 @@ func settingsEditsFromSettings(s config.Settings) config.FileConfig {
 		Mouse:                s.File.Mouse,
 		DefaultGroupFirst:    s.File.DefaultGroupFirst,
 		PreviewFit:           s.File.PreviewFit,
+		AttachOnNew:          s.File.AttachOnNew,
+		AttachOnResume:       s.File.AttachOnResume,
 		PreviewPaint:         s.File.PreviewPaint,
 		SortOrder:            s.File.SortOrder,
 		RecentCwdLimit:       s.File.RecentCwdLimit,
@@ -1387,6 +1401,10 @@ func settingsToggleValue(f config.Field, cfg config.FileConfig) bool {
 		return cfg.DefaultGroupFirst
 	case "ui.preview_fit":
 		return cfg.PreviewFit
+	case "ui.attach_on_new":
+		return cfg.AttachOnNew
+	case "ui.attach_on_resume":
+		return cfg.AttachOnResume
 	default:
 		b, _ := f.Default.(bool)
 		return b
@@ -1409,6 +1427,10 @@ func settingsSetToggle(cfg *config.FileConfig, f config.Field, v bool) {
 		cfg.DefaultGroupFirst = v
 	case "ui.preview_fit":
 		cfg.PreviewFit = v
+	case "ui.attach_on_new":
+		cfg.AttachOnNew = v
+	case "ui.attach_on_resume":
+		cfg.AttachOnResume = v
 	}
 }
 
@@ -1566,6 +1588,10 @@ func settingsFieldRunningValueDisplay(f config.Field, s config.Settings, fallbac
 		return onOff(s.Mouse)
 	case "ui.preview_fit":
 		return onOff(s.PreviewFit)
+	case "ui.attach_on_new":
+		return onOff(s.AttachOnNew)
+	case "ui.attach_on_resume":
+		return onOff(s.AttachOnResume)
 	case "ui.preview_paint":
 		return s.PreviewPaint
 	default:

@@ -726,6 +726,121 @@ func TestConfigFileUIDefaultGroupFirstDefaultsToFalseAndRoundTripsThroughWrite(t
 	}
 }
 
+func TestConfigFileUIAttachOnNewDefaultsToTrueEnvOverridesAndRoundTrips(t *testing.T) {
+	// GH #52 (SPEC §6.5, §11): absent file/key defaults to true.
+	settings, err := LoadFrom(environment(map[string]string{"DECK_HOME": t.TempDir()}), fakeHome)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !settings.AttachOnNew {
+		t.Fatal("AttachOnNew should default to true when config.toml is absent")
+	}
+
+	dir := writeConfigFile(t, "[ui]\nattach_on_new = false\n")
+	settings, err = LoadFrom(environment(map[string]string{"DECK_HOME": dir}), fakeHome)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if settings.AttachOnNew {
+		t.Fatal("[ui] attach_on_new = false should clear Settings.AttachOnNew")
+	}
+	if _, overridden := settings.EnvOverrides["ui.attach_on_new"]; overridden {
+		t.Fatal("ui.attach_on_new reported as env-overridden with no DECK_ATTACH_ON_NEW set")
+	}
+
+	// DECK_ATTACH_ON_NEW outranks the file, the same shape DECK_PREVIEW_FIT
+	// has, and is recorded as an override so settings never writes it back.
+	settings, err = LoadFrom(environment(map[string]string{"DECK_HOME": dir, "DECK_ATTACH_ON_NEW": "1"}), fakeHome)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !settings.AttachOnNew {
+		t.Fatal("DECK_ATTACH_ON_NEW=1 should override [ui] attach_on_new = false")
+	}
+	if settings.File.AttachOnNew {
+		t.Fatal("Settings.File.AttachOnNew should keep the file's own false under an env override")
+	}
+	if got := settings.EnvOverrides["ui.attach_on_new"]; got != "DECK_ATTACH_ON_NEW" {
+		t.Fatalf("EnvOverrides[ui.attach_on_new] = %q, want DECK_ATTACH_ON_NEW", got)
+	}
+	if _, err := LoadFrom(environment(map[string]string{"DECK_HOME": dir, "DECK_ATTACH_ON_NEW": "sometimes"}), fakeHome); err == nil {
+		t.Fatal("DECK_ATTACH_ON_NEW=sometimes was accepted")
+	}
+
+	path := filepath.Join(dir, "config.toml")
+	cfg, err := loadConfigFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.AttachOnNew = true
+	if err := WriteConfigFile(path, cfg); err != nil {
+		t.Fatal(err)
+	}
+	written, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(written), "attach_on_new = true") {
+		t.Fatalf("write did not record attach_on_new = true; got:\n%s", written)
+	}
+	rereadCfg, err := loadConfigFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !rereadCfg.AttachOnNew {
+		t.Fatal("re-reading the written file should yield attach_on_new = true")
+	}
+}
+
+func TestConfigFileUIAttachOnResumeDefaultsToFalseEnvOverridesAndRoundTrips(t *testing.T) {
+	// GH #52 (SPEC §6.5, §9.1): absent file/key defaults to false, so a
+	// resume keeps today's list-only behaviour.
+	settings, err := LoadFrom(environment(map[string]string{"DECK_HOME": t.TempDir()}), fakeHome)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if settings.AttachOnResume {
+		t.Fatal("AttachOnResume should default to false when config.toml is absent")
+	}
+
+	dir := writeConfigFile(t, "[ui]\nattach_on_resume = true\n")
+	settings, err = LoadFrom(environment(map[string]string{"DECK_HOME": dir}), fakeHome)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !settings.AttachOnResume {
+		t.Fatal("[ui] attach_on_resume = true should set Settings.AttachOnResume")
+	}
+
+	settings, err = LoadFrom(environment(map[string]string{"DECK_HOME": dir, "DECK_ATTACH_ON_RESUME": "0"}), fakeHome)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if settings.AttachOnResume || !settings.File.AttachOnResume {
+		t.Fatalf("DECK_ATTACH_ON_RESUME=0 over a true file: resolved %v, file %v, want false and true", settings.AttachOnResume, settings.File.AttachOnResume)
+	}
+	if got := settings.EnvOverrides["ui.attach_on_resume"]; got != "DECK_ATTACH_ON_RESUME" {
+		t.Fatalf("EnvOverrides[ui.attach_on_resume] = %q, want DECK_ATTACH_ON_RESUME", got)
+	}
+
+	path := filepath.Join(dir, "config.toml")
+	cfg, err := loadConfigFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.AttachOnResume = false
+	if err := WriteConfigFile(path, cfg); err != nil {
+		t.Fatal(err)
+	}
+	rereadCfg, err := loadConfigFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rereadCfg.AttachOnResume {
+		t.Fatal("re-reading the written file should yield attach_on_resume = false")
+	}
+}
+
 func TestConfigFileUnknownKeyIsIgnored(t *testing.T) {
 	dir := writeConfigFile(t, "allow_yolo = true\nsome_future_key = \"whatever\"\n\n[ui]\nsome_future_ui_key = 7\n")
 	settings, err := LoadFrom(environment(map[string]string{"DECK_HOME": dir}), fakeHome)
