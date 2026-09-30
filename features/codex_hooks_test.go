@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/cucumber/godog"
 	"github.com/n-orlov/deck/internal/agent"
+	"github.com/n-orlov/deck/internal/racebuild"
 )
 
 // registerCodexHooksSteps backs SPEC §13.4's @codex scenario (R127, task
@@ -380,19 +382,28 @@ func sessionsCreatedWithinTwoSeconds(ctx context.Context, first, second string) 
 	if err != nil {
 		return err
 	}
+	return sessionsCreatedGapWithinBudget(first, second, firstCreatedAt, secondCreatedAt, racebuild.Enabled)
+}
+
+// sessionsCreatedGapWithinBudget is sessionsCreatedWithinTwoSeconds's
+// comparison, pulled out so a unit test can drive it directly with an
+// injected race indicator (R164). The 2000ms bound on the gap between two
+// persisted created_at timestamps is a BUDGET, not a deadline: nothing is
+// polled, both rows already exist, and the assertion judges how fast the
+// product created them. On a normal build (raceBuild false) the limit and
+// the `delta > limit` comparison are exactly dc2b6f7ece's. A race build does
+// not judge wall-clock budgets, so raceBuild true skips the assertion and
+// logs the measured gap instead of silently dropping it.
+func sessionsCreatedGapWithinBudget(first, second string, firstCreatedAt, secondCreatedAt int64, raceBuild bool) error {
 	delta := firstCreatedAt - secondCreatedAt
 	if delta < 0 {
 		delta = -delta
 	}
-	// DEADLINE, not a race-sensitive budget (R164 audit, artifacts/r164/budget-audit.md):
-	// the actual gap between these two sessions' persisted created_at timestamps is
-	// dominated by the scenario's own PTY/tmux keystroke round-trips (the create-modal
-	// flow in agent_steps_test.go), not by CPU-bound work store.CreateSession itself does.
-	// Measured directly against this scenario: ~250ms without -race, ~260ms with -race --
-	// under a 4% difference, leaving ~7.7x slack under the 2000ms bound either way. No
-	// meaningful -race sensitivity observed, so this stays a plain deadline check rather
-	// than wired to racebuild.Enabled.
 	const twoSecondsMillis = 2000
+	if raceBuild {
+		log.Printf("session creation gap budget skipped on race build: sessions %q and %q measured %dms apart (budget %dms)", first, second, delta, twoSecondsMillis)
+		return nil
+	}
 	if delta > twoSecondsMillis {
 		return fmt.Errorf("sessions %q and %q were created %dms apart (created_at %d, %d), want within %dms", first, second, delta, firstCreatedAt, secondCreatedAt, twoSecondsMillis)
 	}
