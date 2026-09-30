@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -12,6 +13,7 @@ import (
 	"time"
 
 	"github.com/cucumber/godog"
+	"github.com/n-orlov/deck/internal/racebuild"
 )
 
 // registerHookContractSteps observes the released _hook command through only
@@ -164,6 +166,24 @@ func hookStoreDurationBelow(ctx context.Context, limit int) error {
 	var duration float64
 	if err := json.Unmarshal(writes[0]["store_duration_ms"], &duration); err != nil {
 		return fmt.Errorf("decode operation-scoped store duration: %w", err)
+	}
+	return hookStoreDurationWithinBudget(duration, limit, racebuild.Enabled)
+}
+
+// hookStoreDurationWithinBudget is hookStoreDurationBelow's comparison,
+// pulled out so a unit test can drive it directly with an injected race
+// indicator instead of only through the full godog scenario. On a normal
+// build (raceBuild false) the limit and the `< limit` comparison are
+// exactly the check this replaced: duration must be within [0, limit). A
+// race build inflates the measured store duration well past any budget
+// that is meaningful on a normal build (mutex + scheduling instrumentation
+// overhead), so raceBuild true skips the budget assertion entirely and
+// instead logs the measured value, keeping the scenario informative rather
+// than silently blind.
+func hookStoreDurationWithinBudget(duration float64, limit int, raceBuild bool) error {
+	if raceBuild {
+		log.Printf("hook store duration budget skipped on race build: measured %.3fms (budget %dms)", duration, limit)
+		return nil
 	}
 	if duration < 0 || duration >= float64(limit) {
 		return fmt.Errorf("operation-scoped hook store duration = %.3fms, want < %dms", duration, limit)
