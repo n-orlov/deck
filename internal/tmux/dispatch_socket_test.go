@@ -29,7 +29,7 @@ import (
 )
 
 func dispatchSocketTestName(name string) string {
-	return fmt.Sprintf("deck-dispatch-socket-%s-%d-%d", name, os.Getpid(), time.Now().UnixNano())
+	return fmt.Sprintf("priv-dispatch-socket-%s-%d-%d", name, os.Getpid(), time.Now().UnixNano())
 }
 
 // killServerOnSocket kills whatever tmux server (if any) is listening on

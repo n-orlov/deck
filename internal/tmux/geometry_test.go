@@ -31,7 +31,7 @@ func newBareGeometrySession(t *testing.T, socket, session string, width, height 
 }
 
 func geometrySocket(name string) string {
-	return fmt.Sprintf("deck-geometry-%s-%d-%d", name, os.Getpid(), time.Now().UnixNano())
+	return fmt.Sprintf("priv-geometry-%s-%d-%d", name, os.Getpid(), time.Now().UnixNano())
 }
 
 func runTmux(t *testing.T, socket string, args ...string) string {

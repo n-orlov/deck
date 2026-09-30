@@ -17,7 +17,7 @@ import (
 // test, the same shape geometrySocket/ownershipSocket already use in their
 // own files.
 func restoreSocket(name string) string {
-	return fmt.Sprintf("deck-restore-%s-%d-%d", name, os.Getpid(), time.Now().UnixNano())
+	return fmt.Sprintf("priv-restore-%s-%d-%d", name, os.Getpid(), time.Now().UnixNano())
 }
 
 // TestRestoreWindowGeometryDetachedResizesThenUnsets proves PRD II-9's

@@ -42,7 +42,7 @@ func TestDiscoverRejectsPre32Tmux(t *testing.T) {
 }
 
 func TestCreateListAndKillRealTmux(t *testing.T) {
-	socket := fmt.Sprintf("deck-lifecycle-%d-%d", os.Getpid(), time.Now().UnixNano())
+	socket := fmt.Sprintf("priv-lifecycle-%d-%d", os.Getpid(), time.Now().UnixNano())
 	client := Client{Socket: socket, Timeout: 3 * time.Second}
 	t.Cleanup(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -103,7 +103,7 @@ func TestCreateListAndKillRealTmux(t *testing.T) {
 }
 
 func TestCapturePaneRealTmuxUsesExplicitRange(t *testing.T) {
-	socket := fmt.Sprintf("deck-capture-%d-%d", os.Getpid(), time.Now().UnixNano())
+	socket := fmt.Sprintf("priv-capture-%d-%d", os.Getpid(), time.Now().UnixNano())
 	client := Client{Socket: socket, Timeout: 3 * time.Second}
 	t.Cleanup(func() { _ = client.command(context.Background(), "kill-server").Run() })
 	created, err := client.Create(context.Background(), Launch{
@@ -154,7 +154,7 @@ func TestCapturePaneRealTmuxUsesExplicitRange(t *testing.T) {
 }
 
 func TestPreviewPaneAndCapturePreviewRealTmux(t *testing.T) {
-	socket := fmt.Sprintf("deck-preview-%d-%d", os.Getpid(), time.Now().UnixNano())
+	socket := fmt.Sprintf("priv-preview-%d-%d", os.Getpid(), time.Now().UnixNano())
 	client := Client{Socket: socket, Timeout: 3 * time.Second}
 	t.Cleanup(func() { _ = client.command(context.Background(), "kill-server").Run() })
 
@@ -208,7 +208,7 @@ func TestPreviewPaneAndCapturePreviewRealTmux(t *testing.T) {
 // with task 022; this proves the tmux primitive itself carries no such
 // side effect.
 func TestCapturePreviewNeverAttachesOrResizes(t *testing.T) {
-	socket := fmt.Sprintf("deck-preview-noattach-%d-%d", os.Getpid(), time.Now().UnixNano())
+	socket := fmt.Sprintf("priv-preview-noattach-%d-%d", os.Getpid(), time.Now().UnixNano())
 	client := Client{Socket: socket, Timeout: 3 * time.Second}
 	t.Cleanup(func() { _ = client.command(context.Background(), "kill-server").Run() })
 
@@ -249,7 +249,7 @@ func TestCapturePreviewNeverAttachesOrResizes(t *testing.T) {
 }
 
 func TestCapturePaneRejectsUnsafeOrImplicitRange(t *testing.T) {
-	client := Client{Socket: "deck-validation"}
+	client := Client{Socket: "priv-validation"}
 	for _, test := range []struct {
 		pane    string
 		options CaptureOptions
@@ -269,7 +269,7 @@ func TestKillStillReportsRealCommandErrors(t *testing.T) {
 	if err := os.WriteFile(binary, []byte("#!/bin/sh\necho 'permission denied' >&2\nexit 1\n"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	err := (Client{Binary: binary, Socket: "deck-errors"}).Kill(context.Background(), "valid_slug")
+	err := (Client{Binary: binary, Socket: "priv-errors"}).Kill(context.Background(), "valid_slug")
 	if err == nil || !strings.Contains(err.Error(), "permission denied") {
 		t.Fatalf("Kill real command error = %v, want permission-denied diagnostic", err)
 	}
@@ -307,7 +307,7 @@ func (b *lockedBuffer) String() string {
 }
 
 func TestAttachThroughPTY(t *testing.T) {
-	socket := fmt.Sprintf("deck-attach-%d-%d", os.Getpid(), time.Now().UnixNano())
+	socket := fmt.Sprintf("priv-attach-%d-%d", os.Getpid(), time.Now().UnixNano())
 	client := Client{Socket: socket, Timeout: 3 * time.Second}
 	t.Cleanup(func() { _ = client.command(context.Background(), "kill-server").Run() })
 	if _, err := client.Create(context.Background(), Launch{
@@ -354,7 +354,7 @@ func TestAttachThroughPTY(t *testing.T) {
 }
 
 func TestLifecycleRejectsUnsafeInput(t *testing.T) {
-	client := Client{Socket: "deck-validation"}
+	client := Client{Socket: "priv-validation"}
 	if _, err := client.Create(context.Background(), Launch{Slug: "bad.name", CWD: "/tmp", Command: []string{"sh"}}); err == nil {
 		t.Fatal("Create accepted a tmux target-syntax slug")
 	}
@@ -364,7 +364,7 @@ func TestLifecycleRejectsUnsafeInput(t *testing.T) {
 }
 
 func TestBootstrapConfiguresOnlyPrivateServer(t *testing.T) {
-	socket := fmt.Sprintf("deck-test-%d-%d", os.Getpid(), time.Now().UnixNano())
+	socket := fmt.Sprintf("priv-test-%d-%d", os.Getpid(), time.Now().UnixNano())
 	client := Client{Socket: socket, Mouse: true}
 	t.Cleanup(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -409,7 +409,7 @@ func TestBootstrapConfiguresOnlyPrivateServer(t *testing.T) {
 // TestBootstrapConfiguresOnlyPrivateServer already pins with Mouse=true --
 // i.e. Client.Mouse gates nothing but the one mouse option.
 func TestBootstrapMouseOffLeavesOtherServerOptionsUnchanged(t *testing.T) {
-	socket := fmt.Sprintf("deck-test-mouseoff-%d-%d", os.Getpid(), time.Now().UnixNano())
+	socket := fmt.Sprintf("priv-test-mouseoff-%d-%d", os.Getpid(), time.Now().UnixNano())
 	client := Client{Socket: socket} // Mouse left at its zero value, false.
 	t.Cleanup(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

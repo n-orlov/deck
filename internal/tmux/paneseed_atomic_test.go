@@ -91,7 +91,7 @@ func TestCapturePaneSeedAtomicMatchesSeparateStateAndBodyReads(t *testing.T) {
 // be a real pane id, since this issues the identical capture-pane call
 // CapturePane does, chained alongside the state reads.
 func TestCapturePaneSeedAtomicRejectsInvalidPaneID(t *testing.T) {
-	client := Client{Socket: "deck-atomic-invalid-target"}
+	client := Client{Socket: "priv-atomic-invalid-target"}
 	if _, _, err := client.CapturePaneSeedAtomic(context.Background(), "s0", SeedCaptureOptions()); err == nil {
 		t.Fatalf("CapturePaneSeedAtomic with a session-name target: want error, got nil")
 	}
@@ -210,7 +210,7 @@ printf '%s\n' "$after"
 // one.
 func TestCapturePaneSeedAtomicRetriesWhileProbesDisagree(t *testing.T) {
 	binary, counterPath := fakeAtomicPaneSeedScript(t, 1)
-	client := Client{Binary: binary, Socket: "deck-atomic-retry", Timeout: 5 * time.Second}
+	client := Client{Binary: binary, Socket: "priv-atomic-retry", Timeout: 5 * time.Second}
 
 	state, body, err := client.CapturePaneSeedAtomic(context.Background(), "%0", SeedCaptureOptions())
 	if err != nil {
@@ -243,7 +243,7 @@ func TestCapturePaneSeedAtomicRetriesWhileProbesDisagree(t *testing.T) {
 // retrying forever.
 func TestCapturePaneSeedAtomicGivesUpAfterMaxAttempts(t *testing.T) {
 	binary, counterPath := fakeAtomicPaneSeedScript(t, maxPaneSeedAtomicAttempts+10)
-	client := Client{Binary: binary, Socket: "deck-atomic-exhausted", Timeout: 5 * time.Second}
+	client := Client{Binary: binary, Socket: "priv-atomic-exhausted", Timeout: 5 * time.Second}
 
 	_, _, err := client.CapturePaneSeedAtomic(context.Background(), "%0", SeedCaptureOptions())
 	if err == nil {
@@ -411,7 +411,7 @@ printf '%s\n' "$after"
 // itself was already committed to before the invocation ran.
 func TestCapturePaneSeedAtomicRetriesWhenOnlyAlternateOnDisagrees(t *testing.T) {
 	binary, counterPath := fakeAlternateOnFlipScript(t, 1, "0", "1")
-	client := Client{Binary: binary, Socket: "deck-atomic-alt-flip", Timeout: 5 * time.Second}
+	client := Client{Binary: binary, Socket: "priv-atomic-alt-flip", Timeout: 5 * time.Second}
 
 	if _, _, err := client.CapturePaneSeedAtomic(context.Background(), "%0", SeedCaptureOptionsWithHistory(2000)); err != nil {
 		t.Fatalf("CapturePaneSeedAtomic: %v", err)
@@ -433,7 +433,7 @@ func TestCapturePaneSeedAtomicRetriesWhenOnlyAlternateOnDisagrees(t *testing.T) 
 // disagreed would look just as green as one that compares correctly.
 func TestCapturePaneSeedAtomicDoesNotRetryWhenAlternateOnAgrees(t *testing.T) {
 	binary, counterPath := fakeAlternateOnFlipScript(t, 0, "1", "0")
-	client := Client{Binary: binary, Socket: "deck-atomic-alt-agree", Timeout: 5 * time.Second}
+	client := Client{Binary: binary, Socket: "priv-atomic-alt-agree", Timeout: 5 * time.Second}
 
 	if _, _, err := client.CapturePaneSeedAtomic(context.Background(), "%0", SeedCaptureOptionsWithHistory(2000)); err != nil {
 		t.Fatalf("CapturePaneSeedAtomic: %v", err)

@@ -37,7 +37,12 @@ func newAgentTestService(t *testing.T, configEnv map[string]string, idSeed strin
 	if err != nil {
 		t.Fatal(err)
 	}
-	socket := "deck-agent-" + strings.ReplaceAll(time.Now().Format("150405.000000000"), ".", "")
+	// Kept outside the deck/deck-* namespace deliberately: SPEC's own
+	// named-profile derivation lives there in production, and a disposable
+	// per-test fixture (bootstrapped and killed on a throwaway
+	// sibling-container tmux server) has no reason to share it, even
+	// though it never touches operator live state (see ci/tmux-guard.sh).
+	socket := "priv_agent_" + strings.ReplaceAll(time.Now().Format("150405.000000000"), ".", "")
 	t.Cleanup(func() { _ = exec.Command("tmux", "-L", socket, "kill-server").Run() })
 	registry := agent.NewRegistry()
 	registry.Register(agent.NewClaude())

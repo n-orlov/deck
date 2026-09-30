@@ -110,7 +110,7 @@ func TestStartupContinuationDrainsTombstoneBacklogThroughProductionWiring(t *tes
 	// empty liveness view (internal/tmux/tmux.go), so ReconcileWithProbes
 	// below needs no live tmux session at all -- every row here is
 	// tombstoned and therefore already excluded from ListSessions.
-	socket := "deck-startup-continuation-" + strconv.Itoa(int(time.Now().UnixNano()))
+	socket := "priv-startup-continuation-" + strconv.Itoa(int(time.Now().UnixNano()))
 	registry := agent.NewRegistry()
 	registry.Register(agent.NewShell())
 	settings := config.Settings{

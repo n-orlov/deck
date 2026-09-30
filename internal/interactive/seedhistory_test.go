@@ -515,7 +515,7 @@ func readRangeLog(t *testing.T, path string) []string {
 // would have nothing to contrast with.
 func TestCaptureSeedWithHistoryDegradesToNoHistoryRatherThanFailing(t *testing.T) {
 	binary, rangeLog := fakeSeedProbeScript(t, true)
-	client := tmux.Client{Binary: binary, Socket: "deck-seed-degrade", Timeout: 5 * time.Second}
+	client := tmux.Client{Binary: binary, Socket: "priv-seed-degrade", Timeout: 5 * time.Second}
 
 	seed, err := CaptureSeedWithHistory(context.Background(), client, "%0", ScrollbackMaxLines)
 	if err != nil {
@@ -626,7 +626,7 @@ printf '%s\n' "$after"
 func TestCaptureSeedWithHistoryDoesNotDegradeAFailureAlreadyAtTheVisibleOnlyRange(t *testing.T) {
 	ctx := context.Background()
 	binary, rangeLog := fakeAlternateScreenRecaptureNeverAgreesScript(t)
-	client := tmux.Client{Socket: "deck-test", Binary: binary}
+	client := tmux.Client{Socket: "priv-test", Binary: binary}
 
 	// One pairing loop's worth of visible-only invocations, measured.
 	if _, _, err := client.CapturePaneSeedAtomic(ctx, "%0", tmux.SeedCaptureOptions()); err == nil {
@@ -685,7 +685,7 @@ func TestCaptureSeedWithHistoryDoesNotDegradeAFailureAlreadyAtTheVisibleOnlyRang
 // a blank interactive preview over a live pane.
 func TestCaptureSeedWithHistoryDoesNotSwallowTheFallbacksOwnFailure(t *testing.T) {
 	binary, rangeLog := fakeSeedProbeScript(t, false)
-	client := tmux.Client{Binary: binary, Socket: "deck-seed-degrade-fail", Timeout: 5 * time.Second}
+	client := tmux.Client{Binary: binary, Socket: "priv-seed-degrade-fail", Timeout: 5 * time.Second}
 
 	seed, err := CaptureSeedWithHistory(context.Background(), client, "%0", ScrollbackMaxLines)
 	if err == nil {
@@ -736,7 +736,7 @@ func TestCaptureSeedWithHistoryAtZeroIsExactlyCaptureSeed(t *testing.T) {
 	// And the failure path: with nothing narrower to fall back to, a
 	// failing capture must be reported once, not attempted twice.
 	binary, rangeLog := fakeSeedProbeScript(t, false)
-	fake := tmux.Client{Binary: binary, Socket: "deck-seed-zero-fail", Timeout: 5 * time.Second}
+	fake := tmux.Client{Binary: binary, Socket: "priv-seed-zero-fail", Timeout: 5 * time.Second}
 	if _, err := CaptureSeedWithHistory(context.Background(), fake, "%0", 0); err == nil {
 		t.Fatalf("CaptureSeedWithHistory(..., 0) against a permanently disagreeing fake tmux: want error, got nil")
 	}
@@ -822,7 +822,7 @@ exec sleep 600
 // send a reader looking for a busy pane that was never there.
 func TestCaptureSeedWithHistoryDoesNotRetryAFailureNoNarrowerRangeCanFix(t *testing.T) {
 	binary, rangeLog := fakeHardFailureTmuxScript(t)
-	client := tmux.Client{Binary: binary, Socket: "deck-seed-hard-failure", Timeout: 5 * time.Second}
+	client := tmux.Client{Binary: binary, Socket: "priv-seed-hard-failure", Timeout: 5 * time.Second}
 
 	seed, err := CaptureSeedWithHistory(context.Background(), client, "%0", ScrollbackMaxLines)
 	if err == nil {
@@ -864,7 +864,7 @@ func TestCaptureSeedWithHistoryDoesNotRetryAFailureNoNarrowerRangeCanFix(t *test
 func TestCaptureSeedWithHistoryDoesNotDoubleTheLatencyOfAHungServer(t *testing.T) {
 	const timeout = 400 * time.Millisecond
 	binary, rangeLog := fakeHangingTmuxScript(t)
-	client := tmux.Client{Binary: binary, Socket: "deck-seed-hung-server", Timeout: timeout}
+	client := tmux.Client{Binary: binary, Socket: "priv-seed-hung-server", Timeout: timeout}
 
 	start := time.Now()
 	if _, err := CaptureSeedWithHistory(context.Background(), client, "%0", ScrollbackMaxLines); err == nil {

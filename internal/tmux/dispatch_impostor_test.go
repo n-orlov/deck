@@ -39,7 +39,7 @@ import (
 )
 
 func dispatchImpostorSocket(name string) string {
-	return fmt.Sprintf("deck-impostor-%s-%d-%d", name, os.Getpid(), time.Now().UnixNano())
+	return fmt.Sprintf("priv-impostor-%s-%d-%d", name, os.Getpid(), time.Now().UnixNano())
 }
 
 // runTmuxRaw runs a bare tmux command against socket and reports its

@@ -128,7 +128,7 @@ func TestForceEntersDespiteAnAttachedClient(t *testing.T) {
 func TestForceStillRefusesAStoppedRow(t *testing.T) {
 	m := New(nil, config.Settings{Color: true}, "")
 	m.width, m.height = 100, 30
-	m.tmuxClient = tmux.Client{Socket: "deck-tui-force-no-server"}
+	m.tmuxClient = tmux.Client{Socket: "priv-tui-force-no-server"}
 	m.sessions = []store.Session{{ID: "sess-force-2", Name: "forcestopped", Slug: "forcestopped", Status: "stopped"}}
 	m.selected = rowCursor(0)
 
@@ -154,7 +154,7 @@ func TestForceStillRefusesBelowTheFloor(t *testing.T) {
 	if _, height := m.previewContentSize(); height >= interactiveMinInnerRows {
 		t.Fatalf("test assumption violated: preview content height %d is not below the %d-row floor", height, interactiveMinInnerRows)
 	}
-	m.tmuxClient = tmux.Client{Socket: "deck-tui-force-no-server"}
+	m.tmuxClient = tmux.Client{Socket: "priv-tui-force-no-server"}
 	m.sessions = []store.Session{{ID: "sess-force-3", Name: "forcefloor", Slug: "forcefloor", Status: "running"}}
 	m.selected = rowCursor(0)
 

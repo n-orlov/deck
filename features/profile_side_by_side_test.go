@@ -62,7 +62,12 @@ func startClientForExistingProfileOnDerivedSocket(ctx context.Context, name, pro
 	}
 	socket := "deck-" + profile
 	h.extraSockets = append(h.extraSockets, socket)
-	client, err := h.StartNamedClient(ctx, name, "DECK_PROFILE="+profile, "DECK_TMUX_SOCKET=", "DECK_ASCII=0")
+	// DECK_TEST_ALLOW_NAMESPACED_SOCKET=1 is task cure-01-01 (R158)'s narrow,
+	// auditable exemption from ci/tmux-guard.sh's blanket refusal of "-L
+	// deck"/"-L deck-*": this scenario's whole point is proving SPEC's own
+	// derivation lands there for real, always against a throwaway
+	// sibling-container server, never the operator's.
+	client, err := h.StartNamedClient(ctx, name, "DECK_PROFILE="+profile, "DECK_TMUX_SOCKET=", "DECK_ASCII=0", "DECK_TEST_ALLOW_NAMESPACED_SOCKET=1")
 	if err != nil {
 		return err
 	}
@@ -96,7 +101,12 @@ func profileSessionIsLiveTMuxSessionOnSocket(ctx context.Context, profile, name,
 	target := "deck_" + slug
 	commandCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	output, err := exec.CommandContext(commandCtx, "tmux", "-L", socket, "has-session", "-t", target).CombinedOutput()
+	// This scenario's whole point is proving SPEC's own "deck-<profile>"
+	// socket derivation for real, so it needs the same ci/tmux-guard.sh
+	// exemption (task cure-01-01, R158) its client launch carried.
+	queryCmd := exec.CommandContext(commandCtx, "tmux", "-L", socket, "has-session", "-t", target)
+	queryCmd.Env = append(os.Environ(), "DECK_TEST_ALLOW_NAMESPACED_SOCKET=1")
+	output, err := queryCmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("tmux -L %s has-session -t %s: %w: %s", socket, target, err, strings.TrimSpace(string(output)))
 	}

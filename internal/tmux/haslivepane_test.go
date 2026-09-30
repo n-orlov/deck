@@ -15,7 +15,7 @@ import (
 )
 
 func hasLivePaneSocket(name string) string {
-	return fmt.Sprintf("deck-haslivepane-%s-%d-%d", name, os.Getpid(), time.Now().UnixNano())
+	return fmt.Sprintf("priv-haslivepane-%s-%d-%d", name, os.Getpid(), time.Now().UnixNano())
 }
 
 // waitForRetainedDeadPane polls List until slug's session reports a dead

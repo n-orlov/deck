@@ -82,7 +82,7 @@ func TestPreviewPressRefusesOnStoppedAndAttachedElsewhereSessions(t *testing.T) 
 			{ID: "sess-prev-stopped", Name: "prevstopped", Slug: "prevstopped", Status: "stopped"},
 		})
 		m.width, m.height = 100, 30
-		m.tmuxClient = tmux.Client{Socket: "deck-tui-prev-no-server"}
+		m.tmuxClient = tmux.Client{Socket: "priv-tui-prev-no-server"}
 		m.selected = rowCursor(0)
 
 		x, y := previewPressXY(t, m)
@@ -192,7 +192,7 @@ func TestPreviewPressIsInertOnHeaderCursorStartsNoDragToCopyAndWheelStaysNoOp(t 
 			{ID: "sess-prev-header", Name: "prevheader", Slug: "prevheader", Status: "waiting"},
 		})
 		r.width, r.height = 100, 30
-		r.tmuxClient = tmux.Client{Socket: "deck-tui-prev-header-no-server"}
+		r.tmuxClient = tmux.Client{Socket: "priv-tui-prev-header-no-server"}
 		r.selected = rowCursor(0)
 		return r
 	}

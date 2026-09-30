@@ -31,7 +31,7 @@ import (
 // ClaimWindowOwnership stands down for -- ForceClaimWindowOwnership must
 // overwrite it anyway, unconditionally, and acquire.
 func TestForceClaimWindowOwnershipAcquiresOverALiveOwner(t *testing.T) {
-	socket := fmt.Sprintf("deck-force-live-%d-%d", os.Getpid(), time.Now().UnixNano())
+	socket := fmt.Sprintf("priv-force-live-%d-%d", os.Getpid(), time.Now().UnixNano())
 	cleanup := newBareOwnershipSession(t, socket, "s0")
 	defer cleanup()
 	client := Client{Socket: socket, Timeout: 3 * time.Second}
@@ -75,7 +75,7 @@ func TestForceClaimWindowOwnershipAcquiresOverALiveOwner(t *testing.T) {
 // repeats fresh rounds against a real server until it observes one, and
 // fails only if no round out of a generous budget ever does.
 func TestForceClaimWindowOwnershipConfirmReadLosesToACompetingWriter(t *testing.T) {
-	socket := fmt.Sprintf("deck-force-race-%d-%d", os.Getpid(), time.Now().UnixNano())
+	socket := fmt.Sprintf("priv-force-race-%d-%d", os.Getpid(), time.Now().UnixNano())
 	cleanup := newBareOwnershipSession(t, socket, "s0")
 	defer cleanup()
 	client := Client{Socket: socket, Timeout: 3 * time.Second}
@@ -148,7 +148,7 @@ func TestForceClaimWindowOwnershipConfirmReadLosesToACompetingWriter(t *testing.
 // unsets the option when it still reads exactly the claim it made -- so
 // the later, winning claim's value is left untouched on the wire.
 func TestForceClaimWindowOwnershipLoserReleaseLeavesWinnerIntact(t *testing.T) {
-	socket := fmt.Sprintf("deck-force-release-%d-%d", os.Getpid(), time.Now().UnixNano())
+	socket := fmt.Sprintf("priv-force-release-%d-%d", os.Getpid(), time.Now().UnixNano())
 	cleanup := newBareOwnershipSession(t, socket, "s0")
 	defer cleanup()
 	client := Client{Socket: socket, Timeout: 3 * time.Second}
@@ -185,7 +185,7 @@ func TestForceClaimWindowOwnershipLoserReleaseLeavesWinnerIntact(t *testing.T) {
 // documented `<tag>:<pid>` shape, carrying this process's own pid -- never
 // a concatenation, a residue of the first claim, or anything else stale.
 func TestForceClaimWindowOwnershipTwoClaimsHoldExactlyOneValue(t *testing.T) {
-	socket := fmt.Sprintf("deck-force-single-value-%d-%d", os.Getpid(), time.Now().UnixNano())
+	socket := fmt.Sprintf("priv-force-single-value-%d-%d", os.Getpid(), time.Now().UnixNano())
 	cleanup := newBareOwnershipSession(t, socket, "s0")
 	defer cleanup()
 	client := Client{Socket: socket, Timeout: 3 * time.Second}

@@ -43,7 +43,7 @@ func TestClearRecentCwdsIsObservableAndNeverLeaksAPathIntoTheAuditLog(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	socket := "deck-service-clear-recent-" + strings.ReplaceAll(time.Now().Format("150405.000000000"), ".", "")
+	socket := "priv-service-clear-recent-" + strings.ReplaceAll(time.Now().Format("150405.000000000"), ".", "")
 	t.Cleanup(func() { _ = exec.Command("tmux", "-L", socket, "kill-server").Run() })
 	service := Service{
 		Store: db, TMux: tmux.Client{Socket: socket}, Audit: logger, Clock: clock,

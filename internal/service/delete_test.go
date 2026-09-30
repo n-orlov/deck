@@ -38,7 +38,7 @@ func TestDeleteKillsLivePaneAndTombstonesPreservingCWDAndConversation(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	socket := "deck-delete-" + strings.ReplaceAll(filepath.Base(home), "_", "")
+	socket := "priv-delete-" + strings.ReplaceAll(filepath.Base(home), "_", "")
 	t.Cleanup(func() { _ = exec.Command("tmux", "-L", socket, "kill-server").Run() })
 	svc := Service{Store: db, TMux: tmux.Client{Socket: socket}, Audit: logger, Clock: clock, IDs: config.NewIDGenerator("delete-test"), Shell: "/bin/sh"}
 	session, err := svc.CreateShell(context.Background(), ShellCreateInput{Name: "keep cwd", CWD: cwd})
@@ -102,7 +102,7 @@ func newTombstoneTestService(t *testing.T) Service {
 	if err != nil {
 		t.Fatal(err)
 	}
-	socket := "deck-restore-" + strings.ReplaceAll(filepath.Base(home), "_", "")
+	socket := "priv-restore-" + strings.ReplaceAll(filepath.Base(home), "_", "")
 	t.Cleanup(func() { _ = exec.Command("tmux", "-L", socket, "kill-server").Run() })
 	return Service{Store: db, TMux: tmux.Client{Socket: socket}, Audit: logger, Clock: clock, IDs: config.NewIDGenerator("restore-test"), Shell: "/bin/sh", DeckHome: home}
 }

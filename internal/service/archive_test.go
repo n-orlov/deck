@@ -27,7 +27,7 @@ func newArchiveTestService(t *testing.T) Service {
 	if err != nil {
 		t.Fatal(err)
 	}
-	socket := "deck-archive-" + strings.ReplaceAll(filepath.Base(home), "_", "")
+	socket := "priv-archive-" + strings.ReplaceAll(filepath.Base(home), "_", "")
 	t.Cleanup(func() { _ = exec.Command("tmux", "-L", socket, "kill-server").Run() })
 	return Service{Store: db, TMux: tmux.Client{Socket: socket}, Audit: logger, Clock: clock, IDs: config.NewIDGenerator("archive-test"), Shell: "/bin/sh", DeckHome: home}
 }

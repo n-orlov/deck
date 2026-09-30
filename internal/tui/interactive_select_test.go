@@ -26,8 +26,13 @@ import (
 // tmux server, rather than a hand-built fixture (this package's own
 // task 216/steer 017 item 3 needs the whole selection round trip proven
 // against the real primitive it commits to, not merely the geometry).
+// The socket prefix is deliberately outside the deck/deck-* namespace
+// (SPEC's own named-profile derivation lands there in production; a
+// disposable per-test fixture has no reason to and a review guard now
+// refuses -L deck/deck-* outright -- see ci/tmux-guard.sh) even though
+// this only ever runs against a throwaway sibling-container server.
 func selectionTestSocket(name string) string {
-	return fmt.Sprintf("deck-tui-select-%s-%d-%d", name, time.Now().UnixNano(), time.Now().UnixNano()%997)
+	return fmt.Sprintf("priv_tui_select_%s_%d_%d", name, time.Now().UnixNano(), time.Now().UnixNano()%997)
 }
 
 func newBareSelectionSession(t *testing.T, socket, session string, width, height int) {

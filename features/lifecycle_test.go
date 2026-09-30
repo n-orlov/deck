@@ -366,7 +366,12 @@ func (h *ScenarioHarness) StartNamedClientForNewProfile(ctx context.Context, nam
 	if _, exists := h.namedClients[name]; exists {
 		return nil, fmt.Errorf("deck client %q is already running", name)
 	}
-	env := append(h.Environment(), "DECK_TMUX_SOCKET=")
+	// DECK_TEST_ALLOW_NAMESPACED_SOCKET=1 is task cure-01-01 (R158)'s
+	// narrow, auditable exemption from ci/tmux-guard.sh's blanket refusal
+	// of "-L deck"/"-L deck-*": this scenario's whole point is proving
+	// SPEC's own derivation lands there for real, always against a
+	// throwaway sibling-container server, never the operator's.
+	env := append(h.Environment(), "DECK_TMUX_SOCKET=", "DECK_TEST_ALLOW_NAMESPACED_SOCKET=1")
 	client, err := StartScreenDriverWithArgs(ctx, h.Binary, env, []string{profile}, terminalColumns, terminalRows)
 	if err != nil {
 		return nil, err
@@ -521,14 +526,24 @@ func (h *ScenarioHarness) Close() error {
 		problems = append(problems, fmt.Errorf("private tmux socket %q still responds after teardown", h.Socket))
 	}
 	for _, socket := range h.extraSockets {
+		// extraSockets exists only for the handful of scenarios that
+		// deliberately proved SPEC's own "deck"/"deck-<profile>" socket
+		// derivation for real (task cure-01-01, R158); teardown needs the
+		// same ci/tmux-guard.sh exemption those scenarios' own client
+		// launches carried, or this cleanup step alone would be denied.
+		guardExempt := append(os.Environ(), "DECK_TEST_ALLOW_NAMESPACED_SOCKET=1")
 		killCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-		output, err := exec.CommandContext(killCtx, "tmux", "-L", socket, "kill-server").CombinedOutput()
+		killCmd := exec.CommandContext(killCtx, "tmux", "-L", socket, "kill-server")
+		killCmd.Env = guardExempt
+		output, err := killCmd.CombinedOutput()
 		cancel()
 		if err != nil && !strings.Contains(string(output), "no server running") && !strings.Contains(string(output), "No such file") {
 			problems = append(problems, fmt.Errorf("kill extra private tmux server %q: %w: %s", socket, err, strings.TrimSpace(string(output))))
 		}
 		probeCtx, cancel := context.WithTimeout(context.Background(), time.Second)
-		responds := exec.CommandContext(probeCtx, "tmux", "-L", socket, "list-sessions").Run() == nil
+		probeCmd := exec.CommandContext(probeCtx, "tmux", "-L", socket, "list-sessions")
+		probeCmd.Env = guardExempt
+		responds := probeCmd.Run() == nil
 		cancel()
 		if responds {
 			problems = append(problems, fmt.Errorf("extra private tmux socket %q still responds after teardown", socket))

@@ -14,7 +14,7 @@ import (
 // own to compare against) and a held WindowOwnership.Probe on a DIFFERENT
 // window it never claimed.
 func TestClaimStateProbeUnsetOnAFreshWindow(t *testing.T) {
-	socket := fmt.Sprintf("deck-claimprobe-unset-%d-%d", os.Getpid(), time.Now().UnixNano())
+	socket := fmt.Sprintf("priv-claimprobe-unset-%d-%d", os.Getpid(), time.Now().UnixNano())
 	cleanup := newBareOwnershipSession(t, socket, "s0")
 	defer cleanup()
 	client := Client{Socket: socket, Timeout: 3 * time.Second}
@@ -34,7 +34,7 @@ func TestClaimStateProbeUnsetOnAFreshWindow(t *testing.T) {
 // both from the target-only probe and from a genuine WindowOwnership held
 // on the SAME window by a caller that then loses it to a steal.
 func TestClaimStateProbeForeignLiveOnAContestedWindow(t *testing.T) {
-	socket := fmt.Sprintf("deck-claimprobe-foreign-%d-%d", os.Getpid(), time.Now().UnixNano())
+	socket := fmt.Sprintf("priv-claimprobe-foreign-%d-%d", os.Getpid(), time.Now().UnixNano())
 	cleanup := newBareOwnershipSession(t, socket, "s0")
 	defer cleanup()
 	client := Client{Socket: socket, Timeout: 3 * time.Second}
@@ -78,7 +78,7 @@ func TestClaimStateProbeForeignLiveOnAContestedWindow(t *testing.T) {
 // the one only WindowOwnership.Probe can ever give: a claim nobody has
 // touched since it was confirmed reads ClaimStillMine.
 func TestClaimStateProbeStillMineOnAnUnstolenClaim(t *testing.T) {
-	socket := fmt.Sprintf("deck-claimprobe-mine-%d-%d", os.Getpid(), time.Now().UnixNano())
+	socket := fmt.Sprintf("priv-claimprobe-mine-%d-%d", os.Getpid(), time.Now().UnixNano())
 	cleanup := newBareOwnershipSession(t, socket, "s0")
 	defer cleanup()
 	client := Client{Socket: socket, Timeout: 3 * time.Second}
@@ -113,7 +113,7 @@ func TestClaimStateProbeStillMineOnAnUnstolenClaim(t *testing.T) {
 // not exist reads ClaimUnset, not ClaimForeignLive -- the same liveness
 // check ClaimWindowOwnership itself uses to decide whether to steal.
 func TestClaimStateProbeUnsetOnADeadOwner(t *testing.T) {
-	socket := fmt.Sprintf("deck-claimprobe-dead-%d-%d", os.Getpid(), time.Now().UnixNano())
+	socket := fmt.Sprintf("priv-claimprobe-dead-%d-%d", os.Getpid(), time.Now().UnixNano())
 	cleanup := newBareOwnershipSession(t, socket, "s0")
 	defer cleanup()
 	client := Client{Socket: socket, Timeout: 3 * time.Second}
