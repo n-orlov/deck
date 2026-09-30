@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
+	"hash/fnv"
 	"io"
 	"os"
 	"os/exec"
@@ -81,7 +83,17 @@ func launchProfileCreationPTY(t *testing.T, binary, home string) (terminal *os.F
 	t.Helper()
 	ctx, cancelCtx := context.WithTimeout(context.Background(), 10*time.Second)
 	cmd := exec.CommandContext(ctx, binary, "work")
-	cmd.Env = append(os.Environ(), "DECK_HOME="+home, "NO_COLOR=1", "DECK_ASCII=1", "DECK_ANIM=0", "TERM=xterm-256color", "SHELL=/bin/sh")
+	// A private DECK_TMUX_SOCKET (task cure-01-01, R158): without it an
+	// accepted "work" profile derives socket "deck-work" and the TUI it
+	// opens queries that server -- the operator's own namespace, which
+	// ci/tmux-guard.sh refuses. DECK_TMUX_SOCKET wins outright over the
+	// derivation (SPEC §3.4), and nothing here asserts the socket name;
+	// the derivation itself is pinned in internal/config and by the
+	// features/ profile scenarios.
+	sum := fnv.New32a()
+	sum.Write([]byte(home))
+	socket := fmt.Sprintf("priv-profile-creation-%d-%08x", os.Getpid(), sum.Sum32())
+	cmd.Env = append(os.Environ(), "DECK_HOME="+home, "DECK_TMUX_SOCKET="+socket, "NO_COLOR=1", "DECK_ASCII=1", "DECK_ANIM=0", "TERM=xterm-256color", "SHELL=/bin/sh")
 	terminal, err := pty.StartWithSize(cmd, &pty.Winsize{Rows: 24, Cols: 100})
 	if err != nil {
 		cancelCtx()
@@ -97,6 +109,8 @@ func launchProfileCreationPTY(t *testing.T, binary, home string) (terminal *os.F
 	return terminal, out, doneCh, func() {
 		cancelCtx()
 		terminal.Close()
+		// Never leave the private server behind, should one have started.
+		_ = exec.Command("tmux", "-L", socket, "kill-server").Run()
 	}
 }
 

@@ -344,7 +344,9 @@ func (h *ScenarioHarness) StartClientWithSize(ctx context.Context, cols, rows ui
 // DECK_TMUX_SOCKET override apply, since the whole point of this scenario
 // is proving what config.go itself derives from the positional profile
 // argument -- socket "deck-<profile>" -- rather than the harness's usual
-// per-scenario socket isolation. Setting DECK_TMUX_SOCKET to the empty
+// DECK_TMUX_SOCKET override (the server itself still lands on a private
+// socket, via the socket-alias fixture tmux in socket_alias_test.go, task
+// cure-01-01, R158). Setting DECK_TMUX_SOCKET to the empty
 // string (rather than simply never adding it) is what actually clears the
 // override: os/exec keeps only the last value for a duplicate key, and an
 // explicit empty value is indistinguishable from unset to config.go's
@@ -366,20 +368,25 @@ func (h *ScenarioHarness) StartNamedClientForNewProfile(ctx context.Context, nam
 	if _, exists := h.namedClients[name]; exists {
 		return nil, fmt.Errorf("deck client %q is already running", name)
 	}
-	// DECK_TEST_ALLOW_NAMESPACED_SOCKET=1 is task cure-01-01 (R158)'s
-	// narrow, auditable exemption from ci/tmux-guard.sh's blanket refusal
-	// of "-L deck"/"-L deck-*": this scenario's whole point is proving
-	// SPEC's own derivation lands there for real, always against a
-	// throwaway sibling-container server, never the operator's.
-	env := append(h.Environment(), "DECK_TMUX_SOCKET=", "DECK_TEST_ALLOW_NAMESPACED_SOCKET=1")
+	// deck still derives "deck-<profile>" itself, but ci/tmux-guard.sh
+	// refuses that operator namespace outright (task cure-01-01, R158), so
+	// the client runs with the socket-alias fixture tmux first on PATH:
+	// it records the derived name and moves the server onto a private
+	// socket (see socket_alias_test.go).
+	aliasPATH, err := h.socketAliasPATHEnv()
+	if err != nil {
+		return nil, err
+	}
+	env := append(h.Environment(), "DECK_TMUX_SOCKET=", aliasPATH)
 	client, err := StartScreenDriverWithArgs(ctx, h.Binary, env, []string{profile}, terminalColumns, terminalRows)
 	if err != nil {
 		return nil, err
 	}
-	// The profile's derived socket is registered so Close kills and probes
-	// it like h.Socket: a scenario that creates a session on the new
-	// profile must never leave its server running.
-	h.extraSockets = append(h.extraSockets, "deck-"+profile)
+	// The private server behind the profile's derived socket is
+	// registered so Close kills and probes it like h.Socket: a scenario
+	// that creates a session on the new profile must never leave its
+	// server running.
+	h.registerSocketAlias("deck-" + profile)
 	h.clients = append(h.clients, client)
 	h.namedClients[name] = client
 	return client, nil
@@ -526,15 +533,8 @@ func (h *ScenarioHarness) Close() error {
 		problems = append(problems, fmt.Errorf("private tmux socket %q still responds after teardown", h.Socket))
 	}
 	for _, socket := range h.extraSockets {
-		// extraSockets exists only for the handful of scenarios that
-		// deliberately proved SPEC's own "deck"/"deck-<profile>" socket
-		// derivation for real (task cure-01-01, R158); teardown needs the
-		// same ci/tmux-guard.sh exemption those scenarios' own client
-		// launches carried, or this cleanup step alone would be denied.
-		guardExempt := append(os.Environ(), "DECK_TEST_ALLOW_NAMESPACED_SOCKET=1")
 		killCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 		killCmd := exec.CommandContext(killCtx, "tmux", "-L", socket, "kill-server")
-		killCmd.Env = guardExempt
 		output, err := killCmd.CombinedOutput()
 		cancel()
 		if err != nil && !strings.Contains(string(output), "no server running") && !strings.Contains(string(output), "No such file") {
@@ -542,7 +542,6 @@ func (h *ScenarioHarness) Close() error {
 		}
 		probeCtx, cancel := context.WithTimeout(context.Background(), time.Second)
 		probeCmd := exec.CommandContext(probeCtx, "tmux", "-L", socket, "list-sessions")
-		probeCmd.Env = guardExempt
 		responds := probeCmd.Run() == nil
 		cancel()
 		if responds {

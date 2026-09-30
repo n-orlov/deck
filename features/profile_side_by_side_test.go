@@ -24,10 +24,12 @@ import (
 // as the thing being queried -- so DECK_TMUX_SOCKET is cleared instead of
 // overridden, exactly like StartNamedClientForNewProfile (task 011) already
 // does, letting config.go's own "deck-"+profile derivation run for real.
-// Both sockets are ephemeral, sibling-container-local tmux servers (see
-// ci/run.sh: only the workspace and the go-cache volume are bind-mounted;
-// /tmp is fresh per `docker run --rm`), never the operator's own machine, so
-// this never touches anything the standing rules protect.
+// The server itself never lands on those operator-namespace names: the
+// socket-alias fixture tmux (socket_alias_test.go, task cure-01-01, R158)
+// records the name deck asked for and moves it onto a private
+// per-scenario socket, so the "live on socket deck-<a>" step checks both
+// halves -- deck requested "deck-<a>", and the session is live on the
+// private server behind it.
 func registerProfileSideBySideSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^deck client "([^"]+)" is started for the existing profile "([^"]+)" on its own derived socket$`, startClientForExistingProfileOnDerivedSocket)
 	sc.Step(`^the profile "([^"]+)" session "([^"]+)" is a live tmux session on socket "([^"]+)"$`, profileSessionIsLiveTMuxSessionOnSocket)
@@ -43,8 +45,9 @@ func registerProfileSideBySideSteps(sc *godog.ScenarioContext) {
 // difference from every "existing profile" starter elsewhere in this
 // package -- so config.go falls through to its own "deck-"+profile
 // derivation instead of the harness's usual private per-scenario socket.
-// The derived socket is registered in h.extraSockets so Close kills and
-// probes it exactly like every other socket this harness owns.
+// The private server behind that derived name is registered in
+// h.extraSockets so Close kills and probes it exactly like every other
+// socket this harness owns.
 //
 // DECK_ASCII is also explicitly cleared to "0" here: the harness default
 // (DECK_ASCII=1, set for every other scenario in this package) renders the
@@ -60,14 +63,16 @@ func startClientForExistingProfileOnDerivedSocket(ctx context.Context, name, pro
 	if err := os.MkdirAll(filepath.Join(h.Home, "profiles", profile), 0o700); err != nil {
 		return fmt.Errorf("pre-create profile %q directory: %w", profile, err)
 	}
-	socket := "deck-" + profile
-	h.extraSockets = append(h.extraSockets, socket)
-	// DECK_TEST_ALLOW_NAMESPACED_SOCKET=1 is task cure-01-01 (R158)'s narrow,
-	// auditable exemption from ci/tmux-guard.sh's blanket refusal of "-L
-	// deck"/"-L deck-*": this scenario's whole point is proving SPEC's own
-	// derivation lands there for real, always against a throwaway
-	// sibling-container server, never the operator's.
-	client, err := h.StartNamedClient(ctx, name, "DECK_PROFILE="+profile, "DECK_TMUX_SOCKET=", "DECK_ASCII=0", "DECK_TEST_ALLOW_NAMESPACED_SOCKET=1")
+	// deck derives "deck-<profile>" itself; the socket-alias fixture tmux
+	// records that and moves the server onto a private socket, since
+	// ci/tmux-guard.sh refuses the operator's deck-* namespace outright
+	// (task cure-01-01, R158; see socket_alias_test.go).
+	h.registerSocketAlias("deck-" + profile)
+	aliasPATH, err := h.socketAliasPATHEnv()
+	if err != nil {
+		return err
+	}
+	client, err := h.StartNamedClient(ctx, name, "DECK_PROFILE="+profile, "DECK_TMUX_SOCKET=", "DECK_ASCII=0", aliasPATH)
 	if err != nil {
 		return err
 	}
@@ -99,16 +104,18 @@ func profileSessionIsLiveTMuxSessionOnSocket(ctx context.Context, profile, name,
 		return err
 	}
 	target := "deck_" + slug
+	// Derivation half: deck itself asked tmux for exactly this name.
+	if err := h.requireDeckRequestedSocket(socket); err != nil {
+		return err
+	}
+	// Liveness half: the session is live on the private server the
+	// socket-alias fixture moved that name onto (task cure-01-01, R158).
 	commandCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	// This scenario's whole point is proving SPEC's own "deck-<profile>"
-	// socket derivation for real, so it needs the same ci/tmux-guard.sh
-	// exemption (task cure-01-01, R158) its client launch carried.
-	queryCmd := exec.CommandContext(commandCtx, "tmux", "-L", socket, "has-session", "-t", target)
-	queryCmd.Env = append(os.Environ(), "DECK_TEST_ALLOW_NAMESPACED_SOCKET=1")
+	queryCmd := exec.CommandContext(commandCtx, "tmux", "-L", h.socketAlias(socket), "has-session", "-t", target)
 	output, err := queryCmd.CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("tmux -L %s has-session -t %s: %w: %s", socket, target, err, strings.TrimSpace(string(output)))
+		return fmt.Errorf("tmux -L %s (alias of %s) has-session -t %s: %w: %s", h.socketAlias(socket), socket, target, err, strings.TrimSpace(string(output)))
 	}
 	return nil
 }
