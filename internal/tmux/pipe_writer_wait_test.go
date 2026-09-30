@@ -115,6 +115,11 @@ func TestWaitForFifoWriterFailsAtGraceWhenNoLongerArmed(t *testing.T) {
 	} else if !strings.Contains(err.Error(), "no longer armed") {
 		t.Fatalf("waitForFifoWriter error = %v, want it to name the unarmed pipe as the cause", err)
 	}
+	// R164: deadline, not a budget. `grace` and `timeout` above are the
+	// poll/wait bounds under test; this only proves the fail-fast path
+	// returns at the grace mark instead of waiting out the whole (much
+	// longer) timeout bound, with timeout/10 giving generous slack over the
+	// 20ms grace being tested.
 	if elapsed := time.Since(start); elapsed > timeout/10 {
 		t.Fatalf("waitForFifoWriter took %s to notice the pipe was no longer armed, want it to fail at the %s grace mark instead of waiting out the %s bound", elapsed, grace, timeout)
 	}
@@ -141,6 +146,10 @@ func TestWaitForFifoWriterHonoursContextCancellation(t *testing.T) {
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("waitForFifoWriter error = %v, want it to wrap context.Canceled", err)
 	}
+	// R164: deadline, not a budget. This proves context cancellation (fired
+	// after 20ms above) ends the wait promptly instead of blocking on the
+	// much longer probe/timeout bounds passed in; the 5s check has ~250x
+	// slack over the 20ms cancellation delay being tested.
 	if elapsed := time.Since(start); elapsed > 5*time.Second {
 		t.Fatalf("waitForFifoWriter took %s to honour a cancelled context", elapsed)
 	}

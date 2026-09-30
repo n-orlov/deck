@@ -608,6 +608,11 @@ func TestReconcileWithinBoundsAStalledTmuxCommand(t *testing.T) {
 	if err == nil {
 		t.Fatal("bounded reconcile unexpectedly succeeded")
 	}
+	// R164: deadline, not a budget. ReconcileWithin's 30ms argument is the
+	// poll/wait bound under test -- this only proves the stalled tmux exec
+	// (`sleep 10`) got cancelled by that bound instead of being awaited in
+	// full. The 1s check has ~30x slack over the 30ms bound being tested, so
+	// it is not a tight performance assertion that -race overhead could trip.
 	if elapsed >= time.Second {
 		t.Fatalf("stalled tmux held liveness pass for %s, want < 1s", elapsed)
 	}

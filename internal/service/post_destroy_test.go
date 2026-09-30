@@ -189,6 +189,11 @@ func TestArchiveTimedOutPostDestroyIsKilledAndRecorded(t *testing.T) {
 	if !strings.Contains(msg, "post_destroy timed out") {
 		t.Fatalf("hook message = %q, want it to name the timed-out hook", msg)
 	}
+	// R164: deadline, not a budget. runOneTeardownHook's own timeout
+	// argument (200ms, right above) is the poll/wait bound under test; this
+	// only proves the "sleep 30" hook got killed by it rather than awaited
+	// to completion. The 10s check has 50x slack over that 200ms bound, so
+	// it is not a tight performance assertion -race overhead could trip.
 	if elapsed > 10*time.Second {
 		t.Fatalf("hook took %s, want it bounded by the short timeout passed directly to runOneTeardownHook (the sleep 30 hook must be killed, not awaited)", elapsed)
 	}

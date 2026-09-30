@@ -871,6 +871,13 @@ func TestCaptureSeedWithHistoryDoesNotDoubleTheLatencyOfAHungServer(t *testing.T
 		t.Fatalf("CaptureSeedWithHistory against a tmux that never answers: want a timeout error, got nil")
 	}
 	elapsed := time.Since(start)
+	// R164: deadline, not a budget, despite the doubling framing above. The
+	// 2*timeout check is a structural correctness bound (did a second attempt
+	// happen at all), corroborated by the exact range-log count check right
+	// below; it is not an intrinsic performance budget the -race build's CPU
+	// overhead could trip, because `timeout` fires from client.Timeout's own
+	// context deadline against the fake hanging-tmux subprocess, not from any
+	// CPU-bound work inside the process under test.
 	if elapsed >= 2*timeout {
 		t.Errorf("CaptureSeedWithHistory took %s against a %s timeout, i.e. it paid for a second attempt: a hung server answers a narrower range no faster, and the entry seed blocks bubbletea's Update goroutine while it waits", elapsed, timeout)
 	}

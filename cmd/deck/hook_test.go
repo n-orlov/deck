@@ -82,6 +82,13 @@ func TestReleasedHookBoundsStalledTmuxAndSkipsItForSessionEnd(t *testing.T) {
 	if err != nil {
 		t.Fatalf("released SessionEnd failed: %v, stderr=%q", err, stderr)
 	}
+	// R164: deadline, not a budget. This bounds how long the released binary
+	// (built fresh above, without a race tag, so -race on this outer test
+	// binary never touches its runtime speed) can take before it must have
+	// skipped the stalled-tmux liveness pass entirely; the 1s bound has ~30x
+	// slack over DECK_RECONCILE_MS=30 above and only guards against a
+	// regression that reintroduces the full 10s fake-tmux wait, not against
+	// ordinary build-speed variance.
 	if elapsed >= time.Second {
 		t.Fatalf("SessionEnd took %s despite its no-liveness contract", elapsed)
 	}
@@ -107,6 +114,10 @@ func TestReleasedHookBoundsStalledTmuxAndSkipsItForSessionEnd(t *testing.T) {
 	if err == nil || !strings.Contains(stderr, "post-hook liveness pass") {
 		t.Fatalf("stalled released hook err=%v stderr=%q", err, stderr)
 	}
+	// R164: deadline, not a budget -- same reasoning as the SessionEnd check
+	// above: this proves the DECK_RECONCILE_MS=30 liveness-pass bound cut the
+	// stalled fake tmux's 10s sleep short, with generous slack, not that the
+	// hook itself has a tight performance target.
 	if elapsed >= time.Second {
 		t.Fatalf("stalled tmux held released hook for %s, want < 1s", elapsed)
 	}
