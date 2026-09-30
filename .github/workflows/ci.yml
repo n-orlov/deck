@@ -243,29 +243,22 @@ jobs:
           fi
           ci/allure-report.sh ci-results allure-report "$history_dir"
 
-      - name: Merge the new report into the persisted site tree
+      - name: Merge this run's report into the persisted site tree and push it to gh-pages
+        # R165: delegates to ci/pages-persist.sh (see its own header comment)
+        # instead of a single unretried `git push` -- a concurrent report
+        # from another run (a push to main racing its own PR preview, or
+        # two PRs) can land on gh-pages first and reject this push as a
+        # non-fast-forward; the script re-fetches, re-merges this run's own
+        # report on top of the newer tree, and retries a bounded number of
+        # times rather than failing the job outright on the first race lost.
+        env:
+          DECK_PAGES_RUN_ID: ${{ github.run_id }}
         run: |
           set -eu
-          mkdir -p site/.new-report
-          cp -a allure-report/. site/.new-report/
           if [ "${{ steps.target.outputs.mode }}" = "root" ]; then
-            ci/allure-site.sh site root
+            ci/pages-persist.sh site allure-report root
           else
-            ci/allure-site.sh site pr "${{ steps.target.outputs.pr_number }}"
-          fi
-
-      - name: Persist the merged site tree to gh-pages
-        run: |
-          set -eu
-          cd site
-          git add -A
-          if git diff --cached --quiet; then
-            echo "no site changes to persist"
-          else
-            git -c user.name="github-actions[bot]" \
-                -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
-                commit -q -m "allure: ${{ steps.target.outputs.mode }} report for run ${{ github.run_id }}"
-            git push -q origin gh-pages
+            ci/pages-persist.sh site allure-report pr "${{ steps.target.outputs.pr_number }}"
           fi
 
       - name: Upload the rendered report as a workflow artifact
