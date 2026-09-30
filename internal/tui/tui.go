@@ -8523,6 +8523,22 @@ func (m Model) detailBody() string {
 	// The main list footer (footerLegend) deliberately does NOT gain these
 	// three keys: SPEC §11.3's fixed set is closed there, and SPEC.md is
 	// read-only to this job -- see footerLegend's own doc comment.
+	// R161/R162: canSwitchProfile/canPinResume's own refusal (rename.go's
+	// case "P"/"c") sets m.attachError and returns without opening the
+	// picker/lock chooser or writing any session state, on the theory that
+	// mainView's own attachErrorLines already shows it -- but detailView
+	// never falls through to mainView while m.detail is true (View's own
+	// dispatch above), so that refusal was invisible the whole time the
+	// dialog it was raised from stayed open. Shown here, inside the still
+	// open detail body, exactly once, using the same bare "\n%s\n" shape
+	// profileSwitchNote/pinNote already use for their own dialogs -- and
+	// ABOVE the two footer legend lines below, never after them, so
+	// group_move_test.go's detailFooterLine helper (which reads detailBody's
+	// LAST non-empty line as "the footer legend") keeps meaning what it
+	// always did.
+	if m.attachError != "" {
+		fmt.Fprintf(&b, "\n%s\n", m.attachError)
+	}
 	b.WriteString("\n" + m.glyph("header cursor: c folds/unfolds its group · ← folds it · → unfolds it", "header cursor: c folds/unfolds its group - left folds it - right unfolds it") + "\n")
 	b.WriteString(m.glyph("P switches permission profile · c changes resume mode · p toggles pinned · r renames · l edits launch inputs · g moves group · i or Esc closes detail", "P switches permission profile - c changes resume mode - p toggles pinned - r renames - l edits launch inputs - g moves group - i or Esc closes detail") + "\n")
 	return b.String()
