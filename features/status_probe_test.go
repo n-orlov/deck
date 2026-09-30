@@ -16,6 +16,7 @@ import (
 
 	"github.com/cucumber/godog"
 
+	"github.com/n-orlov/deck/internal/racebuild"
 	"github.com/n-orlov/deck/internal/theme"
 )
 
@@ -533,7 +534,7 @@ func sidebarCell(line string) (string, bool) {
 }
 
 func clientRowContainsWithinReconcile(ctx context.Context, clientName, rowName, want string) error {
-	return waitForClientSessionRow(ctx, clientName, rowName, want, scenarioReconcileInterval+250*time.Millisecond, "within reconcile interval")
+	return waitForClientSessionRow(ctx, clientName, rowName, want, reconcileIntervalPollDeadline(scenarioReconcileInterval, racebuild.Enabled), "within reconcile interval")
 }
 
 func raceFreshHookAgainstProbe(ctx context.Context, victim, emitter string) error {
