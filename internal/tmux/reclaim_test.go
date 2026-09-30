@@ -32,7 +32,7 @@ func withIsolatedInteractivePipeTempRoot(t *testing.T) {
 }
 
 func reclaimSocket(name string) string {
-	return fmt.Sprintf("deck-reclaim-%s-%d-%d", name, os.Getpid(), time.Now().UnixNano())
+	return fmt.Sprintf("priv-reclaim-%s-%d-%d", name, os.Getpid(), time.Now().UnixNano())
 }
 
 func TestReclaimLeakedInteractivePipesDisarmsRestoresAndRemovesAStaleDeadOwnerClaim(t *testing.T) {

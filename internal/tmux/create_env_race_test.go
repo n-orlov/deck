@@ -21,7 +21,7 @@ import (
 // atomically with session creation, so there is no later call left for
 // that race to have a window in.
 func TestCreateSurvivesInstantExitEnvironmentMirroring(t *testing.T) {
-	socket := fmt.Sprintf("deck-instant-exit-%d-%d", os.Getpid(), time.Now().UnixNano())
+	socket := fmt.Sprintf("priv-instant-exit-%d-%d", os.Getpid(), time.Now().UnixNano())
 	client := Client{Socket: socket, Timeout: 3 * time.Second}
 	t.Cleanup(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -61,7 +61,7 @@ func TestCreateSurvivesInstantExitEnvironmentMirroring(t *testing.T) {
 // invalid variable name must still fail Create, exactly as it did before
 // the -e change (environmentArgs rejects it long before any tmux call).
 func TestCreateStillFailsOnGenuineEnvironmentError(t *testing.T) {
-	socket := fmt.Sprintf("deck-bad-env-%d-%d", os.Getpid(), time.Now().UnixNano())
+	socket := fmt.Sprintf("priv-bad-env-%d-%d", os.Getpid(), time.Now().UnixNano())
 	client := Client{Socket: socket, Timeout: 3 * time.Second}
 	t.Cleanup(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

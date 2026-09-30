@@ -17,7 +17,7 @@ import (
 )
 
 func paneDeadSocket(name string) string {
-	return fmt.Sprintf("deck-panedead-%s-%d-%d", name, os.Getpid(), time.Now().UnixNano())
+	return fmt.Sprintf("priv-panedead-%s-%d-%d", name, os.Getpid(), time.Now().UnixNano())
 }
 
 // killPaneProcessUnderRemainOnExitFailed sets `remain-on-exit failed` on

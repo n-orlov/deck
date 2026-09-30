@@ -150,7 +150,7 @@ func TestDeckBinaryShellCreateAndSlugCollisionThroughPTY(t *testing.T) {
 	if err := os.WriteFile(sentinel, sentinelContents, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	socket := "deck-create-pty-" + strings.ReplaceAll(filepath.Base(home), "_", "")
+	socket := "priv-create-pty-" + strings.ReplaceAll(filepath.Base(home), "_", "")
 	defer exec.Command("tmux", "-L", socket, "kill-server").Run()
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
@@ -322,7 +322,7 @@ func TestDeckBinaryRefreshesAllConcurrentClients(t *testing.T) {
 	}
 
 	home, cwd := t.TempDir(), t.TempDir()
-	socket := "deck-multiclient-" + strings.ReplaceAll(filepath.Base(home), "_", "")
+	socket := "priv-multiclient-" + strings.ReplaceAll(filepath.Base(home), "_", "")
 	defer exec.Command("tmux", "-L", socket, "kill-server").Run()
 	// A full second is the configured reconciliation cadence. The assertion
 	// below adds only bounded scheduler/render grace; every client must still
@@ -375,7 +375,7 @@ func TestDeckBinaryEmptyHelpAndQuitThroughPTY(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, binary)
-	cmd.Env = append(os.Environ(), "DECK_HOME="+t.TempDir(), "DECK_TMUX_SOCKET=deck-tui-pty", "DECK_RECONCILE_MS=100", "NO_COLOR=1", "DECK_ASCII=1", "DECK_ANIM=0", "TERM=xterm-256color")
+	cmd.Env = append(os.Environ(), "DECK_HOME="+t.TempDir(), "DECK_TMUX_SOCKET=priv-tui-pty", "DECK_RECONCILE_MS=100", "NO_COLOR=1", "DECK_ASCII=1", "DECK_ANIM=0", "TERM=xterm-256color")
 	// helpView() (internal/tui) is ~195 lines with the border at this test's
 	// width (task 010 added the reveal-toggle lines; task 078 added
 	// framedDialogScrollable's own height-bounding, but that only clips once

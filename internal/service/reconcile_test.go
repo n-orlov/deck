@@ -35,7 +35,7 @@ func TestReconcilerStopsDisappearedSessionAndDoesNotRelaunchServer(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	socket := "deck-reconcile-" + strings.ReplaceAll(time.Now().Format("150405.000000000"), ".", "")
+	socket := "priv-reconcile-" + strings.ReplaceAll(time.Now().Format("150405.000000000"), ".", "")
 	t.Cleanup(func() { _ = exec.Command("tmux", "-L", socket, "kill-server").Run() })
 	service := Service{Store: db, TMux: tmux.Client{Socket: socket}, Audit: logger, Clock: clock}
 
@@ -111,7 +111,7 @@ func TestReconcilePromotesOnlyLiveStartingShell(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	socket := "deck-shell-live-" + strings.ReplaceAll(time.Now().Format("150405.000000000"), ".", "")
+	socket := "priv-shell-live-" + strings.ReplaceAll(time.Now().Format("150405.000000000"), ".", "")
 	t.Cleanup(func() { _ = exec.Command("tmux", "-L", socket, "kill-server").Run() })
 	svc := Service{Store: db, TMux: tmux.Client{Socket: socket}, Audit: logger, Clock: clock}
 
@@ -499,7 +499,7 @@ func TestReconcilerCapturesAndCollectsCrashFirstWriterOnly(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	socket := "deck-crash-" + strings.ReplaceAll(time.Now().Format("150405.000000000"), ".", "")
+	socket := "priv-crash-" + strings.ReplaceAll(time.Now().Format("150405.000000000"), ".", "")
 	t.Cleanup(func() { _ = exec.Command("tmux", "-L", socket, "kill-server").Run() })
 	svc := Service{Store: db, TMux: tmux.Client{Socket: socket}, Audit: logger, Clock: clock}
 

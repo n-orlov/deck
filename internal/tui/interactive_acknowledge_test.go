@@ -61,7 +61,7 @@ func TestEnterInteractiveRefusalDoesNotRecordAttachment(t *testing.T) {
 	if _, height := m.previewContentSize(); height >= interactiveMinInnerRows {
 		t.Fatalf("test assumption violated: preview content height %d is not below the %d-row floor", height, interactiveMinInnerRows)
 	}
-	m.tmuxClient = tmux.Client{Socket: "deck-tui-ack-no-server"}
+	m.tmuxClient = tmux.Client{Socket: "priv-tui-ack-no-server"}
 	m.sessions = []store.Session{{ID: "sess-ack-2", Name: "ackfloor", Slug: "ackfloor", Status: "error"}}
 	m.selected = rowCursor(0)
 	calls := 0

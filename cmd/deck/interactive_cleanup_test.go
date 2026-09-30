@@ -254,7 +254,7 @@ func buildDeckInteractiveCleanupTestBinary(t *testing.T, tags ...string) string 
 // sibling test below exercises.
 func TestDeckBinarySIGTERMMidInteractiveDisarmsPipeAndRestoresWindow(t *testing.T) {
 	binary := buildDeckInteractiveCleanupTestBinary(t)
-	fixture := startDeckInteractiveFixture(t, binary, "deck-sigterm-interactive")
+	fixture := startDeckInteractiveFixture(t, binary, "priv-sigterm-interactive")
 
 	if err := fixture.cmd.Process.Signal(syscall.SIGTERM); err != nil {
 		t.Fatalf("send SIGTERM: %v", err)
@@ -285,7 +285,7 @@ func TestDeckBinarySIGTERMMidInteractiveDisarmsPipeAndRestoresWindow(t *testing.
 // interactive claim rather than merely compiling.
 func TestDeckBinaryPanicMidInteractiveDisarmsPipeAndRestoresWindow(t *testing.T) {
 	binary := buildDeckInteractiveCleanupTestBinary(t, "decktestpanic")
-	fixture := startDeckInteractiveFixture(t, binary, "deck-panic-interactive", "DECK_TEST_PANIC_KEY=z")
+	fixture := startDeckInteractiveFixture(t, binary, "priv-panic-interactive", "DECK_TEST_PANIC_KEY=z")
 
 	// The deliberate panic key is forwarded like any other interactive
 	// keystroke (updateInteractive forwards everything except Ctrl+Q) --

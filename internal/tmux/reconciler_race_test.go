@@ -24,7 +24,7 @@ import (
 // Create call whose command exits instantly, without any artificial CPU
 // load -- the two real deck actors are enough on their own.
 func TestCreateRacesConcurrentReconcilerKill(t *testing.T) {
-	socket := fmt.Sprintf("deck-reconciler-race-%d-%d", os.Getpid(), time.Now().UnixNano())
+	socket := fmt.Sprintf("priv-reconciler-race-%d-%d", os.Getpid(), time.Now().UnixNano())
 	client := Client{Socket: socket, Timeout: 3 * time.Second}
 	t.Cleanup(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

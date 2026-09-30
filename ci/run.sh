@@ -39,6 +39,35 @@ fi
 # assignments can sit between the image name and the command being run.
 user_argc=$#
 
+# Every command run this way gets task cure-01-01 (R158)'s tmux guard put
+# ahead of the real tmux on PATH first: a symlink at tmux-guard-bin/tmux
+# that refuses "-L deck"/"-L deck-*" before it ever reaches the real
+# binary (see ci/tmux-guard.sh), so no fixture run through ci/run.sh --
+# including the mandated full `go test -p=1 -count=1 ./...` -- can land a
+# command against the operator's real tmux server, however it is named.
+guard_setup='set -e
+real_tmux=$(command -v tmux)
+real_bin_dir=$(dirname "$real_tmux")
+guard_dir="/tmp/tmux-guard-bin-$$"
+mkdir -p "$guard_dir"
+# Mirror every OTHER binary in tmux'\''s own directory into guard_dir
+# untouched (some fixtures deliberately restrict PATH to just
+# dirname(tmux) so a pane launch still finds its shell -- see
+# internal/service/resume_test.go'\''s TestResumeFailsOnAgentBinaryNotOnPath),
+# and only replace the tmux entry itself with the guard.
+for f in "$real_bin_dir"/*; do
+  name=$(basename "$f")
+  if [ "$name" = "tmux" ]; then
+    ln -sf /w/ci/tmux-guard.sh "$guard_dir/tmux"
+  else
+    ln -sf "$f" "$guard_dir/$name"
+  fi
+done
+export DECK_TEST_REAL_TMUX="$real_tmux"
+export DECK_TEST_TMUX_GUARD_LOG="${DECK_TEST_TMUX_GUARD_LOG:-/tmp/tmux-guard.log}"
+export PATH="$guard_dir:$PATH"
+exec "$@"'
+
 set -- "$@" docker run --rm \
     --user "$(id -u):$(id -g)" \
     --workdir /w \
@@ -46,7 +75,7 @@ set -- "$@" docker run --rm \
     --mount "type=volume,src=$volume,dst=/go-cache" \
     ${RALPHD_RUN_ID:+--label ralphd.run=$RALPHD_RUN_ID} \
     ${RALPHD_RUN_ID:+--label ralphd.role=sibling} \
-    "$image"
+    "$image" sh -c "$guard_setup" sh
 
 # Forward every DECK_* variable present in the caller's environment, as an `env`
 # prefix on the command itself. This makes

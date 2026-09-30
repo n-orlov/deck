@@ -60,7 +60,7 @@ func TestAbandonedDDIsReapedAtNextStoreOpen(t *testing.T) {
 	}
 
 	home, cwd := t.TempDir(), t.TempDir()
-	socket := "deck-sweep-pty-" + strings.ReplaceAll(filepath.Base(home), "_", "")
+	socket := "priv-sweep-pty-" + strings.ReplaceAll(filepath.Base(home), "_", "")
 	defer exec.Command("tmux", "-L", socket, "kill-server").Run()
 
 	const sessionName = "abandoned-dd"

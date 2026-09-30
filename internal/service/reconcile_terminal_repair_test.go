@@ -26,7 +26,7 @@ import (
 // respawn, no send-keys against it (proven here by the pane's PID and the
 // tmux session both surviving Reconcile unchanged).
 func TestReconcileRepairsTerminalRowWithLivePaneShell(t *testing.T) {
-	svc, db, logger, cwd := newTerminalRepairService(t, "deck-repair-shell-")
+	svc, db, logger, cwd := newTerminalRepairService(t, "priv-repair-shell-")
 
 	session, err := db.CreateSession(context.Background(), store.CreateSessionInput{
 		ID: "00000000-0000-4000-8000-000000000031", Name: "orphaned shell", CWD: cwd,
@@ -84,7 +84,7 @@ func TestReconcileRepairsTerminalRowWithLivePaneShell(t *testing.T) {
 // supports is the neutral "starting" a fresh pane always begins at; hook or
 // probe evidence take it from there on a later pass.
 func TestReconcileRepairsTerminalRowWithLivePaneAgent(t *testing.T) {
-	svc, db, logger, cwd := newTerminalRepairService(t, "deck-repair-agent-")
+	svc, db, logger, cwd := newTerminalRepairService(t, "priv-repair-agent-")
 
 	session, err := db.CreateSession(context.Background(), store.CreateSessionInput{
 		ID: "00000000-0000-4000-8000-000000000032", Name: "contradicted agent", CWD: cwd,
@@ -137,7 +137,7 @@ func TestReconcileRepairsTerminalRowWithLivePaneAgent(t *testing.T) {
 // genuinely dead pane under a terminal row is still collected as a crash, not
 // mistaken for a live contradiction that only needed its status corrected.
 func TestReconcileStillCollectsRetainedCorpseUnderTerminalRow(t *testing.T) {
-	svc, db, logger, cwd := newTerminalRepairService(t, "deck-repair-corpse-")
+	svc, db, logger, cwd := newTerminalRepairService(t, "priv-repair-corpse-")
 
 	session, err := db.CreateSession(context.Background(), store.CreateSessionInput{
 		ID: "00000000-0000-4000-8000-000000000033", Name: "retained corpse under stopped", CWD: cwd,

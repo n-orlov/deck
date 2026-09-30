@@ -41,7 +41,7 @@ func setWindowOwnershipRaw(t *testing.T, socket, target, value string) {
 // value on the wire is the documented `<tag>:<pid>` form carrying this
 // process's own pid.
 func TestClaimWindowOwnershipAcquiresOnAnUnclaimedWindow(t *testing.T) {
-	socket := fmt.Sprintf("deck-ownership-fresh-%d-%d", os.Getpid(), time.Now().UnixNano())
+	socket := fmt.Sprintf("priv-ownership-fresh-%d-%d", os.Getpid(), time.Now().UnixNano())
 	cleanup := newBareOwnershipSession(t, socket, "s0")
 	defer cleanup()
 	client := Client{Socket: socket, Timeout: 3 * time.Second}
@@ -73,7 +73,7 @@ func TestClaimWindowOwnershipAcquiresOnAnUnclaimedWindow(t *testing.T) {
 // without touching the option again -- the competing value is still there
 // afterwards, untouched.
 func TestClaimWindowOwnershipRespectsALiveCompetingOwner(t *testing.T) {
-	socket := fmt.Sprintf("deck-ownership-live-%d-%d", os.Getpid(), time.Now().UnixNano())
+	socket := fmt.Sprintf("priv-ownership-live-%d-%d", os.Getpid(), time.Now().UnixNano())
 	cleanup := newBareOwnershipSession(t, socket, "s0")
 	defer cleanup()
 	client := Client{Socket: socket, Timeout: 3 * time.Second}
@@ -103,7 +103,7 @@ func TestClaimWindowOwnershipRespectsALiveCompetingOwner(t *testing.T) {
 // a kill(pid, 0) probe, found dead, and overwritten -- the caller acquires
 // ownership and the option now carries its own claim, not the dead one's.
 func TestClaimWindowOwnershipStealsFromADeadOwner(t *testing.T) {
-	socket := fmt.Sprintf("deck-ownership-dead-%d-%d", os.Getpid(), time.Now().UnixNano())
+	socket := fmt.Sprintf("priv-ownership-dead-%d-%d", os.Getpid(), time.Now().UnixNano())
 	cleanup := newBareOwnershipSession(t, socket, "s0")
 	defer cleanup()
 	client := Client{Socket: socket, Timeout: 3 * time.Second}
@@ -146,7 +146,7 @@ func TestClaimWindowOwnershipStealsFromADeadOwner(t *testing.T) {
 // (which is live, since both share this test's own pid) and stands down
 // rather than looping forever or both believing they won.
 func TestClaimWindowOwnershipConfirmReadLosesToACompetingWriter(t *testing.T) {
-	socket := fmt.Sprintf("deck-ownership-race-%d-%d", os.Getpid(), time.Now().UnixNano())
+	socket := fmt.Sprintf("priv-ownership-race-%d-%d", os.Getpid(), time.Now().UnixNano())
 	cleanup := newBareOwnershipSession(t, socket, "s0")
 	defer cleanup()
 	client := Client{Socket: socket, Timeout: 3 * time.Second}
@@ -204,7 +204,7 @@ func TestClaimWindowOwnershipConfirmReadLosesToACompetingWriter(t *testing.T) {
 // leaving a later claimant's value (one that already stole from this one)
 // untouched.
 func TestReleaseUnsetsOnlyAnOwnedClaim(t *testing.T) {
-	socket := fmt.Sprintf("deck-ownership-release-%d-%d", os.Getpid(), time.Now().UnixNano())
+	socket := fmt.Sprintf("priv-ownership-release-%d-%d", os.Getpid(), time.Now().UnixNano())
 	cleanup := newBareOwnershipSession(t, socket, "s0")
 	defer cleanup()
 	client := Client{Socket: socket, Timeout: 3 * time.Second}

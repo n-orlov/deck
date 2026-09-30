@@ -17,8 +17,11 @@ import (
 	"github.com/n-orlov/deck/internal/tmux"
 )
 
+// Kept outside the deck/deck-* namespace deliberately: SPEC's own
+// named-profile derivation lives there in production, and a disposable
+// per-test fixture has no reason to share it (see ci/tmux-guard.sh).
 func interactiveSocket(name string) string {
-	return fmt.Sprintf("deck-interactive-%s-%d-%d", name, os.Getpid(), time.Now().UnixNano())
+	return fmt.Sprintf("priv_interactive_%s_%d_%d", name, os.Getpid(), time.Now().UnixNano())
 }
 
 func newBareInteractiveSession(t *testing.T, socket, session string, width, height int) (cleanup func()) {

@@ -42,7 +42,7 @@ func TestReconcileCollectsRetainedDeadPaneWhenRowAlreadyReadsStopped(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	socket := "deck-corpse-" + strings.ReplaceAll(time.Now().Format("150405.000000000"), ".", "")
+	socket := "priv-corpse-" + strings.ReplaceAll(time.Now().Format("150405.000000000"), ".", "")
 	t.Cleanup(func() { _ = exec.Command("tmux", "-L", socket, "kill-server").Run() })
 	svc := Service{Store: db, TMux: tmux.Client{Socket: socket}, Audit: logger, Clock: clock}
 

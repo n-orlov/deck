@@ -168,7 +168,7 @@ func TestFullAttachReleasesAPreviewPinButNeverALiveOwnersPin(t *testing.T) {
 func TestAttachFinishedRelicensesOneFitForTheAttachedRow(t *testing.T) {
 	m := New(nil, config.Settings{PreviewFit: true, Preview: time.Millisecond}, "")
 	m.width, m.height = 100, 30
-	m.tmuxClient = tmux.Client{Socket: "deck-attachfinished-unused"}
+	m.tmuxClient = tmux.Client{Socket: "priv-attachfinished-unused"}
 	m.sessions = []store.Session{{ID: "s1", Slug: "s1", Name: "s1", Status: "running"}}
 	m.selected = rowCursor(0)
 	m.previewFitSessionID = "s1"

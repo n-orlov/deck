@@ -66,7 +66,7 @@ func TestReleasedHookBoundsStalledTmuxAndSkipsItForSessionEnd(t *testing.T) {
 		cmd.Stdin = strings.NewReader(payload)
 		cmd.Env = append(os.Environ(),
 			"DECK_HOME="+home,
-			"DECK_TMUX_SOCKET=deck-hook-stalled",
+			"DECK_TMUX_SOCKET=priv-hook-stalled",
 			"DECK_RECONCILE_MS=30",
 			"DECK_TEST_TMUX_MARKER="+marker,
 			"PATH="+fakeBin,
@@ -155,7 +155,7 @@ func TestReleasedDeckHookIsOneShotAndDoesNotBootstrapStateOrTmux(t *testing.T) {
 	// No TUI is running. A live pane for the hook target and a retained dead
 	// pane for a different row make the released _hook binary the only possible
 	// observer and collector of the crash.
-	hookSocket := "deck-hook-live-" + filepath.Base(t.TempDir())
+	hookSocket := "priv-hook-live-" + filepath.Base(t.TempDir())
 	tmuxClient := tmux.Client{Socket: hookSocket}
 	t.Cleanup(func() { _ = exec.Command("tmux", "-L", hookSocket, "kill-server").Run() })
 	if _, err := tmuxClient.Create(context.Background(), tmux.Launch{Slug: target.Slug, CWD: target.CWD, Command: []string{"/bin/sh", "-c", "sleep 30"}}); err != nil {
@@ -280,7 +280,7 @@ func TestReleasedDeckHookIsOneShotAndDoesNotBootstrapStateOrTmux(t *testing.T) {
 	}
 
 	missingHome := filepath.Join(t.TempDir(), "must-not-exist")
-	missingSocket := "deck-hook-missing-" + filepath.Base(t.TempDir())
+	missingSocket := "priv-hook-missing-" + filepath.Base(t.TempDir())
 	cmd := exec.Command(binary, "_hook")
 	cmd.Stdin = strings.NewReader(payload)
 	cmd.Env = append(os.Environ(), "DECK_HOME="+missingHome, "DECK_TMUX_SOCKET="+missingSocket)

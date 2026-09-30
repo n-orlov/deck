@@ -21,7 +21,7 @@ import (
 )
 
 func panePIDIdentitySocket(name string) string {
-	return fmt.Sprintf("deck-panepid-%s-%d-%d", name, os.Getpid(), time.Now().UnixNano())
+	return fmt.Sprintf("priv-panepid-%s-%d-%d", name, os.Getpid(), time.Now().UnixNano())
 }
 
 // panePIDIdentityFields is every field PRD II-29 names, read together in

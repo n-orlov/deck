@@ -34,7 +34,7 @@ func TestCreateShellPersistsLaunchesAndAudits(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	socket := "deck-service-" + strings.ReplaceAll(time.Now().Format("150405.000000000"), ".", "")
+	socket := "priv-service-" + strings.ReplaceAll(time.Now().Format("150405.000000000"), ".", "")
 	t.Cleanup(func() { _ = exec.Command("tmux", "-L", socket, "kill-server").Run() })
 	service := Service{
 		Store: db, TMux: tmux.Client{Socket: socket}, Audit: logger, Clock: clock,
@@ -109,7 +109,7 @@ func TestCreateShellPersistsPostDestroyDurably(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	socket := "deck-service-" + strings.ReplaceAll(time.Now().Format("150405.000000000"), ".", "")
+	socket := "priv-service-" + strings.ReplaceAll(time.Now().Format("150405.000000000"), ".", "")
 	t.Cleanup(func() { _ = exec.Command("tmux", "-L", socket, "kill-server").Run() })
 	service := Service{
 		Store: db, TMux: tmux.Client{Socket: socket}, Audit: logger, Clock: clock,
@@ -154,7 +154,7 @@ func TestCreateShellPromotesCWDToRecentCwds(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	socket := "deck-service-recent-" + strings.ReplaceAll(time.Now().Format("150405.000000000"), ".", "")
+	socket := "priv-service-recent-" + strings.ReplaceAll(time.Now().Format("150405.000000000"), ".", "")
 	t.Cleanup(func() { _ = exec.Command("tmux", "-L", socket, "kill-server").Run() })
 	service := Service{
 		Store: db, TMux: tmux.Client{Socket: socket}, Audit: logger, Clock: clock,
@@ -433,7 +433,7 @@ func TestKillStopsSessionPreservesCWDAndRecordsTransition(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	socket := "deck-kill-" + strings.ReplaceAll(filepath.Base(home), "_", "")
+	socket := "priv-kill-" + strings.ReplaceAll(filepath.Base(home), "_", "")
 	t.Cleanup(func() { _ = exec.Command("tmux", "-L", socket, "kill-server").Run() })
 	svc := Service{Store: db, TMux: tmux.Client{Socket: socket}, Audit: logger, Clock: clock, IDs: config.NewIDGenerator("kill-test"), Shell: "/bin/sh"}
 	session, err := svc.CreateShell(context.Background(), ShellCreateInput{Name: "keep cwd", CWD: cwd})

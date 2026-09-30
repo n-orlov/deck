@@ -23,7 +23,7 @@ import (
 )
 
 func dispatchSocket(name string) string {
-	return fmt.Sprintf("deck-dispatch-%s-%d-%d", name, os.Getpid(), time.Now().UnixNano())
+	return fmt.Sprintf("priv-dispatch-%s-%d-%d", name, os.Getpid(), time.Now().UnixNano())
 }
 
 // TestCaptureIdentityReadsAllFiveFieldsFromARealPane pins CaptureIdentity's
