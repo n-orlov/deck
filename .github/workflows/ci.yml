@@ -18,27 +18,40 @@ permissions:
   contents: read
 
 concurrency:
-  # R165 (GH #50): the group folds in github.event_name, and for `push`
-  # also github.sha, on top of the workflow name -- not just github.ref.
-  # Before this, push/schedule/workflow_dispatch all evaluated to the same
-  # `ci-ci-refs/heads/main` group (every one of those events' own
-  # `github.ref` is the default branch), so a push to main queued strictly
-  # behind whatever nightly/dispatch run happened to be in flight, and a
-  # second push before the first one's run finished queued behind that
-  # run too -- one commit's own CI result could be starved for as long as
-  # the schedule/dispatch lane's own ~180-minute timeout. Folding in
-  # github.event_name makes schedule/workflow_dispatch groups differ from
-  # every push group; folding in github.sha (only for push, where every
-  # event already carries a distinct commit) makes two pushes their own,
-  # independent groups, so pushing again to main never waits behind, or
-  # cancels, an earlier push's own still-running result. See GitHub's own
-  # docs, "Control the concurrency of workflows and jobs"
-  # (https://docs.github.com/en/actions/using-jobs/using-concurrency): the
-  # group expression is what decides queue/cancel/run-side-by-side, not
-  # the event type by itself. PR runs on the same PR ref still cancel a
-  # superseded run (github.ref is the PR's own merge ref, already unique
-  # per PR); cancel-in-progress stays true only for pull_request.
-  group: ci-${{ github.workflow }}-${{ github.event_name }}-${{ github.event_name == 'push' && github.sha || github.ref }}
+  # R165 (GH #50): the group folds in github.event_name, and then a
+  # per-event tiebreaker chosen so that no two runs of the same non-PR
+  # event can ever land in the same group: github.sha for `push` (every
+  # push already carries a distinct commit), github.ref for
+  # `pull_request` (so a same-PR successor still shares its PR's group,
+  # which is what lets cancel-in-progress cancel a superseded PR run
+  # below), and github.run_id -- unique to every single workflow run,
+  # see GitHub's own docs, "Contexts", https://docs.github.com/en/actions/
+  # learn-github-actions/contexts -- for everything else (`schedule` and
+  # `workflow_dispatch`).
+  #
+  # Before this, push/schedule/workflow_dispatch all evaluated to the
+  # same `ci-ci-refs/heads/main` group (every one of those events' own
+  # `github.ref` is the default branch), so a push to main queued
+  # strictly behind whatever nightly/dispatch run happened to be in
+  # flight. A first fix folded in only github.event_name (plus
+  # github.sha for push), which separated push from schedule/dispatch but
+  # left every `schedule` run sharing ONE group with every other
+  # `schedule` run, and every `workflow_dispatch` run sharing ONE group
+  # with every other `workflow_dispatch` run (both still keyed on the
+  # same constant `github.ref`) -- GitHub keeps only one PENDING run per
+  # group and cancels the older pending run when a newer one queues, so
+  # two schedule runs (or two dispatches on the very same sha) queued
+  # back to back would still cancel each other's pending run, which is
+  # exactly the R165 defect this workflow exists to remove. Keying the
+  # non-push, non-PR branch on github.run_id instead removes that: every
+  # schedule/dispatch run's own group is now unique to that run, so it
+  # can never be the older pending run cancelled by a later one -- it
+  # runs to completion (or fails outright) every time, same as a push.
+  # See GitHub's own docs, "Control the concurrency of workflows and
+  # jobs" (https://docs.github.com/en/actions/using-jobs/using-concurrency):
+  # the group expression is what decides queue/cancel/run-side-by-side,
+  # not the event type by itself.
+  group: ci-${{ github.workflow }}-${{ github.event_name }}-${{ github.event_name == 'push' && github.sha || (github.event_name == 'pull_request' && github.ref || github.run_id) }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 # Every self-hosted job below repeats this same job-level `if:` (job-level

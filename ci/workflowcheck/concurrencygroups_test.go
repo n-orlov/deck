@@ -1,10 +1,11 @@
-// concurrencygroups_test.go is task 008's own probe (R165, GH #50): it
-// parses ci.yml's top-level `concurrency:` block as real YAML, then
-// EVALUATES its `group`/`cancel-in-progress` GitHub Actions expressions
-// against a small table of event scenarios with a tiny expression
-// evaluator (ghExprEval below) -- never by grepping the raw expression
-// text -- so it fails the moment the expression itself stops producing
-// the four required properties, however the expression is spelled:
+// concurrencygroups_test.go is task 008's own probe (R165, GH #50),
+// extended by task cure-01-02: it parses ci.yml's top-level
+// `concurrency:` block as real YAML, then EVALUATES its
+// `group`/`cancel-in-progress` GitHub Actions expressions against a
+// small table of event scenarios with a tiny expression evaluator
+// (ghExprEval below) -- never by grepping the raw expression text -- so
+// it fails the moment the expression itself stops producing the
+// required properties, however the expression is spelled:
 //
 //  1. the `schedule` and `workflow_dispatch` events' own groups differ
 //     from every `push` event's own group;
@@ -20,13 +21,29 @@
 //     "deployment already in progress" back-off added alongside this
 //     probe -- see ci.yml's own `publish` job comment and GitHub's Pages
 //     API docs, https://docs.github.com/en/rest/pages/pages, "Build
-//     requests are limited to one concurrent build per repository...").
+//     requests are limited to one concurrent build per repository...");
+//  5. (cure-01-02) a second `schedule` run and a second `workflow_dispatch`
+//     run -- the latter on the very SAME sha as the first, differing
+//     only in `github.run_id` -- each get their OWN group, distinct from
+//     the first run's group and from each other's lane, so no non-PR
+//     main run's pending slot can ever be superseded by a repeat of the
+//     same event (including repeated manual dispatches against an
+//     unchanged head);
+//  6. (cure-01-02) a same-PR successor (same `github.ref`, a different
+//     sha/run_id) still evaluates to the SAME group as the run it
+//     supersedes, so `cancel-in-progress` still has a shared group to
+//     cancel within -- proving PR supersession keeps working rather than
+//     only proving the boolean above.
 //
 // Demonstrated failing against the pre-fix dc2b6f7ece tree, whose
 // concurrency group is `ci-${{ github.workflow }}-${{ github.ref }}` --
 // identical for every push (same ref) and for schedule/workflow_dispatch
 // too (same ref again) -- see
 // /run/ralphd/artifacts/r165/concurrencygroups-dc2b6f7ece-fail.log.
+// Properties 5-6 also fail against the task-008 tree (c7372625f4), whose
+// group keyed schedule/workflow_dispatch on github.ref alone (constant
+// across repeats) -- see
+// /run/ralphd/artifacts/r16x/concurrencygroups-c7372625f4-fail.log.
 package workflowcheck
 
 import (
@@ -288,16 +305,19 @@ func loadCIWorkflowRaw(t *testing.T) (concurrencyBlock, map[string]map[string]ya
 }
 
 // scenario is one event this probe evaluates the concurrency expressions
-// against; ref/sha model what GitHub itself sets `github.ref`/`github.sha`
-// to for that event (schedule and workflow_dispatch both evaluate against
-// the default branch, exactly like the two push scenarios' own ref, which
-// is exactly what makes "differs from any push group" a real test instead
-// of a vacuous one).
+// against; ref/sha/runID model what GitHub itself sets
+// `github.ref`/`github.sha`/`github.run_id` to for that event (schedule and
+// workflow_dispatch both evaluate against the default branch, exactly like
+// the two push scenarios' own ref, which is exactly what makes "differs
+// from any push group" a real test instead of a vacuous one; run_id models
+// GitHub's own per-run counter, unique to every workflow run regardless of
+// event type or sha).
 type scenario struct {
 	name      string
 	eventName string
 	ref       string
 	sha       string
+	runID     string
 }
 
 func (s scenario) ctx() map[string]string {
@@ -306,6 +326,7 @@ func (s scenario) ctx() map[string]string {
 		"github.event_name": s.eventName,
 		"github.ref":        s.ref,
 		"github.sha":        s.sha,
+		"github.run_id":     s.runID,
 	}
 }
 
@@ -315,11 +336,22 @@ func TestCIWorkflowConcurrencyGroupsDifferByEventAndPushSha(t *testing.T) {
 		t.Fatalf("ci.yml: concurrency.group is empty")
 	}
 
-	pushA := scenario{name: "push A", eventName: "push", ref: "refs/heads/main", sha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}
-	pushB := scenario{name: "push B", eventName: "push", ref: "refs/heads/main", sha: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}
-	schedule := scenario{name: "schedule", eventName: "schedule", ref: "refs/heads/main", sha: "cccccccccccccccccccccccccccccccccccccccc"}
-	dispatch := scenario{name: "workflow_dispatch", eventName: "workflow_dispatch", ref: "refs/heads/main", sha: "dddddddddddddddddddddddddddddddddddddddd"}
-	pr := scenario{name: "pull_request", eventName: "pull_request", ref: "refs/pull/42/merge", sha: "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"}
+	pushA := scenario{name: "push A", eventName: "push", ref: "refs/heads/main", sha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", runID: "1001"}
+	pushB := scenario{name: "push B", eventName: "push", ref: "refs/heads/main", sha: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", runID: "1002"}
+	schedule := scenario{name: "schedule", eventName: "schedule", ref: "refs/heads/main", sha: "cccccccccccccccccccccccccccccccccccccccc", runID: "2001"}
+	dispatch := scenario{name: "workflow_dispatch", eventName: "workflow_dispatch", ref: "refs/heads/main", sha: "dddddddddddddddddddddddddddddddddddddddd", runID: "3001"}
+	pr := scenario{name: "pull_request", eventName: "pull_request", ref: "refs/pull/42/merge", sha: "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", runID: "4001"}
+
+	// R165 (cure-01-02): a second scheduled run and a second manual dispatch
+	// -- crucially, the dispatch is on the very SAME sha as the first one
+	// (an operator re-dispatching against an unchanged head, the exact case
+	// that used to collide), with only github.run_id differing, exactly as
+	// GitHub itself would assign it. If the group expression ever drops
+	// back to keying schedule/workflow_dispatch on anything constant across
+	// runs (github.ref, github.sha, or nothing at all), these collide with
+	// their first-run counterparts and this test catches it.
+	scheduleAgain := scenario{name: "schedule again", eventName: "schedule", ref: "refs/heads/main", sha: "cccccccccccccccccccccccccccccccccccccccc", runID: "2002"}
+	dispatchSameSha := scenario{name: "workflow_dispatch same sha", eventName: "workflow_dispatch", ref: "refs/heads/main", sha: "dddddddddddddddddddddddddddddddddddddddd", runID: "3002"}
 
 	groupOf := func(s scenario) string { return evalGhTemplate(conc.Group, s.ctx()) }
 
@@ -327,6 +359,8 @@ func TestCIWorkflowConcurrencyGroupsDifferByEventAndPushSha(t *testing.T) {
 	gPushB := groupOf(pushB)
 	gSchedule := groupOf(schedule)
 	gDispatch := groupOf(dispatch)
+	gScheduleAgain := groupOf(scheduleAgain)
+	gDispatchSameSha := groupOf(dispatchSameSha)
 
 	if gPushA == gPushB {
 		t.Errorf("push A group %q == push B group %q: two pushes with different shas must get different groups", gPushA, gPushB)
@@ -337,16 +371,35 @@ func TestCIWorkflowConcurrencyGroupsDifferByEventAndPushSha(t *testing.T) {
 	if gDispatch == gPushA || gDispatch == gPushB {
 		t.Errorf("workflow_dispatch group %q collides with a push group (A=%q, B=%q): workflow_dispatch must differ from any push group", gDispatch, gPushA, gPushB)
 	}
+	if gSchedule == gScheduleAgain {
+		t.Errorf("schedule group %q == a second schedule run's group %q: repeated schedule events must not share a group, or one's pending run supersedes the other's", gSchedule, gScheduleAgain)
+	}
+	if gDispatch == gDispatchSameSha {
+		t.Errorf("workflow_dispatch group %q == a second dispatch run's group %q even though only github.run_id differs between them: repeated workflow_dispatch events on the SAME sha must not share a group, or one's pending run supersedes the other's", gDispatch, gDispatchSameSha)
+	}
+	if gScheduleAgain == gDispatchSameSha {
+		t.Errorf("a second schedule run's group %q == a second workflow_dispatch run's group %q: schedule and workflow_dispatch must never share a group either", gScheduleAgain, gDispatchSameSha)
+	}
 
 	if conc.CancelInProgress == "" {
 		t.Fatalf("ci.yml: concurrency.cancel-in-progress is empty")
 	}
-	for _, s := range []scenario{pushA, pushB, schedule, dispatch, pr} {
+	for _, s := range []scenario{pushA, pushB, schedule, dispatch, scheduleAgain, dispatchSameSha, pr} {
 		got := evalGhBoolTemplate(conc.CancelInProgress, s.ctx())
 		want := s.eventName == "pull_request"
 		if got != want {
 			t.Errorf("cancel-in-progress for %s = %v, want %v (cancel-in-progress must be true only for pull_request)", s.name, got, want)
 		}
+	}
+
+	// A same-PR successor: cancel-in-progress relies on the SAME group
+	// being shared by both runs (only then does GitHub cancel the older
+	// pending one) -- a run_id-based (or otherwise per-run-unique) PR group
+	// would silently defeat that, so this checks the sharing directly
+	// rather than only the boolean above.
+	prSuccessor := scenario{name: "pull_request successor", eventName: "pull_request", ref: pr.ref, sha: "ffffffffffffffffffffffffffffffffffffffff", runID: "4002"}
+	if groupOf(pr) != groupOf(prSuccessor) {
+		t.Errorf("pull_request group %q != its successor's group %q on the same PR ref: same-PR successors must still share one group so cancel-in-progress can supersede the older run", groupOf(pr), groupOf(prSuccessor))
 	}
 }
 

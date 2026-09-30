@@ -59,34 +59,50 @@ report" below.
 `ci.yml`'s workflow-level `concurrency:` block:
 
 ```
-group: ci-${{ github.workflow }}-${{ github.event_name }}-${{ github.event_name == 'push' && github.sha || github.ref }}
+group: ci-${{ github.workflow }}-${{ github.event_name }}-${{ github.event_name == 'push' && github.sha || (github.event_name == 'pull_request' && github.ref || github.run_id) }}
 cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 ```
 
-folds in `github.event_name`, and -- for `push` only -- `github.sha`, on top
-of the workflow name. That makes every event's own group distinct:
+folds in `github.event_name`, then a per-event tiebreaker: `github.sha` for
+`push`, `github.ref` for `pull_request`, and `github.run_id` -- unique to
+every single workflow run -- for everything else (`schedule` and
+`workflow_dispatch`). That makes every non-PR run's own group unique to
+that run:
 
 - Every `push` run's group is unique to its own commit sha
   (`ci-ci-push-<sha>`), so two pushes to `main` are always two independent
   groups: pushing again never queues behind, and never cancels, an earlier
   push's own still-running result.
-- Every `schedule` run shares one group (`ci-ci-schedule-refs/heads/main`),
-  and every `workflow_dispatch` run shares a separate one of its own
-  (`ci-ci-workflow_dispatch-refs/heads/main`) -- so back-to-back nightly runs
-  queue behind each other, and back-to-back manual dispatches queue behind
-  each other, but neither lane's group is shared with `push`'s, or with the
-  other's.
+- Every `schedule` run's group, and every `workflow_dispatch` run's group,
+  is unique to that one run (`ci-ci-schedule-<run_id>`,
+  `ci-ci-workflow_dispatch-<run_id>`) -- **not** shared with any other
+  `schedule` or `workflow_dispatch` run, including a second dispatch fired
+  against the very same sha as the first. An earlier design keyed those two
+  lanes on `github.ref` alone (constant across every run of the same
+  event), which put every `schedule` run in one shared group and every
+  `workflow_dispatch` run in another: GitHub keeps only **one pending** run
+  per group and cancels the older pending run the moment a newer one
+  queues into that same group, so two back-to-back nightly runs, or two
+  manual dispatches queued close together, could still cancel each
+  other's pending run under that design -- it did not, in fact, "queue
+  every dispatch to completion". Keying on `github.run_id` instead removes
+  the shared group entirely, so no `schedule`/`workflow_dispatch` run can
+  ever be the pending run a same-lane sibling supersedes: each one runs to
+  completion (or fails outright) independently, exactly like `push`.
+  Neither lane's group is ever shared with `push`'s, or with the other's.
 - Every `pull_request` run's group is unique to its own PR
-  (`github.ref` is that PR's merge ref), so a second run on the *same* PR
-  shares that PR's group with the first.
+  (`github.ref` is that PR's merge ref, the one context this expression
+  still keys on a value that repeats across runs), so a second run on the
+  *same* PR shares that PR's group with the first -- which is what lets
+  `cancel-in-progress` below actually cancel the superseded one.
 
 `cancel-in-progress` is `true` only when `github.event_name == 'pull_request'`
 -- so a superseded run on the same PR is the only run this workflow ever
 cancels. A `push`, `schedule`, or `workflow_dispatch` run is never cancelled
-by another run of any kind (each queues behind its own lane's prior run, if
-any, and runs to completion); it can still fail outright (a red `suite`, or
-the job's own `timeout-minutes`), which is a different outcome from
-`cancelled`.
+by another run of any kind -- each one's group is unique to itself, so
+there is never another run in the same group to queue behind, wait for, or
+be superseded by; it can still fail outright (a red `suite`, or the job's
+own `timeout-minutes`), which is a different outcome from `cancelled`.
 
 ## The fork guard
 
