@@ -664,7 +664,7 @@ schema:
 |---|---|
 | top level | `allow_yolo` (default false, §5), `yolo_default` (default false, §5 — inert unless `allow_yolo`), `stale_after` (default 45 s, §7), `capture_min_interval` (§9.4), `tmux_mouse` (default true, §3.2 — `false` restores tmux's own default and with it the arrow-key behaviour), `event_retention_days` (default 30, §12), `pre_launch` (empty by default, §6.4 — the global launch hook), `post_destroy` (empty by default, §9.2 — the global teardown hook) |
 | `[env]` | the middle PATH/env layer (§6.1) |
-| `[ui]` | `theme` (§11.6), `ascii` (§11), `mouse` (default true, §11.8), `preview_fit` (default true, §11), `preview_paint` (default `"fit"`, one of `fit`/`nofit`/`bg`/`off`, §11.3), `sort_order` (default `"attention"`, one of `attention`/`created`/`activity`/`name`, §11), `default_group_first` (default false, §11), `recent_cwd_limit` (default 5, §11.7). **Not** `layout_mode`, `sidebar_width` or the recent-directory list itself — those are machine-local UI state/history and live in `state.db` (§11.2, §11.7), so a keypress never rewrites this file |
+| `[ui]` | `theme` (§11.6), `ascii` (§11), `mouse` (default true, §11.8), `preview_fit` (default true, §11), `preview_paint` (default `"fit"`, one of `fit`/`nofit`/`bg`/`off`, §11.3), `sort_order` (default `"attention"`, one of `attention`/`created`/`activity`/`name`, §11), `default_group_first` (default false, §11), `attach_on_new` (default true, §11), `attach_on_resume` (default false, §9.1), `recent_cwd_limit` (default 5, §11.7). **Not** `layout_mode`, `sidebar_width` or the recent-directory list itself — those are machine-local UI state/history and live in `state.db` (§11.2, §11.7), so a keypress never rewrites this file |
 | `[notify]` | channels and rules (§10) — structured tables, edited via their own dialog (§11.5) |
 
 Environment always outranks the file: `DECK_ASCII` set in the environment overrides
@@ -1034,6 +1034,11 @@ every session reads `stopped · resumable`, and `r` brings one back:
   (`remain-on-exit failed`, §3.2), and the row lands in `error` with that as its reason. A
   session that would start *without* the credential its hook was supposed to fetch is worse than
   a session that refuses to start, so refusing is the behaviour, not a failure mode of it.
+- **With `[ui] attach_on_resume` on (default false, §6.5), a successful `r` or `R` goes on to
+  enter the interactive preview on that session**, through the same auto-enter intent a create
+  arms (§11) — once its pane is live, only in the client that pressed the key, cancelled by any
+  key or click first, and refused exactly as `↵` would be — while `U` (unarchive, §9.2) and
+  `u`'s undo of an `x` never arm it.
 - A resumed session enters `starting` and becomes `running` on the agent's first signal,
   exactly as in §7 — there is no special post-resume status. Hook agents typically reach
   `running` within a second; probe agents may sit in `starting` until `stale_after`, which
@@ -1510,6 +1515,20 @@ hold them side by side.
   not finish. It is a one-shot intent tied to that session's id, not a standing rule — it is
   satisfied once, by the first load that contains the row, and a later reload does not
   re-steal a selection the user has since moved. If the session never appears, nothing moves.
+  **The creating client then enters the interactive preview on it** (§11.9), unless
+  `[ui] attach_on_new` (default true, §6.5) is false: a create is aimed at working in that
+  session, and a create that stops one `↵` short of it is again a create that did not finish.
+  This is deck's one *auto-enter* intent, tied to the session's id, and a fresh create from the
+  `n` modal is one of exactly two things that arm it; the other is an `r` or `R` under
+  `[ui] attach_on_resume` (§9.1), and both behave identically from here on. It is armed only in
+  the client that asked; another client on the same socket never enters on its behalf. It
+  waits for the row to have a live pane, because a new row often lands as `starting` before
+  tmux reports one, and the wait is bounded: if no live pane appears within a few preview
+  ticks, the intent is dropped silently and the session simply stays selected. The user always
+  wins — any key, any click, a selection move, or a dialog, overlay, filter or settings opened
+  before entry cancels it for good, and nothing starts while the create modal is still open.
+  Entry is `↵`'s own entry, so a refused one is `↵`'s refusal, shown the way `↵` shows it,
+  with the session left selected in the list and no retry.
 - **A session is a two-line row, and the order within each line is fixed.** Line 1 carries
   the §11.3 gutter, the status glyph, the pin marker `✦` (ASCII `*`) on a pinned row only,
   the name, then the unseen marker, the live/sampled
@@ -2297,6 +2316,10 @@ forwards keystrokes to it. `Ctrl+Q` returns. `a` remains the escalation to a rea
 Entering is an attachment in §7's sense: the same durable transaction as `a`'s attach answers
 a `waiting` row and acknowledges an `error` row, applied only once entry has actually
 succeeded — a refused entry claims nothing.
+A successful create from `n` (§11, `[ui] attach_on_new`) or resume from `r`/`R` (§9.1,
+`[ui] attach_on_resume`) enters by itself through exactly this path — the same refusals and
+banner, the same claim and fit, the same attachment transaction — so there is one way in, not
+two.
 
 What separates this from §11's passive fit is **ownership**, not permission: passive fitting
 picks a size and leaves it, while interactive mode records what it found, claims it, and puts
