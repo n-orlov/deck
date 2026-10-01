@@ -143,16 +143,29 @@ func theFakeAgentsRenderedPaneIsByteIdenticalAcrossTwoConsecutiveCaptures(ctx co
 // was rendered) AND the resulting frame is non-empty, then returns that
 // frame. If minBytes is 0 (unknown -- defensive only, every caller today
 // always sets it) it falls back to the old "merely non-empty" check.
+//
+// Both values come from a single driver.FrameAndRawLen call rather than a
+// separate driver.Frame followed by a separate driver.Raw. The two-call
+// shape this replaced (inventory mechanism M3, task 007) sampled each
+// under its own lock acquisition, so a chunk landing between them could
+// make the byte count already reflect a render the frame sample -- taken
+// a moment earlier -- had not seen yet: the raw count would clear
+// minBytes while the returned frame was still the stale, partial one,
+// which is exactly what made outline rows #01 (claude, oversized.txt) and
+// #05 (pi, oversized.txt) -- the only fixture bigger than the pty
+// reader's 4096-byte buffer -- occasionally fail the next step's
+// byte-identical comparison. See
+// features/fixture_fully_rendered_toctou_regression_test.go.
 func waitForFixtureFullyRendered(driver *ScreenDriver, minBytes int) (string, error) {
 	deadline := time.Now().Add(2 * time.Second)
 	for {
-		frame := driver.Frame(true)
+		frame, rawLen := driver.FrameAndRawLen(true)
 		nonEmpty := strings.TrimSpace(frame) != ""
-		if nonEmpty && (minBytes == 0 || len(driver.Raw()) >= minBytes) {
+		if nonEmpty && (minBytes == 0 || rawLen >= minBytes) {
 			return frame, nil
 		}
 		if time.Now().After(deadline) {
-			return frame, fmt.Errorf("timed out waiting for a fully rendered frame (raw bytes seen = %d, want >= %d)", len(driver.Raw()), minBytes)
+			return frame, fmt.Errorf("timed out waiting for a fully rendered frame (raw bytes seen = %d, want >= %d)", rawLen, minBytes)
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
