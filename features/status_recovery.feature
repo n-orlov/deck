@@ -27,7 +27,17 @@ Feature: Status recovery chain (requirements 43-47)
     Then the audit log has 1 launch record for session "dup pane"
     When fake Claude session "dup pane" fires "SessionEnd" for itself using injected identity:
       | reason | logout |
-    Then the state database session "dup pane" is "stopped" from "hook" with killed_by_user=0
+    # The hook's own stopped-from-hook write is observed through the durable
+    # per-session event log, not a point read of the live sessions row:
+    # Reconcile's self-heal (below) can -- and in CI sometimes does, R170 --
+    # overwrite that row's status/source back to "starting"/"tmux" before a
+    # one-shot SELECT of it lands, which is exactly the race
+    # terminal_repair_field_route.feature's own "wedged" scenario already
+    # avoids the same way (same step, same wording). An events-table row is
+    # append-only and outlives whatever the self-heal pass does to the
+    # sessions row afterward, so this assertion is immune to that race by
+    # construction rather than by timing luck.
+    Then the state database session "dup pane" has an event of kind "session_end" with reason containing "logout"
     And the private tmux session "deck_dup-pane" exists
     # requirement 46's own contradiction (hook says stopped, tmux still owns
     # the pane) is now caught by SPEC section 7's self-healing rule
