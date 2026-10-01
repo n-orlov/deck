@@ -3138,6 +3138,43 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.deleteUndoSessionName = msg.session.Name
 		m.deleteUndoGeneration++
 		generation := m.deleteUndoGeneration
+		// task 012 (M10, kill_delete_undo.feature:75, CI run 36828007039):
+		// SPEC.md:1085 promises the deleted row is "Hidden immediately", but
+		// the only thing that used to make that happen was scheduling
+		// m.loadSessions below as its own tea.Cmd -- a goroutine whose
+		// sessionsLoaded result lands on a LATER Update call. The frame
+		// rendered for THIS message (closing the confirm dialog and raising
+		// the "Deleted — press u to undo" toast) still carried the stale,
+		// pre-delete session list, so a client sampling a frame in that
+		// window could see the undo toast and the deleted row's own
+		// still-"starting" sidebar line together. Remove the just-deleted
+		// session from m.baseSessions/m.sessions synchronously, in the same
+		// Update call, so this frame already reflects the deletion; the
+		// m.loadSessions reload below still runs to pick up any other
+		// concurrent change and remains the authoritative reconciliation.
+		var selectedID string
+		selectedWasRow := false
+		if idx, ok := m.selected.SessionIndex(); ok {
+			selectedWasRow = true
+			if idx >= 0 && idx < len(m.sessions) {
+				selectedID = m.sessions[idx].ID
+			}
+		}
+		filtered := m.baseSessions[:0:0]
+		for _, s := range m.baseSessions {
+			if s.ID != msg.session.ID {
+				filtered = append(filtered, s)
+			}
+		}
+		m.baseSessions = filtered
+		m.sessions = m.filteredSessions()
+		if selectedWasRow {
+			if idx := indexOfSessionID(m.sessions, selectedID); idx >= 0 {
+				m.selected = rowCursor(idx)
+			} else if idx, _ := m.selected.SessionIndex(); idx >= len(m.sessions) {
+				m.selected = rowCursor(max(0, len(m.sessions)-1))
+			}
+		}
 		cmds := []tea.Cmd{m.loadSessions, tea.Tick(m.settings.DeleteGrace, func(t time.Time) tea.Msg { return deleteGraceExpired(generation) })}
 		if msg.hookMessage != "" {
 			// task 042 (findings §1): mirrors the sessionArchived branch above
