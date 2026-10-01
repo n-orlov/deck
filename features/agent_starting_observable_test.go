@@ -2,8 +2,11 @@ package features
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"time"
 )
 
@@ -27,17 +30,65 @@ import (
 // row, before the pane is launched) is never overwritten, so it is the
 // durable observable used here instead.
 
-// auditRecordCount is the number of records the audit log holds right now,
-// 0 when it cannot be read yet. A create helper takes it BEFORE submitting,
-// so the wait below only accepts a "starting" record written by that
-// submission -- never an earlier record of a tombstoned row that held the
-// same name (SPEC §9.2 name reuse).
-func auditRecordCount(h *ScenarioHarness) int {
-	records, err := readAudit(h)
-	if err != nil {
-		return 0
+// agentStateRoots lists every DECK_HOME-mode state root a scenario's
+// clients can write to: the default profile's h.Home itself, and each named
+// profile's h.Home/profiles/<name> (SPEC §3.4; internal/config.resolvePaths).
+// A create helper does not know which profile its client runs under
+// (profile_hook_isolation.feature's client "a" runs in profile "acme"), so it
+// watches all of them.
+func agentStateRoots(h *ScenarioHarness) []string {
+	roots := []string{h.Home}
+	if profiles, err := filepath.Glob(filepath.Join(h.Home, "profiles", "*")); err == nil {
+		roots = append(roots, profiles...)
 	}
-	return len(records)
+	return roots
+}
+
+// readAuditAt reads root's audit log (root/log/deck.jsonl), nil when it
+// does not exist or cannot be parsed yet.
+func readAuditAt(root string) []map[string]json.RawMessage {
+	records, err := readAuditFile(filepath.Join(root, "log", "deck.jsonl"))
+	if err != nil {
+		return nil
+	}
+	return records
+}
+
+// sessionIDByNameAt looks name up in root/state.db, never creating that
+// file: a scenario can assert a root holds no state database at all
+// (profile_hook_isolation.feature), so an absent file is just "not here".
+func sessionIDByNameAt(ctx context.Context, root, name string) (string, bool) {
+	path := filepath.Join(root, "state.db")
+	if _, err := os.Stat(path); err != nil {
+		return "", false
+	}
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		return "", false
+	}
+	defer db.Close()
+	db.SetMaxOpenConns(1)
+	if _, err := db.ExecContext(ctx, `PRAGMA busy_timeout=5000`); err != nil {
+		return "", false
+	}
+	var id string
+	if err := db.QueryRowContext(ctx, `SELECT id FROM sessions WHERE name = ?`, name).Scan(&id); err != nil {
+		return "", false
+	}
+	return id, true
+}
+
+// auditOffsets records, per state root, how many audit records it holds
+// right now. A create helper takes it BEFORE submitting, so the wait below
+// only accepts a "starting" record written by that submission -- never an
+// earlier record of a tombstoned row that held the same name (SPEC §9.2
+// name reuse). A root that appears later starts at offset 0.
+func auditOffsets(h *ScenarioHarness) map[string]int {
+	offsets := map[string]int{}
+	for _, root := range agentStateRoots(h) {
+		offsets[root] = len(readAuditAt(root))
+	}
+	return offsets
 }
 
 // auditSessionEventCount counts records[from:] whose event is event and
@@ -60,33 +111,41 @@ func auditSessionEventCount(records []map[string]json.RawMessage, from int, sess
 
 // waitForAgentCreateRecorded is the agent create helpers' durable sync
 // point: it waits until the audit log holds a "starting" transition for the
-// session now named name, written after auditOffset (the create this step
-// just submitted entered "starting"), and then until client's sidebar shows
-// that session's row in ANY status glyph (the TUI has caught up with the
-// create, whatever the row has moved on to since).
-func waitForAgentCreateRecorded(ctx context.Context, h *ScenarioHarness, client *ScreenDriver, name string, auditOffset int) error {
+// session now named name in any state root, written after that root's
+// offset (the create this step just submitted entered "starting"), and then
+// until client's sidebar shows that session's row, in ANY status glyph,
+// SELECTED. A periodic reload can paint the new row before the TUI has
+// processed the create's own result; requirement 52 selects the created
+// row only on the first load after that result (internal/tui
+// pendingSelectSessionID), so the selected row is what proves the TUI has
+// caught up -- a following navigation step then never starts from a
+// selection the auto-select is about to move.
+func waitForAgentCreateRecorded(ctx context.Context, h *ScenarioHarness, client *ScreenDriver, name string, offsets map[string]int) error {
 	ctx, cancel := withDefaultWaitDeadline(ctx)
 	defer cancel()
-	for {
-		id, err := sessionIDByName(h, name)
-		if err == nil {
-			if records, rerr := readAudit(h); rerr == nil && auditSessionEventCount(records, auditOffset, id, "starting") > 0 {
-				break
+	recorded := func() bool {
+		for _, root := range agentStateRoots(h) {
+			id, ok := sessionIDByNameAt(ctx, root, name)
+			if ok && auditSessionEventCount(readAuditAt(root), offsets[root], id, "starting") > 0 {
+				return true
 			}
 		}
+		return false
+	}
+	for !recorded() {
 		select {
 		case <-ctx.Done():
 			return fmt.Errorf("audit log never recorded agent session %q entering starting after the create was submitted: %w", name, ctx.Err())
 		case <-time.After(20 * time.Millisecond):
 		}
 	}
-	rowShown := func(frame string) bool {
+	rowShownSelected := func(frame string) bool {
 		_, ok := frameSidebarRowGlyph(frame, name)
-		return ok
+		return ok && frameHasSelectedRowNamed(frame, name)
 	}
-	frame, err := client.WaitForFrameFunc(ctx, false, rowShown)
+	frame, err := client.WaitForFrameFunc(ctx, false, rowShownSelected)
 	if err != nil {
-		return fmt.Errorf("session %q recorded starting but its sidebar row never rendered: %w\nframe:\n%s", name, err, frame)
+		return fmt.Errorf("session %q recorded starting but its sidebar row never rendered selected: %w\nframe:\n%s", name, err, frame)
 	}
 	return nil
 }

@@ -667,7 +667,13 @@ func databaseSessionStatus(ctx context.Context, name, want string) error {
 }
 
 func readAudit(h *ScenarioHarness) ([]map[string]json.RawMessage, error) {
-	data, err := os.ReadFile(filepath.Join(h.Home, "log", "deck.jsonl"))
+	return readAuditFile(filepath.Join(h.Home, "log", "deck.jsonl"))
+}
+
+// readAuditFile parses one audit JSONL file (readAudit's body, for any
+// state root).
+func readAuditFile(path string) ([]map[string]json.RawMessage, error) {
+	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("read audit log: %w", err)
 	}

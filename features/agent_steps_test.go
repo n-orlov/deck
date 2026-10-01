@@ -375,11 +375,11 @@ func clientCreatesAgentSessionWithProfileAndOptionalMessage(ctx context.Context,
 	}
 	// Durable sync point, never a frame wait on the transient "starting"
 	// (task 026): see waitForAgentCreateRecorded.
-	auditOffset := auditRecordCount(h)
+	offsets := auditOffsets(h)
 	if err := client.Send("\r"); err != nil {
 		return err
 	}
-	return waitForAgentCreateRecorded(ctx, h, client, name, auditOffset)
+	return waitForAgentCreateRecorded(ctx, h, client, name, offsets)
 }
 
 // clientCreatesAgentSessionWithProfileAndEnv is clientCreatesAgentSessionWithProfile's
@@ -407,11 +407,11 @@ func clientCreatesAgentSessionWithProfileAndEnv(ctx context.Context, clientName,
 	}
 	// Durable sync point, never a frame wait on the transient "starting"
 	// (task 026): see waitForAgentCreateRecorded.
-	auditOffset := auditRecordCount(h)
+	offsets := auditOffsets(h)
 	if err := client.Send("\r"); err != nil {
 		return err
 	}
-	return waitForAgentCreateRecorded(ctx, h, client, name, auditOffset)
+	return waitForAgentCreateRecorded(ctx, h, client, name, offsets)
 }
 
 // clientCreatesAgentSessionWithProfileAndLoginShell drives the real create
@@ -443,11 +443,11 @@ func clientCreatesAgentSessionWithProfileAndLoginShell(ctx context.Context, clie
 	}
 	// Durable sync point, never a frame wait on the transient "starting"
 	// (task 026): see waitForAgentCreateRecorded.
-	auditOffset := auditRecordCount(h)
+	offsets := auditOffsets(h)
 	if err := client.Send("\r"); err != nil {
 		return err
 	}
-	return waitForAgentCreateRecorded(ctx, h, client, name, auditOffset)
+	return waitForAgentCreateRecorded(ctx, h, client, name, offsets)
 }
 
 // clientCreatesAgentSessionWithFailingPreLaunch drives the real create modal
@@ -482,11 +482,11 @@ func clientCreatesAgentSessionWithFailingPreLaunch(ctx context.Context, clientNa
 	}
 	// Durable sync point, never a frame wait on the transient "starting"
 	// (task 026): see waitForAgentCreateRecorded.
-	auditOffset := auditRecordCount(h)
+	offsets := auditOffsets(h)
 	if err := client.Send("\r"); err != nil {
 		return err
 	}
-	return waitForAgentCreateRecorded(ctx, h, client, name, auditOffset)
+	return waitForAgentCreateRecorded(ctx, h, client, name, offsets)
 }
 
 // clientCreatesAgentSessionWithSucceedingPreLaunch is task 017/I-13's
@@ -521,11 +521,11 @@ func clientCreatesAgentSessionWithSucceedingPreLaunch(ctx context.Context, clien
 	}
 	// Durable sync point, never a frame wait on the transient "starting"
 	// (task 026): see waitForAgentCreateRecorded.
-	auditOffset := auditRecordCount(h)
+	offsets := auditOffsets(h)
 	if err := client.Send("\r"); err != nil {
 		return err
 	}
-	return waitForAgentCreateRecorded(ctx, h, client, name, auditOffset)
+	return waitForAgentCreateRecorded(ctx, h, client, name, offsets)
 }
 
 // privateTMuxSessionShowsTextBeforeOtherText polls the named session's own
