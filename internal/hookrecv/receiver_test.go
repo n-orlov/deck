@@ -79,7 +79,9 @@ func TestReceiveMappingTable(t *testing.T) {
 // not by an enumerated predecessor status. The one status value a hook can
 // never move a row away from is "stopped": §7's transition table gives it no
 // return edge except the explicit `r` resume, which does not go through
-// Receive.
+// Receive. A SessionEnd onto a TMUX-sourced stop moves it nowhere -- it stays
+// stopped -- so that one write applies, replacing the liveness fact with the
+// hook's own verdict (task 026).
 func TestReceiveHookAppliesOverAnyStaleSourceExceptStopped(t *testing.T) {
 	events := []string{"SessionStart", "UserPromptSubmit", "Notification", "Stop", "StopFailure", "SessionEnd"}
 	statuses := []string{"starting", "running", "waiting", "idle", "error", "stopped"}
@@ -103,7 +105,15 @@ func TestReceiveHookAppliesOverAnyStaleSourceExceptStopped(t *testing.T) {
 					if err != nil {
 						t.Fatal(err)
 					}
-					if current == "stopped" {
+					if current == "stopped" && event == "SessionEnd" && currentSource == "tmux" {
+						// The one hook write onto a stopped row that resurrects
+						// nothing: the status stays stopped, and the hook's own
+						// verdict outranks tmux's bare liveness fact (SPEC §7
+						// precedence; internal/store hookRefinesTmuxStop).
+						if got.Status != "stopped" || got.StatusSource != "hook" || got.StatusReason != "logout" || got.StatusAt != 20 || got.NotifyEpoch != 3 || !got.Acknowledged || got.LastMessage != "before message" {
+							t.Fatalf("SessionEnd did not refine a tmux-sourced stop: %#v", got)
+						}
+					} else if current == "stopped" {
 						if got.Status != current || got.StatusReason != "before" || got.StatusSource != currentSource || got.StatusAt != 7 || got.NotifyEpoch != 3 || !got.Acknowledged || got.LastMessage != "before message" {
 							t.Fatalf("hook resurrected a stopped row: %#v", got)
 						}
