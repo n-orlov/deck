@@ -44,6 +44,11 @@ import "testing"
 // run against the same a192accf7d export, and
 // /run/ralphd/artifacts/009/dialogs-20x-{normal,race}.log for
 // dialogs.feature:143 itself, 20/20 both ways at HEAD).
+//
+// The same-row STATUS repaint half of M2 (the selected row's own status
+// glyph or badges changing) is covered by
+// TestSameRowStatusRepaintCannotAcknowledgeNavigation and
+// TestSendNavKeySettledWaitsOutSameRowStatusRepaint (task 012).
 func TestReviewPreviewRepaintCannotAcknowledgeNavigation(t *testing.T) {
 	// sidebarFrame builds a minimal, but real-shaped, side-by-side frame:
 	// a bordered sidebar panel on the left (one group header row, then
