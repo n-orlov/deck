@@ -466,6 +466,33 @@ func (d *ScreenDriver) Raw() string {
 	return d.raw.String()
 }
 
+// FrameAndRawLen returns the current frame and the number of raw bytes
+// accumulated so far, both read inside the SAME critical section -- unlike
+// calling Frame and Raw back to back, which samples each under its own,
+// separate lock acquisition and can therefore observe them at two
+// different moments in d.read's stream.
+//
+// This matters because d.read's own critical section always writes a
+// chunk to d.raw and to d.screen together (see d.read above), so a caller
+// that locks once for both reads can never see a byte count that already
+// reflects a chunk whose corresponding screen content it has not also
+// seen -- the exact TOCTOU inventory mechanism M3 named in
+// waitForFixtureFullyRendered (features/fake_agent_size_test.go, task
+// 007): sampling Frame, then separately Raw, let a chunk land in between,
+// so Raw's byte count could already count bytes whose render Frame's
+// earlier, now-stale sample never saw.
+func (d *ScreenDriver) FrameAndRawLen(clockFrozen bool) (string, int) {
+	d.mu.Lock()
+	rawLen := d.raw.Len()
+	if d.screen == nil {
+		d.mu.Unlock()
+		return "", rawLen
+	}
+	frame := d.screen.String()
+	d.mu.Unlock()
+	return NormalizeFrame(frame, clockFrozen), rawLen
+}
+
 func (d *ScreenDriver) processError() error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
