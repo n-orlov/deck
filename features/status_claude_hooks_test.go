@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/cucumber/godog"
+	"github.com/n-orlov/deck/internal/hookrecv"
 )
 
 // registerClaudeHookStatusSteps keeps the Phase 2 status scenarios black-box:
@@ -125,13 +126,24 @@ func fakeClaudeFires(ctx context.Context, emitter, event, target, identity strin
 	if err != nil {
 		return err
 	}
+	// Wait for THIS hook's own event row, never just any new event on the
+	// target (task 026): UpdateSessionStatus records an event even for a
+	// write it declines, so a late reconcile/kill event for a just-killed
+	// target used to satisfy a "count went up" wait before the hook landed
+	// (status_recovery.feature:88's "0 session_start events, want one").
+	// hookrecv.Receive persists the mapping's kind, or its ".superseded"
+	// variant when it declines a superseded launch's write.
+	mapping, ok := hookrecv.Mappings[event]
+	if !ok {
+		return fmt.Errorf("unsupported hook event %q", event)
+	}
 	db, err := openObservedDatabase(h)
 	if err != nil {
 		return err
 	}
 	defer db.Close()
-	var before int
-	if err := db.QueryRowContext(ctx, `SELECT count(*) FROM events WHERE session_id = ?`, targetID).Scan(&before); err != nil {
+	var beforeSeq int64
+	if err := db.QueryRowContext(ctx, `SELECT COALESCE(MAX(seq), 0) FROM events`).Scan(&beforeSeq); err != nil {
 		return err
 	}
 	paneTarget := "deck_" + emitterSlug
@@ -144,10 +156,11 @@ func fakeClaudeFires(ctx context.Context, emitter, event, target, identity strin
 	deadline := time.Now().Add(3 * time.Second)
 	for {
 		var count int
-		if err := db.QueryRowContext(ctx, `SELECT count(*) FROM events WHERE session_id = ?`, targetID).Scan(&count); err != nil {
+		if err := db.QueryRowContext(ctx, `SELECT count(*) FROM events WHERE session_id = ? AND seq > ? AND kind IN (?, ?)`,
+			targetID, beforeSeq, mapping.Kind, mapping.Kind+".superseded").Scan(&count); err != nil {
 			return err
 		}
-		if count > before {
+		if count > 0 {
 			return nil
 		}
 		if time.Now().After(deadline) {
