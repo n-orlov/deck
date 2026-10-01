@@ -381,8 +381,19 @@ var startingOrRunningRowGlyphs = map[string]bool{
 // leaves none at all, so its "..." lands immediately after the name;
 // this function accepts both shapes.)
 func frameSidebarRowGlyph(frame, rowName string) (string, bool) {
+	glyph, _, ok := frameSidebarRowGlyphSelected(frame, rowName)
+	return glyph, ok
+}
+
+// frameSidebarRowGlyphSelected is frameSidebarRowGlyph plus whether that
+// same row carries the sidebar's "> " selection gutter. It identifies the
+// row exactly as frameSidebarRowGlyph does (full name, ellipsised badge run
+// or truncated name), so a caller asking "is rowName's row selected" never
+// disagrees with one asking "which glyph does rowName's row show" about
+// WHICH row that is (task 026: waitForSettledSessionRow needs both).
+func frameSidebarRowGlyphSelected(frame, rowName string) (string, bool, bool) {
 	if rowName == "" {
-		return "", false
+		return "", false, false
 	}
 	for _, line := range strings.Split(frame, "\n") {
 		cell, ok := sidebarCell(line)
@@ -390,7 +401,7 @@ func frameSidebarRowGlyph(frame, rowName string) (string, bool) {
 			continue
 		}
 		text := strings.TrimLeft(cell, " ")
-		text = strings.TrimPrefix(text, "> ")
+		text, selected := strings.CutPrefix(text, "> ")
 		for _, g := range sidebarRowLeadGlyphs {
 			rest, ok := strings.CutPrefix(text, g+" ")
 			if !ok {
@@ -415,7 +426,7 @@ func frameSidebarRowGlyph(frame, rowName string) (string, bool) {
 				// a space).
 				after := rest[len(rowName):]
 				if after == "" || strings.HasPrefix(after, " ") || strings.HasPrefix(after, "...") || strings.HasPrefix(after, "\u2026") {
-					return g, true
+					return g, selected, true
 				}
 				continue
 			}
@@ -443,11 +454,11 @@ func frameSidebarRowGlyph(frame, rowName string) (string, bool) {
 				continue
 			}
 			if remainder := rest[common:]; strings.HasPrefix(remainder, "...") || strings.HasPrefix(remainder, "\u2026") {
-				return g, true
+				return g, selected, true
 			}
 		}
 	}
-	return "", false
+	return "", false, false
 }
 
 // frameHasSelectedRowNamed reports whether frame's sidebar holds a

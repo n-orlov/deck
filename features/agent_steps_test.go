@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -618,16 +619,8 @@ func positionCreateModalOnProfileField(ctx context.Context, clientName, kind, na
 	if err := client.Send("\x1b[B\x1b[B"); err != nil {
 		return nil, nil, err
 	}
-	time.Sleep(50 * time.Millisecond)
-	for attempt := 0; attempt < 4; attempt++ {
-		frame := client.Frame(false)
-		if strings.Contains(frame, profile+" (left/right cycles") {
-			break
-		}
-		if err := client.Send("\x1b[C"); err != nil {
-			return nil, nil, err
-		}
-		time.Sleep(25 * time.Millisecond)
+	if err := cycleFocusedCreateFieldTo(ctx, client, "Permission profile", profile); err != nil {
+		return nil, nil, err
 	}
 	if err := client.WaitForFrame(ctx, false, profile+" (left/right cycles"); err != nil {
 		return nil, nil, fmt.Errorf("cycle Permission profile field to %q: %w", profile, err)
@@ -688,15 +681,11 @@ func cycleCreateFieldToValue(ctx context.Context, client *ScreenDriver, want str
 	if err := client.Send("\x1b[B"); err != nil {
 		return err
 	}
-	time.Sleep(50 * time.Millisecond)
-	for _, candidate := range order {
-		if candidate == want {
-			break
-		}
-		if err := client.Send("\x1b[C"); err != nil { // right arrow
-			return err
-		}
-		time.Sleep(25 * time.Millisecond)
+	if !slices.Contains(order, want) {
+		return fmt.Errorf("%q is not one of the field's options %v", want, order)
+	}
+	if err := cycleFocusedCreateFieldTo(ctx, client, "Agent", want); err != nil {
+		return err
 	}
 	return client.WaitForFrame(ctx, false, want+" (left/right cycles")
 }
@@ -772,15 +761,8 @@ func ensureCreateModalAgent(ctx context.Context, client *ScreenDriver, want stri
 	if err := client.Send("\x1b[B\x1b[B"); err != nil {
 		return err
 	}
-	time.Sleep(50 * time.Millisecond)
-	for attempt := 0; attempt <= len(createAgentOptionsOrder); attempt++ {
-		if matchesMarker(client.Frame(false)) {
-			break
-		}
-		if err := client.Send("\x1b[C"); err != nil { // right arrow
-			return err
-		}
-		time.Sleep(25 * time.Millisecond)
+	if err := cycleFocusedCreateFieldTo(ctx, client, "Agent", want); err != nil {
+		return err
 	}
 	if _, err := client.WaitForFrameFunc(ctx, false, matchesMarker); err != nil {
 		return fmt.Errorf("cycle the create modal's Agent field to %q: %w", want, err)
@@ -790,6 +772,83 @@ func ensureCreateModalAgent(ctx context.Context, client *ScreenDriver, want stri
 		return err
 	}
 	return client.WaitForFrame(ctx, false, "> Name:")
+}
+
+// cycleFocusedCreateFieldTo cycles the create modal's cycling field label
+// (one the caller has just sent the ↓ arrows to focus) right until its
+// value reads want, one right arrow at a time: it first waits for the field
+// to render focused ("> <label>: "), then after every arrow waits for a
+// frame showing that field's value changed before deciding whether another
+// is needed.
+//
+// Task 026 (permission_modes.feature:29, 1/20 -race): the loops this
+// replaces sent an arrow, slept 25 ms and re-read the frame; whenever the
+// render lagged those sleeps (routinely, under -race) they read a stale
+// value and sent arrows past want, which then never appeared. Reading the
+// frame only after it reflects the previous arrow cannot overshoot.
+func cycleFocusedCreateFieldTo(ctx context.Context, client *ScreenDriver, label, want string) error {
+	ctx, cancel := withDefaultWaitDeadline(ctx)
+	defer cancel()
+	focused := func(frame string) bool {
+		_, ok := focusedCreateFieldValue(frame, label)
+		return ok
+	}
+	frame, err := client.WaitForFrameFunc(ctx, false, focused)
+	if err != nil {
+		return fmt.Errorf("create modal field %q never rendered focused: %w\nframe:\n%s", label, err, frame)
+	}
+	current, _ := focusedCreateFieldValue(frame, label)
+	seen := map[string]bool{}
+	for current != want {
+		if seen[current] {
+			return fmt.Errorf("create modal field %q cycled back to %q without ever reading %q (values seen: %v)", label, current, want, seen)
+		}
+		seen[current] = true
+		if err := client.Send("\x1b[C"); err != nil { // right arrow
+			return err
+		}
+		prev := current
+		changed := func(frame string) bool {
+			v, ok := focusedCreateFieldValue(frame, label)
+			return ok && v != prev
+		}
+		if frame, err = client.WaitForFrameFunc(ctx, false, changed); err != nil {
+			return fmt.Errorf("create modal field %q still read %q after a right arrow (want %q): %w\nframe:\n%s\ninput:\n%s", label, prev, want, err, frame, client.sentLog())
+		}
+		current, _ = focusedCreateFieldValue(frame, label)
+	}
+	return nil
+}
+
+// focusedCreateFieldValue returns the value the create modal renders for
+// label while that field holds the "> " focus marker: the first word after
+// "> <label>: " on its row, or, when the dialog's word-wrap pushed the value
+// onto the next grid row (the [26,80] width clamp, see
+// dewrapCreateModalAgentRow), the first word of that row. Every cycling
+// field's values (agent kinds, permission profiles) are single words.
+func focusedCreateFieldValue(frame, label string) (string, bool) {
+	key := "> " + label + ": "
+	lines := strings.Split(frame, "\n")
+	for i, line := range lines {
+		idx := strings.Index(line, key)
+		if idx < 0 {
+			continue
+		}
+		rest := line[idx+len(key):]
+		if end := strings.IndexAny(rest, "|\u2502"); end >= 0 {
+			rest = rest[:end]
+		}
+		if fields := strings.Fields(rest); len(fields) > 0 {
+			return fields[0], true
+		}
+		if i+1 < len(lines) {
+			if fields := strings.Fields(stripDialogBoxBorder(lines[i+1])); len(fields) > 0 {
+				return fields[0], true
+			}
+		}
+		return "", false
+	}
+	return "", false
 }
 
 // dewrapCreateModalAgentRow undoes the dialog box's own word-wrap on the

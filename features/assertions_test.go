@@ -833,14 +833,24 @@ func clientCreatesShellSession(ctx context.Context, clientName, name string) err
 // padTrunc applies -- and it settles the original M1 race exactly as well
 // as the word did (same WaitForFrameFunc polling against the same
 // d.updated signal), for every session name length, not just short ones.
+//
+// Task 026 (event_log.feature:11, 1/20 -race): the row being PAINTED is not
+// proof the TUI has processed the create's own result. A periodic reload
+// can paint the new row first; requirement 52 then moves the selection
+// onto it only on the first load after that result (internal/tui
+// pendingSelectSessionID), so a navigation step sent in between sees the
+// selection move, mistakes it for its own key's effect, and sends its next
+// key while the first is still unread. The wait therefore also requires
+// the row to be SELECTED, as waitForAgentCreateRecorded does for agents.
+// Every caller is the client that just submitted the create.
 func waitForSettledSessionRow(ctx context.Context, client *ScreenDriver, rowName string) error {
 	pred := func(frame string) bool {
-		glyph, ok := frameSidebarRowGlyph(frame, rowName)
-		return ok && startingOrRunningRowGlyphs[glyph]
+		glyph, selected, ok := frameSidebarRowGlyphSelected(frame, rowName)
+		return ok && selected && startingOrRunningRowGlyphs[glyph]
 	}
 	frame, err := client.WaitForFrameFunc(ctx, false, pred)
 	if err != nil {
-		return fmt.Errorf("session %q row never settled to starting or running: %w\nframe:\n%s", rowName, err, frame)
+		return fmt.Errorf("session %q row never settled to starting or running with the create's requirement-52 selection on it: %w\nframe:\n%s", rowName, err, frame)
 	}
 	return nil
 }
