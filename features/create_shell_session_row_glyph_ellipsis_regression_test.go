@@ -52,6 +52,7 @@ func TestWaitForSettledSessionRowSettlesOnAnEllipsisTruncatedBadge(t *testing.T)
 		updated: make(chan struct{}, 1),
 	}
 	go d.drainScreenInput()
+	t.Cleanup(func() { closeInputPipe(d.screen) })
 
 	frameBeforeSettle := strings.Join([]string{
 		"│ Create shell session              │ $                                                     │",
