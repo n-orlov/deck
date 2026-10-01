@@ -724,7 +724,27 @@ func (s *Store) UpdateSessionStatus(ctx context.Context, input StatusUpdateInput
 	// from, so a hook arriving for one anyway is stale/out-of-order and must
 	// not resurrect it. This is the hook-layer analogue of killed_by_user: a
 	// terminal state a later hook cannot undo.
-	if apply && input.Source == "hook" && currentStatus == "stopped" {
+	//
+	// The one hook write that resurrects nothing is a hook "stopped" onto a
+	// tmux-sourced "stopped": the status does not change, and SPEC §7's
+	// precedence (hook > tmux; tmux "only ever supplies liveness") makes the
+	// agent's own end-of-session verdict -- its reason included -- the one
+	// to keep over the bare "tmux session disappeared" liveness fact. A
+	// SessionEnd hook subprocess is fire-and-forget and can land after the
+	// pane is gone and a reconcile pass has already recorded that fact;
+	// refusing it there made the stored verdict depend only on which writer
+	// won the race (status_claude_hooks.feature's clean-exit SessionEnd,
+	// task 026). A user-sourced stop still outranks every hook.
+	hookRefinesTmuxStop := input.Status == "stopped" && currentSource == "tmux"
+	if apply && input.Source == "hook" && currentStatus == "stopped" && !hookRefinesTmuxStop {
+		apply = false
+	}
+	// The same precedence, read from the other side: a reconcile pass that
+	// read the row before that hook landed, then saw the session gone,
+	// writes tmux "stopped" onto a row a hook (or the user) already stopped.
+	// Liveness has nothing to add to a row that already says stopped, so it
+	// must not replace the higher-precedence verdict either.
+	if apply && input.Source == "tmux" && input.Status == "stopped" && currentStatus == "stopped" && currentSource != "tmux" {
 		apply = false
 	}
 	// An error carrying a pane exit status is a terminal process-crash verdict,
