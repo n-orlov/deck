@@ -30,6 +30,20 @@ import (
 // a192accf7d, fails to even compile there, which is this regression's own
 // proof that the unfixed tree cannot pass it (see
 // /run/ralphd/artifacts/006/unfixed-build.log).
+//
+// This same M1 mechanism is also the inventoried root cause of
+// preview.feature:304 ("a stopped session's preview names its own state
+// instead of showing stale bytes", task 010): its own first step is
+// `deck client "A" creates shell session "retiring"`, i.e. the very same
+// clientCreatesShellSession this test guards, calling the very same
+// waitForSettledSessionRow. 006's fix already covers it -- task 010 does
+// not need a second product change, only its own re-verification that
+// 006's fix actually clears preview.feature:304's failure (36792029158),
+// which this file, copied unmodified into the same a192accf7d export,
+// cannot even compile to prove -- see
+// /run/ralphd/artifacts/010/unfixed-build.log -- and
+// /run/ralphd/artifacts/010/preview-20x-{normal,race}.log for
+// preview.feature:304 itself, 20/20 both ways at HEAD.
 func TestWaitForSettledSessionRowNeverRequiresStarting(t *testing.T) {
 	const (
 		cols = int(terminalColumns)
