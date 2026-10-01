@@ -189,24 +189,58 @@ func clientOpensDetailForSession(ctx context.Context, clientName, want string) e
 }
 
 // selectedSidebarLine returns the frame's currently selected ("> "-
-// prefixed) sidebar row's full line text, or "" if no row is selected in
-// the current frame. It is scoped to the first few columns of each line
-// (the sidebar is always the frame's leftmost panel) rather than searching
-// the whole line for "> ", because the preview pane -- to the right of the
-// seam -- can legitimately contain "> " as ordinary captured pane content
-// (a shell continuation prompt, a quoted diff hunk, an agent's own reply)
-// that has nothing to do with sidebar selection; scanning the whole frame
-// for that substring would false-positive on it (the same class of bug
-// task 321's gotcha documents for previewTitle() embedding a session name
-// on the sidebar's own top-border row -- scope narrowly).
+// prefixed) sidebar row's text, or "" if no row is selected in the
+// current frame. The SEARCH for the "> " marker is scoped to the first
+// few columns of each line (the sidebar is always the frame's leftmost
+// panel) rather than searching the whole line, because the preview pane
+// -- to the right of the seam -- can legitimately contain "> " as
+// ordinary captured pane content (a shell continuation prompt, a quoted
+// diff hunk, an agent's own reply) that has nothing to do with sidebar
+// selection; scanning the whole frame for that substring would
+// false-positive on it (the same class of bug task 321's gotcha
+// documents for previewTitle() embedding a session name on the sidebar's
+// own top-border row -- scope narrowly).
+//
+// R169 (task 002): the RETURNED text is ALSO cropped to the sidebar's own
+// column -- sidebarRegion's column bound, the same seam-based split
+// mouse_bindings_test.go's locateText and layout_modes_test.go's
+// detectLayoutMode/seamColumn already derive -- rather than the line's
+// full width. sendNavKeySettled below compares this return value before
+// and after a keystroke to decide the keystroke has been acknowledged;
+// returning the WHOLE line (sidebar text plus whatever happens to render
+// in the preview pane on that same screen row) let a preview-only
+// repaint -- the preview re-rendering its own pane output a moment after
+// the keystroke, with the sidebar selection never moving at all -- change
+// the comparison value and falsely acknowledge a navigation key that
+// never actually landed, letting a queued follow-up key race ahead onto
+// whatever row the selection was still sitting on (the inventory's M2
+// mechanism: a "g" acknowledged by a row repaint, with the follow-up key
+// then landing on a group header). Cropping to the sidebar's own column
+// makes a preview-only repaint on the selected row's line unable to
+// change the result at all; only an actual sidebar selection change (a
+// different row's marker, name or status glyph) can. In stacked mode (no
+// shared seam -- sidebarRegion returns colEnd -1) the sidebar and preview
+// never share a row to begin with, so the whole line is already
+// sidebar-only and no cropping is needed.
 func selectedSidebarLine(frame string) string {
 	const scanWidth = 6
+	colEnd := -1
+	if _, _, c, err := sidebarRegion(frame); err == nil {
+		colEnd = c
+	}
 	for _, line := range strings.Split(frame, "\n") {
 		head := line
 		if len(head) > scanWidth {
 			head = head[:scanWidth]
 		}
 		if strings.Contains(head, "> ") {
+			if colEnd < 0 {
+				return line
+			}
+			runes := []rune(line)
+			if colEnd < len(runes) {
+				return string(runes[:colEnd])
+			}
 			return line
 		}
 	}
