@@ -8,6 +8,8 @@ import (
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/n-orlov/deck/internal/config"
 )
 
 // TestNoLoneStartingFrameWaitInGoSource (task 026) is the Go-source
@@ -29,18 +31,16 @@ import (
 // visible, so a wait insisting on the literal word "starting" alone can
 // time out even though the row settled correctly (inventory mechanism M1).
 //
-// Not every "starting" literal in a WaitForFrame* call is this hazard,
-// because the hazard is specific to a SHELL row's own instantaneous
-// promotion (SPEC §9.2's state table: that same-tick pane-alive
-// fast-forward is "shell rows only" -- an agent row only ever leaves
-// "starting" on its first agent signal, a real, durably-observable delay,
-// never a same-render-cycle skip). starting_frame_wait_guard_exemptions
-// below is the audit's one-line-reason allowlist for every site the audit
-// found and judged not to be the shell hazard; a hit at a site NOT on that
-// list is new and must be converted onto the durable M1 observable
-// (waitForSettledSessionRow, the store's own recorded transition, or an
-// audited event) exactly like task 026's conversions, not added to the
-// list to silence the guard.
+// The hazard is not shell-only: SPEC §7 also moves an AGENT row out of
+// "starting" on its first agent signal, on a clean pane exit (the plain
+// fake-claude fixture exits about half a second after its banner) or on a
+// non-zero one (a failing pre_launch), so an agent create/resume's own
+// "starting" render is just as transient (agent_starting_observable_test.go).
+// There is therefore no Go-source exemption at all: every hit must be
+// converted onto the durable M1 observable (waitForSettledSessionRow, the
+// store's own recorded transition, or an audited event --
+// waitForAgentCreateRecorded for an agent create), never allowlisted to
+// silence this guard.
 func TestNoLoneStartingFrameWaitInGoSource(t *testing.T) {
 	files, err := filepath.Glob("*.go")
 	if err != nil {
@@ -62,36 +62,9 @@ func TestNoLoneStartingFrameWaitInGoSource(t *testing.T) {
 
 	if len(violations) > 0 {
 		sort.Strings(violations)
-		t.Fatalf("task 026: %d frame wait(s) on the lone transient \"starting\" status word, not in starting_frame_wait_guard_exemptions -- convert onto the durable M1 observable (waitForSettledSessionRow, the store's own transition, or an audited event), never widen this guard's exemption list to silence it:\n%s",
+		t.Fatalf("task 026: %d frame wait(s) on the lone transient \"starting\" status word -- convert onto the durable M1 observable (waitForSettledSessionRow, the store's own transition, or an audited event such as waitForAgentCreateRecorded), never add an exemption to silence it:\n%s",
 			len(violations), strings.Join(violations, "\n"))
 	}
-}
-
-// starting_frame_wait_guard_exemptions is task 026's audit allowlist, keyed
-// by (file, enclosing function). Every entry's own doc-comment reason is
-// re-checked below in TestStartingFrameWaitGuardExemptionsAreGroundedInAgentSessions.
-var startingFrameWaitGuardExemptions = map[string]map[string]string{
-	"agent_steps_test.go": {
-		// All five finish an agent (claude/codex/pi) create: the step
-		// pattern they all register is `^deck client "([^"]+)" creates
-		// ([a-z]+) session "([^"]+)" with permission profile "([^"]+)"...`
-		// variants, and "shell" never carries a "permission profile" (no
-		// *.feature file pairs "creates shell session" with "permission
-		// profile"; create_session_test.go's shell steps use a disjoint
-		// step pattern with no profile group at all) -- so kind here is
-		// always a real agent adapter. SPEC §9.2's state table promotes an
-		// agent row starting->running only on its first agent signal, never
-		// a same-tick pane-alive fast-forward (that rule is shell-only,
-		// SPEC §9.2 row "pane is alive, shell rows only"), so "starting" is
-		// a durable rendered state for the whole of fake-claude/fake-codex's
-		// own deliberate startup delay here, not a transient frame racing
-		// a promotion.
-		"clientCreatesAgentSessionWithProfileAndOptionalMessage": "agent-only create (profile-gated step, never shell); SPEC §9.2 promotes an agent row out of starting only on its first agent signal, not a same-tick fast-forward.",
-		"clientCreatesAgentSessionWithProfileAndEnv":             "agent-only create (profile-gated step, never shell); SPEC §9.2 promotes an agent row out of starting only on its first agent signal, not a same-tick fast-forward.",
-		"clientCreatesAgentSessionWithProfileAndLoginShell":      "agent-only create (profile-gated step, never shell); SPEC §9.2 promotes an agent row out of starting only on its first agent signal, not a same-tick fast-forward.",
-		"clientCreatesAgentSessionWithFailingPreLaunch":          "agent-only create (profile-gated step, never shell); SPEC §9.2 promotes an agent row out of starting only on its first agent signal, not a same-tick fast-forward.",
-		"clientCreatesAgentSessionWithSucceedingPreLaunch":       "agent-only create (profile-gated step, never shell); SPEC §9.2 promotes an agent row out of starting only on its first agent signal, not a same-tick fast-forward.",
-	},
 }
 
 var (
@@ -111,8 +84,8 @@ var (
 
 // scanGoFileForLoneStartingFrameWait applies
 // TestNoLoneStartingFrameWaitInGoSource's rule to one features/*.go file,
-// line by line, tracking the enclosing top-level function so a hit can be
-// checked against startingFrameWaitGuardExemptions. A line whose trimmed
+// line by line, tracking the enclosing top-level function so a hit names
+// the function it sits in. A line whose trimmed
 // text starts with "//" is a comment and never matched -- the audit
 // (artifacts/026/audit.md) confirmed every narrative "starting" mention
 // left in features/*.go after task 026's conversions is exactly this
@@ -143,12 +116,8 @@ func scanGoFileForLoneStartingFrameWait(path string) ([]string, error) {
 		}
 		body := strings.Join(predicateLines, "\n")
 		if strings.Contains(body, goStringLiteralStart) && !goRunningRefRe.MatchString(body) {
-			if reason, ok := startingFrameWaitGuardExemptions[path][currentFunc]; ok {
-				_ = reason // exempt, audited
-			} else {
-				out = append(out, fmt.Sprintf("%s:%d: func %s's WaitForFrameFunc predicate checks the lone transient \"starting\" word with no \"running\" anywhere in the same predicate",
-					path, predicateStartLine, currentFunc))
-			}
+			out = append(out, fmt.Sprintf("%s:%d: func %s's WaitForFrameFunc predicate checks the lone transient \"starting\" word with no \"running\" anywhere in the same predicate",
+				path, predicateStartLine, currentFunc))
 		}
 		inPredicate = false
 		predicateDepth = 0
@@ -189,10 +158,6 @@ func scanGoFileForLoneStartingFrameWait(path string) ([]string, error) {
 		}
 
 		if goLiteralStartingRe.MatchString(l) {
-			if reason, ok := startingFrameWaitGuardExemptions[path][currentFunc]; ok {
-				_ = reason // exempt, audited
-				continue
-			}
 			out = append(out, fmt.Sprintf("%s:%d: func %s waits for a frame on the lone transient \"starting\" word",
 				path, ln, currentFunc))
 		}
@@ -202,84 +167,217 @@ func scanGoFileForLoneStartingFrameWait(path string) ([]string, error) {
 	return out, nil
 }
 
-// TestStartingFrameWaitGuardExemptionsAreGroundedInAgentSessions re-checks,
-// against the real registered step patterns, the one factual claim every
-// startingFrameWaitGuardExemptions entry for agent_steps_test.go rests on:
-// that EVERY step reaching the clientCreatesAgentSessionWithProfile* family
-// (the exempted functions, plus their own callers/wrappers in the same
-// file) requires a "permission profile" group in its step text -- SPEC's
-// agent-only field, never present on a plain "creates shell session" step
-// -- so kind is always a real agent adapter at every exempted site. It
-// scans every sc.Step registration whose handler name has that prefix,
-// rather than looking up each exempted function individually, so it also
-// catches a wrapper that lets a NEW step reach the family without that
-// requirement. If a future edit wires any of them to a shell-reachable
-// step, this test -- not just the guard above -- must fail.
-func TestStartingFrameWaitGuardExemptionsAreGroundedInAgentSessions(t *testing.T) {
-	raw, err := os.ReadFile("agent_steps_test.go")
+// TestNoLoneStartingFrameWaitInFeatureText (task 026) is the Gherkin half of
+// the same guard: every *.feature step that has a deck client wait on, or
+// read, the quoted status word "starting" (`screen contains "starting"`,
+// `row "X" contains "starting"`, their "within ..." forms, a token check on
+// text "starting") is a frame sync point on a transient render unless it is
+// in startingFeatureFrameWaitExemptions. A create or resume is synchronised
+// on `the audit log records session "X" entering starting N times`
+// (auditRecordsSessionEnteringStartingNTimes) instead.
+func TestNoLoneStartingFrameWaitInFeatureText(t *testing.T) {
+	files, err := filepath.Glob("*.feature")
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("glob *.feature: %v", err)
 	}
-	src := string(raw)
-	stepRe := regexp.MustCompile("sc\\.Step\\(`([^`]*)`,\\s*(clientCreatesAgentSessionWith[A-Za-z0-9_]*)\\)")
-	matches := stepRe.FindAllStringSubmatch(src, -1)
-	if len(matches) == 0 {
-		t.Fatal("no sc.Step registration found for any clientCreatesAgentSessionWithProfile* handler -- regex is stale against agent_steps_test.go's current text")
+	if len(files) == 0 {
+		t.Fatalf("no *.feature files found under features/ -- glob pattern is wrong")
 	}
-	grounded := map[string]bool{}
-	for _, m := range matches {
-		stepText, fn := m[1], m[2]
-		grounded[fn] = true
-		if !strings.Contains(stepText, "permission profile") {
-			t.Fatalf("step registered for handler %s does not require \"permission profile\" (step text %q) -- it may now be reachable from a plain shell create; re-audit startingFrameWaitGuardExemptions before trusting it", fn, stepText)
+	sort.Strings(files)
+	var violations []string
+	for _, path := range files {
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, hit := range featureStartingFrameSteps(string(raw)) {
+			if _, ok := startingFeatureFrameWaitExemptions[path][hit.scenario][hit.step]; ok {
+				continue
+			}
+			violations = append(violations, fmt.Sprintf("%s:%d: scenario %q: %s", path, hit.line, hit.scenario, hit.step))
 		}
 	}
+	if len(violations) > 0 {
+		t.Fatalf("task 026: %d feature step(s) sync on a deck client frame showing the lone transient \"starting\" status word -- use `the audit log records session \"X\" entering starting N times` (or another durable observable), never add an exemption to silence it:\n%s",
+			len(violations), strings.Join(violations, "\n"))
+	}
+}
 
-	// Every exempted function not itself a direct step handler must only
-	// ever be CALLED, within this file, from a function already grounded
-	// above (directly profile-gated) -- otherwise some other, possibly
-	// shell-reachable, caller could also reach it. callersOf walks the
-	// file's own top-level function bodies (via goFuncHeaderRe, the same
-	// tracker the guard scanner uses) collecting, for every call site
-	// `fn(`, which function's body it appeared in.
-	callersOf := func(fn string) []string {
-		callRe := regexp.MustCompile(`\b` + regexp.QuoteMeta(fn) + `\(`)
-		var callers []string
-		currentFunc := ""
-		for _, l := range strings.Split(src, "\n") {
-			if m := goFuncHeaderRe.FindStringSubmatch(l); m != nil {
-				currentFunc = m[1]
-				continue // the func header itself is never a call site
-			}
-			if currentFunc != fn && callRe.MatchString(l) {
-				callers = append(callers, currentFunc)
-			}
+// startingFeatureFrameWaitExemptions keys (file, scenario, step text) to the
+// audit's one-line reason (artifacts/026/audit.md). Each entry is a step
+// whose scenario is ABOUT the starting status itself and whose row provably
+// cannot leave "starting" while the step runs; that premise is re-checked
+// mechanically in TestStartingFeatureFrameWaitExemptionsAreGrounded.
+var startingFeatureFrameWaitExemptions = map[string]map[string]map[string]string{
+	"lease_race.feature": {
+		"three clients racing resume on one row produce exactly one launch": {
+			`And within one configured reconcile interval deck client "A" row "race target" contains "starting"`: startingHeldReason,
+			`And within one configured reconcile interval deck client "B" row "race target" contains "starting"`: startingHeldReason,
+			`And within one configured reconcile interval deck client "C" row "race target" contains "starting"`: startingHeldReason,
+		},
+	},
+	"status_theme.feature": {
+		"the starting status token colours the starting status word": {
+			`Then within one configured reconcile interval deck client "A" screen contains "starting"`: startingHeldReason,
+			`And deck client "A" text "starting" has foreground token "starting"`:                      startingHeldReason,
+		},
+	},
+}
+
+const startingHeldReason = "the long-running fake claude never signals or exits unaided, reconcile never promotes an agent row (reconcile.go: liveness only), and no config shortens stale_after below the probe floor -- the row stays starting until the scenario itself fires a hook"
+
+type featureStartingStep struct {
+	line           int
+	scenario, step string
+}
+
+var featureStepKeywordRe = regexp.MustCompile(`^(Given|When|Then|And|But|\*)\s`)
+
+// featureStartingFrameSteps returns every non-comment step line in a
+// feature file that names a deck client and carries the quoted word
+// "starting" as a whole argument, with its enclosing Scenario (or
+// "Background").
+func featureStartingFrameSteps(src string) []featureStartingStep {
+	var out []featureStartingStep
+	scenario := ""
+	for i, l := range strings.Split(src, "\n") {
+		trimmed := strings.TrimSpace(l)
+		if name, ok := featureBlockName(trimmed); ok {
+			scenario = name
+			continue
 		}
-		return callers
+		if !featureStepKeywordRe.MatchString(trimmed) {
+			continue
+		}
+		if strings.Contains(trimmed, `deck client "`) && strings.Contains(trimmed, `"starting"`) {
+			out = append(out, featureStartingStep{line: i + 1, scenario: scenario, step: trimmed})
+		}
 	}
-	var isGrounded func(fn string, seen map[string]bool) bool
-	isGrounded = func(fn string, visiting map[string]bool) bool {
-		if grounded[fn] {
-			return true
-		}
-		if visiting[fn] {
-			return false // cycle: never grounds anything on its own
-		}
-		visiting[fn] = true
-		callers := callersOf(fn)
-		if len(callers) == 0 {
-			return false
-		}
-		for _, c := range callers {
-			if !isGrounded(c, visiting) {
-				return false
+	return out
+}
+
+func featureBlockName(trimmed string) (string, bool) {
+	for _, kw := range []string{"Scenario Outline:", "Scenario:", "Background:"} {
+		if rest, ok := strings.CutPrefix(trimmed, kw); ok {
+			if kw == "Background:" {
+				return "Background", true
 			}
+			return strings.TrimSpace(rest), true
 		}
-		return true
 	}
-	for fn := range startingFrameWaitGuardExemptions["agent_steps_test.go"] {
-		if !isGrounded(fn, map[string]bool{}) {
-			t.Fatalf("exempted func %s is not grounded in a permission-profile-gated step (directly, or through callers that are, within agent_steps_test.go) -- re-verify by hand which step(s) reach it and whether any is shell-reachable", fn)
+	return "", false
+}
+
+// featureScenarioSteps returns the Background steps and the named
+// scenario's steps (in order) of a feature file.
+func featureScenarioSteps(src, scenario string) (background, steps []string) {
+	block := ""
+	for _, l := range strings.Split(src, "\n") {
+		trimmed := strings.TrimSpace(l)
+		if name, ok := featureBlockName(trimmed); ok {
+			block = name
+			continue
+		}
+		if !featureStepKeywordRe.MatchString(trimmed) {
+			continue
+		}
+		switch block {
+		case "Background":
+			background = append(background, trimmed)
+		case scenario:
+			steps = append(steps, trimmed)
+		}
+	}
+	return background, steps
+}
+
+// TestStartingFeatureFrameWaitExemptionsAreGrounded re-checks every
+// startingFeatureFrameWaitExemptions entry's premise against the feature
+// text and the product defaults, so an edit that makes an exempted
+// "starting" render transient fails here:
+//   - Background+scenario install the LONG-RUNNING fake claude (command
+//     mode: it never prints a hook or exits until told to) and no
+//     short-lived fake agent at all;
+//   - nothing configures stale_after (or any deck config), and
+//     config.DefaultStaleAfter is well above the default UI wait, so the
+//     row never becomes probe-eligible while the step waits;
+//   - no step between the one that last put the row into starting (a
+//     create, a resume, or a seeded "starting" status) and the exempted
+//     one fires a hook, sends the fixture an exit, or crashes/kills the
+//     pane;
+//   - the exempted step text still exists in that scenario.
+func TestStartingFeatureFrameWaitExemptionsAreGrounded(t *testing.T) {
+	if config.DefaultStaleAfter < 2*defaultWaitDeadline/3 {
+		t.Fatalf("config.DefaultStaleAfter = %v is no longer far above the %v default UI wait -- an exempted agent row could now be probed out of starting; re-audit startingFeatureFrameWaitExemptions", config.DefaultStaleAfter, defaultWaitDeadline)
+	}
+	shortLivedRe := regexp.MustCompile(`\ba fake "[a-z]+" binary is on PATH`)
+	configRe := regexp.MustCompile(`(?i)stale_after|probes quickly|deck config`)
+	startsRowRe := regexp.MustCompile(`presses r on session|race pressing r on session|creates claude session|has status "starting"`)
+	forbiddenBetweenRe := regexp.MustCompile(`(?i)fires|hook|"exit"|crash|kill`)
+	for path, scenarios := range startingFeatureFrameWaitExemptions {
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("exempted feature %s: %v", path, err)
+		}
+		for scenario, exemptSteps := range scenarios {
+			background, steps := featureScenarioSteps(string(raw), scenario)
+			if len(steps) == 0 {
+				t.Fatalf("%s: exempted scenario %q no longer exists", path, scenario)
+			}
+			all := append(append([]string{}, background...), steps...)
+			longRunning := false
+			for _, s := range all {
+				if strings.Contains(s, `a long-running fake "claude" binary is on PATH for future deck clients`) {
+					longRunning = true
+				}
+				if shortLivedRe.MatchString(s) {
+					t.Fatalf("%s: scenario %q installs a short-lived fake agent (%q) -- its starting render is transient; convert the exempted step", path, scenario, s)
+				}
+				if configRe.MatchString(s) {
+					t.Fatalf("%s: scenario %q configures deck (%q) -- re-audit whether the exempted row can be probed out of starting", path, scenario, s)
+				}
+			}
+			if !longRunning {
+				t.Fatalf("%s: scenario %q no longer installs the long-running fake claude", path, scenario)
+			}
+			for step := range exemptSteps {
+				idx := -1
+				for i, s := range steps {
+					if s == step {
+						idx = i
+						break
+					}
+				}
+				if idx < 0 {
+					t.Fatalf("%s: exempted step %q is no longer in scenario %q", path, step, scenario)
+				}
+				// The last step (scenario first, else Background) that put
+				// the row into starting before the exempted one.
+				between := []string(nil)
+				found := false
+				for i := idx - 1; i >= 0; i-- {
+					if startsRowRe.MatchString(steps[i]) {
+						between, found = steps[i+1:idx], true
+						break
+					}
+				}
+				if !found {
+					for i := len(background) - 1; i >= 0; i-- {
+						if startsRowRe.MatchString(background[i]) {
+							between, found = append(append([]string{}, background[i+1:]...), steps[:idx]...), true
+							break
+						}
+					}
+				}
+				if !found {
+					t.Fatalf("%s: no create/resume/seeded-starting step precedes exempted step %q in scenario %q", path, step, scenario)
+				}
+				for _, s := range between {
+					if forbiddenBetweenRe.MatchString(s) {
+						t.Fatalf("%s: scenario %q runs %q between starting the row and exempted step %q -- the row may have left starting; re-audit", path, scenario, s, step)
+					}
+				}
+			}
 		}
 	}
 }

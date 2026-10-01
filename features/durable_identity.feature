@@ -34,7 +34,7 @@ Feature: Durable conversation identity survives a tmux-server kill
     And the state database contains session "beta" with status "stopped"
     And the state database contains session "gamma" with status "stopped"
     When deck client "B" presses r on session "beta"
-    Then deck client "B" screen contains "starting"
+    Then the audit log records session "beta" entering starting 2 times
     And the audit log's most recent launch argv for session "beta" contains "--resume"
     And the audit log's most recent launch argv for session "beta" contains session "beta"'s conversation id
     And the audit log's most recent launch argv for session "beta" does not contain "--continue"

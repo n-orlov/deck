@@ -40,7 +40,7 @@ Feature: Every pane carries its own session's DECK_SESSION_* context (R104, SPEC
     When deck client "A" kills session "launch kind target"
     Then the state database session "launch kind target" is "stopped" from "user" with killed_by_user=1
     When deck client "A" presses r on session "launch kind target"
-    Then deck client "A" screen contains "starting"
+    Then the audit log records session "launch kind target" entering starting 2 times
     And the live pane process environment for session "launch kind target" key "DECK_SESSION_LAUNCH_KIND" is "resume"
     When deck client "A" exits cleanly
 

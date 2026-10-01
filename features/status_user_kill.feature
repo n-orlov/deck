@@ -14,7 +14,7 @@ Feature: User kill is terminal against later automation
     Then the state database session "terminal kill" is "stopped" from "user" with killed_by_user=1
     And the state database contains session "terminal kill" with status "stopped"
     When deck client "A" presses r on session "terminal kill"
-    Then deck client "A" screen contains "starting"
+    Then the audit log records session "terminal kill" entering starting 2 times
     And the state database session "terminal kill" is "starting" from "tmux" with killed_by_user=0
     When the released running hook fires for session "terminal kill"
     Then the state database session "terminal kill" is "running" from "hook" with killed_by_user=0

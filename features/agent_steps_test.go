@@ -60,6 +60,7 @@ func registerAgentSessionSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^the audit log's most recent launch argv for session "([^"]+)" does not contain session "([^"]+)"'s conversation id$`, launchArgvForSessionDoesNotContainOthersConversationID)
 	sc.Step(`^the audit log's most recent launch argv for session "([^"]+)" contains session "([^"]+)"'s conversation id$`, launchArgvForSessionContainsOwnConversationID)
 	sc.Step(`^the audit log has ([0-9]+) launch record(?:s)? for session "([^"]+)"$`, auditHasLaunchRecordCountForSession)
+	sc.Step(`^the audit log records session "([^"]+)" entering starting ([0-9]+) times?$`, auditRecordsSessionEnteringStartingNTimes)
 	sc.Step(`^within one configured reconcile interval the audit log has ([0-9]+) launch record(?:s)? for session "([^"]+)"$`, auditHasLaunchRecordCountForSessionWithinReconcileInterval)
 	sc.Step(`^exactly ([0-9]+) private tmux session(?:s)? match(?:es)? slug "([^"]+)"$`, exactlyNPrivateSessionsMatchSlug)
 	sc.Step(`^no private tmux session exists$`, noPrivateTMuxSessionExists)
@@ -351,7 +352,7 @@ func clientCreatesAgentSessionWithProfileAndMessage(ctx context.Context, clientN
 }
 
 func clientCreatesAgentSessionWithProfileAndOptionalMessage(ctx context.Context, clientName, kind, name, profile, message string) error {
-	_, client, err := positionCreateModalOnProfileField(ctx, clientName, kind, name, profile)
+	h, client, err := positionCreateModalOnProfileField(ctx, clientName, kind, name, profile)
 	if err != nil {
 		return err
 	}
@@ -372,10 +373,13 @@ func clientCreatesAgentSessionWithProfileAndOptionalMessage(ctx context.Context,
 			return fmt.Errorf("type Launch args field with message %q: %w", message, err)
 		}
 	}
+	// Durable sync point, never a frame wait on the transient "starting"
+	// (task 026): see waitForAgentCreateRecorded.
+	auditOffset := auditRecordCount(h)
 	if err := client.Send("\r"); err != nil {
 		return err
 	}
-	return client.WaitForFrame(ctx, false, "starting")
+	return waitForAgentCreateRecorded(ctx, h, client, name, auditOffset)
 }
 
 // clientCreatesAgentSessionWithProfileAndEnv is clientCreatesAgentSessionWithProfile's
@@ -390,7 +394,7 @@ func clientCreatesAgentSessionWithProfileAndOptionalMessage(ctx context.Context,
 // (the "shell" option in this modal bypasses it entirely, per this
 // package's own standing gotcha).
 func clientCreatesAgentSessionWithProfileAndEnv(ctx context.Context, clientName, kind, name, profile, envText string) error {
-	_, client, err := positionCreateModalOnProfileField(ctx, clientName, kind, name, profile)
+	h, client, err := positionCreateModalOnProfileField(ctx, clientName, kind, name, profile)
 	if err != nil {
 		return err
 	}
@@ -401,10 +405,13 @@ func clientCreatesAgentSessionWithProfileAndEnv(ctx context.Context, clientName,
 	if err := client.WaitForFrame(ctx, false, envText); err != nil {
 		return fmt.Errorf("type Env field with %q: %w", envText, err)
 	}
+	// Durable sync point, never a frame wait on the transient "starting"
+	// (task 026): see waitForAgentCreateRecorded.
+	auditOffset := auditRecordCount(h)
 	if err := client.Send("\r"); err != nil {
 		return err
 	}
-	return client.WaitForFrame(ctx, false, "starting")
+	return waitForAgentCreateRecorded(ctx, h, client, name, auditOffset)
 }
 
 // clientCreatesAgentSessionWithProfileAndLoginShell drives the real create
@@ -417,7 +424,7 @@ func clientCreatesAgentSessionWithProfileAndEnv(ctx context.Context, clientName,
 // never types anything into the fields it moves through, so they keep
 // their empty defaults.
 func clientCreatesAgentSessionWithProfileAndLoginShell(ctx context.Context, clientName, kind, name, profile string) error {
-	_, client, err := positionCreateModalOnProfileField(ctx, clientName, kind, name, profile)
+	h, client, err := positionCreateModalOnProfileField(ctx, clientName, kind, name, profile)
 	if err != nil {
 		return err
 	}
@@ -434,10 +441,13 @@ func clientCreatesAgentSessionWithProfileAndLoginShell(ctx context.Context, clie
 	if err := client.WaitForFrame(ctx, false, "on (space toggles)"); err != nil {
 		return fmt.Errorf("toggle Login shell on: %w", err)
 	}
+	// Durable sync point, never a frame wait on the transient "starting"
+	// (task 026): see waitForAgentCreateRecorded.
+	auditOffset := auditRecordCount(h)
 	if err := client.Send("\r"); err != nil {
 		return err
 	}
-	return client.WaitForFrame(ctx, false, "starting")
+	return waitForAgentCreateRecorded(ctx, h, client, name, auditOffset)
 }
 
 // clientCreatesAgentSessionWithFailingPreLaunch drives the real create modal
@@ -452,7 +462,7 @@ func clientCreatesAgentSessionWithProfileAndLoginShell(ctx context.Context, clie
 // pre_launch is just another way a pane can die before the agent argv ever
 // execs (buildPaneCommand's `&&` short-circuit).
 func clientCreatesAgentSessionWithFailingPreLaunch(ctx context.Context, clientName, kind, name, profile, command string) error {
-	_, client, err := positionCreateModalOnProfileField(ctx, clientName, kind, name, profile)
+	h, client, err := positionCreateModalOnProfileField(ctx, clientName, kind, name, profile)
 	if err != nil {
 		return err
 	}
@@ -470,10 +480,13 @@ func clientCreatesAgentSessionWithFailingPreLaunch(ctx context.Context, clientNa
 	if err := client.WaitForFrame(ctx, false, command); err != nil {
 		return fmt.Errorf("type Pre-launch command field %q: %w", command, err)
 	}
+	// Durable sync point, never a frame wait on the transient "starting"
+	// (task 026): see waitForAgentCreateRecorded.
+	auditOffset := auditRecordCount(h)
 	if err := client.Send("\r"); err != nil {
 		return err
 	}
-	return client.WaitForFrame(ctx, false, "starting")
+	return waitForAgentCreateRecorded(ctx, h, client, name, auditOffset)
 }
 
 // clientCreatesAgentSessionWithSucceedingPreLaunch is task 017/I-13's
@@ -488,7 +501,7 @@ func clientCreatesAgentSessionWithFailingPreLaunch(ctx context.Context, clientNa
 // TextBeforeOtherText is what turns "the agent started" (already proven by
 // agent_session.feature) into "pre_launch ran, and ran first".
 func clientCreatesAgentSessionWithSucceedingPreLaunch(ctx context.Context, clientName, kind, name, profile, command string) error {
-	_, client, err := positionCreateModalOnProfileField(ctx, clientName, kind, name, profile)
+	h, client, err := positionCreateModalOnProfileField(ctx, clientName, kind, name, profile)
 	if err != nil {
 		return err
 	}
@@ -506,10 +519,13 @@ func clientCreatesAgentSessionWithSucceedingPreLaunch(ctx context.Context, clien
 	if err := client.WaitForFrame(ctx, false, command); err != nil {
 		return fmt.Errorf("type Pre-launch command field %q: %w", command, err)
 	}
+	// Durable sync point, never a frame wait on the transient "starting"
+	// (task 026): see waitForAgentCreateRecorded.
+	auditOffset := auditRecordCount(h)
 	if err := client.Send("\r"); err != nil {
 		return err
 	}
-	return client.WaitForFrame(ctx, false, "starting")
+	return waitForAgentCreateRecorded(ctx, h, client, name, auditOffset)
 }
 
 // privateTMuxSessionShowsTextBeforeOtherText polls the named session's own

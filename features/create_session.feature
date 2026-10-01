@@ -222,7 +222,7 @@ Feature: The create modal's §11.7 cwd prefill (requirement 12)
     Given a fake "claude" binary is on PATH for future deck clients
     And deck client "A" is started
     When deck client "A" creates claude session "cs-pre-launch-ok" with permission profile "safe" and pre-launch command "echo PRE_OK"
-    Then deck client "A" screen contains "starting"
+    Then the audit log records session "cs-pre-launch-ok" entering starting 1 time
     And the private tmux session for "cs-pre-launch-ok" shows "PRE_OK" before "Fake Claude Code"
     And the state database session "cs-pre-launch-ok" has a non-empty conversation id
     When deck client "A" exits cleanly
