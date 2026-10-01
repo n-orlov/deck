@@ -29,6 +29,21 @@ import "testing"
 // /run/ralphd/artifacts/002/unfixed-preview-only.txt for this test's
 // preview_only_change_is_not_acknowledged subtest run against an export
 // of a192accf7d (pre-fix), where it fails.
+//
+// This same M2 mechanism is the inventoried root cause of two more
+// scenarios that the inventory assigns to their own tasks rather than to
+// 002 itself, because 002 only fixes the predicate -- each still needs its
+// own re-verification that this fix actually clears its failure:
+// agent_session.feature:33 (task 003, which also removes the dead
+// a192accf7d retry) and dialogs.feature:143 (task 009:
+// clientOpensProfileSwitchDialogForSession's navigateToRowByName sends
+// "g" through this same sendNavKeySettled before sending "i" to open the
+// profile dialog; a false ack on "g" lets "i" land on the group header
+// instead, and the dialog never opens -- see
+// /run/ralphd/artifacts/009/probe-unfixed-a192accf7d.log for this test
+// run against the same a192accf7d export, and
+// /run/ralphd/artifacts/009/dialogs-20x-{normal,race}.log for
+// dialogs.feature:143 itself, 20/20 both ways at HEAD).
 func TestReviewPreviewRepaintCannotAcknowledgeNavigation(t *testing.T) {
 	// sidebarFrame builds a minimal, but real-shaped, side-by-side frame:
 	// a bordered sidebar panel on the left (one group header row, then
