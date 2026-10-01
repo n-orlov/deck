@@ -344,6 +344,81 @@ func stripSidebarRowLead(text string) string {
 	return text
 }
 
+// startingOrRunningRowGlyphs is sidebarStatusGlyph's own output (both
+// glyph modes) for exactly the two statuses waitForSettledSessionRow
+// (features/assertions_test.go, task 006/008) accepts as a settled newly
+// created row.
+var startingOrRunningRowGlyphs = map[string]bool{
+	"\u25cc": true, ".": true, // starting
+	"\u25d0": true, "~": true, // running
+}
+
+// frameSidebarRowGlyph returns rowName's own sidebar row's line-1 status
+// glyph (sidebarRowLeadGlyphs) -- the one character SPEC §11 always paints
+// immediately after the gutter, BEFORE the name, in every selection/pin
+// state. Unlike the trailing badge-run WORD frameSessionRowShows parses,
+// this glyph is never a candidate for the row's own width-triggered
+// ellipsis (internal/tui/tui.go's padTrunc truncates the row's TRAILING
+// content, never its leading glyph+name prefix): a session name long
+// enough to fill the sidebar's content width on its own (task 008,
+// no_leak_scan.feature:17's 24-character control name) pushes the status
+// WORD out of the row entirely, replacing it with a bare "..." and
+// nothing else -- sidebarRowBadges correctly reports no readable status
+// word for that row, but the glyph is still sitting there, untouched,
+// because it was laid down before the name and the ellipsis only ever
+// eats what comes after. Reading it instead of the word is a strictly
+// more durable settle signal: it is the exact same session.Status
+// (sidebarStatusGlyph derives both from the one field), for every
+// session name length, not just ones short enough to leave room for the
+// word too. (Separately, the ellipsis itself may or may not be preceded
+// by a space, depending on exactly how many columns padTrunc had left
+// over for it -- teardown_hooks.feature:15's own 25-character name
+// leaves none at all, so its "..." lands immediately after the name;
+// this function accepts both shapes.)
+func frameSidebarRowGlyph(frame, rowName string) (string, bool) {
+	if rowName == "" {
+		return "", false
+	}
+	for _, line := range strings.Split(frame, "\n") {
+		cell, ok := sidebarCell(line)
+		if !ok || sidebarCellIsGroupHeader(cell) {
+			continue
+		}
+		text := strings.TrimLeft(cell, " ")
+		text = strings.TrimPrefix(text, "> ")
+		for _, g := range sidebarRowLeadGlyphs {
+			rest, ok := strings.CutPrefix(text, g+" ")
+			if !ok {
+				continue
+			}
+			for _, pin := range []string{"\u2726 ", "* "} {
+				if r, ok := strings.CutPrefix(rest, pin); ok {
+					rest = r
+					break
+				}
+			}
+			if !strings.HasPrefix(rest, rowName) {
+				continue
+			}
+			// after is whatever padTrunc left of the row's own badge run
+			// once the name itself is accounted for -- a full word
+			// separated by a space ("running"), nothing at all (name
+			// exactly fills the row), or the ellipsis padTrunc appends
+			// with NO separating space when there was not even room for
+			// that (task 008, teardown_hooks.feature:15's own
+			// "teardown-kill-then-delete" -- one byte short of
+			// no_leak_scan.feature:17's control value, but the SAME
+			// defect: "..." lands immediately after the name, not after
+			// a space).
+			after := rest[len(rowName):]
+			if after == "" || strings.HasPrefix(after, " ") || strings.HasPrefix(after, "...") || strings.HasPrefix(after, "\u2026") {
+				return g, true
+			}
+		}
+	}
+	return "", false
+}
+
 // frameHasSelectedRowNamed reports whether frame's sidebar holds a
 // selected ("> "-gutter) session row whose name starts with name, once
 // its status glyph and pin marker (stripSidebarRowLead) are skipped --

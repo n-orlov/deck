@@ -53,10 +53,15 @@ func TestWaitForSettledSessionRowNeverRequiresStarting(t *testing.T) {
 	// frameAfterSettle is the main view immediately after the modal closed
 	// -- the row's VERY FIRST paint already shows "running", exactly the
 	// race this task fixes: "starting" is never painted at any point in
-	// this scripted sequence, not even transiently.
+	// this scripted sequence, not even transiently. The leading "~" is the
+	// row's own real status glyph (task 008 moved waitForSettledSessionRow's
+	// predicate onto it; sidebarRowLeadGlyphs/frameSidebarRowGlyph,
+	// features/status_probe_test.go) -- carried here too so this fixture
+	// stays a faithful rendering of a real settled row, not just enough to
+	// satisfy whichever matcher happens to read it.
 	frameAfterSettle := strings.Join([]string{
 		"│ ▾ default  (1)                    │ $                                                     │",
-		fmt.Sprintf("│ > %s running                │                                                       │", name),
+		fmt.Sprintf("│ > ~ %s running              │                                                       │", name),
 		"│   just now                        │                                                       │",
 	}, "\r\n")
 
