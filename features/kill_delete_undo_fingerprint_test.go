@@ -62,7 +62,21 @@ func clientCreatesShellSessionWithScratchCWDLabelled(ctx context.Context, client
 	if err := client.Send("\x1b[B" + dir + "\r"); err != nil {
 		return err
 	}
-	return client.WaitForFrame(ctx, false, "starting")
+	// waitForSettledSessionRow (task 006, inventory mechanism M1), not a
+	// plain client.WaitForFrame(ctx, false, "starting"): this step creates
+	// a shell session exactly like clientCreatesShellSession does, so it
+	// races the same SPEC §7 shell-only fast-forward promotion from
+	// "starting" to "running" the moment tmux reports the pane alive --
+	// WaitForFrame only samples the frame each time d.updated fires, so a
+	// "starting" render that is overwritten by "running" within the same
+	// pty read (or never painted at all) is never observed, and the wait
+	// runs out the full default deadline (observed in the fingerprint
+	// scenarios at kill_delete_undo.feature:176 and :288, dispatch run
+	// 36908150282: "after scenario hook failed: timed out waiting for
+	// frame \"starting\": context deadline exceeded"). This sibling helper
+	// predates task 006's fix to the shared clientCreatesShellSession step
+	// and was never converged onto it.
+	return waitForSettledSessionRow(ctx, client, sessionName)
 }
 
 // clientCreatesClaudeSessionWithScratchCWDLabelled is
