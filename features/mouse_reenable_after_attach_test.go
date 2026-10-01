@@ -39,7 +39,12 @@ func attachAndDetach(ctx context.Context, driver *ScreenDriver, name string) err
 	if err := driver.Send("\r"); err != nil {
 		return err
 	}
-	if err := driver.WaitForFrame(ctx, false, "starting"); err != nil {
+	// A literal wait for "starting" used to be here instead, but SPEC
+	// §7's shell-only fast-forward rule can promote this row straight past
+	// the transient "starting" render before this process ever samples it
+	// (the same race task 006 fixed in clientCreatesShellSession, task
+	// 026); wait on the durable glyph-based settle instead.
+	if err := waitForSettledSessionRow(ctx, driver, name); err != nil {
 		return err
 	}
 	if err := driver.Send("a"); err != nil {
@@ -95,6 +100,14 @@ func TestMouseReportingReenabledAfterAttachDetachCycle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Task 026: see coalesced_keymsg_test.go's own comment on
+	// killPrivateTmuxServerOnSocket -- attachAndDetach below creates a real,
+	// never-killed shell session on this test's fixed private tmux socket.
+	defer func() {
+		if err := killPrivateTmuxServerOnSocket("deck_mouse_reenable_test"); err != nil {
+			t.Logf("kill private tmux server: %v", err)
+		}
+	}()
 	defer func() {
 		if err := driver.Stop(time.Second); err != nil && !strings.Contains(err.Error(), "hung deck client") {
 			t.Logf("deck exit: %v", err)
@@ -135,6 +148,14 @@ func TestMouseReportingStaysOffAfterAttachDetachWithMouseDisabled(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Task 026: see coalesced_keymsg_test.go's own comment on
+	// killPrivateTmuxServerOnSocket -- attachAndDetach below creates a real,
+	// never-killed shell session on this test's fixed private tmux socket.
+	defer func() {
+		if err := killPrivateTmuxServerOnSocket("deck_mouse_reenable_off_test"); err != nil {
+			t.Logf("kill private tmux server: %v", err)
+		}
+	}()
 	defer func() {
 		if err := driver.Stop(time.Second); err != nil && !strings.Contains(err.Error(), "hung deck client") {
 			t.Logf("deck exit: %v", err)

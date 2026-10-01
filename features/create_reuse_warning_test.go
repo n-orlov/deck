@@ -74,11 +74,16 @@ func TestCreateModalWarnsBeforeReusingADeletedSessionsName(t *testing.T) {
 		t.Fatalf("create modal warned about a name with no tombstoned holder at all:\n%s", driver.Frame(false))
 	}
 
-	// Submit it as a real shell session.
+	// Submit it as a real shell session. A literal wait for "starting"
+	// used to be here instead, but SPEC §7's shell-only fast-forward rule
+	// can promote this row straight past the transient "starting" render
+	// before this process ever samples it (the same race task 006 fixed
+	// in clientCreatesShellSession, task 026); wait on the durable
+	// glyph-based settle instead.
 	if err := driver.Send("\x1b[B" + cwd + "\r"); err != nil {
 		t.Fatal(err)
 	}
-	if err := driver.WaitForFrame(ctx, false, "starting"); err != nil {
+	if err := waitForSettledSessionRow(ctx, driver, name); err != nil {
 		t.Fatal(err)
 	}
 

@@ -156,7 +156,12 @@ func createPersistentShell(ctx context.Context, clientName, name string) error {
 	if err := client.Send("\x1b[B[\"-c\",\"while :; do sleep 3600; done\"]\r"); err != nil {
 		return err
 	}
-	return client.WaitForFrame(ctx, false, "starting")
+	// A literal wait for "starting" used to be here instead, but SPEC
+	// §7's shell-only fast-forward rule can promote this row straight past
+	// the transient "starting" render before this process ever samples it
+	// (the same race task 006 fixed in clientCreatesShellSession, task
+	// 026); wait on the durable glyph-based settle instead.
+	return waitForSettledSessionRow(ctx, client, name)
 }
 
 func probeEventCount(ctx context.Context, session string, want int) error {
