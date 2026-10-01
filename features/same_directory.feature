@@ -15,7 +15,7 @@ Feature: Distinct conversation ids in one working directory
     And the state database session "two" has a non-empty conversation id
     And the state database sessions "one" and "two" have different conversation ids
     When deck client "A" presses r on session "one"
-    Then deck client "A" screen contains "starting"
+    Then the audit log records session "one" entering starting 2 times
     And the audit log's most recent launch argv for session "one" contains "--resume"
     And the audit log's most recent launch argv for session "one" contains session "one"'s conversation id
     And the audit log's most recent launch argv for session "one" does not contain session "two"'s conversation id

@@ -23,7 +23,7 @@ Feature: Real agent session creation and resume through the TUI
     Then deck client "A" screen contains "resumable"
     And exactly 0 private tmux sessions match slug "deck_claude-one"
     When deck client "A" presses r on session "claude one"
-    Then deck client "A" screen contains "starting"
+    Then the audit log records session "claude one" entering starting 2 times
     And deck client "A" screen contains "resumable"
     And the audit log has 2 launch records for session "claude one"
     And the audit log's most recent launch argv for session "claude one" contains "--resume"
@@ -109,7 +109,7 @@ Feature: Real agent session creation and resume through the TUI
     And the audit log has 1 launch record for session "audit env one"
     Then deck client "A" screen contains "resumable"
     When deck client "A" presses r on session "audit env one"
-    Then deck client "A" screen contains "starting"
+    Then the audit log records session "audit env one" entering starting 2 times
     And the audit log has 2 launch records for session "audit env one"
     And the audit log's most recent launch record for session "audit env one" names environment key "AUDIT_ENV_TOKEN"
     And the audit log file never contains "super-secret-do-not-log-8675309"

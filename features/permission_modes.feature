@@ -99,7 +99,7 @@ Feature: Permission profile mapping, degradation and the yolo gate
     # session that IS safe, with codex's own safe flag pair in its launch
     # argv and no trace of the profile that was asked for.
     When deck client "A" submits the create modal
-    Then deck client "A" screen contains "starting"
+    Then the audit log records session "codex-plan" entering starting 1 time
     And the state database session "codex-plan" has permission profile "safe"
     And the audit log's most recent launch argv for session "codex-plan" contains "on-request"
     And the audit log's most recent launch argv for session "codex-plan" contains "workspace-write"
@@ -140,7 +140,7 @@ Feature: Permission profile mapping, degradation and the yolo gate
     And a fake "claude" binary is on PATH for future deck clients
     And deck client "A" is started
     When deck client "A" creates claude session "confirmed" with permission profile "yolo"
-    Then deck client "A" screen contains "starting"
+    Then the audit log records session "confirmed" entering starting 1 time
     And the state database session "confirmed" has permission profile "yolo"
     When deck client "A" exits cleanly
 
@@ -163,7 +163,7 @@ Feature: Permission profile mapping, degradation and the yolo gate
     When deck client "A" creates claude session "sticky" with permission profile "yolo"
     Then deck client "A" screen contains "resumable"
     When deck client "A" presses r on session "sticky"
-    Then deck client "A" screen contains "starting"
+    Then the audit log records session "sticky" entering starting 2 times
     And the audit log's most recent launch argv for session "sticky" contains "--permission-mode"
     And the audit log's most recent launch argv for session "sticky" contains "bypassPermissions"
     And the audit log's most recent launch argv for session "sticky" contains "--resume"
