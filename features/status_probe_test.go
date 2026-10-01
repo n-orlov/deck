@@ -397,21 +397,47 @@ func frameSidebarRowGlyph(frame, rowName string) (string, bool) {
 					break
 				}
 			}
-			if !strings.HasPrefix(rest, rowName) {
+			if strings.HasPrefix(rest, rowName) {
+				// after is whatever padTrunc left of the row's own badge run
+				// once the name itself is accounted for -- a full word
+				// separated by a space ("running"), nothing at all (name
+				// exactly fills the row), or the ellipsis padTrunc appends
+				// with NO separating space when there was not even room for
+				// that (task 008, teardown_hooks.feature:15's own
+				// "teardown-kill-then-delete" -- one byte short of
+				// no_leak_scan.feature:17's control value, but the SAME
+				// defect: "..." lands immediately after the name, not after
+				// a space).
+				after := rest[len(rowName):]
+				if after == "" || strings.HasPrefix(after, " ") || strings.HasPrefix(after, "...") || strings.HasPrefix(after, "\u2026") {
+					return g, true
+				}
 				continue
 			}
-			// after is whatever padTrunc left of the row's own badge run
-			// once the name itself is accounted for -- a full word
-			// separated by a space ("running"), nothing at all (name
-			// exactly fills the row), or the ellipsis padTrunc appends
-			// with NO separating space when there was not even room for
-			// that (task 008, teardown_hooks.feature:15's own
-			// "teardown-kill-then-delete" -- one byte short of
-			// no_leak_scan.feature:17's control value, but the SAME
-			// defect: "..." lands immediately after the name, not after
-			// a space).
-			after := rest[len(rowName):]
-			if after == "" || strings.HasPrefix(after, " ") || strings.HasPrefix(after, "...") || strings.HasPrefix(after, "\u2026") {
+			// task 012 (M1, panel_background_rectangle.feature:82/112/130):
+			// rowName itself can be longer than the sidebar's own content
+			// width (panel_background_rectangle.feature's own 79-character
+			// rec-bbb-selected-session... fixture, against a 32-column
+			// content budget) -- padTrunc then truncates the NAME itself,
+			// not merely the trailing badge run, so rest never contains
+			// rowName in full and the prefix match above can never succeed,
+			// however long this waits (confirmed red at HEAD,
+			// /run/ralphd/artifacts/012/panel_background_rectangle/
+			// head-before-fix.log). Accept rest as rowName's own
+			// truncation instead: the longest run where rest and rowName
+			// agree character-for-character, with NOTHING after it except
+			// padTrunc's own ellipsis marker -- so a short, unrelated row
+			// that merely happens to share rowName's own leading characters
+			// and then renders its OWN different, non-ellipsised content
+			// is never mistaken for rowName's truncation.
+			common := 0
+			for common < len(rest) && common < len(rowName) && rest[common] == rowName[common] {
+				common++
+			}
+			if common == 0 || common == len(rowName) {
+				continue
+			}
+			if remainder := rest[common:]; strings.HasPrefix(remainder, "...") || strings.HasPrefix(remainder, "\u2026") {
 				return g, true
 			}
 		}
