@@ -87,6 +87,7 @@ func TestWaitForFixtureFullyRenderedNeverTrustsAStaleFrame(t *testing.T) {
 			updated: make(chan struct{}, 1),
 		}
 		go driver.drainScreenInput()
+		t.Cleanup(func() { closeInputPipe(driver.screen) })
 		release = make(chan struct{})
 		done = make(chan struct{})
 		go func() {

@@ -56,6 +56,7 @@ func TestWaitForSettledSessionRowNeverRequiresStarting(t *testing.T) {
 		updated: make(chan struct{}, 1),
 	}
 	go d.drainScreenInput()
+	t.Cleanup(func() { closeInputPipe(d.screen) })
 
 	// frameBeforeSettle is the create modal still open: no session row, no
 	// "starting", no "running" anywhere on screen.
