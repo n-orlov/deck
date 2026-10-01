@@ -46,6 +46,17 @@ func TestCoalescedTwoKeystrokesWithNoDelayStillDispatchBoth(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Task 026: this test's own private tmux socket is a FIXED, test-named
+	// one and "n" + Enter below creates a real, never-killed shell session
+	// on it -- without this, a repeated run (ci/run.sh's own -count=20
+	// stress proof) collides with the still-live session from the prior
+	// iteration (tmux's own "duplicate session" error), a test-hygiene gap
+	// unrelated to anything deck itself does.
+	defer func() {
+		if err := killPrivateTmuxServerOnSocket("deck_coalesced_keymsg_test"); err != nil {
+			t.Logf("kill private tmux server: %v", err)
+		}
+	}()
 	defer func() {
 		if err := driver.Stop(3 * time.Second); err != nil && !strings.Contains(err.Error(), "hung deck client") {
 			t.Logf("deck exit: %v", err)
@@ -78,16 +89,20 @@ func TestCoalescedTwoKeystrokesWithNoDelayStillDispatchBoth(t *testing.T) {
 	if err := driver.Send("\x1b[B" + cwd + "\r"); err != nil {
 		t.Fatal(err)
 	}
-	// "starting" (not the session's own name) is the unambiguous wait target:
-	// the create modal's own Name field still shows "coalesced-dd" the whole
-	// time it is being typed, well before Enter is even sent, so waiting on
-	// the name text itself would race ahead of the still-open modal actually
-	// processing Enter -- exactly what the very first version of this test
-	// did, letting the very next Send land inside the still-focused cwd field
-	// instead of the main view (a test-harness bug, not a product one; see
-	// clientCreatesShellSession in assertions_test.go, which already waits on
-	// "starting" for the same reason).
-	if err := driver.WaitForFrame(ctx, false, "starting"); err != nil {
+	// The row's own settle (task 006/task 026, inventory mechanism M1) is
+	// the unambiguous wait target: the create modal's own Name field still
+	// shows "coalesced-dd" the whole time it is being typed, well before
+	// Enter is even sent, so waiting on the name text itself would race
+	// ahead of the still-open modal actually processing Enter -- exactly
+	// what the very first version of this test did, letting the very next
+	// Send land inside the still-focused cwd field instead of the main view
+	// (a test-harness bug, not a product one). A literal wait for "starting"
+	// used to be here instead, but SPEC §7's shell-only fast-forward rule
+	// can promote this row straight past the transient "starting" render
+	// before this process ever samples it (the same race task 006 fixed in
+	// clientCreatesShellSession), so this waits on the durable glyph-based
+	// settle instead.
+	if err := waitForSettledSessionRow(ctx, driver, "coalesced-dd"); err != nil {
 		t.Fatal(err)
 	}
 

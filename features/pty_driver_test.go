@@ -94,6 +94,28 @@ func StartScreenDriver(ctx context.Context, binary string, env []string) (*Scree
 	return StartScreenDriverWithSize(ctx, binary, env, terminalColumns, terminalRows)
 }
 
+// killPrivateTmuxServerOnSocket is ScenarioHarness.KillTMuxServer's own
+// tolerant-of-already-gone logic (lifecycle_test.go), lifted for the
+// handful of plain *testing.T tests in this package that drive a real
+// ScreenDriver directly (no ScenarioHarness) against a FIXED,
+// test-named DECK_TMUX_SOCKET and submit a real shell session create: a
+// private tmux SERVER is a background daemon independent of the deck
+// client process driver.Stop() tears down, so without this, the session
+// it created survives the test, and a later run reusing the same fixed
+// socket+session name (ci/run.sh's own -count>1 stress runs, task 026's
+// 20x proof included) fails with tmux's own "duplicate session" error --
+// a test-hygiene gap, not a race on anything deck itself does. Tests that
+// never submit a create modal (never leave a tmux session live) do not
+// need this.
+func killPrivateTmuxServerOnSocket(socket string) error {
+	cmd := exec.Command("tmux", "-L", socket, "kill-server")
+	output, err := cmd.CombinedOutput()
+	if err != nil && !strings.Contains(string(output), "no server running") && !strings.Contains(string(output), "No such file") {
+		return fmt.Errorf("kill private tmux server %q: %w: %s", socket, err, strings.TrimSpace(string(output)))
+	}
+	return nil
+}
+
 // StartScreenDriverWithSize is StartScreenDriver with an explicit initial PTY
 // and emulator geometry.
 func StartScreenDriverWithSize(ctx context.Context, binary string, env []string, cols, rows uint16) (*ScreenDriver, error) {
@@ -735,9 +757,25 @@ func (d *ScreenDriver) WaitForQuiescence(ctx context.Context, clockFrozen bool, 
 // then exits, so a genuine hang's diagnostic (task 014: what syscall/state
 // the process was blocked in) survives in the returned error instead of
 // being thrown away by an unconditional SIGKILL.
+//
+// Both paths wait (briefly, bounded) on d.readDone before closing
+// d.terminal: that channel is closed by read()'s own defer the moment its
+// loop actually returns, and closing the pty master out from under a
+// still-in-flight d.terminal.Read()/ptyReadable() poll(2) call in that
+// goroutine is a real, race-detector-visible hazard (os.File.Fd() and
+// os.File.Close() racing on the same *os.File, confirmed under `go test
+// -race -count=20`, task 026: WARNING: DATA RACE between ScreenDriver.
+// Stop's os.File.Close and ScreenDriver.read's ptyReadable -> os.File.Fd)
+// -- not merely a hypothetical one. The wait is bounded rather than
+// unconditional because a real tmux ATTACH (mouse_reenable_after_attach_
+// test.go, attach_scroll_test.go) execs a grandchild that could in
+// principle still hold the pty slave open after this process itself has
+// already exited, so an unbounded wait here risks trading one rare
+// failure mode (this data race) for a worse one (Stop itself hanging).
 func (d *ScreenDriver) Stop(timeout time.Duration) error {
 	select {
 	case <-d.done:
+		d.awaitReadDone()
 		if d.terminal != nil {
 			_ = d.terminal.Close()
 		}
@@ -758,6 +796,7 @@ func (d *ScreenDriver) Stop(timeout time.Duration) error {
 			case <-time.After(time.Second):
 			}
 		}
+		d.awaitReadDone()
 		if d.terminal != nil {
 			_ = d.terminal.Close()
 		}
@@ -798,6 +837,19 @@ func (d *ScreenDriver) Close() {
 	defer d.mu.Unlock()
 	closeInputPipe(d.screen)
 	closeInputPipe(d.budget)
+}
+
+// awaitReadDone waits, briefly, for read()'s own defer to close d.readDone
+// before Stop closes d.terminal out from under it (see Stop's own doc
+// comment). 2s mirrors the kill-after-SIGQUIT grace period just above it in
+// Stop: generous for a cooperating child's pty slave to actually close, but
+// bounded so a wedged grandchild (a real tmux attach) cannot turn this into
+// a new hang.
+func (d *ScreenDriver) awaitReadDone() {
+	select {
+	case <-d.readDone:
+	case <-time.After(2 * time.Second):
+	}
 }
 
 // closeInputPipe closes t's own InputPipe() when it implements io.Closer
