@@ -77,7 +77,31 @@ func (s Service) reconcile(ctx context.Context, staleAfter time.Duration) error 
 		// UpdateSessionStatus: first-writer-wins on pane_exit_status keeps an
 		// already-stored crash verdict and tail intact, so collecting a corpse
 		// for an already-terminal row tears tmux down without rewriting history.
+		//
+		// An `error` row whose source is `tmux` or `user` (task 011, M9) is
+		// ALSO terminal here, for the absent-pane case specifically, not only
+		// the present-pane one below: launchFailed (resume.go/shell.go) writes
+		// exactly this shape for every one of SPEC §9.3's three named resume
+		// failures (unknown conversation id, missing cwd, agent binary not on
+		// PATH), none of which ever create a tmux session for this attempt --
+		// so there is nothing for this pass to observe as "gone" that the row
+		// does not already claim. Before this clause, a reconcile pass whose
+		// ListSessions read landed after that error write (and before the next
+		// one) saw a non-"stopped", non-pane-exit, non-"starting" status with
+		// no live pane and fell through to the write below, replacing the
+		// specific, SPEC-mandated reason with the generic "tmux session
+		// disappeared" -- losing the one explanation the scenario exists to
+		// retain. This is exactly the self-heal eligibility test the present
+		// branch already uses below (a row claiming the process is gone), read
+		// the other direction: there, a live pane CONTRADICTS the claim and is
+		// repaired; here, an absent pane CONFIRMS it and needs no write at all.
+		// A hook- or probe-sourced error (a turn/API failure with the pane
+		// still presumably alive) is deliberately excluded, same as the
+		// present-branch repair guard: it still owns the write below if its
+		// pane later genuinely disappears (SPEC §7's "any -> stopped" on clean
+		// exit).
 		terminal := session.Status == "stopped" || session.PaneExitStatus != nil ||
+			(session.Status == "error" && (session.StatusSource == "tmux" || session.StatusSource == "user")) ||
 			(session.Status == "starting" && session.StatusSource == "user")
 		observed, present := liveByName["deck_"+session.Slug]
 		if present {
