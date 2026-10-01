@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/n-orlov/deck/internal/theme"
 )
 
 // navigateToRowByName is the single top-anchored navigation helper behind
@@ -97,8 +99,10 @@ var navKeySettleWindow = 300 * time.Millisecond
 // "> Working directory: ..." field markers on rows the next, shorter
 // render never overwrites, and an unscoped "> " search can match that
 // stale leftover before deck has even processed the keystroke. Comparing
-// the sidebar-scoped line to its own prior value has no such
-// false-positive surface.
+// the selected row's identity (selectedSidebarLine: the sidebar cell with
+// its status glyph, pin marker and badge run stripped) to its own prior
+// value has no such false-positive surface, and no repaint of the
+// still-selected row's own status can change it either (task 012, M2).
 func sendNavKeySettled(ctx context.Context, client *ScreenDriver, key string) error {
 	before := selectedSidebarLine(client.Frame(false))
 	if err := client.Send(key); err != nil {
@@ -201,48 +205,97 @@ func clientOpensDetailForSession(ctx context.Context, clientName, want string) e
 // documents for previewTitle() embedding a session name on the sidebar's
 // own top-border row -- scope narrowly).
 //
-// R169 (task 002): the RETURNED text is ALSO cropped to the sidebar's own
-// column -- sidebarRegion's column bound, the same seam-based split
-// mouse_bindings_test.go's locateText and layout_modes_test.go's
-// detectLayoutMode/seamColumn already derive -- rather than the line's
-// full width. sendNavKeySettled below compares this return value before
-// and after a keystroke to decide the keystroke has been acknowledged;
-// returning the WHOLE line (sidebar text plus whatever happens to render
-// in the preview pane on that same screen row) let a preview-only
-// repaint -- the preview re-rendering its own pane output a moment after
-// the keystroke, with the sidebar selection never moving at all -- change
-// the comparison value and falsely acknowledge a navigation key that
-// never actually landed, letting a queued follow-up key race ahead onto
-// whatever row the selection was still sitting on (the inventory's M2
-// mechanism: a "g" acknowledged by a row repaint, with the follow-up key
-// then landing on a group header). Cropping to the sidebar's own column
-// makes a preview-only repaint on the selected row's line unable to
-// change the result at all; only an actual sidebar selection change (a
-// different row's marker, name or status glyph) can. In stacked mode (no
-// shared seam -- sidebarRegion returns colEnd -1) the sidebar and preview
-// never share a row to begin with, so the whole line is already
-// sidebar-only and no cropping is needed.
+// R169 (task 002) cropped the returned text to the sidebar's own column,
+// so a preview-only repaint on the selected row's screen line could not
+// change it. That was not enough, because the sidebar-cropped line still
+// carried the selected row's own STATUS: its leading status glyph and its
+// trailing badge run (unseen marker, quality word, status word, archived
+// badge -- sidebarRowLines, internal/tui/tui.go). sendNavKeySettled below
+// compares this return value before and after a keystroke to decide the
+// keystroke has been acknowledged, so a same-row status repaint -- the
+// still-selected row going starting -> stopped, or waiting losing its
+// unseen marker, a moment after the keystroke was written but before deck
+// read it -- falsely acknowledged a navigation key that had not landed.
+// navigateToRowByName then still saw its target selected, returned, and
+// its caller's follow-up key (R, i, Enter) raced ahead; deck processed the
+// queued "g" first and the follow-up key landed on the group header (task
+// 012, inventory mechanism M2: dialogs.feature:214's pin dialog never
+// opening, status_attach.feature:20's interactive preview never entering).
+//
+// So the return value is now the selected row's IDENTITY, not its text:
+// the sidebar cell (sidebarCell, between the line's first two borders --
+// the sidebar's own column in every layout) after the "> " gutter, with
+// the status glyph and pin marker stripped (stripSidebarRowLead) and the
+// trailing badge run stripped (stripSidebarBadgeRun). What remains is the
+// row's name -- or the visible prefix of it a narrow sidebar leaves, which
+// padTrunc cuts at a fixed column no status change can move -- and only an
+// actual selection change (a different row under the marker, or no marker
+// at all: a selected group header renders in reverse video, not with "> ")
+// can change it. A line with no recognisable cell (no two borders) falls
+// back to the whole line through the same two strips.
 func selectedSidebarLine(frame string) string {
 	const scanWidth = 6
-	colEnd := -1
-	if _, _, c, err := sidebarRegion(frame); err == nil {
-		colEnd = c
-	}
 	for _, line := range strings.Split(frame, "\n") {
 		head := line
 		if len(head) > scanWidth {
 			head = head[:scanWidth]
 		}
-		if strings.Contains(head, "> ") {
-			if colEnd < 0 {
-				return line
-			}
-			runes := []rune(line)
-			if colEnd < len(runes) {
-				return string(runes[:colEnd])
-			}
-			return line
+		if !strings.Contains(head, "> ") {
+			continue
 		}
+		text := line
+		if cell, ok := sidebarCell(line); ok {
+			text = cell
+		}
+		text = strings.TrimLeft(text, " ")
+		if rest, ok := strings.CutPrefix(text, "> "); ok {
+			text = rest
+		} else if i := strings.Index(text, "> "); i >= 0 {
+			text = text[i+len("> "):]
+		}
+		return "> " + stripSidebarBadgeRun(stripSidebarRowLead(text))
 	}
 	return ""
+}
+
+// stripSidebarBadgeRun removes a session row's trailing line-1 badge run
+// (sidebarRowLines: an optional unseen glyph, an optional quality word, the
+// status word, an optional archived badge) from text, the row's own
+// "<name> <badge run>" once its gutter, status glyph and pin marker are
+// gone, and returns the name with its fields joined by single spaces. A
+// trailing field ending in the row's width ellipsis ("…" or "...") is
+// stripped too when its visible prefix is a prefix of a badge token: that
+// is a badge cut short by the sidebar's width, and which badge it was (and
+// so how much of it shows) depends on the status. A name that itself ends
+// in a badge-shaped word loses that word as well; the result is only ever
+// compared with itself across a repaint, so that costs nothing but a
+// slower acknowledgement for two adjacent rows whose names then collide.
+func stripSidebarBadgeRun(text string) string {
+	tokens := []string{"\u25cf", "!", "live", "sampled", "\u25a3", "[archived]"}
+	for _, st := range theme.StatusTokens {
+		tokens = append(tokens, string(st))
+	}
+	isBadge := func(field string) bool {
+		for _, marker := range []string{"\u2026", "..."} {
+			if prefix, ok := strings.CutSuffix(field, marker); ok {
+				for _, tok := range tokens {
+					if strings.HasPrefix(tok, prefix) {
+						return true
+					}
+				}
+				return false
+			}
+		}
+		for _, tok := range tokens {
+			if field == tok {
+				return true
+			}
+		}
+		return false
+	}
+	fields := strings.Fields(text)
+	for len(fields) > 1 && isBadge(fields[len(fields)-1]) {
+		fields = fields[:len(fields)-1]
+	}
+	return strings.Join(fields, " ")
 }
