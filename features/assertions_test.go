@@ -794,7 +794,7 @@ func clientCreatesShellSession(ctx context.Context, clientName, name string) err
 }
 
 // waitForSettledSessionRow waits for the just-created session's own sidebar
-// row to show either "starting" or "running" (task 006, inventory
+// row to settle into either "starting" or "running" (task 006, inventory
 // mechanism M1). A plain `client.WaitForFrame(ctx, false, "starting")` used
 // to be the wait here, but SPEC §7's shell-only fast-forward rule promotes
 // a shell row from starting to running the moment tmux reports the pane
@@ -804,17 +804,33 @@ func clientCreatesShellSession(ctx context.Context, clientName, name string) err
 // the first post-create frame already shows the promoted state) is never
 // observed, and the wait ran out the full default deadline even though the
 // row settled correctly (36798676638, 36707106029 and the rest of M1's
-// attach_scroll/profile_side_by_side failures). Treating "running" as an
-// equally acceptable settle target fixes this at the root: the row's name
-// cannot appear in the sidebar at all until the session actually exists
-// (frameSidebarRowContains parses the sidebar cell's own badge grammar, so
-// text in the still-open create modal's Name field can never satisfy it),
-// so matching either of the two states the row can legitimately be in
-// right after creation is still a durable, unambiguous settle signal, not
-// a race on which literal word happened to be on screen when sampled.
+// attach_scroll/profile_side_by_side failures).
+//
+// task 006 closed that race by accepting either status WORD
+// (frameSidebarRowContains, which parses the trailing badge run text) --
+// but the badge run is the LAST thing padTrunc lays down on the row, so a
+// session name long enough to fill the sidebar's content width on its own
+// pushes the word out of the row entirely, replacing it with a bare
+// "..." ellipsis and nothing else (task 008, no_leak_scan.feature:17's own
+// 24-character control name "leak-scan-control-9c2f1a": glyph + space +
+// name + space already consumes 27 of the sidebar's 33 content columns,
+// leaving no room at all for "starting" (8) or "running" (7) --
+// sidebarRowBadges correctly reports "no readable status word" rather than
+// mis-parsing the truncated field, but a wait that only ever asks for the
+// WORD then simply never settles, no matter how long it waits: this is not
+// a race, it reproduces every single time (3/3 local runs, 46s each,
+// before this fix). Reading the row's own leading STATUS GLYPH instead
+// (frameSidebarRowGlyph) closes this at the true root: the glyph is the
+// same lossless encoding of session.Status (sidebarStatusGlyph) the word
+// is, SPEC §11 always paints it immediately after the gutter -- BEFORE the
+// name, so it is never a candidate for the trailing-badge ellipsis
+// padTrunc applies -- and it settles the original M1 race exactly as well
+// as the word did (same WaitForFrameFunc polling against the same
+// d.updated signal), for every session name length, not just short ones.
 func waitForSettledSessionRow(ctx context.Context, client *ScreenDriver, rowName string) error {
 	pred := func(frame string) bool {
-		return frameSidebarRowContains(frame, rowName, "starting") || frameSidebarRowContains(frame, rowName, "running")
+		glyph, ok := frameSidebarRowGlyph(frame, rowName)
+		return ok && startingOrRunningRowGlyphs[glyph]
 	}
 	frame, err := client.WaitForFrameFunc(ctx, false, pred)
 	if err != nil {
