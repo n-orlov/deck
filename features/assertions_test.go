@@ -790,7 +790,37 @@ func clientCreatesShellSession(ctx context.Context, clientName, name string) err
 	if err := client.Send("\x1b[B" + cwd + "\r"); err != nil {
 		return err
 	}
-	return client.WaitForFrame(ctx, false, "starting")
+	return waitForSettledSessionRow(ctx, client, name)
+}
+
+// waitForSettledSessionRow waits for the just-created session's own sidebar
+// row to show either "starting" or "running" (task 006, inventory
+// mechanism M1). A plain `client.WaitForFrame(ctx, false, "starting")` used
+// to be the wait here, but SPEC §7's shell-only fast-forward rule promotes
+// a shell row from starting to running the moment tmux reports the pane
+// alive -- and WaitForFrame only samples the frame each time d.updated
+// fires, so a "starting" render that is overwritten by "running" within
+// the very same pty read (or that is simply never rendered at all, when
+// the first post-create frame already shows the promoted state) is never
+// observed, and the wait ran out the full default deadline even though the
+// row settled correctly (36798676638, 36707106029 and the rest of M1's
+// attach_scroll/profile_side_by_side failures). Treating "running" as an
+// equally acceptable settle target fixes this at the root: the row's name
+// cannot appear in the sidebar at all until the session actually exists
+// (frameSidebarRowContains parses the sidebar cell's own badge grammar, so
+// text in the still-open create modal's Name field can never satisfy it),
+// so matching either of the two states the row can legitimately be in
+// right after creation is still a durable, unambiguous settle signal, not
+// a race on which literal word happened to be on screen when sampled.
+func waitForSettledSessionRow(ctx context.Context, client *ScreenDriver, rowName string) error {
+	pred := func(frame string) bool {
+		return frameSidebarRowContains(frame, rowName, "starting") || frameSidebarRowContains(frame, rowName, "running")
+	}
+	frame, err := client.WaitForFrameFunc(ctx, false, pred)
+	if err != nil {
+		return fmt.Errorf("session %q row never settled to starting or running: %w\nframe:\n%s", rowName, err, frame)
+	}
+	return nil
 }
 
 // clientAttemptsShellSession drives the real modal through a second name that
