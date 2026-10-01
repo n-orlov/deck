@@ -19,6 +19,7 @@ import (
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/vt"
 	"github.com/creack/pty"
+	"golang.org/x/sys/unix"
 )
 
 // ScreenDriver drives a released deck binary through a real PTY.  It is kept
@@ -378,13 +379,96 @@ func (d *ScreenDriver) FrameFitsBudget(cols, rows int) error {
 	return frameFitsBudget(d.budget, cols, rows)
 }
 
+// ptyReadable reports whether the terminal's underlying fd already has at
+// least one more byte queued, via a zero-timeout poll(2) -- not
+// SetReadDeadline, which this PTY does not honour (confirmed empirically:
+// a deadline set well before the next byte arrives still blocks for the
+// full wait, not the deadline), and not a temporary O_NONBLOCK toggle on
+// the fd either, since that is a property of the shared open file
+// description and would race Send's own concurrent Write on the same fd
+// (a write landing while NONBLOCK is set could legitimately short-write or
+// EAGAIN and silently lose input bytes). poll() with a 0 timeout changes
+// no fd state at all, so it is safe to call from this read loop with no
+// coordination against Send whatsoever.
+func ptyReadable(f *os.File) bool {
+	fds := []unix.PollFd{{Fd: int32(f.Fd()), Events: unix.POLLIN}}
+	for {
+		n, err := unix.Poll(fds, 0)
+		if err == unix.EINTR {
+			continue
+		}
+		if err != nil || n <= 0 {
+			return false
+		}
+		return fds[0].Revents&unix.POLLIN != 0
+	}
+}
+
+// drainPTYChunk folds every byte that is ALREADY queued and ready --
+// per ready(), a zero-timeout readiness check that changes no fd state --
+// into first (the n>0 result of whatever Read() call the caller already
+// made), calling read() again for each one, until ready() reports none
+// left or read() itself stops returning n>0. It is read()'s own merge
+// step pulled out as a pure function (no d.mu, no d.terminal, no PTY)
+// specifically so a test can drive it with a scripted ready()/read() pair
+// and assert the merge invariant deterministically -- a real PTY's two
+// Read() calls for one over-sized write land close enough together that
+// an external observer's channel receive almost always finds BOTH already
+// applied by the time it is scheduled (confirmed empirically: a 5000-byte
+// single Write, read via a 4096-byte buffer, already showed the full
+// payload at the very first d.updated signal in every trial -- the real
+// race this fixes needs many more, much smaller reads, or genuine system
+// contention, i.e. exactly ci/stability.sh's parallel load, to land a
+// scheduler preemption inside the gap; it is not safely reproducible by
+// timing alone in a unit test). Returns every byte folded in this chunk,
+// plus the first non-nil error seen, exactly matching read()'s own
+// pre-extraction behaviour.
+func drainPTYChunk(buf []byte, firstN int, firstErr error, ready func() bool, read func([]byte) (int, error)) (chunk []byte, err error) {
+	chunk = append([]byte(nil), buf[:firstN]...)
+	err = firstErr
+	for err == nil && ready() {
+		var more int
+		more, err = read(buf)
+		if more > 0 {
+			chunk = append(chunk, buf[:more]...)
+		}
+		if more <= 0 {
+			break
+		}
+	}
+	return chunk, err
+}
+
 func (d *ScreenDriver) read() {
 	defer close(d.readDone)
 	buf := make([]byte, 4096)
 	for {
 		n, err := d.terminal.Read(buf)
 		if n > 0 {
-			chunk := append([]byte(nil), buf[:n]...)
+			// A single logical PTY write -- most importantly, one
+			// standardRenderer.flush() call repainting a full alt-screen
+			// frame (cmd/deck/main.go's tea.WithAltScreen()) -- can exceed
+			// this Read's own 4096-byte buffer and so arrive as more than
+			// one Read() call's worth of bytes. Applying/signalling each
+			// piece separately would let a waiter (Frame/WaitForFrame*,
+			// including the one-shot checks fed by WaitForFrameFunc
+			// predicates like waitForSettledSessionRow) observe the screen
+			// mid-flush -- e.g. a new, SHORTER frame's top already painted
+			// but the ansi.EraseScreenBelow that erases the previous,
+			// taller frame's tail still unread -- a torn frame bubbletea
+			// never asked the terminal to show, and never settles into
+			// (confirmed: features/themes.feature:96's "text \"attach\"
+			// has foreground token \"hint\"" step read exactly this shape
+			// of torn frame -- a session-list top over a stale create-
+			// dialog tail -- under ci/stability.sh's heavier parallel load,
+			// and shrinking this buffer to 32 bytes reproduced the same
+			// failure solo, deterministically, with no load needed).
+			// drainPTYChunk folds in every byte ptyReadable's zero-timeout
+			// poll already finds queued before this chunk is ever applied
+			// or signalled, so a whole flush -- however many Read() calls
+			// it would otherwise take -- becomes one atomic update.
+			var chunk []byte
+			chunk, err = drainPTYChunk(buf, n, err, func() bool { return ptyReadable(d.terminal) }, d.terminal.Read)
 			d.mu.Lock()
 			_, _ = d.raw.Write(chunk)
 			_, _ = d.screen.Write(chunk)
