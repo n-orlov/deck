@@ -304,8 +304,15 @@ permanently-red assertion, and the assertion still runs at full strength on
 every `push`/`pull_request` run, which never sets `-race`. A *deadline* (a
 test waiting on an external, polled event, e.g. a pty frame or a process
 exit) is a different kind of assertion from a *budget* (a bound on this
-binary's own uncontended work) and is never exempted this way -- only budget
-assertions consult `racebuild.Enabled`.
+binary's own uncontended work) and is never exempted the budget's way --
+skipping the comparison outright would let the awaited condition go
+unchecked. Instead a race build only WIDENS how long a deadline polls for
+the condition to become true; it never skips the wait or weakens what is
+being checked. `features/`'s `reconcileIntervalPollDeadline` and
+`r150LiveOuterDeadline` helpers consult `racebuild.Enabled` this way, so
+both budget assertions and race-widened deadlines consult
+`racebuild.Enabled` -- the two differ in what they do with it (skip the
+comparison vs. widen the bound), not in whether they consult it at all.
 
 ## Coverage
 
