@@ -168,6 +168,7 @@ func initializeScenario(sc *godog.ScenarioContext) {
 	registerAutoEnterSteps(sc)
 	registerInteractiveRefusalsSteps(sc)
 	registerInteractiveScrollSteps(sc)
+	registerInteractiveCursorSteps(sc)
 	registerInteractiveSelectionSteps(sc)
 	registerInteractiveRetargetSteps(sc)
 	registerInteractivePipeLeakSteps(sc)

@@ -643,7 +643,8 @@ func (m Model) previewContentSize() (width, height int) {
 // (the resize / visible-only-reseed case). R133 part 2 (the scrolled-back
 // cue itself) and R135 read that same stored position.
 func (m *Model) interactiveBodyLines(contentWidth, contentHeight int) ([]string, []previewLineOwner) {
-	lines, usedOffset := m.interactiveGrid.RenderRows(m.interactiveScrollOffset(), contentHeight)
+	snap := m.interactiveGrid.RenderSnapshot(m.interactiveScrollOffset(), contentHeight)
+	lines, usedOffset := snap.Rows, snap.UsedOffset
 	m.setInteractiveScrollOffset(usedOffset)
 	// R93/task 206: mark an in-progress drag-to-copy selection, if any,
 	// before the not-repainted check below -- highlightInProgressSelection
@@ -653,6 +654,8 @@ func (m *Model) interactiveBodyLines(contentWidth, contentHeight int) ([]string,
 	// after fitLines) keeps viewRow == this slice's own index, the exact
 	// row space interactiveGrid.AbsoluteRow/SelectionHighlightRange use.
 	lines = m.highlightInProgressSelection(lines, contentHeight)
+	// R182: the pane's cursor cell, from the SAME snapshot as the rows.
+	lines = drawInteractiveCursor(lines, usedOffset, snap.CursorViewRow, snap.CursorX, snap.CursorVisible)
 	// The not-repainted announcement (PRD II-49) only ever applies to the
 	// LIVE view: scrolled-back history, if any exists at all, is by
 	// definition real content that once appeared on screen, so it is never
