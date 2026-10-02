@@ -89,6 +89,19 @@ idle reaping or any timer that stops a running session · **inbound remote contr
 - Store: `modernc.org/sqlite` (pure Go, no cgo) — `WAL`, `busy_timeout=5000`, `foreign_keys=ON`.
 - tmux via the `tmux` CLI. No control mode in v1. **Minimum tmux 3.2**, required for
   `remain-on-exit failed` (§7) and the `window-size` option (§3.3).
+  **Every recurring tmux read costs a constant number of `tmux` processes, whatever the number
+  of sessions.** Each call is a fork, an exec and a server connect, and the server pays for
+  every one from every open deck, so a poll that runs once per session per tick makes the cost
+  grow as sessions × open decks — a dozen sessions measured as a steady 8 % of a core per deck,
+  plus the server's own share, with nothing on screen moving. So the reconcile tick is **one**
+  `tmux` process (§7), a passive preview tick is **one**, and in interactive mode (§11.9) the
+  preview tick's backstop checks and the dead-pane poll together are **one** per tick. Where a
+  tick needs several facts, they come from one `list-panes -a -F` or one `display-message`
+  with a combined format (window user options such as `@deck_isize_owner` included, since
+  tmux expands them as formats), or from `;`-chained commands in one invocation. Two things
+  are outside this rule: §7's status probe, which samples one pane per probe-eligible session by
+  design, at §7's cadence; and the one-off reads of a user action (entry, a keystroke's identity
+  check, a resize), which do not recur.
   The "tmux unavailable — install tmux 3.2 or newer" notice is for exactly that condition,
   detected at start-up, and nothing else: a tmux call that fails **at runtime** is a
   transient read error, shown as such with no install advice and cleared by the next
@@ -735,7 +748,10 @@ Rules:
   `killed_by_user`, which an in-flight hook arriving milliseconds later cannot undo —
   explicit human action outranks automation. Below that, a probe never overwrites a fresher
   hook verdict, and `tmux` only ever supplies liveness.
-- `waiting` and `error` set `acknowledged = 0`; cleared by attaching or by `Y`. "Attaching"
+- `waiting` and `error` set `acknowledged = 0`; cleared by attaching or by `Y`. `Y` is the
+  way to clear it without attaching, so it applies only where there is something to clear: on
+  a row already at `acknowledged = 1` it does nothing at all — no write, no event, no message —
+  and §11.3's footer does not offer it there. "Attaching"
   means every way the keyboard reaches the pane through deck: `a`'s full attach and the
   interactive preview (§11.9), whether entered by `↵` or forced by `F` — the same durable
   transaction applies to any of them, and a forced entry is an attachment for exactly the
@@ -760,8 +776,10 @@ Rules:
   one-fixture fix.
 - **Liveness and clean-vs-crash exit.** `remain-on-exit failed` (§3.2) means a pane whose
   command exits **0** is destroyed with its session, while a pane exiting **non-zero**
-  stays as a dead pane. So the 500 ms reconcile (`list-sessions` + `list-panes -F` with
-  `pane_dead` / `pane_dead_status`) distinguishes the two without guessing:
+  stays as a dead pane. So the 500 ms reconcile — **one** `list-panes -a -F` over the whole
+  server, carrying each pane's session name with `pane_dead` / `pane_dead_status`, and never a
+  `list-panes` per session (§2) — distinguishes the two without guessing. A server with no
+  sessions, or no server at all, reads as "every session gone":
 
   | observation | result |
   |---|---|
@@ -1876,7 +1894,9 @@ truncated-but-honest frame beats an unpredictable one.
   not have is worse than no footer, because it is the one place a user is entitled to trust.
   **Nor does it list a key that would refuse the current selection.** `x` is absent on a row
   with no pane to kill, `r` on a row that is already running, `A` on a row that is already
-  archived, `U` on one that is not, and every per-row key when the list is empty; with a mark
+  archived, `U` on one that is not, `Y` on a row with nothing to acknowledge (§7's
+  `acknowledged = 1`, which every attach leaves behind), and every per-row key when the list
+  is empty; with a mark
   set in force the question is asked of the marked rows, since that is what the key would act
   on. This is the same argument one step finer: a key that is bound but refuses *here* is,
   from the user's side, indistinguishable from one that does not exist, and discovering the
@@ -1907,7 +1927,10 @@ Every dialog is a bordered, centred modal over a dimmed backdrop, and they all o
 contract so learning any one of them teaches the rest:
 
 - `esc` cancels and changes nothing. `↵` submits. `↑`/`↓` move between fields.
-  `←`/`→`/`space` change a selection. A dialog may declare **additional load-bearing keys
+  `←`/`→`/`space` change a selection — on a selection field. **On a text field `←`/`→` move
+  the caret and `space` types a space**, with every other editing key §11.11 gives a text
+  field; a dialog whose fields are a mix gets both, decided by the focused field's kind, never
+  by the dialog. A dialog may declare **additional load-bearing keys
   of its own**, but only if it states them inline where they apply — the `r` that reveals a
   masked secret (§6.4) is the canonical example: an explicit per-view toggle, named on screen
   at the place it acts. Nothing *undeclared* is load-bearing.
@@ -2012,7 +2035,10 @@ the TUI must be the place it is edited.
 - Navigation, spelled out because the takeover is not a §11.4 dialog and the main view has
   no `tab` binding for it to echo (§11.3): `tab`/`←`/`→` switch between the category list
   and the field list, `↑`/`↓` move within the focused list, `/` searches, `ctrl+s` saves,
-  `esc` prompts to discard if anything changed and otherwise closes.
+  `esc` prompts to discard if anything changed and otherwise closes. **While a value is being
+  typed** — a string, path, list entry, env key or value, a group name, or the `/` search —
+  the field is a §11.11 text field and its editing keys win: `←`/`→` move the caret there and
+  do not switch lists.
 - **Save is explicit** (`ctrl+s` or the Save action), a discard prompt guards unsaved
   changes on `esc`, and the write is atomic — settings must never be able to leave an
   unparseable `config.toml` behind.
@@ -2127,7 +2153,7 @@ archived          = "#475569"
 ### 11.7 Path entry and recent working directories
 
 Typing a full path by hand is the single most common keystroke cost in deck, because every
-session starts with one. Three mechanisms, all on the same text-input behaviour so the
+session starts with one. Three mechanisms, all on the same text-input behaviour (§11.11) so the
 create modal's `cwd`, and any later path field, behave identically:
 
 **Recent working directories.** deck remembers the last **5** distinct directories a
@@ -2138,12 +2164,16 @@ front, deduplicated by resolved absolute path, evicting the oldest beyond the li
 
 - The `cwd` field is **pre-filled with the most recent entry**, so the common case —
   another session where you just were — is `n`, a name, `↵`. On a first run with no
-  history it pre-fills the directory deck itself was started in. Typing replaces the
-  pre-filled value wholesale (it is offered, not committed), and the field labels it as
-  the last used so nothing is silently assumed on the user's behalf.
+  history it pre-fills the directory deck itself was started in. The value is **offered,
+  not committed**, under §11.11's rule for an offered value: a printable first keystroke or a
+  paste replaces it wholesale, while a caret or editing key accepts it and edits it in place —
+  so `/home/me/proj-a` becomes `/home/me/proj-b` with `←` and one character, not a retyped
+  path. The field labels it as the last used so nothing is silently assumed on the user's
+  behalf.
 - `Ctrl+P`/`Ctrl+N` in the field cycle the recent list, shell-history style, showing
   `recent 2/5` so the user knows both where they are and that more exist. This is a declared
-  per-field key set under §11.4's contract, and the field's own help line names it. They are
+  per-field key set under §11.4's contract, and the field's own help line names it. Each step
+  replaces the whole text and puts the caret at its end. They are
   readline's history bindings, chosen for the same reason `tab` completion is: the fingers
   already know them. `↑`/`↓` are **not** bound here — they move between fields in every dialog
   (§11.4), and a path field does not get to redefine the navigation keys of the dialog it sits
@@ -2154,8 +2184,16 @@ front, deduplicated by resolved absolute path, evicting the oldest beyond the li
 - The list is history, and paths can themselves be sensitive: settings (§11.5) offers
   clearing it, and it is never included in notification payloads.
 
-**Ghost completion.** With the cursor at the end of the field, deck shows the completion
-inline in the theme's `dimmed` token, and `→` (or `end`) accepts it. Directories only —
+**Completion happens at the end of the field, and only there.** Ghost and `tab` both complete
+the segment the caret ends, and with the caret anywhere else there is no ghost and `tab` does
+nothing — the fish and zsh autosuggestion contract. Completing a segment in the middle of a
+path would have to decide what happens to the text after the caret, and every answer to that
+surprises somebody; a user who wants to complete there deletes the tail first, which is one
+`ctrl+k`.
+
+**Ghost completion.** With the caret at the end of the field, deck shows the completion
+inline in the theme's `dimmed` token, and `→` (or `end`) accepts it; with no ghost showing,
+those keys are §11.11's caret keys and nothing more. Directories only —
 deck is never asking for a file here. The segment being completed is the text after the
 last `/`; hidden directories are candidates only when that segment starts with `.`; a
 leading `~` expands. A single match completes to it plus a trailing `/`, so the next
@@ -2211,7 +2249,8 @@ still does nothing. **A drag is the exception**,
 because selecting text is reading rather than acting: it takes no focus, changes no status and
 moves no selection in the list. **While §11.9's interactive mode is active, the panel under the
 pointer decides what the wheel scrolls:** over the preview it scrolls the grid's own
-scrollback, which is the one viewport that exists there; over the sidebar it scrolls the list
+scrollback, which is the one viewport that exists there — unless the pane's own program has
+asked for mouse reporting, in which case the notch is that program's (§11.9); over the sidebar it scrolls the list
 exactly as it does in list mode — the viewport only, never the selection or the interactive
 target, without leaving interactive mode or resizing anything — and the resulting drift ends
 as §11 says, at the next input to the live pane; a click over the
@@ -2413,9 +2452,38 @@ must be restored afterwards.
   socket path, server pid, `pane_id`, **`pane_pid`** and session name. `pane_id` alone is not
   sufficient — `respawn-pane` keeps it, and everything else tmux reports, unchanged.
 - **The grid keeps its own bounded scrollback, and the wheel over the preview scrolls it**
-  (over the sidebar the wheel scrolls the list, §11.8). This is the only
-  way to scroll a full-screen agent: the alternate screen has no tmux history, which is why
-  tmux's own wheel binding declines to enter copy-mode for it.
+  (over the sidebar the wheel scrolls the list, §11.8) — **unless the pane's program tracks the
+  mouse.** A full-screen program on the alternate screen has no tmux history, so for it the
+  grid's scrollback is empty and a wheel that only ever scrolls the grid does nothing at all,
+  while the program itself (an agent's full-screen renderer, `less`, `btop`) is waiting to be
+  told about the wheel. So deck does what tmux does under `mouse on`: while the program has
+  mouse reporting on (DEC modes 1000, 1002 or 1003, as the grid tracks them from the seed and
+  the live stream — never a new tmux read per notch), a wheel notch over the preview is
+  **forwarded** to the pane as the program asked to receive it — an SGR report (`CSI < 64|65 ;
+  x ; y M`) under mode 1006, the X10 form otherwise — at the pane cell under the pointer, through
+  the same verified-identity send path as a keystroke (below), and the grid does not scroll.
+  The X10 form cannot encode a column or row past 223; a notch there, and a notch under the
+  1005/1015 encodings deck does not produce, is dropped — a **stated gap**, for the same reason
+  §11.9's key gaps are: an encoding the program would misread is worse than none. Three things
+  keep the grid's own scrollback reachable: with the grid already **scrolled back**, the wheel
+  keeps scrolling the grid until it is back at live; **`Shift`+wheel always scrolls the grid**,
+  the same override terminals give for programs that grab the mouse; and the routing is
+  re-decided at every notch, so a program that turns reporting off (or exits back to its shell)
+  hands the wheel back immediately. A forwarded notch is input to the pane, so it ends a sidebar
+  drift exactly as a forwarded key does (§11).
+- **The pane's text cursor is drawn.** A full `tmux attach` shows where the program's cursor
+  is, and editing a prompt in the middle of a line — arrows, word jumps, a deletion — is
+  guesswork without it. deck draws the grid's cursor cell in **reverse video**: it survives
+  `NO_COLOR` and `ascii`, reads in every theme, and needs no new token, and it is the same
+  device the header cursor (§11) already uses for the same reason. The position and
+  visibility are the grid's, from the seed's `cursor_x`/`cursor_y`/`cursor_flag` and the live
+  stream after it — never a separate tmux read — and the cell is composed in the same frame as
+  the rows it sits in, so it can never be drawn against stale text. It is **not drawn** while
+  the program has hidden its cursor (DECTCEM off, `cursor_flag = 0`) — full-screen programs
+  that paint their own cursor would otherwise show two — nor while the grid is scrolled back,
+  since the cursor lives on the live screen; it returns at live. A cell the program itself
+  painted in reverse video is the program's cursor and is shown as painted under every
+  `[ui] preview_paint` mode. The passive preview draws no cursor.
 - **The one-off entry seed reaches back into the pane's own tmux scrollback**, so a session
   that ran for an hour before anyone previewed it can be scrolled back over immediately rather
   than presenting an empty buffer. The entry capture starts at `-<bound>` rather than `0`,
@@ -2465,7 +2533,7 @@ must be restored afterwards.
 ### 11.10 The list filter
 
 `/` narrows the list as you type, incrementally, over what a row already shows — name, `cwd`,
-group and status. It is a **view over the list and never a mutation**: nothing about a
+group and status. The query is a §11.11 text field, and every edit re-narrows. It is a **view over the list and never a mutation**: nothing about a
 session changes because it is hidden or shown.
 
 - **It widens the pool to archived rows** while a query is in force, and only then. Archived
@@ -2483,6 +2551,60 @@ session changes because it is hidden or shown.
   reaches when there is nothing nearer, and one press never does two of those at once.
 - **The sidebar states that a filter is in force**, with the match count, so a hidden row is
   never mistaken for a deleted one. That statement is the whole reason hiding rows is safe.
+
+### 11.11 Text fields
+
+Every place deck takes typed text is **one line editor with a real caret**, the same one in
+every field: the create modal's name, `cwd`, launch arguments, env, pre-launch and
+post-destroy fields; rename; the launch-inputs editor; the env editor; every typed value in
+settings (§11.5), including a group name and the settings search; and the `/` filter (§11.10).
+A field that can only append and trim its end makes a typo in the middle a retype of the whole
+line, and a set of fields that each behave a little differently means the user learns a field
+instead of learning deck. The keys are readline's, because that is what the fingers already
+know:
+
+| keys | effect |
+|---|---|
+| `←` / `→`, `ctrl+b` / `ctrl+f` | caret one character left / right |
+| `home` / `end`, `ctrl+a` / `ctrl+e` | caret to the start / end |
+| `alt+b` / `alt+f`, `ctrl+←` / `ctrl+→` | caret one word left / right |
+| `backspace` (`ctrl+h`) / `delete` (`ctrl+d`) | delete the character before / under the caret |
+| `ctrl+w` | delete back to the previous whitespace |
+| `alt+backspace` | delete back one word |
+| `ctrl+u` / `ctrl+k` | delete from the caret to the start / to the end |
+| typing, bracketed paste | insert at the caret |
+| `alt+w` | copy the whole field's text |
+
+- **A character is a grapheme cluster and a width is in cells.** The caret steps over a
+  combining sequence or an emoji as one character, and an East-Asian-wide character occupies
+  two cells and is never split. A field narrower than its text **scrolls horizontally** to keep
+  the caret in view, and marks the clipped side or sides with `…` (`...` under `DECK_ASCII`).
+- **A word** for `alt+b`/`alt+f`/`ctrl+←`/`ctrl+→`/`alt+backspace` is a run of letters and
+  digits, so `/`, `-`, `.` and `_` are boundaries and a path is edited a segment at a time;
+  `ctrl+w` alone deletes to whitespace, bash's `unix-word-rubout`. Both are bash's own split.
+- **A paste is one insertion of text, not a stream of keys.** It lands at the caret in one
+  step, and control characters in it — newlines and tabs included — are dropped, because every
+  field is one line and a pasted trailing newline is never meant as text.
+- **The caret is drawn as a reverse-video cell** on the focused field only, the device §11.9
+  uses for a pane's cursor, so it survives `NO_COLOR`; at the end of the text it is a reversed
+  blank. No field draws an `_` or any other stand-in.
+- **An offered value is one the field starts with but the user has not chosen** — §11.7's
+  last-used `cwd`, and the current value a rename, a settings edit or the env editor opens on.
+  It is drawn as a selection, the whole text in `selection` with the caret at its end. While it
+  is offered, a **printable keystroke or a paste replaces it wholesale**, and any **caret or
+  editing key accepts it** and then acts on it as ordinary text: `←` steps into it, `backspace`
+  deletes its last character. A value is either offered or not; there is no per-field variant
+  of this rule.
+- **`alt+w` copies through §11.8's copy path**: the field's whole text to the tmux buffer, and
+  best-effort to the system clipboard with OSC 52, confirmed on screen the way a drag-to-copy
+  is. A masked secret (§6.4) copies only while it is revealed. Paste needs nothing from deck —
+  the terminal's own paste arrives as a bracketed paste.
+- **Field navigation is not the editor's.** `↑`/`↓`, `↵`, `esc` and `tab` keep §11.4's meaning
+  (and §11.7's on a path field), and a key the table does not list is not swallowed by the
+  field; a field's own declared keys (§11.7's `ctrl+p`/`ctrl+n`) are named on its help line.
+- **Not provided:** multiple lines, undo, a kill ring or `ctrl+y`, and selecting part of a
+  field. Copy is whole-field because the one copy that a field cannot do without is getting its
+  value out at all.
 
 ---
 
