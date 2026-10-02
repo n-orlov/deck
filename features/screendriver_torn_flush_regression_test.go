@@ -1,183 +1,79 @@
 package features
 
 import (
-	"errors"
+	"os"
+	"runtime"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/charmbracelet/x/vt"
-	"github.com/creack/pty"
 )
 
-// TestDrainPTYChunkFoldsEveryReadyByteIntoOneChunk is task 017's own
-// regression guard for the "hint chrome" flake
-// (/run/ralphd/artifacts/stability/analysis/hint_chrome-flake.md):
-// features/themes.feature:96's "a built-in theme colours
-// border_focus/border, selection/selection_idle, title, group and key/hint
-// chrome, read per cell from a real client" scenario failing its
-// `text "attach" has foreground token "hint"` step (themes.feature:111)
-// with a captured frame showing a correct, shorter session-list TOP over a
-// stale, taller create-dialog's own field copy still visible at the
-// BOTTOM -- a frame bubbletea's own renderer never asked the terminal to
-// show (standardRenderer.flush always writes one CursorHomePosition, the
-// new content, and -- whenever the new frame is shorter than the last one
-// -- an ansi.EraseScreenBelow erasing exactly that leftover tail, all in
-// ONE buffer, in ONE call to the underlying io.Writer).
+// TestScreenDriverReadNeverSignalsAPartialMergeOfAnOversizedWrite is task
+// cure-01-01's regression guard (review finding B1) for the "hint chrome"
+// flake (/run/ralphd/artifacts/stability/analysis/hint_chrome-flake.md and
+// themes.feature:96's "a built-in theme colours border_focus/border,
+// selection/selection_idle, title, group and key/hint chrome, read per
+// cell from a real client" scenario failing its `text "attach" has
+// foreground token "hint"` step), fixed by 1c57a3ebb8 (task 017, R173).
 //
-// ScreenDriver.read is what turns that one underlying Write into what a
-// waiter (Frame, WaitForFrame, WaitForFrameFunc -- including the
-// predicate waitForSettledSessionRow polls) actually observes. Before
-// this fix it called exactly one os.File.Read(buf) per loop iteration,
-// applied whatever that one syscall returned to d.raw/d.screen/d.budget,
-// and signalled d.updated immediately -- with no regard for whether more
-// bytes belonging to the SAME logical write were already sitting in the
-// kernel's pty buffer, just not yet fetched because buf (4096 bytes) was
-// smaller than the write. A full alt-screen repaint of a themed 100x30
-// frame carrying both a session list and (moments earlier) a multi-field
-// create dialog is comfortably larger than 4096 bytes once ANSI SGR
-// sequences are counted, so this is not hypothetical: shrinking this
-// file's own read buffer to 32 bytes (never committed, kept only in this
-// investigation's own notes) reproduced themes.feature:96's exact failure
-// solo and deterministically -- DECK_GODOG_PATHS=themes.feature:96
-// ci/run.sh go test -count=20 ./features/ -run '^TestFeatures$' failed
-// within the 20 runs, no stability-sweep load needed at all -- proving
-// the mechanism, not just correlating with it.
+// This drives the real, unmodified ScreenDriver.read() -- the exact seam
+// task 017 changed, present under that same name and signature on both
+// trees -- rather than drainPTYChunk, the pure-function merge step
+// 1c57a3ebb8 itself introduced (which does not exist before the fix, and
+// so cannot be the seam: a test built around it cannot even compile
+// against a192accf7d). No part of read()'s own logic is reimplemented
+// here; this test only ever reads driver.raw.Len() through driver.mu,
+// exactly as ScreenDriver.Raw() itself does.
 //
-// This test proves the fix at the unit level instead of trying to force
-// that real race through timing: a 5000-byte single pty Write, read via
-// the real 4096-byte buffer, was tried first and found NOT to
-// discriminate reliably -- the real producer goroutine's two Read() calls
-// land close enough together that an external observer's channel receive
-// almost always finds BOTH already merged by the time it gets scheduled,
-// on fixed and unfixed code alike (the real bug needs either a much
-// smaller buffer across many more reads, or genuine CPU contention, i.e.
-// ci/stability.sh's own parallel load, to land a scheduler preemption
-// inside that gap -- not safely reproducible by plain timing in a fast,
-// deterministic unit test). drainPTYChunk (features/pty_driver_test.go)
-// is read()'s own merge step pulled out as a pure function for exactly
-// this reason: scripting its ready()/read() callbacks lets this test pin
-// the exact interleaving read() must handle correctly, with no
-// dependency on the scheduler at all.
+// Forcing the real race by placing a SINGLE external waiter behind
+// read()'s own first critical section (hold d.mu, start read(), queue one
+// more Lock() attempt, release) was tried first and found NOT to work:
+// empirically, in this environment, a goroutine's own immediate
+// re-Lock() right after its own Unlock() always wins over an
+// already-queued separate goroutine (confirmed by a standalone
+// experiment: 20/20 runs), because the second goroutine must first be
+// woken and rescheduled while the first simply continues running --
+// sync.Mutex's starvation mode never actually engages here, since the
+// mutex is uncontended at the moment each waiter wakes. See this task's
+// own investigation notes.
 //
-// Copied unmodified into an export of a192accf7d (this bug predates this
-// run entirely -- ScreenDriver.read has not been touched by any task
-// 002-016 commit; see git log --oneline -- features/pty_driver_test.go),
-// this test FAILS TO COMPILE there (undefined: drainPTYChunk) -- the same
-// shape task 007's TestWaitForFixtureFullyRenderedNeverTrustsAStaleFrame
-// doc comment describes for driver.FrameAndRawLen, which also did not
-// exist pre-fix. It compiles and passes at HEAD.
-func TestDrainPTYChunkFoldsEveryReadyByteIntoOneChunk(t *testing.T) {
-	// Scripts the exact shape of ScreenDriver.read's own call: a first
-	// Read() that already returned n>0 (firstChunk), then readiness
-	// toggling true exactly once (simulating "more of this same flush is
-	// already queued"), one more Read() returning the rest, then
-	// readiness going false (simulating "nothing more queued right now").
-	firstChunk := []byte("the session-list TOP of a torn frame, ")
-	restChunk := []byte("plus the create-dialog TAIL that should never have survived the erase")
-	full := string(firstChunk) + string(restChunk)
+// This test instead uses a POOL of goroutines continuously polling
+// mu.TryLock() (added in Go 1.18) across GOMAXPROCS cores, started BEFORE
+// read() does, so at least one is always actively contending rather than
+// parked. Confirmed empirically (standalone experiment, this task): with
+// 16 such pollers, every one of 2 independent runs caught the unfixed
+// tree's torn intermediate state (raw.Len() == 4096, i.e. only the first
+// physical Read()'s own 4096-byte buffer, with the remaining 777 bytes
+// already sitting in the pipe but not yet merged in) during the real
+// read() goroutine's own window between its first Unlock() and its
+// second Lock() -- a window that exists on the unfixed tree (one Lock
+// per physical Read()) but can never exist on the fixed tree, because
+// 1c57a3ebb8 moved the whole merge (drainPTYChunk, polling ptyReadable)
+// BEFORE the first d.mu.Lock() of a logical flush, so there is only ever
+// ONE critical section, carrying every byte already queued, and the
+// pollers can only ever observe raw.Len() as 0 (before) or the full
+// merged length (after) -- never anything strictly in between.
+//
+// Unmodified in a git-archive export of a192accf7d, this file compiles
+// (every identifier it names -- ScreenDriver, its mu/raw/terminal/screen/
+// budget fields, drainScreenInput, drainBudgetInput, closeInputPipe, and
+// read() itself -- already exists there) and this test FAILS on a real
+// assertion (observing a partial length), not a compile error. It passes
+// at the cure sha.
+func TestScreenDriverReadNeverSignalsAPartialMergeOfAnOversizedWrite(t *testing.T) {
+	runtime.GOMAXPROCS(16)
 
-	buf := make([]byte, 4096)
-	copy(buf, firstChunk)
-
-	readyCalls := 0
-	readCalls := 0
-	ready := func() bool {
-		readyCalls++
-		// True on the first check (there IS more queued -- restChunk),
-		// false on every check after (nothing left).
-		return readyCalls == 1
-	}
-	read := func(p []byte) (int, error) {
-		readCalls++
-		if readCalls != 1 {
-			t.Fatalf("read() called %d times, want exactly 1 (ready() should have gone false after the first)", readCalls)
-		}
-		n := copy(p, restChunk)
-		return n, nil
-	}
-
-	chunk, err := drainPTYChunk(buf, len(firstChunk), nil, ready, read)
+	r, w, err := os.Pipe()
 	if err != nil {
-		t.Fatalf("drainPTYChunk returned err=%v, want nil", err)
+		t.Fatalf("open pipe: %v", err)
 	}
-	if string(chunk) != full {
-		t.Fatalf("drainPTYChunk returned %q, want the first chunk folded together with everything ready() reported as already queued (%q) -- a merge that drops or truncates the ready byte run is exactly the mechanism that let themes.feature:96 observe a torn frame", string(chunk), full)
-	}
-	if readyCalls < 2 {
-		t.Fatalf("ready() was called %d time(s), want >= 2 (once to find more, once to find none) -- the drain loop must keep asking, not stop after one fold", readyCalls)
-	}
-
-	t.Run("stops at the first error without losing bytes already read", func(t *testing.T) {
-		buf := make([]byte, 4096)
-		copy(buf, firstChunk)
-		boom := errors.New("boom")
-		calls := 0
-		ready := func() bool { return true } // always claims more is queued
-		read := func(p []byte) (int, error) {
-			calls++
-			n := copy(p, restChunk)
-			return n, boom // the PTY itself errored (e.g. EIO) on this read
-		}
-		chunk, err := drainPTYChunk(buf, len(firstChunk), nil, ready, read)
-		if !errors.Is(err, boom) {
-			t.Fatalf("err = %v, want boom", err)
-		}
-		if string(chunk) != full {
-			t.Fatalf("chunk = %q, want %q -- the bytes a failing read still returned must not be discarded", string(chunk), full)
-		}
-		if calls != 1 {
-			t.Fatalf("read() called %d times, want exactly 1 -- the loop must stop the instant it sees a non-nil error, not call ready() again", calls)
-		}
-	})
-
-	t.Run("a single ready byte run of many pieces folds into one chunk", func(t *testing.T) {
-		// Models the real shape more closely: a flush big enough to need
-		// several small Read() calls (as a shrunk buffer forced in the
-		// manual investigation), not just two.
-		pieces := []string{"AAAA", "BBBB", "CCCC", "DDDD", "EEEE"}
-		want := strings.Join(pieces, "")
-		buf := make([]byte, 4)
-		copy(buf, pieces[0])
-		idx := 1 // pieces[0] was already "read" as firstN below
-		ready := func() bool { return idx < len(pieces) }
-		read := func(p []byte) (int, error) {
-			n := copy(p, pieces[idx])
-			idx++
-			return n, nil
-		}
-		chunk, err := drainPTYChunk(buf, len(pieces[0]), nil, ready, read)
-		if err != nil {
-			t.Fatalf("err = %v, want nil", err)
-		}
-		if string(chunk) != want {
-			t.Fatalf("chunk = %q, want %q -- every piece of a multi-read burst must land in the SAME chunk, in order", string(chunk), want)
-		}
-	})
-}
-
-// TestScreenDriverReadMergesAnOversizedWriteBeforeSignalling is a
-// secondary, best-effort smoke check against a REAL pty: it is not relied
-// on as this task's failing-first evidence (see the deterministic test
-// above for that -- a real pty's two Read() calls for one write land too
-// close together for an external observer to reliably catch the
-// unmerged intermediate state; this was verified empirically against
-// a192accf7d's own unfixed read(), which still passed this exact check
-// most of the time), but it does exercise the real ScreenDriver.read
-// goroutine end to end and asserts the invariant it must uphold whenever
-// it DOES get the chance to observe a first signal: that signal's byte
-// count is never short of what was actually written.
-func TestScreenDriverReadMergesAnOversizedWriteBeforeSignalling(t *testing.T) {
-	master, slave, err := pty.Open()
-	if err != nil {
-		t.Fatalf("open pty: %v", err)
-	}
-	t.Cleanup(func() { _ = master.Close() })
-	t.Cleanup(func() { _ = slave.Close() })
 
 	const cols, rows = int(terminalColumns), int(terminalRows)
 	driver := &ScreenDriver{
-		terminal: master,
+		terminal: r,
 		screen:   vt.NewEmulator(cols, rows),
 		budget:   vt.NewEmulator(cols+frameBudgetMargin, rows+frameBudgetMargin),
 		updated:  make(chan struct{}, 1),
@@ -188,22 +84,65 @@ func TestScreenDriverReadMergesAnOversizedWriteBeforeSignalling(t *testing.T) {
 	go driver.drainBudgetInput()
 	t.Cleanup(func() { closeInputPipe(driver.screen) })
 	t.Cleanup(func() { closeInputPipe(driver.budget) })
+	t.Cleanup(func() { _ = r.Close() })
+
+	// A payload bigger than read()'s own 4096-byte buffer, written in full
+	// BEFORE read() ever starts, so the remainder is already sitting in
+	// the pipe when read()'s first physical Read() call happens -- no
+	// write-side timing is involved in whether more is already available.
+	first := strings.Repeat("A", 4096)
+	rest := strings.Repeat("B", 777)
+	full := first + rest
+	if _, err := w.Write([]byte(full)); err != nil {
+		t.Fatalf("stage payload: %v", err)
+	}
+
+	var mu sync.Mutex // guards observed, not driver.mu
+	var observed []int
+	stop := make(chan struct{})
+	var wg sync.WaitGroup
+	for i := 0; i < 16; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for {
+				select {
+				case <-stop:
+					return
+				default:
+				}
+				if driver.mu.TryLock() {
+					n := driver.raw.Len()
+					driver.mu.Unlock()
+					mu.Lock()
+					observed = append(observed, n)
+					mu.Unlock()
+				}
+			}
+		}()
+	}
+
 	go driver.read()
-
-	const payloadLen = 4096 + 904
-	payload := strings.Repeat("Q", payloadLen)
-	if _, err := slave.Write([]byte(payload)); err != nil {
-		t.Fatalf("write payload to pty slave: %v", err)
-	}
-
 	select {
-	case <-driver.updated:
+	case <-driver.readDone:
 	case <-time.After(5 * time.Second):
-		t.Fatal("timed out waiting for the first d.updated signal")
+		t.Fatal("timed out waiting for read() to finish")
+	}
+	// A short extra window: read() closing readDone only guarantees ITS
+	// OWN last critical section has already happened, not that every
+	// poller has already recorded its last sample -- give them a moment
+	// to settle before stopping.
+	time.Sleep(5 * time.Millisecond)
+	close(stop)
+	wg.Wait()
+
+	if got := driver.Raw(); got != full {
+		t.Fatalf("final raw = %d bytes, want %d bytes -- bytes were lost or corrupted, independent of this test's own evidence", len(got), len(full))
 	}
 
-	rawLen := len(driver.Raw())
-	if rawLen != 0 && rawLen != payloadLen {
-		t.Fatalf("first d.updated signal fired with %d of %d payload bytes applied -- never a partial count other than 0 or the full payload", rawLen, payloadLen)
+	for _, n := range observed {
+		if n > 0 && n < len(full) {
+			t.Fatalf("observed raw.Len() == %d while read() was still in flight for a %d-byte payload (buffer cap 4096) -- every byte already sitting in the pipe before read() ever ran must be merged into ONE application, not left for a second, separately-signalled Read() call -- exactly the torn-frame mechanism behind themes.feature:96", n, len(full))
+		}
 	}
 }
