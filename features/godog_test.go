@@ -113,6 +113,7 @@ func initializeScenario(sc *godog.ScenarioContext) {
 	registerFingerprintSteps(sc)
 	registerCreateSessionCWDPrefillSteps(sc)
 	registerCreateCWDGhostSteps(sc)
+	registerCreateCWDCaretSteps(sc)
 	registerCreateCWDTabSteps(sc)
 	registerCreateTextEditingSteps(sc)
 	registerCreateBlankNameSteps(sc)

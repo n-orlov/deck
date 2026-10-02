@@ -1,14 +1,15 @@
 @create-session
 Feature: The create modal's §11.7 directory-only ghost completion (requirement 14)
-  With the cursor at the end of the cwd field (there is no other cursor
-  position: typing only appends, backspace only trims the end), a UNIQUE
-  directory whose name starts with the segment after the field's last "/"
-  is shown inline in the theme's dimmed token, and right/end accept it,
-  completing to the match plus a trailing "/". Only directories are ever
-  candidates -- a same-named file never blocks or substitutes for one. A
-  hidden directory is a candidate only when the segment itself starts with
-  ".". A leading "~" expands for scanning without being rewritten in what
-  is typed or shown.
+  With the caret at the END of the cwd field (the ghost and tab completion
+  exist there and only there: with the caret anywhere else no ghost is painted
+  and tab changes nothing), a UNIQUE directory whose name starts with the
+  segment after the field's last "/" is shown inline in the theme's dimmed
+  token, and right/end accept it, completing to the match plus a trailing "/".
+  With no ghost showing, right and end are plain caret keys. Only directories
+  are ever candidates -- a same-named file never blocks or substitutes for
+  one. A hidden directory is a candidate only when the segment itself starts
+  with ".". A leading "~" expands for scanning without being rewritten in
+  what is typed or shown.
 
   @requirement-14-ghost-unique-match-right-accepts
   Scenario: a unique directory match ghosts in the hint token and right accepts it with a trailing slash
