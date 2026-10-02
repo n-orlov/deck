@@ -228,7 +228,11 @@ func (m Model) filterStatusLine(width int) []string {
 	if m.filtering {
 		// One line: the editor scrolls inside the field instead of wrapping,
 		// and draws its own caret (a reverse-video cell, never a stand-in).
-		return []string{m.canvasFillLine(theme.Background, filterFieldLabel+m.filterFieldText(width), width)}
+		lines := []string{m.canvasFillLine(theme.Background, filterFieldLabel+m.filterFieldText(width), width)}
+		// R186: the field names its editor keys and alt+w (SPEC §11.11); the
+		// rows are budgeted with the field's own, as this function's callers
+		// count len() of what it returns.
+		return append(lines, m.canvasWrapText(textFieldEditKeysLine, width)...)
 	}
 	return m.canvasWrapText(fmt.Sprintf("Filter %q in force (%d matching) \u2014 / to change, Esc to clear", m.filterQuery, len(m.sessions)), width)
 }

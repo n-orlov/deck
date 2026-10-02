@@ -237,6 +237,9 @@ func (m Model) envBody() string {
 		lines = append(lines, label+value)
 	}
 	lines = append(lines, m.envHintLine())
+	if m.envEditKey != "" {
+		lines = append(lines, textFieldEditKeysLine)
+	}
 	return strings.Join(lines, "\n")
 }
 
@@ -348,6 +351,7 @@ func (m Model) styledEnvBody() string {
 		label, value := m.envEditPromptLine()
 		colorRow(label, value, true)
 		colorLegendLine(m.envHintLine(), envEditLegendKeys)
+		out = append(out, m.styledTextFieldEditKeys(wrap)...)
 	} else {
 		colorLegendLine(m.envHintLine(), envBrowseLegendKeys)
 	}
