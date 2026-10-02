@@ -286,3 +286,25 @@ func TestFitShrinksScrollWhenTextBecomesShort(t *testing.T) {
 		t.Fatalf("empty field still shows a clip mark: %q", out)
 	}
 }
+
+// A text that fits its field with its caret cell, however close to the edge,
+// draws whole with no clip mark: a right mark is only owed when something is
+// actually clipped. (A 52-character path with its caret blank in a 54-cell
+// field once lost its last character to a "..." the mark did not need.)
+func TestViewDrawsWholeTextWhenItExactlyFitsTheFieldWithItsCaret(t *testing.T) {
+	text := strings.Repeat("p", 52)
+	for _, st := range []Style{{}, {ASCII: true}} {
+		for _, width := range []int{53, 54, 60} {
+			e := New(text).Fit(width, st)
+			inner, left, right := shown(e.View(width, st), st)
+			if left || right || inner != text+" " {
+				t.Fatalf("ASCII=%v width %d: got %q (left mark %v, right mark %v), want the whole text and its caret blank", st.ASCII, width, inner, left, right)
+			}
+		}
+		// One cell narrower really does clip, and the caret stays visible.
+		e := New(text).Fit(52, st)
+		if _, left, _ := shown(e.View(52, st), st); !left {
+			t.Fatalf("ASCII=%v: 52 cells for 53 needed drew no left clip mark", st.ASCII)
+		}
+	}
+}
