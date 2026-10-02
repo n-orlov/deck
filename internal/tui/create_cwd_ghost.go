@@ -133,23 +133,34 @@ func expandCWDDirForScan(dir string) (string, bool) {
 }
 
 // acceptCWDGhost appends the cwd field's current ghost completion (if any)
-// to m.createCWD, exactly as right-arrow/end are documented to do (task
+// to the cwd field, exactly as right-arrow/end are documented to do (task
 // 010). It is a no-op whenever there is nothing to accept, so binding it
 // unconditionally on both keys never corrupts the field. Accepting is an
 // edit like typing a rune: it clears the §11.7 prefill/last-used labels
 // and ends any recent_cwds up/down cycle in progress (task 009), so a
 // later "down" cannot resurrect a stale pre-cycle snapshot out from under
 // the completed path.
-func (m *Model) acceptCWDGhost() {
-	ghost, ok := createCWDGhostCompletion(m.createCWD)
-	if !ok {
-		return
+func (m *Model) acceptCWDGhost() bool {
+	if !m.createCWDCaretAtEnd() {
+		return false
 	}
-	m.createCWD += ghost
-	m.createCWDPrefilled = false
-	m.createCWDLastUsed = false
+	ghost, ok := createCWDGhostCompletion(m.createText(createFieldCWD))
+	if !ok {
+		return false
+	}
+	m.setCreateText(createFieldCWD, m.createText(createFieldCWD)+ghost)
 	m.createCWDRecentIndex = -1
 	m.closeCreateCWDCandidates()
+	return true
+}
+
+// createCWDCaretAtEnd reports whether the cwd field's caret is at the end of
+// its text: ghost completion and tab completion happen there and only there
+// (SPEC §11.7), because completing a segment in the middle of a path would
+// have to decide what happens to the text after the caret.
+func (m Model) createCWDCaretAtEnd() bool {
+	e := m.createEdits[createFieldCWD]
+	return e.Caret() == len(e.Value())
 }
 
 // createCWDCommonPrefix returns the longest prefix shared by every one of
@@ -183,7 +194,7 @@ func createCWDCommonPrefix(names []string) string {
 // tabCompleteCreateCWD implements task 012's §11.7 requirement 16: "tab
 // completes to the longest common prefix when that advances the text, and
 // otherwise lists the candidates for selection" -- bash's own completion
-// contract, applied to the cwd field's CURRENT raw text (m.createCWD).
+// contract, applied to the cwd field's CURRENT raw text (the cwd editor).
 //
 // It reports handled=false, doing nothing at all, in the two cases where
 // there is genuinely nothing to complete or list: the directory portion
@@ -204,19 +215,20 @@ func createCWDCommonPrefix(names []string) string {
 // in which case createCWDCandidates is populated (sorted) for the user to
 // pick from with up/down and enter (task 012's other new per-field keys).
 func (m *Model) tabCompleteCreateCWD() bool {
-	names, ok := createCWDMatches(m.createCWD)
+	if !m.createCWDCaretAtEnd() {
+		return false
+	}
+	names, ok := createCWDMatches(m.createText(createFieldCWD))
 	if !ok || len(names) == 0 {
 		return false
 	}
-	_, segment := splitCWDSegment(m.createCWD)
+	_, segment := splitCWDSegment(m.createText(createFieldCWD))
 	prefix := createCWDCommonPrefix(names)
 	if len(prefix) > len(segment) {
-		m.createCWD += prefix[len(segment):]
+		m.setCreateText(createFieldCWD, m.createText(createFieldCWD)+prefix[len(segment):])
 		if len(names) == 1 {
-			m.createCWD += "/"
+			m.setCreateText(createFieldCWD, m.createText(createFieldCWD)+"/")
 		}
-		m.createCWDPrefilled = false
-		m.createCWDLastUsed = false
 		m.createCWDRecentIndex = -1
 		m.closeCreateCWDCandidates()
 		return true
@@ -240,10 +252,8 @@ func (m *Model) tabCompleteCreateCWD() bool {
 // up/down cycle in progress (task 009), same reasoning as
 // acceptCWDGhost's.
 func (m *Model) acceptCWDCandidate(name string) {
-	dir, _ := splitCWDSegment(m.createCWD)
-	m.createCWD = dir + name + "/"
-	m.createCWDPrefilled = false
-	m.createCWDLastUsed = false
+	dir, _ := splitCWDSegment(m.createText(createFieldCWD))
+	m.setCreateText(createFieldCWD, dir+name+"/")
 	m.createCWDRecentIndex = -1
 	m.closeCreateCWDCandidates()
 }

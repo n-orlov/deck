@@ -55,8 +55,15 @@ type dialogDegradationCase struct {
 func dialogDegradationCases() []dialogDegradationCase {
 	return []dialogDegradationCase{
 		{
-			name:   "create modal",
-			build:  task016CreateTestModel,
+			name: "create modal",
+			// A short cwd: a field narrower than its text scrolls and marks the
+			// clipped side "…" ("..." under DECK_ASCII, §11.11), a glyph that
+			// differs by design between the two bodies compared below.
+			build: func(t *testing.T) Model {
+				m := task016CreateTestModel(t)
+				m.setCreateText(createFieldCWD, "/tmp/work")
+				return m
+			},
 			plain:  func(m Model) string { return m.createBody() },
 			styled: func(m Model) string { return m.styledCreateBody() },
 			mutations: []dialogDegradationMutation{

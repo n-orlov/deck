@@ -44,8 +44,8 @@ func newModelWithRegistry(t *testing.T, registry *agent.Registry) Model {
 	m = m.WithAvailableAgentKindsProber(func() []string { return registry.Kinds() })
 	m.createAvailableAgentKinds = m.computeAvailableAgentKinds()
 	m.creating = true
-	m.createName = "my session"
-	m.createCWD = t.TempDir()
+	m.setCreateText(createFieldName, "my session")
+	m.setCreateText(createFieldCWD, t.TempDir())
 	m.createAgent = registry.Kinds()[0]
 	m.createProfile = "safe"
 	m.createField = 2

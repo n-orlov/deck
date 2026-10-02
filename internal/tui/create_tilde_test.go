@@ -81,7 +81,7 @@ func TestCreateModalTildeCWDValidatesAndSubmitsResolvedPath(t *testing.T) {
 	}
 
 	before := newCreatingModel(t)
-	before.createCWD = "~/Projects/invp-ops-dev-agents"
+	before.setCreateText(createFieldCWD, "~/Projects/invp-ops-dev-agents")
 
 	if msg := before.validateCreateFields(); msg != "" {
 		t.Fatalf("validateCreateFields() = %q, want no error for an existing tilde-expanded dir", msg)
@@ -108,8 +108,8 @@ func TestCreateModalTildeCWDValidatesAndSubmitsResolvedPath(t *testing.T) {
 	}
 	// The typed field itself is untouched: only the value handed to the
 	// store is resolved, matching every other validated-field's retain rule.
-	if after.createCWD != "~/Projects/invp-ops-dev-agents" {
-		t.Fatalf("createCWD field mutated: %q", after.createCWD)
+	if after.createText(createFieldCWD) != "~/Projects/invp-ops-dev-agents" {
+		t.Fatalf("createCWD field mutated: %q", after.createText(createFieldCWD))
 	}
 }
 
@@ -118,7 +118,7 @@ func TestCreateModalTildeCWDValidatesAndSubmitsResolvedPath(t *testing.T) {
 // half-expanded into some other path.
 func TestCreateModalOtherUserTildeRejectedNotHalfExpanded(t *testing.T) {
 	before := newCreatingModel(t)
-	before.createCWD = "~otheruser/work"
+	before.setCreateText(createFieldCWD, "~otheruser/work")
 
 	updated, cmd := before.Update(key("enter"))
 	after := updated.(Model)
@@ -128,7 +128,7 @@ func TestCreateModalOtherUserTildeRejectedNotHalfExpanded(t *testing.T) {
 	if after.createError == "" {
 		t.Fatal("createError empty, want a stated rejection reason")
 	}
-	if after.createCWD != "~otheruser/work" {
-		t.Fatalf("createCWD changed: %q", after.createCWD)
+	if after.createText(createFieldCWD) != "~otheruser/work" {
+		t.Fatalf("createCWD changed: %q", after.createText(createFieldCWD))
 	}
 }

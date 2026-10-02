@@ -34,8 +34,8 @@ func TestCreateModalDegradesRequestedProfileThroughResolveProfile(t *testing.T) 
 	m = m.WithAvailableAgentKindsProber(func() []string { return registry.Kinds() })
 	m.createAvailableAgentKinds = m.computeAvailableAgentKinds()
 	m.creating = true
-	m.createName = "codex-plan"
-	m.createCWD = t.TempDir()
+	m.setCreateText(createFieldName, "codex-plan")
+	m.setCreateText(createFieldCWD, t.TempDir())
 	m.createAgent = "claude"
 	m.createProfile = "safe"
 

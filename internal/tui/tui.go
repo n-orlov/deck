@@ -62,16 +62,17 @@ type Model struct {
 	// this window instead of the modal ever truncating its own submit
 	// line away. Reset to 0 every time `n` opens the modal, same as the
 	// other two never sticking across a close/reopen.
-	createScroll      int
-	createName        string
-	createCWD         string
-	createAgent       string
-	createProfile     string
-	createLaunchArgs  string
-	createEnv         string
-	createPreLaunch   string
-	createPostDestroy string
-	createLoginShell  bool
+	createScroll int
+	// createEdits holds the create modal's six text fields (name, cwd, launch
+	// args, env, pre-launch, post-destroy) in the shared line editor (§11.11),
+	// indexed by the field's own position (createFieldName ... createFieldPostDestroy);
+	// the other slots stay unused. The cwd's prefill is an OFFERED value: the
+	// editor's own offered flag is what the "(last used)" label and the
+	// first-keystroke-replaces rule read.
+	createEdits      [createFieldCount]lineedit.Editor
+	createAgent      string
+	createProfile    string
+	createLoginShell bool
 	// createProfileTouched is true once the user has cycled the Permission
 	// profile field (field 3) itself in the currently open create modal. It
 	// gates cycleCreateField's Agent case (field 2): while false, the value
@@ -98,17 +99,11 @@ type Model struct {
 	// (SPEC §5 pre-steer-017). Steer 017 item 2 removed that confirm --
 	// allow_yolo alone gates yolo's availability now -- so this field is
 	// gone; see docs/reports/phase3d-214-yolo-degate.md for the removal.
-	// createCWDPrefilled is true while m.createCWD still holds an untouched
-	// prefill deck itself chose (either the most recent §11.7 recent_cwds
-	// entry, or with no history the directory deck was started in) rather
-	// than anything the user typed. The first keystroke in the cwd field
-	// -- rune or backspace -- clears the prefill wholesale before acting,
-	// rather than editing it in place (task 008).
-	createCWDPrefilled bool
-	// createCWDLastUsed is true only when createCWDPrefilled's value came
-	// from §11.7 recent_cwds history (as opposed to the no-history
+	// createCWDLastUsed is true only when the cwd's offered prefill came from
+	// §11.7 recent_cwds history (as opposed to the no-history
 	// directory-deck-started-in fallback), driving createFieldRows' "last
-	// used" label. Cleared together with createCWDPrefilled on first edit.
+	// used" label. The label shows only while the cwd editor is still
+	// offering that value (createEdits[createFieldCWD].Offered()).
 	createCWDLastUsed bool
 	// lastCreateAgent is SPEC.md:1364-1367's persisted "last agent a create
 	// actually succeeded with" (state.db's ui_state, never config.toml),
@@ -186,15 +181,13 @@ type Model struct {
 	// while not cycling at all -- neither an untouched prefill nor a
 	// cycled recent entry, just whatever the user has typed (task 009).
 	createCWDRecentIndex int
-	// createCWDPreCycleValue/Prefilled/LastUsed snapshot the cwd field's
-	// state from the moment before the first "Ctrl+P" started a cycle, so
-	// pressing "Ctrl+N" back past the most recent entry restores exactly
-	// what was there -- the untouched §11.7 prefill and its "last used"
-	// label, or whatever the user had already typed -- rather than
-	// leaving the field on recents[0] or blanking it.
-	createCWDPreCycleValue     string
-	createCWDPreCyclePrefilled bool
-	createCWDPreCycleLastUsed  bool
+	// createCWDPreCycleEdit snapshots the cwd field's editor from the moment
+	// before the first "Ctrl+P" started a cycle, so pressing "Ctrl+N" back
+	// past the most recent entry restores exactly what was there -- the
+	// offered §11.7 prefill (and so its "last used" label), or whatever the
+	// user had already typed, caret included -- rather than leaving the field
+	// on recents[0] or blanking it.
+	createCWDPreCycleEdit lineedit.Editor
 	// createCWDCandidates is task 012's bash-completion-contract listing
 	// branch: non-nil only while tab has reached the longest common prefix
 	// among the segment's directory matches and at least two still remain
@@ -4095,17 +4088,17 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			if !m.help {
 				m.creating, m.createError, m.createField = true, "", 0
 				m.createScroll = 0
-				m.createName = ""
-				m.createCWD, m.createCWDLastUsed = m.prefillCreateCWD()
-				m.createCWDPrefilled = true
+				m.createEdits = [createFieldCount]lineedit.Editor{}
+				prefill, lastUsed := m.prefillCreateCWD()
+				m.createEdits[createFieldCWD], m.createCWDLastUsed = lineedit.NewOffered(prefill), lastUsed
 				m.createCWDRecents, m.createCWDRecentIndex = nil, -1
-				m.createCWDPreCycleValue, m.createCWDPreCyclePrefilled, m.createCWDPreCycleLastUsed = "", false, false
+				m.createCWDPreCycleEdit = lineedit.Editor{}
 				m.closeCreateCWDCandidates()
 				m.createAvailableAgentKinds = m.computeAvailableAgentKinds()
 				m.createAgent, m.createAgentLastUsed = m.pickCreateAgent()
 				m.createProfile = m.defaultCreateProfile(m.createAgent)
 				m.createProfileTouched, m.createProfileRequested = false, ""
-				m.createLaunchArgs, m.createEnv, m.createPreLaunch, m.createPostDestroy, m.createLoginShell = "", "", "", "", false
+				m.createLoginShell = false
 				m.createGroups = m.computeAvailableGroups()
 				m.createGroupID, m.createGroupLastUsed = m.pickCreateGroup()
 			}
@@ -9029,10 +9022,10 @@ func (m Model) groupMemberSessions(ctx context.Context, groupID int64) ([]store.
 // Retaining whatever the user typed is automatic here: this function never
 // mutates m, so a non-empty result leaves every field exactly as typed.
 func (m Model) validateCreateFields() string {
-	if strings.TrimSpace(m.createCWD) == "" {
+	if strings.TrimSpace(m.createText(createFieldCWD)) == "" {
 		return "working directory is required"
 	}
-	resolvedCWD, err := expandCreateCWD(m.createCWD)
+	resolvedCWD, err := expandCreateCWD(m.createText(createFieldCWD))
 	if err != nil {
 		return err.Error()
 	}
@@ -9043,14 +9036,14 @@ func (m Model) validateCreateFields() string {
 	if !info.IsDir() {
 		return fmt.Sprintf("working directory %q is not a directory", resolvedCWD)
 	}
-	if strings.TrimSpace(m.createLaunchArgs) != "" {
+	if strings.TrimSpace(m.createText(createFieldLaunchArgs)) != "" {
 		var args []string
-		if err := json.Unmarshal([]byte(m.createLaunchArgs), &args); err != nil {
+		if err := json.Unmarshal([]byte(m.createText(createFieldLaunchArgs)), &args); err != nil {
 			return "launch_args must be a JSON array of strings: " + err.Error()
 		}
 	}
-	if strings.TrimSpace(m.createEnv) != "" {
-		for _, entry := range strings.Split(m.createEnv, ",") {
+	if strings.TrimSpace(m.createText(createFieldEnv)) != "" {
+		for _, entry := range strings.Split(m.createText(createFieldEnv), ",") {
 			entry = strings.TrimSpace(entry)
 			if entry == "" {
 				continue
@@ -9082,8 +9075,8 @@ func (m Model) validateCreateFields() string {
 // cycle back to whatever the field held before it started).
 //
 // The first "Ctrl+P" snapshots both the recent_cwds list itself (so it
-// cannot change under a live cycle) and the field's pre-cycle state (value
-// plus its prefilled/last-used flags) so "Ctrl+N" can restore it exactly
+// cannot change under a live cycle) and the field's pre-cycle editor (value,
+// caret and offered flag) so "Ctrl+N" can restore it exactly
 // once the cycle runs back past the most recent entry -- an untouched
 // §11.7 prefill, or whatever the user had already typed, comes back
 // exactly as it was rather than as a blank field or a stale recents[0]. A
@@ -9099,22 +9092,16 @@ func (m *Model) cycleCreateCWDRecent(delta int) {
 			return
 		}
 		m.createCWDRecents = recents
-		m.createCWDPreCycleValue = m.createCWD
-		m.createCWDPreCyclePrefilled = m.createCWDPrefilled
-		m.createCWDPreCycleLastUsed = m.createCWDLastUsed
+		m.createCWDPreCycleEdit = m.createEdits[createFieldCWD]
 		m.createCWDRecentIndex = 0
-		m.createCWD = recents[0].Path
-		m.createCWDPrefilled = false
-		m.createCWDLastUsed = false
+		m.setCreateText(createFieldCWD, recents[0].Path)
 		return
 	}
 	next := m.createCWDRecentIndex + delta
 	if next < 0 {
 		// Ran "Ctrl+N" back past the most recent entry: exit the cycle and
 		// restore exactly what was there before the first "Ctrl+P".
-		m.createCWD = m.createCWDPreCycleValue
-		m.createCWDPrefilled = m.createCWDPreCyclePrefilled
-		m.createCWDLastUsed = m.createCWDPreCycleLastUsed
+		m.createEdits[createFieldCWD] = m.createCWDPreCycleEdit.Fit(m.createFieldWidth(createFieldCWD), m.createEditStyle(createFieldCWD))
 		m.createCWDRecentIndex = -1
 		return
 	}
@@ -9125,7 +9112,7 @@ func (m *Model) cycleCreateCWDRecent(delta int) {
 		next = len(m.createCWDRecents) - 1
 	}
 	m.createCWDRecentIndex = next
-	m.createCWD = m.createCWDRecents[next].Path
+	m.setCreateText(createFieldCWD, m.createCWDRecents[next].Path)
 }
 
 // prefillCreateCWD returns the value and "is an untouched prefill" flag the
@@ -9270,10 +9257,12 @@ func (m Model) updateCreate(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 	if cmd, handled := applyDialogContract(msg, dialogContract{
 		Fields: dialogFields{
-			Count:          createFieldCount,
-			Index:          &m.createField,
-			Cycle:          m.cycleCreateField,
-			SpaceTypesText: func() bool { return createFieldIsText(m.createField) },
+			Count: createFieldCount,
+			Index: &m.createField,
+			Cycle: m.cycleCreateField,
+			// On a text field left, right and space are the shared line
+			// editor's (§11.4, §11.11); Cycle applies to selection fields only.
+			TextFocused: func() bool { return createFieldIsText(m.createField) },
 		},
 		Cancel: func() { m.creating, m.createError = false, "" },
 		Submit: m.submitCreate,
@@ -9299,19 +9288,15 @@ func (m Model) updateCreate(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.cycleCreateCWDRecent(-1)
 			return m, nil
 		}
-	case "end":
-		// The ghost completion's other declared acceptance key (task 010),
-		// alongside right -- see cycleCreateField's case 1. Only field 1
-		// (cwd) ever has a ghost to accept; every other field leaves "end"
-		// unhandled here, falling through with no effect, exactly as it did
-		// before this task.
-		if m.createField == 1 {
-			m.acceptCWDGhost()
+	case "end", "right":
+		// The ghost completion's two declared acceptance keys (task 010),
+		// right and end. Only field 1 (cwd) ever has a ghost, and only with the
+		// caret at the end of the field (§11.7); with no ghost showing they are
+		// §11.11's caret keys and nothing more, so they fall through to the
+		// editor below.
+		if m.createField == 1 && m.acceptCWDGhost() {
 			return m, nil
 		}
-	case "backspace", "ctrl+h":
-		m.backspaceCreateField()
-		return m, nil
 	case "pgup":
 		// Task 016: the create modal moved onto framedDialogScrollable
 		// (its field set + candidate list + footer/error lines can wrap
@@ -9325,40 +9310,39 @@ func (m Model) updateCreate(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.createScroll = m.dialogScrollByPage(m.createScroll, m.createBody(), 1)
 		return m, nil
 	}
-	if runes := msg.Runes; len(runes) > 0 && createFieldIsText(m.createField) {
-		switch m.createField {
-		case 0:
-			m.createName += string(runes)
-		case 1:
-			// The prefilled recent/startup cwd is replaced wholesale by the
-			// first keystroke rather than appended to (SPEC §11.7): once
-			// the user has typed anything, the field holds only what they
-			// typed and no longer carries the "last used" label.
-			if m.createCWDPrefilled {
-				m.createCWD, m.createCWDPrefilled, m.createCWDLastUsed = "", false, false
+	// Every editing key, a typed rune and a bracketed paste on a text field
+	// belong to the shared line editor (§11.11): the cwd's prefill is an
+	// offered value, so a printable key or a paste replaces it and a caret or
+	// editing key accepts it and edits it in place. A key the editor does not
+	// own is left alone, and a selection field has no editor at all.
+	if field := m.createField; createFieldIsText(field) {
+		before := m.createEdits[field]
+		if edited, ok := before.Update(msg); ok {
+			m.createEdits[field] = edited.Fit(m.createFieldWidth(field), m.createEditStyle(field))
+			if field == 1 {
+				m.createCWDEdited(before)
 			}
-			// Typing ends any up/down cycle in progress (task 009): the
-			// field now holds what the user typed, not a recent_cwds
-			// snapshot, so "recent N/M" must stop being shown and a later
-			// "down" must not resurrect the pre-cycle value out from under
-			// what was just typed.
-			m.createCWDRecentIndex = -1
-			// Typing also ends an open tab-completion candidate list (task
-			// 012): the segment it was built for no longer exists once the
-			// user keeps typing, so the stale list must not linger.
-			m.closeCreateCWDCandidates()
-			m.createCWD += string(runes)
-		case 4:
-			m.createLaunchArgs += string(runes)
-		case 5:
-			m.createEnv += string(runes)
-		case 6:
-			m.createPreLaunch += string(runes)
-		case 7:
-			m.createPostDestroy += string(runes)
 		}
 	}
 	return m, nil
+}
+
+// createCWDEdited is what an edit of the cwd field ends (task 009/012): a
+// change to the text ends any recent_cwds up/down cycle in progress, since the
+// field now holds what the user typed rather than a snapshot, and any open
+// tab-completion list, whose segment no longer exists. A caret that has left
+// the end of the field closes the list too: completion happens at the end of
+// the field and only there (§11.7).
+func (m *Model) createCWDEdited(before lineedit.Editor) {
+	after := m.createEdits[createFieldCWD]
+	if after.Value() != before.Value() {
+		m.createCWDRecentIndex = -1
+		m.closeCreateCWDCandidates()
+		return
+	}
+	if after.Caret() != len(after.Value()) {
+		m.closeCreateCWDCandidates()
+	}
 }
 
 // submitCreate implements the create modal's enter (SPEC §11.4 submit): it
@@ -9374,7 +9358,7 @@ func (m *Model) submitCreate() tea.Cmd {
 	}
 	// validateCreateFields already proved this succeeds; the resolved,
 	// absolute path (never the typed tilde) is what gets stored.
-	resolvedCWD, err := expandCreateCWD(m.createCWD)
+	resolvedCWD, err := expandCreateCWD(m.createText(createFieldCWD))
 	if err != nil {
 		m.createError = err.Error()
 		return nil
@@ -9385,12 +9369,12 @@ func (m *Model) submitCreate() tea.Cmd {
 			m.createError = "creating " + m.createAgent + " sessions is not available yet"
 			return nil
 		}
-		launchArgs, err := parseCreateLaunchArgs(m.createLaunchArgs)
+		launchArgs, err := parseCreateLaunchArgs(m.createText(createFieldLaunchArgs))
 		if err != nil {
 			m.createError = err.Error()
 			return nil
 		}
-		env, err := parseCreateEnv(m.createEnv)
+		env, err := parseCreateEnv(m.createText(createFieldEnv))
 		if err != nil {
 			m.createError = err.Error()
 			return nil
@@ -9398,7 +9382,7 @@ func (m *Model) submitCreate() tea.Cmd {
 		input := service.AgentCreateInput{
 			Name: name, CWD: resolvedCWD, Agent: m.createAgent,
 			PermissionProfile: m.createProfile, LaunchArgs: launchArgs, Env: env,
-			PreLaunch: m.createPreLaunch, LoginShell: m.createLoginShell, PostDestroy: m.createPostDestroy,
+			PreLaunch: m.createText(createFieldPreLaunch), LoginShell: m.createLoginShell, PostDestroy: m.createText(createFieldPostDestroy),
 			GroupID: m.createGroupIDPointer(),
 		}
 		createAgentSession := m.createAgentSession
@@ -9411,7 +9395,7 @@ func (m *Model) submitCreate() tea.Cmd {
 		m.createError = "shell creation is unavailable"
 		return nil
 	}
-	cwd, create, preLaunch, postDestroy, groupID := resolvedCWD, m.create, m.createPreLaunch, m.createPostDestroy, m.createGroupIDPointer()
+	cwd, create, preLaunch, postDestroy, groupID := resolvedCWD, m.create, m.createText(createFieldPreLaunch), m.createText(createFieldPostDestroy), m.createGroupIDPointer()
 	return func() tea.Msg {
 		// The modal's Pre-launch field is offered (and validated) for every
 		// agent, `shell` included, and SPEC §6.4's hook fires "on create" for
@@ -9446,7 +9430,7 @@ func (m *Model) submitCreate() tea.Cmd {
 // function owns its own basename-of-cwd derivation now, group.go's
 // group-key seam owns none.
 func (m *Model) resolveCreateName(resolvedCWD string) string {
-	if trimmed := strings.TrimSpace(m.createName); trimmed != "" {
+	if trimmed := strings.TrimSpace(m.createText(createFieldName)); trimmed != "" {
 		return trimmed
 	}
 	now := time.Now()
@@ -9534,13 +9518,6 @@ func (m *Model) cycleCreateField(delta int) {
 		// later degrade (an Agent change onto an adapter that does not
 		// declare it) worth explaining rather than silently snapping.
 		m.createProfileRequested = m.createProfile
-	case 1:
-		// Right (never left/space -- see updateCreate's SpaceTypesText gate
-		// and cycleCreateField's own delta<=0 no-op) accepts the ghost
-		// completion shown inline, if any (task 010).
-		if delta > 0 {
-			m.acceptCWDGhost()
-		}
 	case 8:
 		m.createLoginShell = !m.createLoginShell
 	case 9:
@@ -9571,52 +9548,6 @@ func contains(options []string, value string) bool {
 		}
 	}
 	return false
-}
-
-func (m *Model) backspaceCreateField() {
-	switch m.createField {
-	case 0:
-		if len(m.createName) > 0 {
-			m.createName = m.createName[:len(m.createName)-1]
-		}
-	case 1:
-		if m.createCWDPrefilled {
-			// Backspace is also an edit: clear the untouched prefill
-			// wholesale rather than trimming one rune off the end of it
-			// (SPEC §11.7's "typing replaces it wholesale" applies to any
-			// edit, not only appended runes).
-			m.createCWD, m.createCWDPrefilled, m.createCWDLastUsed = "", false, false
-			m.createCWDRecentIndex = -1
-			m.closeCreateCWDCandidates()
-			return
-		}
-		// Backspace also ends an up/down cycle in progress (task 009), same
-		// reasoning as the rune-append path above: the field is being edited
-		// now, so it must stop being a live view of createCWDRecents.
-		m.createCWDRecentIndex = -1
-		// Backspace also ends an open tab-completion candidate list (task
-		// 012), same reasoning: the segment it was built for is changing.
-		m.closeCreateCWDCandidates()
-		if len(m.createCWD) > 0 {
-			m.createCWD = m.createCWD[:len(m.createCWD)-1]
-		}
-	case 4:
-		if len(m.createLaunchArgs) > 0 {
-			m.createLaunchArgs = m.createLaunchArgs[:len(m.createLaunchArgs)-1]
-		}
-	case 5:
-		if len(m.createEnv) > 0 {
-			m.createEnv = m.createEnv[:len(m.createEnv)-1]
-		}
-	case 6:
-		if len(m.createPreLaunch) > 0 {
-			m.createPreLaunch = m.createPreLaunch[:len(m.createPreLaunch)-1]
-		}
-	case 7:
-		if len(m.createPostDestroy) > 0 {
-			m.createPostDestroy = m.createPostDestroy[:len(m.createPostDestroy)-1]
-		}
-	}
 }
 
 // createCWDHelp prefixes the cwd field's usual one-line explanation with
@@ -9656,21 +9587,35 @@ func (m *Model) backspaceCreateField() {
 // sequence counted as display width and moved where a page boundary fell,
 // exactly what SPEC.md:1355 forbids.
 func (m Model) createCWDGhostSuffix() string {
-	if m.createField != 1 {
+	if m.createField != 1 || !m.createCWDCaretAtEnd() {
 		return ""
 	}
-	ghost, ok := createCWDGhostCompletion(m.createCWD)
+	ghost, ok := createCWDGhostCompletion(m.createText(createFieldCWD))
 	if !ok {
 		return ""
 	}
 	return ghost
 }
 
-// createCWDDisplayValue is the cwd field's rendered value: m.createCWD
-// plus its ghost completion, both plain -- see createCWDGhostSuffix for
-// where the ghost's `hint` token is applied instead.
+// createCWDDisplayValue is the cwd field's rendered value: the editor's
+// view of the typed text plus its ghost completion -- see
+// createCWDGhostSuffix for where the ghost's `hint` token is applied.
 func (m Model) createCWDDisplayValue() string {
-	return m.createCWD + m.createCWDGhostSuffix()
+	return m.createFieldText(createFieldCWD) + m.createCWDGhostView()
+}
+
+// createCWDGhostView is the ghost as drawn: the caret sits on its first
+// character, a reverse-video cell (§11.11), exactly where it would sit if the
+// completion were already typed, so the ghost is never pushed along by a
+// reversed blank between it and the text. It ends the row's value, and is ""
+// whenever createCWDGhostSuffix is.
+func (m Model) createCWDGhostView() string {
+	ghost := m.createCWDGhostSuffix()
+	if ghost == "" {
+		return ""
+	}
+	first, rest := lineedit.FirstCluster(ghost)
+	return "\x1b[7m" + first + "\x1b[27m" + rest
 }
 
 // createAgentHelp is the Agent field's help-text label (task 024,
@@ -9720,15 +9665,15 @@ func (m Model) createCWDHelp() string {
 	// only means something during an edit of THIS field, so another
 	// field's rendering of this same row never shows a stale count left
 	// over from before the user tabbed away.
-	if m.createField == 1 {
-		if count, ok := createCWDAmbiguousMatchCount(m.createCWD); ok {
+	if m.createField == 1 && m.createCWDCaretAtEnd() {
+		if count, ok := createCWDAmbiguousMatchCount(m.createText(createFieldCWD)); ok {
 			return fmt.Sprintf("%d matches \u2014 tab to list ", count) + help
 		}
 	}
 	if m.createCWDRecentIndex >= 0 && len(m.createCWDRecents) > 0 {
 		return fmt.Sprintf("recent %d/%d ", m.createCWDRecentIndex+1, len(m.createCWDRecents)) + help
 	}
-	if m.createCWDLastUsed {
+	if m.createCWDLastUsed && m.createEdits[createFieldCWD].Offered() {
 		return "(last used) " + help
 	}
 	return help
@@ -9749,7 +9694,7 @@ func (m Model) createCWDHelp() string {
 // used in a unit test with no backing store) is treated the same as
 // "nothing to warn about" rather than a panic.
 func (m Model) createNameReuseWarning() string {
-	name := strings.TrimSpace(m.createName)
+	name := strings.TrimSpace(m.createText(createFieldName))
 	if name == "" || m.store == nil {
 		return ""
 	}
@@ -9786,14 +9731,14 @@ func (m Model) createFieldRows() []struct{ label, value, help string } {
 		groupHelp = "(last used) " + groupHelp
 	}
 	return []struct{ label, value, help string }{
-		{"Name", m.createName, "the display name; also the source of the session's tmux slug"},
+		{createFieldLabels[createFieldName], m.createFieldText(createFieldName), "the display name; also the source of the session's tmux slug"},
 		{"Working directory", m.createCWDDisplayValue(), m.createCWDHelp()},
 		{"Agent", m.createAgent + " (left/right cycles: " + strings.Join(m.createAvailableAgentKinds, ", ") + ")", m.createAgentHelp()},
 		{"Permission profile", profileValue, profileHelp},
-		{"Launch args (JSON array)", m.createLaunchArgs, "extra arguments appended verbatim after the adapter's own argv"},
-		{"Env (key=value, comma-separated)", m.createEnv, "session-level environment variables, highest priority in PATH resolution"},
-		{"Pre-launch command", m.createPreLaunch, "a command run in the pane before the agent starts, e.g. to load secrets"},
-		{"Post-destroy command", m.createPostDestroy, "a command run after this session's own Archive or Delete durably succeeds; a non-zero exit or timeout never blocks teardown (fail-open)"},
+		{createFieldLabels[createFieldLaunchArgs], m.createFieldText(createFieldLaunchArgs), "extra arguments appended verbatim after the adapter's own argv"},
+		{createFieldLabels[createFieldEnv], m.createFieldText(createFieldEnv), "session-level environment variables, highest priority in PATH resolution"},
+		{createFieldLabels[createFieldPreLaunch], m.createFieldText(createFieldPreLaunch), "a command run in the pane before the agent starts, e.g. to load secrets"},
+		{createFieldLabels[createFieldPostDestroy], m.createFieldText(createFieldPostDestroy), "a command run after this session's own Archive or Delete durably succeeds; a non-zero exit or timeout never blocks teardown (fail-open)"},
 		{"Login shell", loginShell + " (space toggles)", "makes captured_path advisory only (not applied): runs via $SHELL -lc instead of the agent argv, so the login shell sets PATH"},
 		{"Group", m.createGroupName(m.createGroupID) + " (left/right cycles: " + strings.Join(groupNames, ", ") + ")", groupHelp},
 	}
@@ -9828,7 +9773,7 @@ func (m Model) createBody() string {
 	}
 	b.WriteString(title + "\n")
 	for field, row := range m.createFieldRows() {
-		fmt.Fprintf(&b, "%s%s: %s\n    %s\n", m.createFieldMarker(field), row.label, row.value, row.help)
+		fmt.Fprintf(&b, "%s%s\n    %s\n", m.createFieldLabel(field), row.value, row.help)
 		if field == 0 {
 			// The reuse warning (PRD R77 / SPEC §11.4) gets its own
 			// dedicated line rather than being folded into the Name
@@ -10034,13 +9979,12 @@ func (m Model) styledCreateBody() string {
 	colorWhole(theme.Title, title)
 
 	for field, row := range m.createFieldRows() {
-		marker := m.createFieldMarker(field)
-		labelPrefix := fmt.Sprintf("%s%s: ", marker, row.label)
+		labelPrefix := m.createFieldLabel(field)
 		// Field 1 is the cwd row (createFieldRows' own order): the one row
 		// whose value can end in a ghost completion rather than typed text.
 		ghost := ""
 		if field == 1 {
-			ghost = m.createCWDGhostSuffix()
+			ghost = m.createCWDGhostView()
 		}
 		colorLabelValue(labelPrefix, labelPrefix+row.value, ghost, field == m.createField)
 		colorWhole(theme.Dimmed, "    "+row.help)
