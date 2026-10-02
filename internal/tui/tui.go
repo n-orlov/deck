@@ -2434,10 +2434,12 @@ func (m *Model) previewFit() tea.Cmd {
 // unconditionally true -- it still exists so a future restriction has
 // one place to land rather than being added ad hoc to the case body.
 
-// canAcknowledge reports whether Y may act on session. AcknowledgeSession
-// carries no per-session restriction, so this is always true.
+// canAcknowledge reports whether Y may act on session: only a row that is
+// not yet acknowledged (R176). Both the footer's Y slot and the Y key
+// handler consult this one predicate, so Y is never offered or acted on for
+// a row that has nothing left to acknowledge.
 func canAcknowledge(session store.Session) bool {
-	return true
+	return !session.Acknowledged
 }
 
 // canKill reports whether x may act on session: any row that is not
