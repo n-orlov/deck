@@ -1129,17 +1129,19 @@ func (m Model) updateSettingsEnvList(msg tea.KeyMsg) (Model, tea.Cmd) {
 	case "enter", " ":
 		switch {
 		case m.settingsEnvIndex == len(keys):
-			m.settingsEnvEditKey = ""
-			m.settingsEnvEditValue = ""
+			m.settingsEnvKeyEdit = lineedit.Editor{}
+			m.settingsEnvValueEdit = lineedit.Editor{}
 			m.settingsEnvEditOriginalKey = ""
 			m.settingsEnvEditingKeyPart = true
 			m.settingsEnvEditing = true
 		case m.settingsEnvIndex >= 0 && m.settingsEnvIndex < len(keys):
 			key := keys[m.settingsEnvIndex]
-			m.settingsEnvEditKey = key
-			m.settingsEnvEditValue = m.settingsEdits.Env[key]
+			// The value opens as an offered value (§11.11), so a small
+			// correction to a long value never requires retyping it.
 			m.settingsEnvEditOriginalKey = key
 			m.settingsEnvEditingKeyPart = false
+			m.settingsEnvKeyEdit = lineedit.New(key).Fit(m.settingsEnvFieldWidth(true), m.settingsEditStyle())
+			m.settingsEnvValueEdit = lineedit.NewOffered(m.settingsEdits.Env[key]).Fit(m.settingsEnvFieldWidth(false), m.settingsEditStyle())
 			m.settingsEnvEditing = true
 		}
 	case "-", "_":
@@ -1171,14 +1173,15 @@ func (m *Model) settingsEnvDeleteSelected() {
 }
 
 // updateSettingsEnvEditing handles key input while a single [env] entry's
-// key or value is being typed (m.settingsEnvEditing): typed runes extend
-// whichever of settingsEnvEditKey/settingsEnvEditValue tab currently
-// targets (settingsEnvEditingKeyPart), backspace shortens it, tab swaps
-// which one is being typed, enter on the key moves to the value without
-// committing yet and enter on the value commits the whole entry
-// (settingsEnvCommitEdit) and returns to the entries list, and esc
-// discards the buffer and returns to the entries list without touching
-// settingsEdits.Env at all.
+// key or value is being typed (m.settingsEnvEditing): the focused one of the
+// two text fields (settingsEnvKeyEdit/settingsEnvValueEdit, settingsEnvEditingKeyPart
+// says which) is a shared line editor (§11.11), so every editing key, typed rune
+// and paste is its. Tab swaps which field is being typed, enter on the key
+// moves to the value without committing yet and enter on the value commits the
+// whole entry (settingsEnvCommitEdit) and returns to the entries list, and esc
+// discards the buffers and returns to the entries list without touching
+// settingsEdits.Env at all. left/right are the editor's caret keys here and
+// never switch the takeover's lists.
 func (m Model) updateSettingsEnvEditing(msg tea.KeyMsg) (Model, tea.Cmd) {
 	switch msg.String() {
 	case "esc":
@@ -1195,26 +1198,64 @@ func (m Model) updateSettingsEnvEditing(msg tea.KeyMsg) (Model, tea.Cmd) {
 		m.settingsEnvCommitEdit()
 		m.settingsEnvEditing = false
 		return m, nil
-	case "backspace", "ctrl+h":
-		if m.settingsEnvEditingKeyPart {
-			if r := []rune(m.settingsEnvEditKey); len(r) > 0 {
-				m.settingsEnvEditKey = string(r[:len(r)-1])
-			}
-		} else {
-			if r := []rune(m.settingsEnvEditValue); len(r) > 0 {
-				m.settingsEnvEditValue = string(r[:len(r)-1])
-			}
-		}
-		return m, nil
 	}
-	if runes := msg.Runes; len(runes) > 0 {
-		if m.settingsEnvEditingKeyPart {
-			m.settingsEnvEditKey += string(runes)
-		} else {
-			m.settingsEnvEditValue += string(runes)
-		}
+	keyPart := m.settingsEnvEditingKeyPart
+	ed := &m.settingsEnvValueEdit
+	if keyPart {
+		ed = &m.settingsEnvKeyEdit
+	}
+	if edited, ok := ed.Update(msg); ok {
+		*ed = edited.Fit(m.settingsEnvFieldWidth(keyPart), m.settingsEditStyle())
 	}
 	return m, nil
+}
+
+// settingsEnvFieldLabel is the prompt drawn (after the focus marker) before one
+// of the [env] entry editor's two fields.
+func settingsEnvFieldLabel(keyPart bool) string {
+	if keyPart {
+		return "Key: "
+	}
+	return "Value: "
+}
+
+// settingsEnvFieldWidth is the cells the key or value field has after its
+// marker and label, so the row never wraps.
+func (m Model) settingsEnvFieldWidth(keyPart bool) int {
+	w := m.settingsRightInner() - 2 - stringWidth(settingsEnvFieldLabel(keyPart))
+	if w < 1 {
+		w = 1
+	}
+	return w
+}
+
+// settingsEnvFieldStyle is settingsEditStyle for one of the entry editor's two
+// fields: only the focused field draws a caret.
+func (m Model) settingsEnvFieldStyle(keyPart bool) lineedit.Style {
+	st := m.settingsEditStyle()
+	st.Blurred = keyPart != m.settingsEnvEditingKeyPart
+	return st
+}
+
+// settingsEnvKeyText is the key field's drawn text.
+func (m Model) settingsEnvKeyText() string {
+	return m.settingsEnvKeyEdit.View(m.settingsEnvFieldWidth(true), m.settingsEnvFieldStyle(true))
+}
+
+// settingsEnvValueText is the value field's drawn text, caret included while it
+// is the focused field. A secret-shaped key's value stays masked until the
+// reveal toggle is on (§6.4): the editor then draws the fixed placeholder,
+// never the real text or its length, with the offered-value treatment kept.
+func (m Model) settingsEnvValueText() string {
+	ed := m.settingsEnvValueEdit
+	if masked := m.maskEnvValue(m.settingsEnvKeyEdit.Value(), ed.Value(), m.settingsEnvReveal); masked != ed.Value() {
+		if ed.Offered() {
+			ed = lineedit.NewOffered(masked)
+		} else {
+			ed = lineedit.New(masked)
+		}
+	}
+	return ed.View(m.settingsEnvFieldWidth(false), m.settingsEnvFieldStyle(false))
 }
 
 // settingsEnvCommitEdit stages the currently-edited [env] entry into
@@ -1228,7 +1269,7 @@ func (m Model) updateSettingsEnvEditing(msg tea.KeyMsg) (Model, tea.Cmd) {
 // is left on the committed entry's row in the entries list's own sorted
 // order.
 func (m *Model) settingsEnvCommitEdit() {
-	key := strings.TrimSpace(m.settingsEnvEditKey)
+	key := strings.TrimSpace(m.settingsEnvKeyEdit.Value())
 	if key == "" {
 		return
 	}
@@ -1238,7 +1279,7 @@ func (m *Model) settingsEnvCommitEdit() {
 	if m.settingsEnvEditOriginalKey != "" && m.settingsEnvEditOriginalKey != key {
 		delete(m.settingsEdits.Env, m.settingsEnvEditOriginalKey)
 	}
-	m.settingsEdits.Env[key] = m.settingsEnvEditValue
+	m.settingsEdits.Env[key] = m.settingsEnvValueEdit.Value()
 	for i, k := range settingsEnvKeys(m.settingsEdits) {
 		if k == key {
 			m.settingsEnvIndex = i
@@ -2344,8 +2385,8 @@ func (m Model) settingsEnvViewLines(categories []settingsCategory, leftWidth, ri
 			valueBg = theme.Selection
 		}
 		rightLines = []settingsListLine{
-			{text: m.settingsRenderRowOpen([]settingsRowSegment{{Text: keyMarker + "Key: " + m.settingsEnvEditKey, Tok: theme.Text}}), bg: keyBg},
-			{text: m.settingsRenderRowOpen([]settingsRowSegment{{Text: valueMarker + "Value: " + m.maskEnvValue(m.settingsEnvEditKey, m.settingsEnvEditValue, m.settingsEnvReveal), Tok: theme.Text}}), bg: valueBg},
+			{text: m.settingsRenderRowOpen([]settingsRowSegment{{Text: keyMarker + "Key: " + m.settingsEnvKeyText(), Tok: theme.Text}}), bg: keyBg},
+			{text: m.settingsRenderRowOpen([]settingsRowSegment{{Text: valueMarker + "Value: " + m.settingsEnvValueText(), Tok: theme.Text}}), bg: valueBg},
 		}
 	} else {
 		title = "[env]"

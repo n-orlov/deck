@@ -806,7 +806,7 @@ type Model struct {
 	// Mirrors profileSwitchNote/pinNote's existing shape in this package.
 	settingsNote string
 	// settingsEnvOpen/settingsEnvIndex/settingsEnvEditing/
-	// settingsEnvEditingKeyPart/settingsEnvEditKey/settingsEnvEditValue/
+	// settingsEnvEditingKeyPart/settingsEnvKeyEdit/settingsEnvValueEdit/
 	// settingsEnvEditOriginalKey are task 003's [env] entry editor (SPEC
 	// requirement 17: the global [env] table is genuinely editable in the
 	// takeover, not display-only). settingsEnvOpen is true while the
@@ -814,8 +814,9 @@ type Model struct {
 	// "add entry" row) has taken over the field panel; settingsEnvIndex
 	// selects a row in that list. settingsEnvEditing is true while a
 	// single entry's key or value is being typed; settingsEnvEditingKeyPart
-	// says which of the two free-text buffers (settingsEnvEditKey/
-	// settingsEnvEditValue) is currently receiving typed runes.
+	// says which of the two text fields (settingsEnvKeyEdit/
+	// settingsEnvValueEdit, both shared line editors, §11.11) is currently
+	// receiving keys.
 	// settingsEnvEditOriginalKey holds the key being edited (empty when
 	// adding a new entry), so committing a renamed key removes the old one
 	// rather than leaving both. All of this only ever mutates
@@ -825,8 +826,8 @@ type Model struct {
 	settingsEnvIndex           int
 	settingsEnvEditing         bool
 	settingsEnvEditingKeyPart  bool
-	settingsEnvEditKey         string
-	settingsEnvEditValue       string
+	settingsEnvKeyEdit         lineedit.Editor
+	settingsEnvValueEdit       lineedit.Editor
 	settingsEnvEditOriginalKey string
 	// settingsEnvReveal is task 010's per-view explicit reveal toggle (SPEC
 	// §6.4, requirement 21): false (reset every time the entries list is
