@@ -854,7 +854,7 @@ type Model struct {
 	settingsStringEditKey   string
 	settingsStringEditValue string
 	// settingsGroups/settingsGroupIndex/settingsGroupCreating/
-	// settingsGroupRenaming/settingsGroupEditID/settingsGroupEditValue/
+	// settingsGroupRenaming/settingsGroupEditID/settingsGroupEdit/
 	// settingsGroupNote back the settings takeover's Groups section (SPEC
 	// §11.5, R131 part 1): unlike every other category, Groups is never
 	// staged into settingsEdits and never gated by ctrl+s/esc's discard
@@ -866,19 +866,23 @@ type Model struct {
 	// live per-render store call; settingsGroupIndex selects a row in it.
 	// settingsGroupCreating/settingsGroupRenaming say which of "n"/"r"'s
 	// two sub-modes (if either) is currently typing into
-	// settingsGroupEditValue -- settingsGroupEditID is the target group's
+	// settingsGroupEdit -- settingsGroupEditID is the target group's
 	// id while renaming (0, meaningless, while creating). settingsGroupNote
 	// surfaces store.CreateGroup/RenameGroup's own validation errors (task
 	// 009's validateGroupName) inline, exactly like settingsNote does for
 	// ctrl+s, without ever leaving the typing sub-mode on a rejected value
 	// so the user can correct it in place.
-	settingsGroups         []store.Group
-	settingsGroupIndex     int
-	settingsGroupCreating  bool
-	settingsGroupRenaming  bool
-	settingsGroupEditID    int64
-	settingsGroupEditValue string
-	settingsGroupNote      string
+	settingsGroups        []store.Group
+	settingsGroupIndex    int
+	settingsGroupCreating bool
+	settingsGroupRenaming bool
+	settingsGroupEditID   int64
+	// settingsGroupEdit is the name being typed, in the shared line editor
+	// (§11.11): "n" opens it empty, "r" opens it on the group's current name
+	// as an offered value, so a printable key or a paste replaces it and a
+	// caret or editing key accepts it and edits it in place.
+	settingsGroupEdit lineedit.Editor
+	settingsGroupNote string
 	// settingsGroupDeleteConfirming/settingsGroupDeleteID/
 	// settingsGroupDeleteName back "d"'s own sub-mode (task 019, R131 part
 	// 2): opened only on a NON-empty group (an empty one is dropped
@@ -4077,7 +4081,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				m.settingsGroupCreating = false
 				m.settingsGroupRenaming = false
 				m.settingsGroupEditID = 0
-				m.settingsGroupEditValue = ""
+				m.settingsGroupEdit = lineedit.Editor{}
 				m.settingsGroupNote = ""
 			}
 		case "t":
