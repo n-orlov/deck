@@ -10,7 +10,7 @@ import (
 // internal/config/schema.go's "interactive_ms" key declares (60ms) --
 // chosen there, per that key's own comment, because it is the exact
 // interval the Part II spike measured render cost against. Like
-// paneDeadPollInterval/pipeDisplacedFallbackInterval above, this is a
+// pipeDisplacedFallbackInterval above, this is a
 // package var (not a Start parameter) so a test can lower it; wiring
 // settings.InteractiveMS into it at runtime is the job of whichever later
 // task plumbs interactive mode into internal/tui -- Session itself takes

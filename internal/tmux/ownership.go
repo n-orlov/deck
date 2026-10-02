@@ -298,17 +298,26 @@ func (c Client) classifyWindowOwnership(ctx context.Context, target, mine string
 	if err != nil {
 		return ClaimUnset, err
 	}
+	return classifyOwnershipState(got, mine), nil
+}
+
+// classifyOwnershipState is the pure half of classifyWindowOwnership: the
+// classification of an already-read OwnershipOption value, shared with the
+// interactive tick's combined read (Client.InteractiveTickRead), which
+// obtains the value together with pane_dead and session_attached in one
+// tmux process instead of a show-options of its own.
+func classifyOwnershipState(got windowOwnershipState, mine string) ClaimState {
 	if !got.Set {
-		return ClaimUnset, nil
+		return ClaimUnset
 	}
 	if mine != "" && got.Value == mine {
-		return ClaimStillMine, nil
+		return ClaimStillMine
 	}
 	_, pid, ok := parseOwnershipClaim(got.Value)
 	if !ok || !pidAlive(pid) {
-		return ClaimUnset, nil
+		return ClaimUnset
 	}
-	return ClaimForeignLive, nil
+	return ClaimForeignLive
 }
 
 // ProbeWindowOwnership answers whether OwnershipOption on target is unset
@@ -348,4 +357,62 @@ func (o *WindowOwnership) Release(ctx context.Context) error {
 		return nil
 	}
 	return o.client.unsetWindowOwnership(ctx, o.target)
+}
+
+// InteractiveTick is one interactive preview tick's whole tmux read
+// (SPEC §2, R185): the pane's liveness, the session's attached-client count
+// and the window's OwnershipOption value, obtained together from a single
+// `display-message`.
+type InteractiveTick struct {
+	PaneDead bool
+	Attached int
+	// Owner is OwnershipOption's value on the target's window, and
+	// OwnerSet is false when the option is unset (tmux prints it empty).
+	Owner    string
+	OwnerSet bool
+}
+
+// InteractiveTickRead reads `#{pane_dead}`, `#{session_attached}` and the
+// window's `#{@deck_isize_owner}` for target in ONE tmux process. It is the
+// whole of interactive mode's per-tick tmux cost: the displacement backstop
+// (claim still ours, no other client attached) and the dead-pane check read
+// the same answer, so neither needs a process of its own. A vanished target
+// is an error, which callers treat as terminal for the pane exactly as
+// PaneDead did.
+func (c Client) InteractiveTickRead(ctx context.Context, target string) (InteractiveTick, error) {
+	commandCtx, cancel := context.WithTimeout(ctx, c.timeout())
+	defer cancel()
+	format := "#{pane_dead}|#{session_attached}|#{" + OwnershipOption + "}"
+	output, err := c.command(commandCtx, "display-message", "-p", "-t", target, format).CombinedOutput()
+	if err != nil {
+		return InteractiveTick{}, fmt.Errorf("tmux -L %s display-message -p -t %s interactive tick: %w: %s", c.Socket, target, err, strings.TrimSpace(string(output)))
+	}
+	line := strings.TrimRight(string(output), "\n")
+	parts := strings.SplitN(line, "|", 3)
+	if len(parts) != 3 {
+		return InteractiveTick{}, fmt.Errorf("tmux -L %s display-message -p -t %s interactive tick: unexpected output %q", c.Socket, target, line)
+	}
+	var tick InteractiveTick
+	switch parts[0] {
+	case "1":
+		tick.PaneDead = true
+	case "0":
+	default:
+		return InteractiveTick{}, fmt.Errorf("tmux -L %s display-message -p -t %s interactive tick: unexpected pane_dead %q", c.Socket, target, parts[0])
+	}
+	attached, convErr := strconv.Atoi(parts[1])
+	if convErr != nil {
+		return InteractiveTick{}, fmt.Errorf("tmux -L %s display-message -p -t %s interactive tick: parse session_attached %q: %w", c.Socket, target, parts[1], convErr)
+	}
+	tick.Attached = attached
+	tick.Owner = parts[2]
+	tick.OwnerSet = parts[2] != ""
+	return tick, nil
+}
+
+// StillMine reports whether tick's Owner is exactly this WindowOwnership's
+// own confirmed claim: the same answer Probe gives as ClaimStillMine, read
+// from a tick that already carries the option instead of a read of its own.
+func (o *WindowOwnership) StillMine(tick InteractiveTick) bool {
+	return classifyOwnershipState(windowOwnershipState{Value: tick.Owner, Set: tick.OwnerSet}, o.claim) == ClaimStillMine
 }

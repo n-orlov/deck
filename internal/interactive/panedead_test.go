@@ -2,9 +2,11 @@
 // level: a pane that dies under `remain-on-exit failed` never closes its
 // pipe (internal/tmux's TestPanePipeNeverClosesOnADeadPaneUnderRemainOnExitFailed
 // proves that raw fact directly against tmux), so without pane_dead
-// polling drain would block on read(2) forever and the grid would render
-// a stale frame with no way to notice. Session's pollPaneDead (grid.go)
-// is what makes it notice instead.
+// liveness reporting drain would block on read(2) forever and the grid
+// would render a stale frame with no way to notice. Since R185 there is no
+// poll of Session's own: the owner's preview tick reads pane_dead in its
+// one display-message (tmux.Client.InteractiveTickRead) and reports it
+// through Session.NotePaneDead, which is what these tests drive.
 package interactive
 
 import (
@@ -15,6 +17,23 @@ import (
 
 	"github.com/n-orlov/deck/internal/tmux"
 )
+
+// observeDeathAsAPreviewTickDoes performs what one interactive preview tick
+// does with its single read: InteractiveTickRead until the death has become
+// visible to tmux (the kill itself is asynchronous), then NotePaneDead.
+func observeDeathAsAPreviewTickDoes(t *testing.T, client tmux.Client, session *Session, target string) {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		tick, err := client.InteractiveTickRead(context.Background(), target)
+		if err != nil || tick.PaneDead {
+			session.NotePaneDead()
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatalf("a tick read never reported pane_dead for %s within 2s of the pane dying", target)
+}
 
 // killPaneProcessUnderRemainOnExitFailed sets `remain-on-exit failed` on
 // target's window, then makes target's own shell process exit 1 --
@@ -31,16 +50,12 @@ func killPaneProcessUnderRemainOnExitFailed(t *testing.T, socket, target string)
 }
 
 // TestSessionNoticesAndClosesDownOnADeadPaneUnderRemainOnExitFailed is
-// II-23's positive case: with pollPaneDead running, a Session notices a
-// dead target well within a bounded window (nowhere near "forever") and
-// reports it through Dead(), and Close() returns promptly afterward --
+// II-23's positive case: once a preview tick's read reports the dead
+// target, the Session reports it through Dead(), and Close() returns
+// promptly afterward --
 // proving drain is not left stuck on the read(2) that would otherwise
 // never return (per the sibling red control in internal/tmux).
 func TestSessionNoticesAndClosesDownOnADeadPaneUnderRemainOnExitFailed(t *testing.T) {
-	original := paneDeadPollInterval
-	paneDeadPollInterval = 30 * time.Millisecond
-	defer func() { paneDeadPollInterval = original }()
-
 	socket := interactiveSocket("dead-pane")
 	cleanup := newBareInteractiveSession(t, socket, "s0", 40, 10)
 	defer cleanup()
@@ -57,16 +72,23 @@ func TestSessionNoticesAndClosesDownOnADeadPaneUnderRemainOnExitFailed(t *testin
 
 	killPaneProcessUnderRemainOnExitFailed(t, socket, "s0")
 
+	// No loop of the Session's own notices the death (R185): Dead() stays
+	// open until a tick's read reports it.
 	select {
 	case <-session.Dead():
-		// noticed -- this is the whole point of the poll.
-	case <-time.After(2 * time.Second):
-		t.Fatalf("Session never reported Dead() within 2s of the pane dying under remain-on-exit=failed; pane_dead polling did not notice")
+		t.Fatalf("Dead() fired with no tick reporting the death; a poll of the Session's own is still running")
+	case <-time.After(400 * time.Millisecond):
+	}
+	observeDeathAsAPreviewTickDoes(t, client, session, "s0")
+	select {
+	case <-session.Dead():
+	case <-time.After(time.Second):
+		t.Fatalf("Session did not report Dead() after the tick's read reported pane_dead")
 	}
 
 	// Close must return promptly: markDead already closed the pipe, so
-	// drain (and pollPaneDead itself) must already have unwound. If
-	// pane_dead polling were removed, this Close would instead block on
+	// drain must already have unwound. If NotePaneDead did not close the
+	// pipe, this Close would instead block on
 	// drain's own read(2), which the sibling tmux-layer red control
 	// proves never returns on its own for a pane in this state.
 	closeDone := make(chan struct{})
@@ -88,10 +110,6 @@ func TestSessionNoticesAndClosesDownOnADeadPaneUnderRemainOnExitFailed(t *testin
 // every tick would make the positive test above pass for the wrong
 // reason.
 func TestSessionDeadChannelNeverClosesWithoutAnyDeathAndAPollTick(t *testing.T) {
-	original := paneDeadPollInterval
-	paneDeadPollInterval = 30 * time.Millisecond
-	defer func() { paneDeadPollInterval = original }()
-
 	socket := interactiveSocket("alive-pane")
 	cleanup := newBareInteractiveSession(t, socket, "s0", 40, 10)
 	defer cleanup()
@@ -106,6 +124,9 @@ func TestSessionDeadChannelNeverClosesWithoutAnyDeathAndAPollTick(t *testing.T) 
 	}
 	defer session.Close()
 
+	if tick, err := client.InteractiveTickRead(ctx, "s0"); err != nil || tick.PaneDead {
+		t.Fatalf("tick read against a live pane = %+v, %v; want PaneDead=false", tick, err)
+	}
 	select {
 	case <-session.Dead():
 		t.Fatalf("Dead() fired against a pane that never died")

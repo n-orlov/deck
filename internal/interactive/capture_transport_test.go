@@ -137,21 +137,17 @@ func TestCaptureTransportStatusStaysLive(t *testing.T) {
 	}
 }
 
-// TestCaptureTransportNoticesDeadPaneAndClosesCleanly proves pollPaneDead
-// (PRD II-23) is fully transport-agnostic: it runs identically under
-// TransportCapture, and Close() tears the session down without blocking
+// TestCaptureTransportNoticesDeadPaneAndClosesCleanly proves the dead-pane
+// report (PRD II-23, NotePaneDead fed by the preview tick) is fully
+// transport-agnostic: it works identically under TransportCapture, and
+// Close() tears the session down without blocking
 // on the pipe-specific fields captureLoop never touches (s.pipe is nil
 // for the whole life of this Session -- markDead's and Close's own nil
 // guards are what this test would deadlock or panic without).
 func TestCaptureTransportNoticesDeadPaneAndClosesCleanly(t *testing.T) {
 	originalCapture := capturePollInterval
 	capturePollInterval = 20 * time.Millisecond
-	originalDead := paneDeadPollInterval
-	paneDeadPollInterval = 30 * time.Millisecond
-	defer func() {
-		capturePollInterval = originalCapture
-		paneDeadPollInterval = originalDead
-	}()
+	defer func() { capturePollInterval = originalCapture }()
 
 	socket := interactiveSocket("capture-dead")
 	cleanup := newBareInteractiveSession(t, socket, "s0", 40, 10)
@@ -163,6 +159,7 @@ func TestCaptureTransportNoticesDeadPaneAndClosesCleanly(t *testing.T) {
 
 	killPaneProcessUnderRemainOnExitFailed(t, socket, "s0")
 
+	observeDeathAsAPreviewTickDoes(t, client, session, paneID)
 	select {
 	case <-session.Dead():
 	case <-time.After(3 * time.Second):
