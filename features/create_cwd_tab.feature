@@ -7,16 +7,20 @@ Feature: The create modal's cwd field follows bash's tab-completion contract (re
   choosing one puts it in the field.
 
   @requirement-16-tab-advances-common-prefix
+  # The scratch labels are short on purpose: the cwd field is a §11.11 text
+  # field that scrolls and marks the clipped side once its text outgrows the
+  # dialog, so a label long enough to clip the path would hide what these
+  # scenarios assert on.
   Scenario: tab completes to the longest common prefix when that advances the text
-    Given a scratch directory labelled "tabprefix" exists
-    And a directory named "prefixaaa" exists in the scratch directory labelled "tabprefix"
-    And a directory named "prefixbbb" exists in the scratch directory labelled "tabprefix"
+    Given a scratch directory labelled "tp" exists
+    And a directory named "prefixaaa" exists in the scratch directory labelled "tp"
+    And a directory named "prefixbbb" exists in the scratch directory labelled "tp"
     And deck client "A" is started
     When deck client "A" opens the create modal
     And deck client "A" tabs to the cwd field
-    And deck client "A" types the scratch directory labelled "tabprefix" followed by "pre" into the cwd field
+    And deck client "A" types the scratch directory labelled "tp" followed by "pre" into the cwd field
     And deck client "A" presses "tab" in the cwd field
-    Then deck client "A" screen contains the scratch directory labelled "tabprefix" plus "/prefix"
+    Then deck client "A" screen contains the scratch directory labelled "tp" plus "/prefix"
     And deck client "A" screen does not contain "prefixaaa"
     And deck client "A" screen does not contain "prefixbbb"
     When deck client "A" closes the create modal
@@ -24,9 +28,9 @@ Feature: The create modal's cwd field follows bash's tab-completion contract (re
 
   @requirement-16-tab-lists-candidates-and-selects
   Scenario: tab lists the candidates when it cannot advance the text further, and selecting one fills the field
-    Given a scratch directory labelled "tablist" exists
-    And a directory named "prefixaaa" exists in the scratch directory labelled "tablist"
-    And a directory named "prefixbbb" exists in the scratch directory labelled "tablist"
+    Given a scratch directory labelled "tl" exists
+    And a directory named "prefixaaa" exists in the scratch directory labelled "tl"
+    And a directory named "prefixbbb" exists in the scratch directory labelled "tl"
     And deck client "A" is started
     # The create modal's field set (task 016 added a tenth field, Group)
     # plus its own candidate list just clears the default 100x30 harness
@@ -38,16 +42,16 @@ Feature: The create modal's cwd field follows bash's tab-completion contract (re
     When deck client "A" opens the create modal
     And deck client "A" types "tab-list-session" as the session name
     And deck client "A" tabs to the cwd field
-    And deck client "A" types the scratch directory labelled "tablist" followed by "prefix" into the cwd field
+    And deck client "A" types the scratch directory labelled "tl" followed by "prefix" into the cwd field
     And deck client "A" presses "tab" in the cwd field
     Then deck client "A" screen contains "prefixaaa/"
     And deck client "A" screen contains "prefixbbb/"
     When deck client "A" presses "down" in the cwd field
     And deck client "A" presses "enter" in the cwd field
-    Then deck client "A" screen contains the scratch directory labelled "tablist" plus "/prefixbbb/"
+    Then deck client "A" screen contains the scratch directory labelled "tl" plus "/prefixbbb/"
     When deck client "A" submits the create modal
     Then deck client "A" has session "tab-list-session" selected
-    And the state database session "tab-list-session" has cwd exactly the scratch directory labelled "tablist" plus "/prefixbbb/"
+    And the state database session "tab-list-session" has cwd exactly the scratch directory labelled "tl" plus "/prefixbbb/"
     When deck client "A" exits cleanly
 
   @requirement-16-tab-does-nothing-when-already-unique
