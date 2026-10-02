@@ -236,8 +236,8 @@ func TestSettingsGroupsCreateShowsValidateGroupNameErrorInline(t *testing.T) {
 	if !m.settingsGroupCreating {
 		t.Fatal("a rejected create closed the editor; it must stay open so the operator can correct the name")
 	}
-	if m.settingsGroupEditValue != "default" {
-		t.Errorf("settingsGroupEditValue = %q after a rejected commit, want the typed value preserved (%q)", m.settingsGroupEditValue, "default")
+	if m.settingsGroupEdit.Value() != "default" {
+		t.Errorf("settingsGroupEdit.Value() = %q after a rejected commit, want the typed value preserved (%q)", m.settingsGroupEdit.Value(), "default")
 	}
 	if !strings.Contains(m.settingsGroupNote, "reserved") {
 		t.Errorf("settingsGroupNote = %q, want it to surface validateGroupName's reserved-name error", m.settingsGroupNote)
@@ -292,8 +292,8 @@ func TestSettingsGroupsRenameLeavesMemberGroupIDsUntouched(t *testing.T) {
 	if !m.settingsGroupRenaming {
 		t.Fatal("r did not open the group-rename editor on the only (and therefore selected) group")
 	}
-	if m.settingsGroupEditValue != "sprint work" {
-		t.Fatalf("group-rename editor prefilled %q, want the current name %q", m.settingsGroupEditValue, "sprint work")
+	if m.settingsGroupEdit.Value() != "sprint work" {
+		t.Fatalf("group-rename editor prefilled %q, want the current name %q", m.settingsGroupEdit.Value(), "sprint work")
 	}
 	// Clear the prefilled name and type the new one -- backspace once per
 	// rune, mirroring how an operator would edit the field, then type the

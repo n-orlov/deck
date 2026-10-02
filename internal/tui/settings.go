@@ -14,6 +14,7 @@ import (
 	"github.com/n-orlov/deck/internal/config"
 	"github.com/n-orlov/deck/internal/store"
 	"github.com/n-orlov/deck/internal/theme"
+	"github.com/n-orlov/deck/internal/tui/lineedit"
 )
 
 // This file is task 013's `,` settings full-screen takeover skeleton (SPEC
@@ -744,7 +745,7 @@ func (m *Model) settingsStartGroupCreate() {
 	m.settingsGroupCreating = true
 	m.settingsGroupRenaming = false
 	m.settingsGroupEditID = 0
-	m.settingsGroupEditValue = ""
+	m.settingsGroupEdit = lineedit.Editor{}
 	m.settingsGroupNote = ""
 }
 
@@ -760,7 +761,7 @@ func (m *Model) settingsStartGroupRename() {
 	m.settingsGroupRenaming = true
 	m.settingsGroupCreating = false
 	m.settingsGroupEditID = g.ID
-	m.settingsGroupEditValue = g.Name
+	m.settingsGroupEdit = lineedit.NewOffered(g.Name).Fit(m.settingsGroupFieldWidth(), m.settingsEditStyle())
 	m.settingsGroupNote = ""
 }
 
@@ -960,13 +961,12 @@ func (m *Model) settingsRouteGroupDeleteToBulkConfirm() {
 
 // updateSettingsGroupEditing handles key input while "n"/"r"'s typing
 // sub-mode is open (m.settingsGroupCreating or m.settingsGroupRenaming):
-// typed runes extend m.settingsGroupEditValue, backspace shortens it BY
-// ONE RUNE (settingsStringEditing's own precedent -- a group name is
-// user-typed text that may contain a multi-byte rune), enter commits
-// through settingsCommitGroupEdit, and esc abandons the sub-mode with no
-// trace at all: unlike settingsDiscardConfirm, there is nothing here for
-// esc to discard, since nothing has been written to state.db yet (SPEC
-// §11.5: creating/renaming takes effect only on this commit, not on every
+// every editing key, typed rune and paste belongs to the shared line editor
+// (m.settingsGroupEdit, §11.11), enter commits through
+// settingsCommitGroupEdit, and esc abandons the sub-mode with no trace at
+// all: unlike settingsDiscardConfirm, there is nothing here for esc to
+// discard, since nothing has been written to state.db yet (SPEC §11.5:
+// creating/renaming takes effect only on this commit, not on every
 // keystroke).
 func (m Model) updateSettingsGroupEditing(msg tea.KeyMsg) (Model, tea.Cmd) {
 	switch msg.String() {
@@ -974,22 +974,52 @@ func (m Model) updateSettingsGroupEditing(msg tea.KeyMsg) (Model, tea.Cmd) {
 		m.settingsGroupCreating = false
 		m.settingsGroupRenaming = false
 		m.settingsGroupEditID = 0
-		m.settingsGroupEditValue = ""
+		m.settingsGroupEdit = lineedit.Editor{}
 		m.settingsGroupNote = ""
 		return m, nil
 	case "enter":
 		m.settingsCommitGroupEdit()
 		return m, nil
-	case "backspace", "ctrl+h":
-		if r := []rune(m.settingsGroupEditValue); len(r) > 0 {
-			m.settingsGroupEditValue = string(r[:len(r)-1])
-		}
-		return m, nil
 	}
-	if runes := msg.Runes; len(runes) > 0 {
-		m.settingsGroupEditValue += string(runes)
+	// Every editing key, a typed rune and a bracketed paste belong to the
+	// shared line editor (§11.11); a key it does not own is left alone.
+	if edited, ok := m.settingsGroupEdit.Update(msg); ok {
+		m.settingsGroupEdit = edited.Fit(m.settingsGroupFieldWidth(), m.settingsEditStyle())
 	}
 	return m, nil
+}
+
+// settingsRightInner is the inner width of the settings takeover's right
+// panel, the width settingsRightContentLine pads every row to.
+func (m Model) settingsRightInner() int {
+	width, _ := m.frameSize()
+	return width - settingsCategoryWidth(width) - 4
+}
+
+// settingsEditStyle is how the shared editor is drawn in the takeover: the
+// clip marks follow DECK_ASCII and an offered value carries the theme's
+// selection background (none under NO_COLOR).
+func (m Model) settingsEditStyle() lineedit.Style {
+	sel, _ := m.backgroundSGR(theme.Selection)
+	return lineedit.Style{ASCII: m.settings.ASCII, Selection: sel}
+}
+
+// settingsGroupLabel is the prompt drawn before the group-name field.
+func (m Model) settingsGroupLabel() string {
+	if m.settingsGroupRenaming {
+		return "New name:  "
+	}
+	return "New group name:  "
+}
+
+// settingsGroupFieldWidth is the cells the group-name field has after its
+// label, so the row never wraps.
+func (m Model) settingsGroupFieldWidth() int {
+	w := m.settingsRightInner() - stringWidth(m.settingsGroupLabel())
+	if w < 1 {
+		w = 1
+	}
+	return w
 }
 
 // settingsCommitGroupEdit is enter's effect inside the Groups typing
@@ -1013,7 +1043,7 @@ func (m *Model) settingsCommitGroupEdit() {
 	ctx := context.Background()
 	switch {
 	case m.settingsGroupCreating:
-		g, err := m.store.CreateGroup(ctx, m.settingsGroupEditValue)
+		g, err := m.store.CreateGroup(ctx, m.settingsGroupEdit.Value())
 		if err != nil {
 			m.settingsGroupNote = err.Error()
 			return
@@ -1022,7 +1052,7 @@ func (m *Model) settingsCommitGroupEdit() {
 		m.selectSettingsGroupByID(g.ID)
 		m.settingsGroupNote = "created group " + g.Name
 	case m.settingsGroupRenaming:
-		if err := m.store.RenameGroup(ctx, m.settingsGroupEditID, m.settingsGroupEditValue); err != nil {
+		if err := m.store.RenameGroup(ctx, m.settingsGroupEditID, m.settingsGroupEdit.Value()); err != nil {
 			m.settingsGroupNote = err.Error()
 			return
 		}
@@ -1036,7 +1066,7 @@ func (m *Model) settingsCommitGroupEdit() {
 	m.settingsGroupCreating = false
 	m.settingsGroupRenaming = false
 	m.settingsGroupEditID = 0
-	m.settingsGroupEditValue = ""
+	m.settingsGroupEdit = lineedit.Editor{}
 }
 
 // selectSettingsGroupByID points m.settingsGroupIndex at id's row in the
@@ -2574,11 +2604,8 @@ func (m Model) settingsGroupsViewLines(categories []settingsCategory, leftWidth,
 	}
 	if editing {
 		pushBlock("", theme.Text, "")
-		label := "New group name:  "
-		if m.settingsGroupRenaming {
-			label = "New name:  "
-		}
-		pushBlock(label+m.settingsGroupEditValue+settingsTextCursor, theme.Text, theme.Selection)
+		label := m.settingsGroupLabel()
+		pushBlock(label+m.settingsGroupEdit.View(m.settingsGroupFieldWidth(), m.settingsEditStyle()), theme.Text, theme.Selection)
 	}
 	if confirming {
 		pushBlock("", theme.Text, "")

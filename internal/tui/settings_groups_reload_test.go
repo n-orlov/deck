@@ -187,10 +187,14 @@ func TestSettingsGroupsPanelReloadPreservesSelectionAndInProgressEditing(t *test
 	if !mb.settingsGroupRenaming || mb.settingsGroupEditID != beta.ID {
 		t.Fatalf("r did not open the rename editor on beta: renaming=%v editID=%d", mb.settingsGroupRenaming, mb.settingsGroupEditID)
 	}
+	// The opening name is an offered value (§11.11): "right" accepts it with the
+	// caret kept at its end (it is already there), so the typed text extends it instead of replacing it.
+	updated, _ = mb.Update(key("right"))
+	mb = updated.(Model)
 	mb = typeIntoGroupEditor(t, mb, "-in-progress")
 	wantEditValue := "beta-in-progress"
-	if mb.settingsGroupEditValue != wantEditValue {
-		t.Fatalf("in-progress rename buffer = %q, want %q", mb.settingsGroupEditValue, wantEditValue)
+	if mb.settingsGroupEdit.Value() != wantEditValue {
+		t.Fatalf("in-progress rename buffer = %q, want %q", mb.settingsGroupEdit.Value(), wantEditValue)
 	}
 
 	// Stage a scalar setting edit -- an entirely separate mechanism
@@ -256,8 +260,8 @@ func TestSettingsGroupsPanelReloadPreservesSelectionAndInProgressEditing(t *test
 	if mb.settingsGroupEditID != beta.ID {
 		t.Fatalf("settingsGroupEditID after the reload = %d, want unchanged %d", mb.settingsGroupEditID, beta.ID)
 	}
-	if mb.settingsGroupEditValue != wantEditValue {
-		t.Fatalf("in-progress rename buffer after the reload = %q, want unchanged %q", mb.settingsGroupEditValue, wantEditValue)
+	if mb.settingsGroupEdit.Value() != wantEditValue {
+		t.Fatalf("in-progress rename buffer after the reload = %q, want unchanged %q", mb.settingsGroupEdit.Value(), wantEditValue)
 	}
 
 	// The staged scalar setting edit is untouched.
