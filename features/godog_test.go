@@ -116,6 +116,7 @@ func initializeScenario(sc *godog.ScenarioContext) {
 	registerCreateCWDCaretSteps(sc)
 	registerCreateCWDTabSteps(sc)
 	registerCreateTextEditingSteps(sc)
+	registerFieldCopySteps(sc)
 	registerCreateBlankNameSteps(sc)
 	registerCreateValidationSteps(sc)
 	registerProfileCreationSteps(sc)

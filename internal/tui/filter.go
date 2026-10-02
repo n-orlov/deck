@@ -157,6 +157,9 @@ func (m Model) updateFilter(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		// Every editing key, a typed rune and a bracketed paste belong to the
 		// shared line editor (§11.11); a key it does not own (up/down, tab, ...)
 		// changes nothing. The applied query is always the editor's text.
+		if isFieldCopyKey(msg) {
+			return m.copyFieldText(m.filterEdit.Value(), false), nil
+		}
 		edited, ok := m.filterEdit.Update(msg)
 		if !ok {
 			return m, nil

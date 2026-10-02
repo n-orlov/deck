@@ -316,6 +316,9 @@ func (m Model) updateLaunchInputsDialog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// key accepts it and edits it in place. A key the editor does not own is
 	// left alone, and the selection field has no editor at all.
 	if field := m.launchInputsField; launchInputsFieldIsText(field) {
+		if isFieldCopyKey(msg) {
+			return m.copyFieldText(m.launchInputsEdits[field].Value(), false), nil
+		}
 		if edited, ok := m.launchInputsEdits[field].Update(msg); ok {
 			m.launchInputsEdits[field] = edited.Fit(m.launchInputsFieldWidth(field), m.launchInputsEditStyle(field))
 		}

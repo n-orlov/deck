@@ -259,6 +259,9 @@ func (m Model) updateRenameDialog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// shared line editor (§11.11): the opening name is an offered value, so a
 	// printable key or a paste replaces it and a caret or editing key accepts
 	// it and edits it in place. A key the editor does not own is left alone.
+	if isFieldCopyKey(msg) {
+		return m.copyFieldText(m.renameEdit.Value(), false), nil
+	}
 	if edited, ok := m.renameEdit.Update(msg); ok {
 		m.renameEdit = edited.Fit(m.renameFieldWidth(), m.renameEditStyle())
 	}

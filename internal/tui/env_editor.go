@@ -388,6 +388,10 @@ func (m Model) updateEnvDialog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		// a printable key or a paste replaces it and a caret or editing key
 		// accepts it and edits it in place. A key the editor does not own is
 		// left alone.
+		if isFieldCopyKey(msg) {
+			masked := isSecretShapedKey(m.envEditKey) && !m.envReveal
+			return m.copyFieldText(m.envEdit.Value(), masked), nil
+		}
 		if edited, ok := m.envEdit.Update(msg); ok {
 			m.envEdit = edited.Fit(m.envFieldWidth(), m.envEditStyle())
 		}
