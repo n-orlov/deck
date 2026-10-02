@@ -62,10 +62,22 @@ func StripControl(s string) string {
 	}, s)
 }
 
-// Insert is one insertion of text at the caret, control characters dropped. It
-// is both what typing and a bracketed paste do. While the value is offered it
-// replaces the whole text. Text that is empty once control characters are
-// dropped changes nothing, so an offer survives it.
+// Paste is one bracketed paste at the caret, control characters dropped. While
+// the value is offered a paste replaces it wholesale (§11.11), even a paste
+// that is empty once its control characters are dropped: the offer is then
+// replaced by an empty, accepted value.
+func (e Editor) Paste(s string) Editor {
+	if e.offered {
+		s = StripControl(s)
+		return Editor{text: s, caret: len(s)}
+	}
+	return e.Insert(s)
+}
+
+// Insert is one insertion of typed text at the caret, control characters
+// dropped. While the value is offered it replaces the whole text. Typed text
+// that is empty once control characters are dropped is not a printable
+// keystroke, so it changes nothing and an offer survives it.
 func (e Editor) Insert(s string) Editor {
 	s = StripControl(s)
 	if s == "" {
@@ -85,10 +97,7 @@ func (e Editor) Insert(s string) Editor {
 // and an offer is not accepted by a key that is not the editor's.
 func (e Editor) Update(msg tea.KeyMsg) (Editor, bool) {
 	if msg.Paste {
-		if len(msg.Runes) == 0 {
-			return e, true
-		}
-		return e.Insert(string(msg.Runes)), true
+		return e.Paste(string(msg.Runes)), true
 	}
 	switch msg.Type {
 	case tea.KeyRunes, tea.KeySpace:
