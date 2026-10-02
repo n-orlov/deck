@@ -37,6 +37,7 @@ func registerDialogsSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^the state database session "([^"]+)" has resume mode "([^"]+)"$`, sessionHasResumeMode)
 	sc.Step(`^deck client "([^"]+)" opens the rename dialog$`, clientOpensRenameDialog)
 	sc.Step(`^deck client "([^"]+)" types "([^"]*)" into the rename field$`, clientTypesIntoRenameField)
+	sc.Step(`^deck client "([^"]+)" presses left (\d+) times in the rename field$`, clientPressesLeftInRenameField)
 	sc.Step(`^deck client "([^"]+)" closes the rename dialog with escape$`, clientClosesRenameDialogWithEscape)
 	sc.Step(`^deck client "([^"]+)" submits the rename dialog$`, clientSubmitsRenameDialog)
 	sc.Step(`^deck client "([^"]+)" submits the rename dialog expecting rejection$`, clientSubmitsRenameDialogExpectingRejection)
@@ -588,6 +589,29 @@ func clientTypesIntoRenameField(ctx context.Context, clientName, value string) e
 		return err
 	}
 	time.Sleep(30 * time.Millisecond)
+	return nil
+}
+
+// clientPressesLeftInRenameField sends n real `left` keys (CSI D) one at a
+// time, each its own write, so every one reaches the rename field as its own
+// key message. Left accepts the offered name and steps the caret into it
+// (SPEC §11.11); there is nothing on screen to wait on for a caret move
+// alone, so the next typed character and the frame assertion on the edited
+// text are what observe it.
+func clientPressesLeftInRenameField(ctx context.Context, clientName string, n int) error {
+	h, err := assertionHarness(ctx)
+	if err != nil {
+		return err
+	}
+	client, err := h.Client(clientName)
+	if err != nil {
+		return err
+	}
+	for i := 0; i < n; i++ {
+		if err := client.Send("\x1b[D"); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 

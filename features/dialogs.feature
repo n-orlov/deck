@@ -333,6 +333,22 @@ Feature: The §11.4 dialog contract, asserted per dialog (requirements 7, 8, 9, 
     When deck client "A" closes the dialog with escape
     And deck client "A" exits cleanly
 
+  Scenario: rename dialog -- left moves into the offered name, a typed character lands at the caret, and enter stores the edited name
+    Given deck client "A" is started
+    When deck client "A" creates shell session "dc-rename-edit"
+    And deck client "A" opens detail for session "dc-rename-edit"
+    And deck client "A" opens the rename dialog
+    And deck client "A" presses left 2 times in the rename field
+    And deck client "A" types "x" into the rename field
+    Then deck client "A" screen contains "dc-rename-edxit"
+    When deck client "A" submits the rename dialog
+    Then the state database contains session "dc-rename-edxit"
+    And the state database does not contain session "dc-rename-edit"
+    And the state database does not contain session "x"
+    And the private tmux session "deck_dc-rename-edit" exists
+    When deck client "A" closes the dialog with escape
+    And deck client "A" exits cleanly
+
   Scenario: rename dialog -- a top-level r does not open it; it still means resume
     Given a fake "claude" binary is on PATH for future deck clients
     And deck client "A" is started
