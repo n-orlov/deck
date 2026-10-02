@@ -15,6 +15,8 @@ import (
 func registerFilterSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^deck client "([^"]+)" opens the list filter$`, clientOpensListFilter)
 	sc.Step(`^deck client "([^"]+)" types "([^"]*)" into the filter field$`, clientTypesIntoFilterField)
+	sc.Step(`^deck client "([^"]+)" presses left (\d+) times in the filter field$`, clientPressesLeftInFilterField)
+	sc.Step(`^deck client "([^"]+)" inserts "([^"]*)" at the caret of the filter field$`, clientInsertsAtFilterCaret)
 	sc.Step(`^deck client "([^"]+)" keeps the filter in force with enter$`, clientKeepsFilterInForceWithEnter)
 	sc.Step(`^deck client "([^"]+)" unarchives its selected session "([^"]+)"$`, clientUnarchivesSelectedSession)
 	sc.Step(`^deck client "([^"]+)" clears the list filter with escape$`, clientClearsListFilterWithEscape)
@@ -140,4 +142,41 @@ func clientUnarchivesSelectedSession(ctx context.Context, clientName, sessionNam
 		}
 		time.Sleep(25 * time.Millisecond)
 	}
+}
+
+// clientPressesLeftInFilterField sends n real left-arrow keys to the open
+// filter field, moving the shared editor's caret (SPEC §11.11). A caret move
+// alone changes nothing the screen's text shows, so the next insertion and the
+// frame assertion on the edited query are what observe it.
+func clientPressesLeftInFilterField(ctx context.Context, clientName string, n int) error {
+	h, err := assertionHarness(ctx)
+	if err != nil {
+		return err
+	}
+	client, err := h.Client(clientName)
+	if err != nil {
+		return err
+	}
+	for i := 0; i < n; i++ {
+		if err := client.Send("\x1b[D"); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// clientInsertsAtFilterCaret types text at the filter field's caret. Unlike
+// clientTypesIntoFilterField it does not wait for "Filter: "+text, because
+// with the caret in the middle the typed text is not contiguous with the
+// label; the scenario's own frame assertion on the edited query observes it.
+func clientInsertsAtFilterCaret(ctx context.Context, clientName, text string) error {
+	h, err := assertionHarness(ctx)
+	if err != nil {
+		return err
+	}
+	client, err := h.Client(clientName)
+	if err != nil {
+		return err
+	}
+	return client.Send(text)
 }
