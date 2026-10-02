@@ -667,7 +667,7 @@ func (m *Model) settingsActivateField() {
 		// editor serves both -- no schema field is KindPath today, so this
 		// arm is exercised only through pre_launch/post_destroy.
 		m.settingsStringEditKey = f.FullKey()
-		m.settingsStringEditValue = settingsStringValue(f, m.settingsEdits)
+		m.settingsStringEdit = lineedit.NewOffered(settingsStringValue(f, m.settingsEdits)).Fit(m.settingsStringFieldWidth(), m.settingsEditStyle())
 		m.settingsStringEditing = true
 	case config.KindLink:
 		if f.FullKey() == "ui.clear_recent_cwds" {
@@ -989,6 +989,16 @@ func (m Model) updateSettingsGroupEditing(msg tea.KeyMsg) (Model, tea.Cmd) {
 	return m, nil
 }
 
+// settingsStringFieldWidth is the cells the free-text editor's field has after
+// its "> " marker, so the row never wraps.
+func (m Model) settingsStringFieldWidth() int {
+	w := m.settingsRightInner() - 2
+	if w < 1 {
+		w = 1
+	}
+	return w
+}
+
 // settingsRightInner is the inner width of the settings takeover's right
 // panel, the width settingsRightContentLine pads every row to.
 func (m Model) settingsRightInner() int {
@@ -1240,12 +1250,10 @@ func (m *Model) settingsEnvCommitEdit() {
 // updateSettingsStringEditing handles key input while a KindString/KindPath
 // field's value is being typed (m.settingsStringEditing), the free-text
 // counterpart to updateSettingsEnvEditing and deliberately the same shape:
-// typed runes extend settingsStringEditValue, backspace shortens it BY ONE
-// RUNE (a []rune round-trip, never a byte slice -- a hook command may well
-// contain multi-byte text, and trimming one byte off a multi-byte rune
-// would stage invalid UTF-8 into config.toml), enter commits through
-// settingsSetString and returns to the field list, and esc discards the
-// buffer without touching settingsEdits at all.
+// every editing key, typed rune and paste belongs to the shared line editor
+// (m.settingsStringEdit, §11.11), enter commits through settingsSetString
+// and returns to the field list, and esc discards the buffer without
+// touching settingsEdits at all.
 //
 // A committed EMPTY string is a real value here, not a cancel: "" is
 // exactly how a user says "no global hook" (schema.go's own default), so
@@ -1270,20 +1278,15 @@ func (m Model) updateSettingsStringEditing(msg tea.KeyMsg) (Model, tea.Cmd) {
 		m.settingsStringCommitEdit()
 		m.settingsStringEditing = false
 		return m, nil
-	case "backspace", "ctrl+h":
-		if r := []rune(m.settingsStringEditValue); len(r) > 0 {
-			m.settingsStringEditValue = string(r[:len(r)-1])
-		}
-		return m, nil
 	case "ctrl+s":
 		return m, nil
 	}
-	// Every printable keystroke -- including a lone space, which bubbletea
-	// reports as tea.KeySpace but still carries in Runes (key.go's own
-	// "for backwards compatibility" naming), and each rune of a keystroke
-	// burst Update already split rune-by-rune (task 118) -- is text.
-	if runes := msg.Runes; len(runes) > 0 {
-		m.settingsStringEditValue += string(runes)
+	// Every editing key, a typed rune (a lone space included) and a bracketed
+	// paste belong to the shared line editor (§11.11): the opening value is
+	// an offered value, so a printable key or a paste replaces it and a caret
+	// or editing key accepts it and edits it in place.
+	if edited, ok := m.settingsStringEdit.Update(msg); ok {
+		m.settingsStringEdit = edited.Fit(m.settingsStringFieldWidth(), m.settingsEditStyle())
 	}
 	return m, nil
 }
@@ -1307,7 +1310,7 @@ func (m *Model) settingsStringCommitEdit() {
 	if !ok {
 		return
 	}
-	settingsSetString(&m.settingsEdits, f, m.settingsStringEditValue)
+	settingsSetString(&m.settingsEdits, f, m.settingsStringEdit.Value())
 }
 
 // settingsStringEditField resolves the schema field the free-text editor is
@@ -2387,13 +2390,6 @@ func (m Model) settingsEnvViewLines(categories []settingsCategory, leftWidth, ri
 	return strings.Join(lines, "\n")
 }
 
-// settingsTextCursor is the trailing cursor indicator every free-text field
-// this package draws already uses (env_editor.go's session [env] value row,
-// filter.go's `/` query line): a single "_" after the last typed rune. It
-// is a plain ASCII byte, so it needs no m.settings.ASCII fallback and costs
-// exactly one display column wherever it lands.
-const settingsTextCursor = "_"
-
 // settingsStringEditViewLines renders the takeover while the free-text
 // (KindString/KindPath) editor SPEC.md:532 requires has taken over the
 // field panel (m.settingsStringEditing): the left panel keeps showing the
@@ -2401,19 +2397,14 @@ const settingsTextCursor = "_"
 // the category selection), exactly as settingsEnvViewLines does, and the
 // right panel becomes the single value being typed -- panel title "Edit
 // <label>" so the row's identity survives leaving the field list, the text
-// itself with settingsTextCursor at the end, and the field's own kind/
+// itself in the shared line editor with its caret, and the field's own kind/
 // scope/description detail lines beneath, because a hook is
 // restart-to-apply (schema.go) and that is worth stating while the value is
 // being typed rather than only before and after.
 //
-// The value is hard-wrapped (settingsWrapVerbatim) rather than word-wrapped
-// through wrapText: wrapText splits on strings.Fields, which collapses runs
-// of whitespace, so a command with two spaces between its arguments would
-// be DISPLAYED differently from the text about to be staged. A wrapped
-// value can also never widen the panel -- each row is built to the panel's
-// own inner width and settingsRightContentLine's padTrunc still bounds it
-// -- and fitLines below caps the row count at the frame's budget, so an
-// absurdly long command cannot push the bottom border off screen either.
+// The value is one row: a value wider than the panel scrolls inside the
+// editor's field with clip marks and the caret kept in view, so it can
+// never widen the panel or push the bottom border off screen.
 func (m Model) settingsStringEditViewLines(categories []settingsCategory, leftWidth, rightWidth, contentRows, height int) string {
 	const leftFocused, rightFocused = false, true
 
@@ -2431,21 +2422,14 @@ func (m Model) settingsStringEditViewLines(categories []settingsCategory, leftWi
 	}
 
 	var rightLines []settingsListLine
-	// The whole typed block carries the `selection` background, not just
-	// its first row: it is one field receiving keystrokes, so a highlight
-	// that stopped at the first wrapped row would read as two rows, one of
-	// them inert (requirement 42's focus cue names the surface that has
-	// the keystrokes, not a single line of it).
-	for i, chunk := range settingsWrapVerbatim(m.settingsStringEditValue+settingsTextCursor, innerWidth-2) {
-		marker := "  "
-		if i == 0 {
-			marker = "> "
-		}
-		rightLines = append(rightLines, settingsListLine{
-			text: m.settingsRenderRowOpen([]settingsRowSegment{{Text: marker + chunk, Tok: theme.Text}}),
-			bg:   theme.Selection,
-		})
-	}
+	// The typed row carries the `selection` background: it is one field
+	// receiving keystrokes (requirement 42's focus cue names the surface that
+	// has the keystrokes). A value wider than the row scrolls inside it with
+	// clip marks, the caret always in view, so the row never wraps.
+	rightLines = append(rightLines, settingsListLine{
+		text: m.settingsRenderRowOpen([]settingsRowSegment{{Text: "> " + m.settingsStringEdit.View(m.settingsStringFieldWidth(), m.settingsEditStyle()), Tok: theme.Text}}),
+		bg:   theme.Selection,
+	})
 	if haveField {
 		envVar, _ := settingsFieldEnvOverride(f, m.settings)
 		fileValue := settingsFieldValueDisplay(f, m.settingsEdits)
@@ -2702,38 +2686,6 @@ func (m Model) settingsGroupsViewLines(categories []settingsCategory, leftWidth,
 	lines = append(lines, m.settingsLeftBottomLine(leftWidth, leftFocused)+m.settingsRightBottomLine(rightWidth, rightFocused))
 	lines = append(lines, m.settingsFooterLine())
 	return strings.Join(lines, "\n")
-}
-
-// settingsWrapVerbatim breaks s into rows of at most width DISPLAY COLUMNS
-// (stringWidth, the same measure wrapText and padTrunc use, so a wide rune
-// counts as the two cells it actually occupies) without altering a single
-// byte of s: no word boundaries, no whitespace collapsing, nothing dropped.
-// That is the whole reason it exists alongside wrapText -- text a user is
-// still typing must be displayed exactly as it will be staged, and
-// wrapText's strings.Fields pass rewrites internal whitespace. A width
-// below 1 is treated as 1 so a pathologically narrow panel still terminates
-// (one rune per row) rather than looping forever on a zero-width chunk.
-func settingsWrapVerbatim(s string, width int) []string {
-	if width < 1 {
-		width = 1
-	}
-	var rows []string
-	var cur strings.Builder
-	curWidth := 0
-	for _, r := range s {
-		w := stringWidth(string(r))
-		if curWidth+w > width && cur.Len() > 0 {
-			rows = append(rows, cur.String())
-			cur.Reset()
-			curWidth = 0
-		}
-		cur.WriteRune(r)
-		curWidth += w
-	}
-	if cur.Len() > 0 || len(rows) == 0 {
-		rows = append(rows, cur.String())
-	}
-	return rows
 }
 
 // settingsSearchViewLines renders the takeover while `/`'s search box is

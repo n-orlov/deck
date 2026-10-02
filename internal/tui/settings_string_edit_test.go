@@ -79,8 +79,8 @@ func TestSettingsStringEnterOpensEditorPrefilledWithStagedValue(t *testing.T) {
 	if m.settingsStringEditKey != "pre_launch" {
 		t.Fatalf("settingsStringEditKey = %q, want %q", m.settingsStringEditKey, "pre_launch")
 	}
-	if m.settingsStringEditValue != "echo staged" {
-		t.Fatalf("editor opened with %q, want the staged value %q", m.settingsStringEditValue, "echo staged")
+	if m.settingsStringEdit.Value() != "echo staged" {
+		t.Fatalf("editor opened with %q, want the staged value %q", m.settingsStringEdit.Value(), "echo staged")
 	}
 	if m.settingsDirty() {
 		t.Fatal("merely opening the editor made the takeover dirty; only a commit may")
@@ -108,8 +108,8 @@ func TestSettingsStringTypingAndEnterStagesTheValue(t *testing.T) {
 	m := updated.(Model)
 	updated, _ = m.Update(key("direnv export bash"))
 	m = updated.(Model)
-	if m.settingsStringEditValue != "direnv export bash" {
-		t.Fatalf("typed text = %q, want %q", m.settingsStringEditValue, "direnv export bash")
+	if m.settingsStringEdit.Value() != "direnv export bash" {
+		t.Fatalf("typed text = %q, want %q", m.settingsStringEdit.Value(), "direnv export bash")
 	}
 	if m.settingsEdits.PreLaunch != "" {
 		t.Fatalf("typing staged %q before enter; typing must only fill the buffer", m.settingsEdits.PreLaunch)
@@ -151,7 +151,7 @@ func TestSettingsStringEditingSwallowsNavigationRunes(t *testing.T) {
 		m = updated.(Model)
 	}
 
-	if got, want := m.settingsStringEditValue, "jk-/+="; got != want {
+	if got, want := m.settingsStringEdit.Value(), "jk-/+="; got != want {
 		t.Fatalf("typed keybinding runes produced %q, want %q", got, want)
 	}
 	if m.settingsCategoryIndex != catBefore || m.settingsFieldIndex != fieldBefore {
@@ -209,11 +209,11 @@ func TestSettingsStringBackspaceDeletesOneRune(t *testing.T) {
 	updated, _ = m.Update(key("backspace"))
 	m = updated.(Model)
 
-	if want := "echo hé"; m.settingsStringEditValue != want {
-		t.Fatalf("backspace produced %q, want %q (one rune trimmed, not one byte)", m.settingsStringEditValue, want)
+	if want := "echo hé"; m.settingsStringEdit.Value() != want {
+		t.Fatalf("backspace produced %q, want %q (one rune trimmed, not one byte)", m.settingsStringEdit.Value(), want)
 	}
-	if !utf8.ValidString(m.settingsStringEditValue) {
-		t.Fatalf("backspace left invalid UTF-8: %q", m.settingsStringEditValue)
+	if !utf8.ValidString(m.settingsStringEdit.Value()) {
+		t.Fatalf("backspace left invalid UTF-8: %q", m.settingsStringEdit.Value())
 	}
 }
 
@@ -233,8 +233,8 @@ func TestSettingsStringCommittingEmptyClearsTheKey(t *testing.T) {
 		updated, _ = m.Update(key("backspace"))
 		m = updated.(Model)
 	}
-	if m.settingsStringEditValue != "" {
-		t.Fatalf("buffer = %q after three backspaces, want empty", m.settingsStringEditValue)
+	if m.settingsStringEdit.Value() != "" {
+		t.Fatalf("buffer = %q after three backspaces, want empty", m.settingsStringEdit.Value())
 	}
 	updated, _ = m.Update(key("enter"))
 	m = updated.(Model)
@@ -331,9 +331,8 @@ func TestSettingsStringEmptyValueRendersNotSetPlaceholder(t *testing.T) {
 
 // TestSettingsStringEditorRendersTypedTextCursorAndKeys proves the editing
 // mode is visible rather than a hidden state: the panel names the field
-// being edited, shows the in-progress text with the trailing "_" cursor
-// this package already uses for every free-text field (env_editor.go,
-// filter.go), and the footer names each key the mode binds -- the same
+// being edited, shows the in-progress text with the shared editor's
+// reverse-video caret and no "_" stand-in, and the footer names each key the mode binds -- the same
 // "never binds a key it does not name" rule settingsFooterLine's own
 // comment states for the takeover as a whole.
 func TestSettingsStringEditorRendersTypedTextCursorAndKeys(t *testing.T) {
@@ -349,8 +348,11 @@ func TestSettingsStringEditorRendersTypedTextCursorAndKeys(t *testing.T) {
 	if !strings.Contains(view, "Edit "+settingsFieldLabel(config.Field{Key: "pre_launch"})) {
 		t.Fatalf("editing view does not name the field being edited:\n%s", view)
 	}
-	if !strings.Contains(view, "echo hi"+settingsTextCursor) {
-		t.Fatalf("editing view does not show the typed text with its cursor:\n%s", view)
+	if !strings.Contains(view, "\x1b[7m") {
+		t.Fatalf("editing view draws no reverse-video caret:\n%s", view)
+	}
+	if plain := withoutCaretSGR(view); !strings.Contains(plain, "> echo hi") || strings.Contains(plain, "echo hi_") {
+		t.Fatalf("editing view does not show the typed text with its caret and no underscore:\n%s", plain)
 	}
 	footer := m.settingsFooterLine()
 	for _, k := range []string{"enter", "esc", "ctrl+s"} {
@@ -360,23 +362,12 @@ func TestSettingsStringEditorRendersTypedTextCursorAndKeys(t *testing.T) {
 	}
 }
 
-// TestSettingsWrapVerbatimKeepsLongValuesInsideThePanel is the layout half
-// of requirement 4: a value far longer than the panel is wrapped, never
-// allowed to widen a row, and -- unlike wrapText, whose strings.Fields pass
-// collapses whitespace runs -- reassembles to exactly the text that will be
-// staged, so what is on screen is what enter commits.
-func TestSettingsWrapVerbatimKeepsLongValuesInsideThePanel(t *testing.T) {
-	value := "echo a" + strings.Repeat("b", 300) + "  two spaces  and\ttab"
-	rows := settingsWrapVerbatim(value, 20)
-	if strings.Join(rows, "") != value {
-		t.Fatalf("settingsWrapVerbatim altered the text it wrapped:\n got %q\nwant %q", strings.Join(rows, ""), value)
-	}
-	for i, row := range rows {
-		if w := stringWidth(row); w > 20 {
-			t.Errorf("row %d is %d columns wide, exceeding the 20-column budget: %q", i, w, row)
-		}
-	}
-
+// TestSettingsStringEditorKeepsLongValuesInsideThePanel is the layout half
+// of requirement 4: a value far longer than the panel scrolls inside the
+// editor's one row, never widening it, and what enter stages is exactly the
+// text typed, so what the operator saw is what is committed.
+func TestSettingsStringEditorKeepsLongValuesInsideThePanel(t *testing.T) {
+	value := "echo a" + strings.Repeat("b", 300) + "  two spaces  and tab"
 	// The whole editing frame stays inside deck's supported minimum too,
 	// mirroring TestSettingsViewFitsFrameBudget's own two checks.
 	model := settingsOpenOnStringField(t, config.Settings{}, "pre_launch")
@@ -386,6 +377,9 @@ func TestSettingsWrapVerbatimKeepsLongValuesInsideThePanel(t *testing.T) {
 	updated, _ = m.Update(key(value))
 	m = updated.(Model)
 	lines := strings.Split(m.settingsView(), "\n")
+	if plain := withoutCaretSGR(m.settingsView()); !strings.Contains(plain, "bbb  two spaces  and tab") {
+		t.Errorf("the tail of the value, where the caret is, is not in view:\n%s", plain)
+	}
 	if len(lines) > 24 {
 		t.Errorf("editing view has %d lines, exceeding the 24-row budget", len(lines))
 	}
@@ -393,6 +387,10 @@ func TestSettingsWrapVerbatimKeepsLongValuesInsideThePanel(t *testing.T) {
 		if w := stringWidth(line); w > 80 {
 			t.Errorf("editing view line %d is %d columns wide, exceeding the 80-column budget:\n%s", i, w, line)
 		}
+	}
+	updated, _ = m.Update(key("enter"))
+	if got := updated.(Model).settingsEdits.PreLaunch; got != value {
+		t.Errorf("enter staged %q, want exactly the typed %q", got, value)
 	}
 }
 
