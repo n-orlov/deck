@@ -96,6 +96,16 @@ func TestScreenDriverReadNeverSignalsAPartialMergeOfAnOversizedWrite(t *testing.
 	if _, err := w.Write([]byte(full)); err != nil {
 		t.Fatalf("stage payload: %v", err)
 	}
+	// Close the write end now, explicitly: read() returns (and closes
+	// readDone) only on EOF, and EOF on a pipe arrives only once every
+	// writer fd is closed. Leaving w open made read()'s exit depend on the
+	// garbage collector finalizing w -- a 5 s timeout under -race whenever
+	// GC did not run in time (reproduced deterministically with GOGC=off).
+	// The staged bytes stay queued in the pipe buffer either way, so the
+	// race this test forces is unchanged.
+	if err := w.Close(); err != nil {
+		t.Fatalf("close pipe writer: %v", err)
+	}
 
 	var mu sync.Mutex // guards observed, not driver.mu
 	var observed []int
