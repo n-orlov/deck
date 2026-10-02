@@ -8,6 +8,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/n-orlov/deck/internal/theme"
+	"github.com/n-orlov/deck/internal/tui/lineedit"
 )
 
 // This file is task 023's launch-inputs editor (SPEC §6.2/§11.4, PRD
@@ -28,6 +29,10 @@ import (
 // login_shell -- SPEC §6.2's own listing order, and the order R108
 // documents its "four editable launch inputs" in.
 const launchInputsFieldCount = 4
+
+// launchInputsTextFieldCount is how many of the fields above are text, held in
+// the shared line editor (§11.11): the first three, in the same order.
+const launchInputsTextFieldCount = 3
 
 const (
 	launchInputsFieldPreLaunch = iota
@@ -95,10 +100,10 @@ func (m Model) launchInputsFieldRows() []struct{ label, value, help string } {
 		loginShell = "on"
 	}
 	return []struct{ label, value, help string }{
-		{"Pre-launch command", m.launchInputsPreLaunch, "runs before the agent starts on every launch and must be idempotent; a non-zero exit blocks the launch (fail-closed) -- restart-to-apply"},
-		{"Post-destroy command", m.launchInputsPostDestroy, "runs after Archive or Delete durably succeeds; a non-zero exit or timeout never blocks teardown (fail-open) -- restart-to-apply"},
-		{"Launch args (JSON array)", m.launchInputsLaunchArgs, "extra arguments appended verbatim after the adapter's own argv -- restart-to-apply"},
-		{"Login shell", loginShell + " (space toggles)", "runs the pane command through $SHELL -lc, letting rc files rewrite PATH -- restart-to-apply"},
+		{launchInputsLabels[0], m.launchInputsFieldText(launchInputsFieldPreLaunch), "runs before the agent starts on every launch and must be idempotent; a non-zero exit blocks the launch (fail-closed) -- restart-to-apply"},
+		{launchInputsLabels[1], m.launchInputsFieldText(launchInputsFieldPostDestroy), "runs after Archive or Delete durably succeeds; a non-zero exit or timeout never blocks teardown (fail-open) -- restart-to-apply"},
+		{launchInputsLabels[2], m.launchInputsFieldText(launchInputsFieldLaunchArgs), "extra arguments appended verbatim after the adapter's own argv -- restart-to-apply"},
+		{launchInputsLabels[3], loginShell + " (space toggles)", "runs the pane command through $SHELL -lc, letting rc files rewrite PATH -- restart-to-apply"},
 	}
 }
 
@@ -110,6 +115,43 @@ func (m Model) launchInputsFieldMarker(field int) string {
 	}
 	return "  "
 }
+
+// launchInputsFieldLabel is a row's drawn label (marker included), whose width
+// is what a text field's own cells are budgeted against.
+func (m Model) launchInputsFieldLabel(field int) string {
+	return fmt.Sprintf("%s%s: ", m.launchInputsFieldMarker(field), launchInputsLabels[field])
+}
+
+// launchInputsLabels are the four rows' labels, in field order.
+var launchInputsLabels = [launchInputsFieldCount]string{"Pre-launch command", "Post-destroy command", "Launch args (JSON array)", "Login shell"}
+
+// launchInputsFieldWidth is the number of cells a text field has inside the
+// dialog's box once its label has been drawn: the editor scrolls within it, so
+// the row never wraps.
+func (m Model) launchInputsFieldWidth(field int) int {
+	w := m.dialogWidth() - 4 - stringWidth(m.launchInputsFieldLabel(field))
+	if w < 1 {
+		w = 1
+	}
+	return w
+}
+
+// launchInputsEditStyle is how the shared editor is drawn here: the clip marks
+// follow DECK_ASCII and an offered value carries the theme's selection
+// background (none under NO_COLOR). Only the focused field draws a caret.
+func (m Model) launchInputsEditStyle(field int) lineedit.Style {
+	sel, _ := m.backgroundSGR(theme.Selection)
+	return lineedit.Style{ASCII: m.settings.ASCII, Selection: sel, Blurred: field != m.launchInputsField}
+}
+
+// launchInputsFieldText is a text field's drawn value: the editor's view, with
+// the caret on the focused field only. The hook commands are never masked.
+func (m Model) launchInputsFieldText(field int) string {
+	return m.launchInputsEdits[field].View(m.launchInputsFieldWidth(field), m.launchInputsEditStyle(field))
+}
+
+// launchInputsValue is a text field's current value as typed.
+func (m Model) launchInputsValue(field int) string { return m.launchInputsEdits[field].Value() }
 
 // launchInputsFooterLine is the closing legend both launchInputsBody and
 // styledLaunchInputsBody render verbatim, shared so the two can never
@@ -132,7 +174,7 @@ func (m Model) launchInputsBody() string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "Launch inputs for %s\n\n", session.Name)
 	for field, row := range m.launchInputsFieldRows() {
-		fmt.Fprintf(&b, "%s%s: %s\n    %s\n", m.launchInputsFieldMarker(field), row.label, row.value, row.help)
+		fmt.Fprintf(&b, "%s%s\n    %s\n", m.launchInputsFieldLabel(field), row.value, row.help)
 	}
 	b.WriteString("\n" + launchInputsVerbatimNote + "\n")
 	b.WriteString(launchInputsFooterLine + "\n")
@@ -220,7 +262,7 @@ func (m Model) styledLaunchInputsBody() string {
 	colorWhole(theme.Title, fmt.Sprintf("Launch inputs for %s", session.Name))
 	out = append(out, "")
 	for field, row := range m.launchInputsFieldRows() {
-		label := fmt.Sprintf("%s%s: ", m.launchInputsFieldMarker(field), row.label)
+		label := m.launchInputsFieldLabel(field)
 		colorRow(label, row.value, field == m.launchInputsField)
 		colorWhole(theme.Dimmed, "    "+row.help)
 	}
@@ -238,9 +280,8 @@ func (m Model) styledLaunchInputsBody() string {
 // editor is open. Three of the four fields are free text
 // (launchInputsFieldIsText); the fourth (login_shell) is a boolean only
 // left/right/space (via the shared contract's Cycle) ever changes --
-// SpaceTypesText's own gate is what keeps space from being consumed as a
-// cycle while a text field is focused, exactly as createView's own
-// free-text fields already declare for themselves.
+// TextFocused is what keeps all three off the contract while a text field is
+// focused, where they are the shared line editor's (§11.11).
 func (m Model) updateLaunchInputsDialog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if cmd, handled := applyDialogContract(msg, dialogContract{
 		Fields: dialogFields{
@@ -248,6 +289,7 @@ func (m Model) updateLaunchInputsDialog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			Index:          &m.launchInputsField,
 			Cycle:          m.cycleLaunchInputsField,
 			SpaceTypesText: func() bool { return launchInputsFieldIsText(m.launchInputsField) },
+			TextFocused:    func() bool { return launchInputsFieldIsText(m.launchInputsField) },
 		},
 		Cancel: func() {
 			m.launchInputsEditing = false
@@ -258,9 +300,6 @@ func (m Model) updateLaunchInputsDialog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, cmd
 	}
 	switch msg.String() {
-	case "backspace", "ctrl+h":
-		m.backspaceLaunchInputsField()
-		return m, nil
 	case "pgup":
 		// Mirrors createView's own task 016 (measured off m.launchInputsBody(),
 		// the plain body, never the coloured one, so a theme change can
@@ -271,14 +310,14 @@ func (m Model) updateLaunchInputsDialog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.launchInputsScroll = m.dialogScrollByPage(m.launchInputsScroll, m.launchInputsBody(), 1)
 		return m, nil
 	}
-	if runes := msg.Runes; len(runes) > 0 && launchInputsFieldIsText(m.launchInputsField) {
-		switch m.launchInputsField {
-		case launchInputsFieldPreLaunch:
-			m.launchInputsPreLaunch += string(runes)
-		case launchInputsFieldPostDestroy:
-			m.launchInputsPostDestroy += string(runes)
-		case launchInputsFieldLaunchArgs:
-			m.launchInputsLaunchArgs += string(runes)
+	// Every editing key, a typed rune and a bracketed paste on a text field
+	// belong to the shared line editor (§11.11): the opening value is an offered
+	// value, so a printable key or a paste replaces it and a caret or editing
+	// key accepts it and edits it in place. A key the editor does not own is
+	// left alone, and the selection field has no editor at all.
+	if field := m.launchInputsField; launchInputsFieldIsText(field) {
+		if edited, ok := m.launchInputsEdits[field].Update(msg); ok {
+			m.launchInputsEdits[field] = edited.Fit(m.launchInputsFieldWidth(field), m.launchInputsEditStyle(field))
 		}
 	}
 	return m, nil
@@ -288,35 +327,12 @@ func (m Model) updateLaunchInputsDialog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 // for the login_shell field, mirroring cycleCreateField's own
 // case 7 (m.createLoginShell = !m.createLoginShell) exactly: the delta's
 // sign is ignored, since a boolean has nothing to cycle THROUGH, only to
-// flip. Every other field ignores this entirely -- SpaceTypesText already
-// keeps space off them, and left/right are never bound at all while a
-// text field is focused (dialogContract.Fields.Cycle is unconditional,
-// but nothing calls left/right on this dialog's text fields in practice
-// since there is no other per-field behaviour to reach for them, exactly
-// like the create modal's own text fields).
+// flip. It is only ever reached while the login_shell selection is focused:
+// on a text field left, right and space are the shared line editor's
+// (dialogFields.TextFocused), so Cycle applies to selection fields only.
 func (m *Model) cycleLaunchInputsField(delta int) {
 	if m.launchInputsField == launchInputsFieldLoginShell {
 		m.launchInputsLoginShell = !m.launchInputsLoginShell
-	}
-}
-
-// backspaceLaunchInputsField mirrors backspaceCreateField's per-field
-// switch for this dialog's three text fields; the fourth (login_shell)
-// has no text to trim.
-func (m *Model) backspaceLaunchInputsField() {
-	switch m.launchInputsField {
-	case launchInputsFieldPreLaunch:
-		if len(m.launchInputsPreLaunch) > 0 {
-			m.launchInputsPreLaunch = m.launchInputsPreLaunch[:len(m.launchInputsPreLaunch)-1]
-		}
-	case launchInputsFieldPostDestroy:
-		if len(m.launchInputsPostDestroy) > 0 {
-			m.launchInputsPostDestroy = m.launchInputsPostDestroy[:len(m.launchInputsPostDestroy)-1]
-		}
-	case launchInputsFieldLaunchArgs:
-		if len(m.launchInputsLaunchArgs) > 0 {
-			m.launchInputsLaunchArgs = m.launchInputsLaunchArgs[:len(m.launchInputsLaunchArgs)-1]
-		}
 	}
 }
 
@@ -331,7 +347,7 @@ func (m *Model) backspaceLaunchInputsField() {
 // what the user typed"), mirroring validateCreateFields' own launch_args
 // check one file over.
 func (m *Model) submitLaunchInputs() tea.Cmd {
-	args, err := parseLaunchInputsArgs(m.launchInputsLaunchArgs)
+	args, err := parseLaunchInputsArgs(m.launchInputsValue(launchInputsFieldLaunchArgs))
 	if err != nil {
 		m.launchInputsNote = err.Error()
 		return nil
@@ -345,7 +361,8 @@ func (m *Model) submitLaunchInputs() tea.Cmd {
 	}
 	session, _ := m.selectedSession()
 	sessionID := session.ID
-	preLaunch, postDestroy, loginShell := m.launchInputsPreLaunch, m.launchInputsPostDestroy, m.launchInputsLoginShell
+	preLaunch, postDestroy := m.launchInputsValue(launchInputsFieldPreLaunch), m.launchInputsValue(launchInputsFieldPostDestroy)
+	loginShell := m.launchInputsLoginShell
 	setter := m.launchInputsSetter
 	return func() tea.Msg {
 		updated, err := setter(context.Background(), sessionID, preLaunch, postDestroy, args, loginShell)

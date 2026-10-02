@@ -589,8 +589,8 @@ type Model struct {
 	// underneath it the whole time, mirroring m.renaming exactly.
 	// launchInputsField is the currently focused field, 0-3 in
 	// launchInputsFieldRows' own order. The three text fields
-	// (launchInputsPreLaunch/PostDestroy/LaunchArgs) hold exactly what was
-	// typed, verbatim -- the two hook commands are deliberately never run
+	// (launchInputsEdits, one shared line editor each, §11.11) hold exactly
+	// what was typed, verbatim -- the two hook commands are deliberately never run
 	// through maskEnvValue or any other masking, since SPEC §6.4/§11.4 are
 	// explicit that they are commands, not secret values.
 	// launchInputsLoginShell is the fourth field, toggled by left/right/
@@ -599,14 +599,12 @@ type Model struct {
 	// fields exactly as typed so nothing is lost. launchInputsScroll is
 	// this dialog's own PgUp/PgDn viewport offset (updateLaunchInputsDialog),
 	// reset to 0 every time `l` opens it fresh.
-	launchInputsEditing     bool
-	launchInputsField       int
-	launchInputsPreLaunch   string
-	launchInputsPostDestroy string
-	launchInputsLaunchArgs  string
-	launchInputsLoginShell  bool
-	launchInputsNote        string
-	launchInputsScroll      int
+	launchInputsEditing    bool
+	launchInputsField      int
+	launchInputsEdits      [launchInputsTextFieldCount]lineedit.Editor
+	launchInputsLoginShell bool
+	launchInputsNote       string
+	launchInputsScroll     int
 	// groupMover is R130 part 2's `i`-dialog-only `g` move-group action
 	// (SPEC §11): service.Service.SetSessionGroup, which moves ONE session
 	// into a different group or back to the structural default. nil means
