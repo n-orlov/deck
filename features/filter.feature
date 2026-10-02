@@ -34,10 +34,11 @@ Feature: The / list filter: by name, group and cwd, and the route back to an arc
     When deck client "A" opens the list filter
     And deck client "A" types "filter-edit-apha" into the filter field
     Then deck client "A" screen does not contain "filter-edit-beta"
+    And deck client "A" screen does not contain "filter-edit-alpha"
     When deck client "A" presses left 3 times in the filter field
     And deck client "A" inserts "l" at the caret of the filter field
     Then deck client "A" screen contains "Filter: filter-edit-alpha"
-    And deck client "A" screen contains "filter-edit-alpha"
+    And deck client "A" filtered sidebar comes to list exactly one session row, named "filter-edit-alpha"
     And deck client "A" screen does not contain "filter-edit-beta"
     When deck client "A" clears the list filter with escape
     Then deck client "A" screen contains "filter-edit-beta"
