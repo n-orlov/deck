@@ -163,13 +163,10 @@ func newFakeTMuxClient(t *testing.T, dir, slug string) *fakeTMuxClient {
 printf '%s\n' "$*" >> '@LOG@'
 for arg in "$@"; do
 	case "$arg" in
-	list-sessions)
-		printf 'deck_@SLUG@\n'
-		exit 0
-		;;
 	list-panes)
-		# pane_id|current_path|pid|dead|dead_status|dead_signal|command|width|height
-		printf '%s\n' '%1|/tmp|4242|0|||sh|80|24'
+		# session_name|pane_id|current_path|pid|dead|dead_status|dead_signal|command|width|height
+		# (one line per pane, named by its session, as List's single list-panes -a read expects)
+		printf '%s\n' 'deck_@SLUG@|%1|/tmp|4242|0|||sh|80|24'
 		exit 0
 		;;
 	esac
@@ -225,7 +222,7 @@ func newFakeTMuxRepairService(t *testing.T, socket string) (svc Service, db *sto
 	return svc, db, logger, fake
 }
 
-// fakeTMuxLivePane points the fake tmux client at slug, so its list-sessions
+// fakeTMuxLivePane points the fake tmux client at slug, so its list-panes -a
 // reports exactly one live deck session with one live, non-dead pane.
 func fakeTMuxLivePane(t *testing.T, client tmux.Client, slug string) {
 	t.Helper()
@@ -252,7 +249,7 @@ func assertNoPaneMutation(t *testing.T, fake *fakeTMuxClient) {
 				t.Fatalf("the repair touched the pane: tmux %s (all calls: %q)", call, calls)
 			}
 		}
-		if strings.Contains(call, "list-sessions") {
+		if strings.Contains(call, "list-panes") {
 			sawList = true
 		}
 	}

@@ -359,38 +359,51 @@ func (c Client) SendKeys(ctx context.Context, slug, literal string) error {
 }
 
 // List returns only deck-owned sessions and their pane facts. A server with no
-// sessions is a normal empty result.
+// sessions is a normal empty result. It is ONE `list-panes -a` process however
+// many sessions exist: every pane line carries its session name, and the panes
+// are grouped by session here, in the order tmux first reports each session.
 func (c Client) List(ctx context.Context) ([]Session, error) {
 	if c.Socket == "" {
 		return nil, errors.New("tmux socket name is required")
 	}
-	output, err := c.run(ctx, "list-sessions", "-F", "#{session_name}")
+	output, err := c.run(ctx, "list-panes", "-a", "-F", "#{session_name}|"+paneFactsFormat)
 	if err != nil {
 		// A private server that was killed (or has never been bootstrapped) is
 		// an empty liveness view, not a reason to start a replacement server.
+		// A live server holding no session answers `list-panes -a` with "no
+		// current target": it too is an empty view.
 		message := err.Error()
 		if strings.Contains(message, "no server running") || strings.Contains(message, "no sessions") ||
+			strings.Contains(message, "no current target") ||
 			strings.Contains(message, "error connecting to") && strings.Contains(message, "No such file or directory") {
 			return []Session{}, nil
 		}
 		return nil, err
 	}
 	var sessions []Session
-	for _, name := range strings.Fields(string(output)) {
+	index := map[string]int{}
+	for _, line := range strings.Split(string(output), "\n") {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		name, facts, ok := strings.Cut(line, "|")
+		if !ok {
+			return nil, fmt.Errorf("parse pane facts: %q", line)
+		}
 		if !strings.HasPrefix(name, "deck_") {
 			continue
 		}
-		session, err := c.session(ctx, name)
+		pane, err := parsePaneFacts(name, facts)
 		if err != nil {
-			// A session can disappear between list-sessions and list-panes.
-			// Treat that narrow race as an absent session so reconciliation can
-			// record the durable transition instead of aborting its whole pass.
-			if sessionDisappeared(err) {
-				continue
-			}
 			return nil, err
 		}
-		sessions = append(sessions, session)
+		position, seen := index[name]
+		if !seen {
+			position = len(sessions)
+			index[name] = position
+			sessions = append(sessions, Session{Name: name})
+		}
+		sessions[position].Panes = append(sessions[position].Panes, pane)
 	}
 	return sessions, nil
 }
@@ -750,8 +763,10 @@ func IsTargetAbsent(err error) bool {
 		strings.Contains(message, "error connecting to") && strings.Contains(message, "No such file or directory")
 }
 
+// session reads one session's panes by target; Create uses it to return the
+// session it just made. List does not: it reads every pane in one process.
 func (c Client) session(ctx context.Context, name string) (Session, error) {
-	output, err := c.run(ctx, "list-panes", "-t", name, "-F", "#{pane_id}|#{pane_current_path}|#{pane_pid}|#{pane_dead}|#{pane_dead_status}|#{pane_dead_signal}|#{pane_current_command}|#{pane_width}|#{pane_height}")
+	output, err := c.run(ctx, "list-panes", "-t", name, "-F", paneFactsFormat)
 	if err != nil {
 		return Session{}, fmt.Errorf("list panes for session %q: %w", name, err)
 	}
@@ -760,43 +775,55 @@ func (c Client) session(ctx context.Context, name string) (Session, error) {
 		if line == "" {
 			continue
 		}
-		fields := strings.Split(line, "|")
-		if len(fields) != 9 {
-			return Session{}, fmt.Errorf("parse pane facts for session %q: %q", name, line)
-		}
-		pid, err := strconv.Atoi(fields[2])
+		pane, err := parsePaneFacts(name, line)
 		if err != nil {
-			return Session{}, fmt.Errorf("parse pane PID for session %q: %w", name, err)
-		}
-		width, err := strconv.Atoi(fields[7])
-		if err != nil {
-			return Session{}, fmt.Errorf("parse pane width for session %q: %w", name, err)
-		}
-		height, err := strconv.Atoi(fields[8])
-		if err != nil {
-			return Session{}, fmt.Errorf("parse pane height for session %q: %w", name, err)
-		}
-		pane := Pane{ID: fields[0], CurrentPath: fields[1], PID: pid, Dead: fields[3] == "1", Command: fields[6], Width: width, Height: height}
-		if fields[4] != "" {
-			status, err := strconv.Atoi(fields[4])
-			if err != nil {
-				return Session{}, fmt.Errorf("parse pane exit status for session %q: %w", name, err)
-			}
-			pane.DeadStatus = &status
-		} else if fields[5] != "" {
-			// tmux reports signal deaths separately from ordinary exit status.
-			// Preserve the conventional shell status (128 + signal) so SIGKILL
-			// remains a nonzero crash observation instead of an unclassified corpse.
-			signal, err := strconv.Atoi(fields[5])
-			if err != nil {
-				return Session{}, fmt.Errorf("parse pane death signal for session %q: %w", name, err)
-			}
-			status := 128 + signal
-			pane.DeadStatus = &status
+			return Session{}, err
 		}
 		session.Panes = append(session.Panes, pane)
 	}
 	return session, nil
+}
+
+// paneFactsFormat is the per-pane field list List reads; parsePaneFacts is its
+// only reader.
+const paneFactsFormat = "#{pane_id}|#{pane_current_path}|#{pane_pid}|#{pane_dead}|#{pane_dead_status}|#{pane_dead_signal}|#{pane_current_command}|#{pane_width}|#{pane_height}"
+
+func parsePaneFacts(name, line string) (Pane, error) {
+	fields := strings.Split(line, "|")
+	if len(fields) != 9 {
+		return Pane{}, fmt.Errorf("parse pane facts for session %q: %q", name, line)
+	}
+	pid, err := strconv.Atoi(fields[2])
+	if err != nil {
+		return Pane{}, fmt.Errorf("parse pane PID for session %q: %w", name, err)
+	}
+	width, err := strconv.Atoi(fields[7])
+	if err != nil {
+		return Pane{}, fmt.Errorf("parse pane width for session %q: %w", name, err)
+	}
+	height, err := strconv.Atoi(fields[8])
+	if err != nil {
+		return Pane{}, fmt.Errorf("parse pane height for session %q: %w", name, err)
+	}
+	pane := Pane{ID: fields[0], CurrentPath: fields[1], PID: pid, Dead: fields[3] == "1", Command: fields[6], Width: width, Height: height}
+	if fields[4] != "" {
+		status, err := strconv.Atoi(fields[4])
+		if err != nil {
+			return Pane{}, fmt.Errorf("parse pane exit status for session %q: %w", name, err)
+		}
+		pane.DeadStatus = &status
+	} else if fields[5] != "" {
+		// tmux reports signal deaths separately from ordinary exit status.
+		// Preserve the conventional shell status (128 + signal) so SIGKILL
+		// remains a nonzero crash observation instead of an unclassified corpse.
+		signal, err := strconv.Atoi(fields[5])
+		if err != nil {
+			return Pane{}, fmt.Errorf("parse pane death signal for session %q: %w", name, err)
+		}
+		status := 128 + signal
+		pane.DeadStatus = &status
+	}
+	return pane, nil
 }
 
 func pairs(values []string) func(func(string, string) bool) {

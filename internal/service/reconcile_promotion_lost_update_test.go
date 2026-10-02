@@ -22,7 +22,7 @@ import (
 // that snapshot has become by the time the write actually lands. This test
 // forces a concrete writer (an "error" status, as a hook might report a
 // crash) to land in the gap between the snapshot and the promotion write,
-// using only a test-side seam: a fake tmux script whose `list-sessions`
+// using only a test-side seam: a fake tmux script whose `list-panes -a`
 // blocks on a rendezvous file until released, which brackets exactly that
 // gap because `Reconcile` calls `Store.ListSessions` and only then
 // `TMux.List` (which shells out to this fake). The interleaved "error"
@@ -65,7 +65,7 @@ func TestReconcileLosesInterleavedStatusWriteDuringShellPromotion(t *testing.T) 
 		t.Fatal(err)
 	}
 
-	// The fake tmux `list-sessions` blocks on `release` so the test can write
+	// The fake tmux `list-panes -a` blocks on `release` so the test can write
 	// its own interleaved status update while `Reconcile` is provably
 	// blocked between its `Store.ListSessions` snapshot (which already ran,
 	// by construction: `TMux.List` is the very next call the reconcile pass
@@ -77,7 +77,7 @@ func TestReconcileLosesInterleavedStatusWriteDuringShellPromotion(t *testing.T) 
 printf '%s\n' "$*" >> '@LOG@'
 for arg in "$@"; do
 	case "$arg" in
-	list-sessions)
+	list-panes)
 		: > '@STARTED@'
 		i=0
 		while [ ! -f '@RELEASE@' ]; do
@@ -87,11 +87,7 @@ for arg in "$@"; do
 			fi
 			sleep 0.05
 		done
-		printf 'deck_@SLUG@\n'
-		exit 0
-		;;
-	list-panes)
-		printf '%s\n' '%1|/tmp|4242|0|||sh|80|24'
+		printf '%s\n' 'deck_@SLUG@|%1|/tmp|4242|0|||sh|80|24'
 		exit 0
 		;;
 	esac
@@ -110,7 +106,7 @@ exit 0
 	}()
 
 	if !waitForFile(t, started, 5*time.Second) {
-		t.Fatalf("fake tmux list-sessions was never invoked; the test never armed its rendezvous")
+		t.Fatalf("fake tmux list-panes was never invoked; the test never armed its rendezvous")
 	}
 
 	// The interleaved writer: a hook (or probe) reporting a crash while
