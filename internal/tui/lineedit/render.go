@@ -77,7 +77,14 @@ func window(its []item, s, width int, mw int) int {
 	}
 	end := s
 	used := 0
+	rest := 0 // cells the items from end onward need, drawn without a right mark
+	for _, it := range its[s:] {
+		rest += it.width
+	}
 	for end < len(its) {
+		if rest <= avail-used {
+			return len(its) // everything left fits: no right mark is needed
+		}
 		w := its[end].width
 		room := avail - used
 		if end+1 < len(its) {
@@ -91,6 +98,7 @@ func window(its []item, s, width int, mw int) int {
 			break
 		}
 		used += w
+		rest -= w
 		end++
 	}
 	if end == s && s < len(its) {
