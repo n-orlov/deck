@@ -174,6 +174,7 @@ func initializeScenario(sc *godog.ScenarioContext) {
 	registerInteractivePipeLeakSteps(sc)
 	registerInteractiveForceAttachSteps(sc)
 	registerInteractiveSidebarWheelFeatureSteps(sc)
+	registerInteractiveWheelForwardSteps(sc)
 	registerPinPersistenceSteps(sc)
 	registerTmuxSpawnBudgetSteps(sc)
 }
