@@ -21,6 +21,7 @@ import (
 	"github.com/n-orlov/deck/internal/store"
 	"github.com/n-orlov/deck/internal/theme"
 	"github.com/n-orlov/deck/internal/tmux"
+	"github.com/n-orlov/deck/internal/tui/lineedit"
 )
 
 // Model is the base session-list screen. Later modal and action work extends
@@ -567,14 +568,13 @@ type Model struct {
 	// inside the `i` detail dialog, never as a top-level key) is open;
 	// m.detail stays true underneath it the whole time, so cancelling or
 	// submitting a rename returns to detailView, not the main list.
-	// renameValue is the locally-held candidate name, prefilled with the
-	// session's current name; renamePrefilled marks it untouched, so the
-	// very first typed rune or backspace replaces it wholesale exactly like
-	// createView's cwd field and the env editor's value field.
-	renaming        bool
-	renameValue     string
-	renamePrefilled bool
-	renameNote      string
+	// renameEdit is the locally-held candidate name in the shared line
+	// editor (§11.11), opened on the session's current name as an offered
+	// value: a printable key or a paste replaces it, a caret or editing key
+	// accepts it and edits it in place.
+	renaming   bool
+	renameEdit lineedit.Editor
+	renameNote string
 	// launchInputsSetter is task 023's `i`-dialog-only launch-inputs editor
 	// action (SPEC §6.2/§11.4, PRD R108): it persists the four editable
 	// launch inputs (pre_launch, post_destroy, launch_args, login_shell)

@@ -6,6 +6,7 @@ import (
 
 	"github.com/n-orlov/deck/internal/config"
 	"github.com/n-orlov/deck/internal/store"
+	"github.com/n-orlov/deck/internal/tui/lineedit"
 )
 
 // filterTestSessions returns three active sessions distinguished so a
@@ -472,7 +473,7 @@ func TestEscOnTheRenameDialogClosesItWithoutTouchingAHeldFilter(t *testing.T) {
 	model.filterQuery = "alpha-agent"
 	model.sessions = model.filteredSessions()
 	model.renaming = true
-	model.renameValue = "new-name"
+	model.renameEdit = lineedit.New("new-name")
 
 	got, _ := model.Update(key("esc"))
 	model = got.(Model)

@@ -185,7 +185,12 @@ func TestThemedDialogsDegradeCleanlyUnderNoColorAndASCII(t *testing.T) {
 					degraded := m
 					degraded.settings.Color = false
 					degraded.settings.ASCII = true
-					degradedBody := tc.styled(degraded)
+					// §11.11: a text field's caret is a reverse-video cell
+					// (SGR 7) that deliberately SURVIVES NO_COLOR, so that
+					// one device is the only escape a degraded body may
+					// carry; everything else is still colour and must be gone.
+					noCaret := strings.NewReplacer("\x1b[7m", "", "\x1b[27m", "")
+					degradedBody := noCaret.Replace(tc.styled(degraded))
 
 					if strings.ContainsRune(degradedBody, 0x1b) {
 						t.Fatalf("styled body under NO_COLOR+DECK_ASCII still carries an escape byte:\n%q", degradedBody)
@@ -224,7 +229,7 @@ func TestThemedDialogsDegradeCleanlyUnderNoColorAndASCII(t *testing.T) {
 						t.Fatalf("styled body under NO_COLOR+DECK_ASCII has %d physical lines, wrapDialogLines(plain body) has %d:\n plain: %q\n styled: %q", len(degradedLines), len(plainLines), plainLines, degradedLines)
 					}
 					for i := range plainLines {
-						if degradedLines[i] != plainLines[i] {
+						if plainLines[i] = noCaret.Replace(plainLines[i]); degradedLines[i] != plainLines[i] {
 							t.Fatalf("styled body under NO_COLOR+DECK_ASCII line %d differs from the plain body's own wrapped line:\n styled: %q\n plain:  %q", i, degradedLines[i], plainLines[i])
 						}
 					}
