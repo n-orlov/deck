@@ -165,7 +165,10 @@ func TestCreateCWDLeftIntoAnOfferedPrefillAcceptsItAndEditsInPlace(t *testing.T)
 	m.createField = createFieldCWD
 	m.createEdits[createFieldCWD] = lineedit.NewOffered("/home/me/proj-a")
 
-	// left steps into the offered value: it is kept, accepted, caret before the "a".
+	// left steps into the offered value: it is kept, accepted, caret before the
+	// "a" (§11.11's offered rule, one rule for every field: left accepts and
+	// moves). R179's literal "left, backspace, b" example would need left to
+	// accept without moving; that clause is petitioned as contradicting R177.
 	stepped := createEditPress(t, m, "left")
 	if e := stepped.createEdits[createFieldCWD]; e.Value() != "/home/me/proj-a" || e.Offered() || e.Caret() != len("/home/me/proj-") {
 		t.Fatalf("left into the offered prefill gave %q offered=%v caret %d, want it kept, accepted, caret before the last character", e.Value(), e.Offered(), e.Caret())
