@@ -3,6 +3,8 @@ package features
 import (
 	"context"
 	"fmt"
+	"strings"
+	"testing"
 	"time"
 
 	"github.com/cucumber/godog"
@@ -17,6 +19,7 @@ func registerFilterSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^deck client "([^"]+)" types "([^"]*)" into the filter field$`, clientTypesIntoFilterField)
 	sc.Step(`^deck client "([^"]+)" presses left (\d+) times in the filter field$`, clientPressesLeftInFilterField)
 	sc.Step(`^deck client "([^"]+)" inserts "([^"]*)" at the caret of the filter field$`, clientInsertsAtFilterCaret)
+	sc.Step(`^deck client "([^"]+)" filtered sidebar comes to list exactly one session row, named "([^"]+)"$`, clientFilteredSidebarListsExactlyOneSessionRowNamed)
 	sc.Step(`^deck client "([^"]+)" keeps the filter in force with enter$`, clientKeepsFilterInForceWithEnter)
 	sc.Step(`^deck client "([^"]+)" unarchives its selected session "([^"]+)"$`, clientUnarchivesSelectedSession)
 	sc.Step(`^deck client "([^"]+)" clears the list filter with escape$`, clientClearsListFilterWithEscape)
@@ -179,4 +182,97 @@ func clientInsertsAtFilterCaret(ctx context.Context, clientName, text string) er
 		return err
 	}
 	return client.Send(text)
+}
+
+// clientFilteredSidebarListsExactlyOneSessionRowNamed waits for a frame whose
+// sidebar column (not the filter field's echo below the box, not the preview)
+// lists exactly one session row, named name. It is the row-level proof that
+// the list re-narrowed to the query on screen: the input echo alone names the
+// query whether or not any row matches it.
+func clientFilteredSidebarListsExactlyOneSessionRowNamed(ctx context.Context, clientName, name string) error {
+	h, err := assertionHarness(ctx)
+	if err != nil {
+		return err
+	}
+	client, err := h.Client(clientName)
+	if err != nil {
+		return err
+	}
+	frame, err := client.WaitForFrameFunc(ctx, false, func(frame string) bool {
+		return sidebarListsOnlySessionRow(frame, name) == nil
+	})
+	if err != nil {
+		return fmt.Errorf("deck client %q: %w (last verdict: %v):\n%s", clientName, err, sidebarListsOnlySessionRow(frame, name), frame)
+	}
+	return nil
+}
+
+// sidebarListsOnlySessionRow is that step's verdict on one frame, in either
+// glyph mode: the sidebar column (the text between a content row's left
+// border and the sidebar/preview divider, `│` or ASCII `|`) holds exactly one
+// session row -- a line whose text, after the selection gutter, leads with a
+// status glyph (sidebarRowLeadGlyphs) -- and that row's name is name. Group
+// headers, a row's second line and anything outside the box (the filter
+// field's own echo) are not session rows.
+func sidebarListsOnlySessionRow(frame, name string) error {
+	var names []string
+	for _, line := range strings.Split(frame, "\n") {
+		cells := strings.Split(line, "\u2502")
+		if len(cells) < 3 {
+			cells = strings.Split(line, "|")
+		}
+		if len(cells) < 3 {
+			continue
+		}
+		text := strings.TrimSpace(cells[1])
+		text = strings.TrimPrefix(text, "> ")
+		entry := stripSidebarRowLead(text)
+		if entry == text {
+			continue // no status glyph: a header, line 2, or a hint
+		}
+		if fields := strings.Fields(entry); len(fields) > 0 {
+			names = append(names, fields[0])
+		}
+	}
+	if len(names) != 1 || names[0] != name {
+		return fmt.Errorf("sidebar lists session rows %q, want exactly [%q]", names, name)
+	}
+	return nil
+}
+
+// TestSidebarListsOnlySessionRowReadsTheRowsNotTheEcho pins that the filter
+// scenario's row step fails while the list is still empty even though the
+// field's echo below the box names the query, and fails when a second row is
+// listed. The frames are the ASCII sidebar a real client renders in
+// filter.feature's middle-edit scenario.
+func TestSidebarListsOnlySessionRowReadsTheRowsNotTheEcho(t *testing.T) {
+	const (
+		top    = "+ deck - sessions -----------------+----------------+"
+		sock   = "| socket: deck_test_1093_2         | $              |"
+		group  = "| v default  (%d)                   |                |"
+		sel    = "| > ~ filter-edit-alpha running    |                |"
+		other  = "|   ~ filter-edit-beta running     |                |"
+		when   = "|   2s ago                         |                |"
+		blank  = "|                                  |                |"
+		bottom = "+----------------------------------+----------------+"
+		echo   = "Filter: filter-edit-alpha"
+	)
+	join := func(lines ...string) string { return strings.Join(lines, "\n") }
+	cases := []struct {
+		name  string
+		frame string
+		ok    bool
+	}{
+		{"narrowed to the edited query", join(top, sock, fmt.Sprintf(group, 1), sel, when, blank, bottom, echo), true},
+		{"empty list, echo names the query", join(top, sock, fmt.Sprintf(group, 0), blank, blank, bottom, echo), false},
+		{"not narrowed", join(top, sock, fmt.Sprintf(group, 2), sel, when, other, when, bottom, echo), false},
+		{"only the other row", join(top, sock, fmt.Sprintf(group, 1), other, when, bottom, echo), false},
+		{"unicode frame narrowed", strings.ReplaceAll(join(top, sock, fmt.Sprintf(group, 1), sel, when, bottom), "|", "\u2502"), true},
+	}
+	for _, tc := range cases {
+		err := sidebarListsOnlySessionRow(tc.frame, "filter-edit-alpha")
+		if (err == nil) != tc.ok {
+			t.Errorf("%s: verdict %v, want ok=%v", tc.name, err, tc.ok)
+		}
+	}
 }
