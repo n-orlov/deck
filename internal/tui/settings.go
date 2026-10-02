@@ -983,6 +983,9 @@ func (m Model) updateSettingsGroupEditing(msg tea.KeyMsg) (Model, tea.Cmd) {
 	}
 	// Every editing key, a typed rune and a bracketed paste belong to the
 	// shared line editor (§11.11); a key it does not own is left alone.
+	if isFieldCopyKey(msg) {
+		return m.copyFieldText(m.settingsGroupEdit.Value(), false), nil
+	}
 	if edited, ok := m.settingsGroupEdit.Update(msg); ok {
 		m.settingsGroupEdit = edited.Fit(m.settingsGroupFieldWidth(), m.settingsEditStyle())
 	}
@@ -1204,6 +1207,10 @@ func (m Model) updateSettingsEnvEditing(msg tea.KeyMsg) (Model, tea.Cmd) {
 	if keyPart {
 		ed = &m.settingsEnvKeyEdit
 	}
+	if isFieldCopyKey(msg) {
+		masked := !keyPart && isSecretShapedKey(m.settingsEnvKeyEdit.Value()) && !m.settingsEnvReveal
+		return m.copyFieldText(ed.Value(), masked), nil
+	}
 	if edited, ok := ed.Update(msg); ok {
 		*ed = edited.Fit(m.settingsEnvFieldWidth(keyPart), m.settingsEditStyle())
 	}
@@ -1326,6 +1333,9 @@ func (m Model) updateSettingsStringEditing(msg tea.KeyMsg) (Model, tea.Cmd) {
 	// paste belong to the shared line editor (§11.11): the opening value is
 	// an offered value, so a printable key or a paste replaces it and a caret
 	// or editing key accepts it and edits it in place.
+	if isFieldCopyKey(msg) {
+		return m.copyFieldText(m.settingsStringEdit.Value(), false), nil
+	}
 	if edited, ok := m.settingsStringEdit.Update(msg); ok {
 		m.settingsStringEdit = edited.Fit(m.settingsStringFieldWidth(), m.settingsEditStyle())
 	}
@@ -1940,6 +1950,9 @@ func (m Model) updateSettingsSearch(msg tea.KeyMsg) (Model, tea.Cmd) {
 		}
 		return m, nil
 	}
+	if isFieldCopyKey(msg) {
+		return m.copyFieldText(m.settingsSearchEdit.Value(), false), nil
+	}
 	if edited, ok := m.settingsSearchEdit.Update(msg); ok {
 		m.settingsSearchEdit = edited.Fit(m.settingsSearchFieldWidth(), m.settingsEditStyle())
 		if edited.Value() != query {
@@ -2306,6 +2319,11 @@ func (m Model) settingsFooterLine() string {
 // before the canvas paint wrapping above.
 func (m Model) settingsFooterLineContent() string {
 	width, _ := m.frameSize()
+	if m.fieldCopyNote != "" {
+		// R180: alt+w's outcome is shown in every settings mode (each text
+		// field is a sub-mode with its own footer); it lasts one keypress.
+		return truncateToWidth(m.fieldCopyNote, width)
+	}
 	if m.settingsDiscardConfirm {
 		return truncateToWidth("discard unsaved changes and keep config.toml as last saved? y/enter discards - any other key cancels", width)
 	}

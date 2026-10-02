@@ -1191,7 +1191,7 @@ func (m Model) dialogWidth() int {
 // substring in favour of keeping one physical line.
 func (m Model) framedDialog(body string) string {
 	boxWidth := m.dialogWidth()
-	lines := m.wrapDialogLines(body)
+	lines := append(m.wrapDialogLines(body), m.fieldCopyNoteBodyLines()...)
 	out := make([]string, 0, len(lines)+2)
 	out = append(out, m.fullBoxTop(boxWidth, "", true))
 	for _, line := range lines {
@@ -1406,6 +1406,16 @@ func (m Model) framedDialogScrollable(body string, scroll int) string {
 	boxWidth := m.dialogWidth()
 	lines := m.wrapDialogLines(body)
 	budget := m.dialogContentBudget()
+	// R180: a field-copy note is always drawn inside the visible window (never
+	// scrolled out of view below an overflowing body), so it takes its rows
+	// from the budget the body is clipped to.
+	note := m.fieldCopyNoteBodyLines()
+	if len(note) > 0 && len(lines)+len(note) > budget {
+		budget -= len(note)
+		if budget < 1 {
+			budget = 1
+		}
+	}
 	visible := lines
 	if len(lines) > budget {
 		max := len(lines) - budget
@@ -1417,6 +1427,7 @@ func (m Model) framedDialogScrollable(body string, scroll int) string {
 		}
 		visible = lines[scroll : scroll+budget]
 	}
+	visible = append(append([]string(nil), visible...), note...)
 	out := make([]string, 0, len(visible)+2)
 	out = append(out, m.fullBoxTop(boxWidth, "", true))
 	for _, line := range visible {

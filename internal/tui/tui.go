@@ -451,6 +451,12 @@ type Model struct {
 	// stale confirmation from an earlier drag never lingers over a later
 	// one.
 	selectionCopyNote string
+	// fieldCopyNote is alt+w's (R180) outcome -- the same confirmation a drag
+	// gives, or the reason nothing was copied (a masked secret, an empty
+	// field, a failed tmux write). Every key clears it before anything acts on
+	// the key, so it lives exactly until the next keypress; dialogs, the main
+	// view and the settings footer each draw it.
+	fieldCopyNote string
 	// undoSessionID/undoSessionName track the session killed by the most
 	// recent x, so u can undo it (requirement 22) within DECK_UNDO_MS
 	// without depending on it still being the current selection -- "undo"
@@ -3782,6 +3788,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		// GH #52: any key at all cancels a pending auto-enter, before any
 		// layer below gets to act on it (auto_enter.go).
 		m.cancelAutoEnter()
+		m.fieldCopyNote = ""
 		if msg.Type == tea.KeyRunes && len(msg.Runes) > 1 && !msg.Paste {
 			// Bubble Tea's own PTY reader coalesces multiple keystrokes that
 			// land in the same read into a single KeyMsg whose Runes holds
@@ -5292,10 +5299,14 @@ func (m Model) resumeNoteLines(width int) []string {
 // confirmation never pushes the frame off screen any more than a failed
 // one's error does.
 func (m Model) selectionCopyNoteLines(width int) []string {
-	if m.selectionCopyNote == "" {
-		return nil
+	var lines []string
+	if m.selectionCopyNote != "" {
+		lines = append(lines, m.canvasWrapText(m.selectionCopyNote, width)...)
 	}
-	return m.canvasWrapText(m.selectionCopyNote, width)
+	if m.fieldCopyNote != "" {
+		lines = append(lines, m.canvasWrapText(m.fieldCopyNote, width)...)
+	}
+	return lines
 }
 
 // undoNoteLines is requirement 22's transient toast: visible for exactly
@@ -9327,6 +9338,9 @@ func (m Model) updateCreate(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// own is left alone, and a selection field has no editor at all.
 	if field := m.createField; createFieldIsText(field) {
 		before := m.createEdits[field]
+		if isFieldCopyKey(msg) {
+			return m.copyFieldText(before.Value(), false), nil
+		}
 		if edited, ok := before.Update(msg); ok {
 			m.createEdits[field] = edited.Fit(m.createFieldWidth(field), m.createEditStyle(field))
 			if field == 1 {
