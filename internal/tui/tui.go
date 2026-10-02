@@ -4716,6 +4716,12 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 					}
 					return m.scrollSidebar(msg, delta), nil
 				case hitPanelPreview:
+					// R183/GH #59: a program that tracks the mouse owns
+					// the notch (interactive_wheel.go); otherwise it
+					// scrolls the grid, as before.
+					if forwarded, handled := m.forwardInteractiveWheel(msg); handled {
+						return forwarded, nil
+					}
 					delta := interactiveWheelStepLines
 					if msg.Button == tea.MouseButtonWheelDown {
 						delta = -delta

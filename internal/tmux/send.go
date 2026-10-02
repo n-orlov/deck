@@ -231,6 +231,33 @@ func (d *Dispatcher) SendMultiline(ctx context.Context, payload string) error {
 	return nil
 }
 
+// SendBytes delivers payload's exact bytes to the target as ONE
+// `send-keys -H` call through Dispatcher.Send (so the same verified
+// identity gate every other delivery runs applies), with no tmux read of
+// any other kind. -H bypasses both the key-name parser and the -l literal
+// parser, so bytes a key-name or literal path would mangle (a mouse
+// report's ESC, `;` and 8-bit X10 coordinate bytes) arrive unmodified.
+// A payload longer than hexChunkArgs is split across calls, like
+// sendHexByteRun's; an empty one sends nothing.
+func (d *Dispatcher) SendBytes(ctx context.Context, payload []byte) error {
+	for len(payload) > 0 {
+		chunk := payload
+		if len(chunk) > hexChunkArgs {
+			chunk = chunk[:hexChunkArgs]
+		}
+		args := make([]string, 0, len(chunk)+2)
+		args = append(args, "send-keys", "-H")
+		for _, b := range chunk {
+			args = append(args, fmt.Sprintf("%02x", b))
+		}
+		if err := d.Send(ctx, args...); err != nil {
+			return fmt.Errorf("send %d raw byte(s) to %q: %w", len(chunk), d.target, err)
+		}
+		payload = payload[len(chunk):]
+	}
+	return nil
+}
+
 // sendHexByteRun re-delivers count copies of the single hex byte
 // hexByte (semicolon_test.go's peeled-trailing-semicolon use is the only
 // caller today) via one or more `send-keys -H` calls, never more than

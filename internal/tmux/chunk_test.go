@@ -268,3 +268,38 @@ func waitForJoinedCaptureContaining(t *testing.T, socket, target, want string) s
 		time.Sleep(50 * time.Millisecond)
 	}
 }
+
+// TestDispatcherSendBytesDeliversRawBytesThroughOneVerifiedHexCall: SendBytes
+// (R183's mouse-report path) hands tmux exactly the given bytes as one
+// `send-keys -H` call behind the dispatcher's identity check -- including a
+// semicolon (the byte tmux's -l parser mangles) and a carriage return -- and
+// sends nothing for an empty payload.
+func TestDispatcherSendBytesDeliversRawBytesThroughOneVerifiedHexCall(t *testing.T) {
+	socket := chunkSocket("sendbytes")
+	cleanup := newBareGeometrySession(t, socket, "s0", 80, 10)
+	defer cleanup()
+	client := Client{Socket: socket, Timeout: 10 * time.Second}
+	ctx := context.Background()
+
+	waitForBarePrompt(t, socket, "s0")
+	dispatcher, err := NewDispatcher(ctx, client, "%0")
+	if err != nil {
+		t.Fatalf("NewDispatcher: %v", err)
+	}
+	before := dispatcher.Verifications()
+	if err := dispatcher.SendBytes(ctx, nil); err != nil {
+		t.Fatalf("SendBytes(nil): %v", err)
+	}
+	if v := dispatcher.Verifications(); v != before {
+		t.Fatalf("an empty payload verified/sent (Verifications %d -> %d)", before, v)
+	}
+	if err := dispatcher.SendBytes(ctx, []byte("echo p1;echo p2\r")); err != nil {
+		t.Fatalf("SendBytes: %v", err)
+	}
+	if v := dispatcher.Verifications(); v != before+1 {
+		t.Fatalf("Verifications() = %d, want %d (one verified send)", v, before+1)
+	}
+	// The typed line, then both outputs, in order: the CR ran the line and
+	// the semicolon survived as a shell separator.
+	waitForJoinedCaptureContaining(t, socket, "s0", "echo p1;echo p2\np1\np2")
+}
