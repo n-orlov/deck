@@ -67,6 +67,12 @@ func TestRunningClientSIGUSR1AdvancesSharedClock(t *testing.T) {
 	}
 }
 
+// helpPagesToBottom is how many PgDn presses the help PTY test sends to reach
+// the overlay's closing line; internal/tui's
+// TestHelpOverlayBottomReachableWithinPTYPagePresses mirrors it (and the
+// window's 330x100 size) and must be kept in step.
+const helpPagesToBottom = 10
+
 func newPTYOutput() *ptyOutput { return &ptyOutput{ch: make(chan struct{}, 1)} }
 func (o *ptyOutput) Write(p []byte) (int, error) {
 	o.mu.Lock()
@@ -448,6 +454,24 @@ func TestDeckBinaryEmptyHelpAndQuitThroughPTY(t *testing.T) {
 	// "? closes help; Esc closes help; q quits deck." (internal/tui/tui.go)
 	// -- so the capture below is synchronised on the full frame having
 	// actually arrived, not merely started.
+	//
+	// Task 024 (R186) grew the overlay to 340 wrapped lines at this width
+	// (342 View() lines with the border), past this window's 330 rows, so the
+	// closing line is no longer on the first page: the user's own way to it,
+	// PgDn (a whole page per press, clamped at the bottom), is what this test
+	// presses -- not another taller window. The first page is awaited before
+	// the first press so its frame is in the capture too: the top of the
+	// overlay is asserted on below. helpPagesToBottom presses are enough for
+	// any overlay up to that many pages, and extra presses past the bottom are
+	// clamped no-ops; internal/tui's
+	// TestHelpOverlayBottomReachableWithinPTYPagePresses fails, naming the
+	// cause, long before the overlay could outgrow them.
+	waitForScreen(t, output, done, "deck help")
+	for i := 0; i < helpPagesToBottom; i++ {
+		if _, err := terminal.Write([]byte("\x1b[6~")); err != nil {
+			t.Fatal(err)
+		}
+	}
 	waitForScreen(t, output, done, "q quits deck.")
 	// The released PTY shows the actionable footer before help opens; the
 	// companion lifecycle PTY test exercises n, a, attachment, and x.
