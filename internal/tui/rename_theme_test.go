@@ -7,6 +7,7 @@ import (
 	"github.com/n-orlov/deck/internal/config"
 	"github.com/n-orlov/deck/internal/store"
 	"github.com/n-orlov/deck/internal/theme"
+	"github.com/n-orlov/deck/internal/tui/lineedit"
 )
 
 // This file is task 021's own test obligation for the rename sub-dialog,
@@ -24,8 +25,7 @@ func task021RenameModel(t *testing.T) Model {
 	m.sessions = []store.Session{{ID: "s1", Name: "alpha", Agent: "shell", Status: "running", Slug: "alpha"}}
 	m.selected = rowCursor(0)
 	m.renaming = true
-	m.renameValue = "alpha"
-	m.renamePrefilled = true
+	m.renameEdit = lineedit.NewOffered("alpha")
 	return m
 }
 
@@ -41,7 +41,7 @@ func TestRenameStyledBodyMatchesPlainBodyOnceStripped(t *testing.T) {
 		mut  func(m *Model)
 	}{
 		{"prefilled value", func(m *Model) {}},
-		{"typed value", func(m *Model) { m.renameValue, m.renamePrefilled = "beta", false }},
+		{"typed value", func(m *Model) { m.renameEdit = lineedit.New("beta") }},
 		{"with a failure note", func(m *Model) { m.renameNote = `session name "b" already exists` }},
 	} {
 		m := task021RenameModel(t)

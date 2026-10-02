@@ -10,6 +10,7 @@ import (
 	"github.com/n-orlov/deck/internal/config"
 	"github.com/n-orlov/deck/internal/store"
 	"github.com/n-orlov/deck/internal/tmux"
+	"github.com/n-orlov/deck/internal/tui/lineedit"
 )
 
 func mouseTestModel(sessions []store.Session) Model {
@@ -635,7 +636,7 @@ func TestAllDialogsRejectMouseAtBorderBodyAndOutside(t *testing.T) {
 		},
 		{
 			name:  "rename",
-			setup: func(m *Model) { m.detail = true; m.renaming = true; m.renameValue = "a1" },
+			setup: func(m *Model) { m.detail = true; m.renaming = true; m.renameEdit = lineedit.New("a1") },
 			open:  func(m Model) bool { return m.renaming },
 		},
 	}

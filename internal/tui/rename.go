@@ -8,6 +8,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/n-orlov/deck/internal/store"
 	"github.com/n-orlov/deck/internal/theme"
+	"github.com/n-orlov/deck/internal/tui/lineedit"
 )
 
 // This file is task 013's `i` detail dialog's rename action (SPEC §11.4,
@@ -75,8 +76,7 @@ func (m Model) updateDetailView(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		session, _ := m.selectedSession()
 		m.renaming = true
-		m.renameValue = session.Name
-		m.renamePrefilled = true
+		m.renameEdit = lineedit.NewOffered(session.Name)
 		m.renameNote = ""
 	case "l":
 		// Task 023 (SPEC §6.2/§11.4, PRD R108): the launch-inputs editor,
@@ -244,37 +244,18 @@ func (m Model) updateRenameDialog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		Fields: dialogFields{SpaceTypesText: func() bool { return true }},
 		Cancel: func() {
 			m.renaming = false
-			m.renameValue, m.renamePrefilled, m.renameNote = "", false, ""
+			m.renameEdit, m.renameNote = lineedit.Editor{}, ""
 		},
 		Submit: m.submitRename,
 	}); handled {
 		return m, cmd
 	}
-	switch msg.String() {
-	case "backspace", "ctrl+h":
-		// Mirrors createView's cwd field and the env editor's value field:
-		// while the buffer still holds nothing but the untouched prefill
-		// (the session's current name), backspace clears it wholesale
-		// rather than trimming one rune off the end of it.
-		if m.renamePrefilled {
-			m.renameValue, m.renamePrefilled = "", false
-			return m, nil
-		}
-		if m.renameValue != "" {
-			runes := []rune(m.renameValue)
-			m.renameValue = string(runes[:len(runes)-1])
-		}
-		return m, nil
-	}
-	if runes := msg.Runes; len(runes) > 0 {
-		// The prefilled current name is replaced wholesale by the first
-		// keystroke rather than appended to (same rule as above): once
-		// the user has typed anything, the field holds only what they
-		// typed.
-		if m.renamePrefilled {
-			m.renameValue, m.renamePrefilled = "", false
-		}
-		m.renameValue += string(runes)
+	// Every editing key, a typed rune and a bracketed paste belong to the
+	// shared line editor (§11.11): the opening name is an offered value, so a
+	// printable key or a paste replaces it and a caret or editing key accepts
+	// it and edits it in place. A key the editor does not own is left alone.
+	if edited, ok := m.renameEdit.Update(msg); ok {
+		m.renameEdit = edited.Fit(m.renameFieldWidth(), m.renameEditStyle())
 	}
 	return m, nil
 }
@@ -293,7 +274,7 @@ func (m *Model) submitRename() tea.Cmd {
 		return nil
 	}
 	session, _ := m.selectedSession()
-	sessionID, newName := session.ID, m.renameValue
+	sessionID, newName := session.ID, m.renameEdit.Value()
 	renamer := m.renamer
 	return func() tea.Msg {
 		updated, err := renamer(context.Background(), sessionID, newName)
@@ -315,6 +296,35 @@ func (m Model) renameView() string {
 	return m.framedDialog(m.styledRenameBody())
 }
 
+// renameFieldLabel is the rename field's label; its width is what the field's
+// own cells are budgeted against.
+const renameFieldLabel = "New name:  "
+
+// renameFieldWidth is the number of cells the rename field has inside the
+// dialog's box once its label has been drawn: the editor scrolls within it, so
+// the row never wraps.
+func (m Model) renameFieldWidth() int {
+	w := m.dialogWidth() - 4 - stringWidth(renameFieldLabel)
+	if w < 1 {
+		w = 1
+	}
+	return w
+}
+
+// renameEditStyle is how the shared editor is drawn here: the clip marks
+// follow DECK_ASCII and an offered value carries the theme's selection
+// background (none under NO_COLOR).
+func (m Model) renameEditStyle() lineedit.Style {
+	sel, _ := m.backgroundSGR(theme.Selection)
+	return lineedit.Style{ASCII: m.settings.ASCII, Selection: sel}
+}
+
+// renameFieldText is the field's drawn value, caret included (the dialog has
+// exactly one field, so it is always the focused one).
+func (m Model) renameFieldText() string {
+	return m.renameEdit.View(m.renameFieldWidth(), m.renameEditStyle())
+}
+
 // renameBody builds renameView's text before framedDialog's box-width
 // padTrunc touches it, split out for the same reason archiveConfirmBody
 // is: a test can assert the exact wording without a terminal-rendering
@@ -323,7 +333,7 @@ func (m Model) renameBody() string {
 	session, _ := m.selectedSession()
 	var b strings.Builder
 	fmt.Fprintf(&b, "Rename %s\n\n", session.Name)
-	fmt.Fprintf(&b, "%s\n", m.detailField("New name:  ", m.renameValue))
+	fmt.Fprintf(&b, "%s\n", m.detailField(renameFieldLabel, m.renameFieldText()))
 	fmt.Fprintf(&b, "\nThis changes only the display name. The tmux session stays named\n%q; it is never renamed, so a rename can never move or disturb a\nlive pane's identity.\n", "deck_"+session.Slug)
 	b.WriteString("\nType a new name · Enter confirms · Esc cancels\n")
 	if m.renameNote != "" {
@@ -360,8 +370,8 @@ var renameFooterKeyTokens = map[string]bool{
 // cannot reuse detailField's plain self-resetting halves.
 func (m Model) renderRenameFieldRow() string {
 	segs := []settingsRowSegment{
-		{Text: "New name:  ", Tok: theme.Hint},
-		{Text: m.renameValue, Tok: theme.Text},
+		{Text: renameFieldLabel, Tok: theme.Hint},
+		{Text: m.renameFieldText(), Tok: theme.Text},
 	}
 	return m.bgColorToken(theme.Selection, m.settingsRenderRowOpen(segs))
 }
