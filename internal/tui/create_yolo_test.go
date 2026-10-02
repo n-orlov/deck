@@ -18,8 +18,8 @@ func newCreatingModelWithSettings(t *testing.T, settings config.Settings) Model 
 	t.Helper()
 	m := New(nil, settings, "")
 	m.creating = true
-	m.createName = "my session"
-	m.createCWD = t.TempDir()
+	m.setCreateText(createFieldName, "my session")
+	m.setCreateText(createFieldCWD, t.TempDir())
 	m.createAgent = "shell"
 	m.createProfile = "safe"
 	m.createField = 0
@@ -109,12 +109,12 @@ func TestCreateModalYoloTakesEffectImmediatelyWithNoConfirm(t *testing.T) {
 func TestCreateModalYCharacterStillTypesIntoTextFields(t *testing.T) {
 	m := newCreatingModelWithSettings(t, config.Settings{AllowYolo: true})
 	m.createField = 0
-	m.createName = ""
+	m.setCreateText(createFieldName, "")
 
 	updated, _ := m.Update(key("y"))
 	after := updated.(Model)
-	if after.createName != "y" {
-		t.Fatalf("createName = %q, want %q", after.createName, "y")
+	if after.createText(createFieldName) != "y" {
+		t.Fatalf("createName = %q, want %q", after.createText(createFieldName), "y")
 	}
 }
 

@@ -21,8 +21,8 @@ func task016CreateTestModel(t *testing.T) Model {
 	m := New(nil, config.Settings{Color: true}, "")
 	m.width, m.height = 80, 24
 	m.creating = true
-	m.createName = "my session"
-	m.createCWD = t.TempDir()
+	m.setCreateText(createFieldName, "my session")
+	m.setCreateText(createFieldCWD, t.TempDir())
 	m.createAgent = "shell"
 	m.createProfile = "safe"
 	m.createField = 0
@@ -74,17 +74,17 @@ func TestCreateFieldRowsSourceContainsNoColorToken(t *testing.T) {
 // not hidden by NO_COLOR.
 func TestCreateBodyMeasurementsCarryNoSGRBytes(t *testing.T) {
 	m := task016CreateTestModel(t)
-	m.createLaunchArgs = `["--flag"]`
-	m.createEnv = "KEY=value"
-	m.createPreLaunch = "echo hi"
+	m.setCreateText(createFieldLaunchArgs, `["--flag"]`)
+	m.setCreateText(createFieldEnv, "KEY=value")
+	m.setCreateText(createFieldPreLaunch, "echo hi")
 	m.createError = "working directory is required"
 
 	plain := m.createBody()
-	if strings.ContainsRune(plain, 0x1b) {
+	if strings.ContainsRune(withoutCaretSGR(plain), 0x1b) {
 		t.Fatalf("createBody() (the plain body scroll math measures) contains an escape byte:\n%q", plain)
 	}
 	for i, line := range m.wrapDialogLines(plain) {
-		if strings.ContainsRune(line, 0x1b) {
+		if strings.ContainsRune(withoutCaretSGR(line), 0x1b) {
 			t.Fatalf("wrapDialogLines(createBody())[%d] contains an escape byte: %q", i, line)
 		}
 	}
@@ -121,10 +121,10 @@ func task016GhostModel(t *testing.T) (Model, string) {
 		t.Fatalf("Mkdir: %v", err)
 	}
 	m.createField = 1
-	m.createCWD = parent + "/uni"
-	ghost, ok := createCWDGhostCompletion(m.createCWD)
+	m.setCreateText(createFieldCWD, parent+"/uni")
+	ghost, ok := createCWDGhostCompletion(m.createText(createFieldCWD))
 	if !ok || ghost != "que-directory/" {
-		t.Fatalf("createCWDGhostCompletion(%q) = %q ok=%v, want %q -- this test needs a live ghost to be non-vacuous", m.createCWD, ghost, ok, "que-directory/")
+		t.Fatalf("createCWDGhostCompletion(%q) = %q ok=%v, want %q -- this test needs a live ghost to be non-vacuous", m.createText(createFieldCWD), ghost, ok, "que-directory/")
 	}
 	return m, ghost
 }
@@ -143,26 +143,26 @@ func TestCreateCWDGhostValueCarriesNoSGRBytes(t *testing.T) {
 
 	rows := m.createFieldRows()
 	value := rows[1].value
-	if strings.ContainsRune(value, 0x1b) {
+	if strings.ContainsRune(withoutCaretSGR(value), 0x1b) {
 		t.Fatalf("createFieldRows()[1].value contains an escape byte: %q", value)
 	}
-	if want := m.createCWD + ghost; value != want {
+	if want := m.createText(createFieldCWD) + ghost; withoutCaretSGR(value) != want {
 		t.Fatalf("createFieldRows()[1].value = %q, want the plain typed text plus its plain ghost %q", value, want)
 	}
 	for i, row := range rows {
 		for _, field := range []struct{ what, s string }{{"label", row.label}, {"value", row.value}, {"help", row.help}} {
-			if strings.ContainsRune(field.s, 0x1b) {
+			if strings.ContainsRune(withoutCaretSGR(field.s), 0x1b) {
 				t.Fatalf("createFieldRows()[%d].%s contains an escape byte: %q", i, field.what, field.s)
 			}
 		}
 	}
 
 	plain := m.createBody()
-	if strings.ContainsRune(plain, 0x1b) {
+	if strings.ContainsRune(withoutCaretSGR(plain), 0x1b) {
 		t.Fatalf("createBody() with a live ghost contains an escape byte:\n%q", plain)
 	}
 	for i, line := range m.wrapDialogLines(plain) {
-		if strings.ContainsRune(line, 0x1b) {
+		if strings.ContainsRune(withoutCaretSGR(line), 0x1b) {
 			t.Fatalf("wrapDialogLines(createBody())[%d] contains an escape byte: %q", i, line)
 		}
 	}
@@ -170,7 +170,7 @@ func TestCreateCWDGhostValueCarriesNoSGRBytes(t *testing.T) {
 	// body with the ghost's bytes typed out by hand: proof no invisible
 	// byte is being counted as width anywhere in the scroll math.
 	typed := m
-	typed.createCWD = m.createCWD + ghost
+	typed.setCreateText(createFieldCWD, m.createText(createFieldCWD)+ghost)
 	typed.createField = 0 // no ghost of its own to add on top
 	if got, want := len(m.wrapDialogLines(plain)), len(typed.wrapDialogLines(typed.createBody())); got != want {
 		t.Fatalf("ghosted body wraps to %d lines, the same text typed out wraps to %d -- a hidden byte is being measured", got, want)
@@ -233,9 +233,9 @@ func TestStyledCreateBodyMatchesPlainBodyLineForLine(t *testing.T) {
 	ghosted, _ := task016GhostModel(t)
 
 	full := task016CreateTestModel(t)
-	full.createLaunchArgs = `["--flag"]`
-	full.createEnv = "KEY=value"
-	full.createPreLaunch = "echo hi"
+	full.setCreateText(createFieldLaunchArgs, `["--flag"]`)
+	full.setCreateText(createFieldEnv, "KEY=value")
+	full.setCreateText(createFieldPreLaunch, "echo hi")
 	full.createError = "working directory is required"
 
 	candidates := task016CreateTestModel(t)
@@ -258,11 +258,18 @@ func TestStyledCreateBodyMatchesPlainBodyLineForLine(t *testing.T) {
 			t.Fatalf("%s: styledCreateBody has %d physical lines, wrapDialogLines(createBody()) has %d", tc.name, len(styled), len(plain))
 		}
 		for i := range plain {
-			if got := stripANSI(styled[i]); got != plain[i] {
+			if got := stripANSI(styled[i]); got != withoutCaretSGR(plain[i]) {
 				t.Fatalf("%s: line %d differs once escapes are stripped:\n styled: %q\n  plain: %q", tc.name, i, got, plain[i])
 			}
 		}
 	}
+}
+
+// withoutCaretSGR drops the one escape pair a plain body may carry: the shared
+// line editor's reverse-video caret (SGR 7/27, SPEC §11.11), which survives
+// NO_COLOR by design. No colour token is allowed in a plain body.
+func withoutCaretSGR(s string) string {
+	return strings.NewReplacer("\x1b[7m", "", "\x1b[27m", "").Replace(s)
 }
 
 // m0WrapPlain is wrapDialogLines(createBody()) with the no-escape check the
@@ -270,7 +277,7 @@ func TestStyledCreateBodyMatchesPlainBodyLineForLine(t *testing.T) {
 func m0WrapPlain(t *testing.T, m Model) []string {
 	t.Helper()
 	body := m.createBody()
-	if strings.ContainsRune(body, 0x1b) {
+	if strings.ContainsRune(withoutCaretSGR(body), 0x1b) {
 		t.Fatalf("createBody() contains an escape byte:\n%q", body)
 	}
 	return m.wrapDialogLines(body)
@@ -301,10 +308,10 @@ func task016SpacedGhostModel(t *testing.T) (Model, string) {
 		t.Fatalf("Mkdir: %v", err)
 	}
 	m.createField = 1
-	m.createCWD = parent + "/" + segment
-	ghost, ok := createCWDGhostCompletion(m.createCWD)
+	m.setCreateText(createFieldCWD, parent+"/"+segment)
+	ghost, ok := createCWDGhostCompletion(m.createText(createFieldCWD))
 	if !ok || ghost != " tail/" {
-		t.Fatalf("createCWDGhostCompletion(%q) = %q ok=%v, want %q", m.createCWD, ghost, ok, " tail/")
+		t.Fatalf("createCWDGhostCompletion(%q) = %q ok=%v, want %q", m.createText(createFieldCWD), ghost, ok, " tail/")
 	}
 	return m, ghost
 }
@@ -317,9 +324,9 @@ func task016SpacedGhostModel(t *testing.T) (Model, string) {
 // rather than the modal drawing past the frame.
 func TestCreateViewStaysWithinFrameBudgetAt80x24(t *testing.T) {
 	m := task016CreateTestModel(t)
-	m.createLaunchArgs = `["--flag"]`
-	m.createEnv = "KEY=value"
-	m.createPreLaunch = "echo hi"
+	m.setCreateText(createFieldLaunchArgs, `["--flag"]`)
+	m.setCreateText(createFieldEnv, "KEY=value")
+	m.setCreateText(createFieldPreLaunch, "echo hi")
 	view := m.createView()
 	if n := countViewLines(view); n > 24 {
 		t.Fatalf("create view is %d lines at 80x24, want <= 24:\n%s", n, view)
@@ -338,9 +345,9 @@ func TestCreateViewStaysWithinFrameBudgetAt80x24(t *testing.T) {
 // reachable" success criterion).
 func TestCreateViewSubmitLineReachableViaPgDown(t *testing.T) {
 	m := task016CreateTestModel(t)
-	m.createLaunchArgs = `["--flag"]`
-	m.createEnv = "KEY=value"
-	m.createPreLaunch = "echo hi"
+	m.setCreateText(createFieldLaunchArgs, `["--flag"]`)
+	m.setCreateText(createFieldEnv, "KEY=value")
+	m.setCreateText(createFieldPreLaunch, "echo hi")
 
 	first := m.createView()
 	if strings.Contains(first, "Enter") && strings.Contains(first, "submits") {

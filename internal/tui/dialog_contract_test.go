@@ -212,16 +212,15 @@ func TestCreateModalTabOnPathFieldWithNoMatchDoesNotMoveFocus(t *testing.T) {
 	m := New(nil, config.Settings{Socket: "test-socket"}, "")
 	m.creating = true
 	m.createField = 1
-	m.createCWD = "/definitely/does/not/exist/anywhere-025"
-	m.createCWDPrefilled = false
+	m.setCreateText(createFieldCWD, "/definitely/does/not/exist/anywhere-025")
 
 	updated, _ := m.Update(key("tab"))
 	got := updated.(Model)
 	if got.createField != 1 {
 		t.Fatalf("tab with no filesystem match moved createField to %d, want to stay on 1 (the cwd field)", got.createField)
 	}
-	if got.createCWD != m.createCWD {
-		t.Fatalf("tab with no filesystem match changed createCWD to %q, want unchanged %q", got.createCWD, m.createCWD)
+	if got.createText(createFieldCWD) != m.createText(createFieldCWD) {
+		t.Fatalf("tab with no filesystem match changed createCWD to %q, want unchanged %q", got.createText(createFieldCWD), m.createText(createFieldCWD))
 	}
 }
 
@@ -248,12 +247,12 @@ func TestCreateModalRecentCWDCyclesOnCtrlPCtrlN(t *testing.T) {
 	m := New(db, config.Settings{Socket: "test-socket"}, "")
 	m.creating = true
 	m.createField = 1
-	m.createCWD, m.createCWDPrefilled = "/typed/value", false
+	m.setCreateText(createFieldCWD, "/typed/value")
 
 	updated, _ := m.Update(key("ctrl+p"))
 	got := updated.(Model)
-	if got.createCWD != "/recent/two" {
-		t.Fatalf("Ctrl+P did not cycle to the most recent entry: createCWD = %q, want %q", got.createCWD, "/recent/two")
+	if got.createText(createFieldCWD) != "/recent/two" {
+		t.Fatalf("Ctrl+P did not cycle to the most recent entry: createCWD = %q, want %q", got.createText(createFieldCWD), "/recent/two")
 	}
 	if got.createField != 1 {
 		t.Fatalf("Ctrl+P moved createField to %d, want to stay on 1", got.createField)
@@ -262,15 +261,15 @@ func TestCreateModalRecentCWDCyclesOnCtrlPCtrlN(t *testing.T) {
 	// A second Ctrl+P walks further back through history (older).
 	updated, _ = got.Update(key("ctrl+p"))
 	got = updated.(Model)
-	if got.createCWD != "/recent/one" {
-		t.Fatalf("second Ctrl+P did not cycle to the older entry: createCWD = %q, want %q", got.createCWD, "/recent/one")
+	if got.createText(createFieldCWD) != "/recent/one" {
+		t.Fatalf("second Ctrl+P did not cycle to the older entry: createCWD = %q, want %q", got.createText(createFieldCWD), "/recent/one")
 	}
 
 	// Ctrl+N walks back towards newer entries -- readline's "next history".
 	updated, _ = got.Update(key("ctrl+n"))
 	got = updated.(Model)
-	if got.createCWD != "/recent/two" {
-		t.Fatalf("Ctrl+N did not cycle back to the newer entry: createCWD = %q, want %q", got.createCWD, "/recent/two")
+	if got.createText(createFieldCWD) != "/recent/two" {
+		t.Fatalf("Ctrl+N did not cycle back to the newer entry: createCWD = %q, want %q", got.createText(createFieldCWD), "/recent/two")
 	}
 	if got.createField != 1 {
 		t.Fatalf("Ctrl+N moved createField to %d, want to stay on 1", got.createField)
@@ -280,8 +279,8 @@ func TestCreateModalRecentCWDCyclesOnCtrlPCtrlN(t *testing.T) {
 	// whatever the user had typed before it started comes back exactly.
 	updated, _ = got.Update(key("ctrl+n"))
 	got = updated.(Model)
-	if got.createCWD != "/typed/value" {
-		t.Fatalf("Ctrl+N past the newest entry did not restore the pre-cycle value: createCWD = %q, want %q", got.createCWD, "/typed/value")
+	if got.createText(createFieldCWD) != "/typed/value" {
+		t.Fatalf("Ctrl+N past the newest entry did not restore the pre-cycle value: createCWD = %q, want %q", got.createText(createFieldCWD), "/typed/value")
 	}
 	if got.createCWDRecentIndex != -1 {
 		t.Fatalf("Ctrl+N past the newest entry left the cycle open: createCWDRecentIndex = %d, want -1", got.createCWDRecentIndex)
@@ -290,8 +289,8 @@ func TestCreateModalRecentCWDCyclesOnCtrlPCtrlN(t *testing.T) {
 	// Ctrl+N with no cycle in progress is a no-op, not a jump into history.
 	updated, _ = got.Update(key("ctrl+n"))
 	got = updated.(Model)
-	if got.createCWD != "/typed/value" {
-		t.Fatalf("Ctrl+N with no cycle in progress changed createCWD to %q, want %q", got.createCWD, "/typed/value")
+	if got.createText(createFieldCWD) != "/typed/value" {
+		t.Fatalf("Ctrl+N with no cycle in progress changed createCWD to %q, want %q", got.createText(createFieldCWD), "/typed/value")
 	}
 
 	// up/down on the cwd field, with no candidate list open, move fields

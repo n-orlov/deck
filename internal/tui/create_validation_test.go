@@ -21,13 +21,13 @@ func newCreatingModel(t *testing.T) Model {
 	t.Helper()
 	m := New(nil, config.Settings{}, "")
 	m.creating = true
-	m.createName = "my session"
-	m.createCWD = t.TempDir()
+	m.setCreateText(createFieldName, "my session")
+	m.setCreateText(createFieldCWD, t.TempDir())
 	m.createAgent = "shell"
 	m.createProfile = "safe"
-	m.createLaunchArgs = ""
-	m.createEnv = ""
-	m.createPreLaunch = "echo hi"
+	m.setCreateText(createFieldLaunchArgs, "")
+	m.setCreateText(createFieldEnv, "")
+	m.setCreateText(createFieldPreLaunch, "echo hi")
 	m.createLoginShell = false
 	m.createField = 0
 	return m
@@ -35,20 +35,20 @@ func newCreatingModel(t *testing.T) Model {
 
 func assertFieldsRetained(t *testing.T, before, after Model) {
 	t.Helper()
-	if after.createName != before.createName {
-		t.Errorf("createName changed: %q -> %q", before.createName, after.createName)
+	if after.createText(createFieldName) != before.createText(createFieldName) {
+		t.Errorf("createName changed: %q -> %q", before.createText(createFieldName), after.createText(createFieldName))
 	}
 	if after.createAgent != before.createAgent {
 		t.Errorf("createAgent changed: %q -> %q", before.createAgent, after.createAgent)
 	}
-	if after.createPreLaunch != before.createPreLaunch {
-		t.Errorf("createPreLaunch changed: %q -> %q", before.createPreLaunch, after.createPreLaunch)
+	if after.createText(createFieldPreLaunch) != before.createText(createFieldPreLaunch) {
+		t.Errorf("createPreLaunch changed: %q -> %q", before.createText(createFieldPreLaunch), after.createText(createFieldPreLaunch))
 	}
 }
 
 func TestCreateModalMissingCWDMessage(t *testing.T) {
 	before := newCreatingModel(t)
-	before.createCWD = ""
+	before.setCreateText(createFieldCWD, "")
 	updated, _ := before.Update(key("enter"))
 	after := updated.(Model)
 	if after.createError != "working directory is required" {
@@ -66,21 +66,21 @@ func TestCreateModalCWDNotDirectoryMessage(t *testing.T) {
 	if err := os.WriteFile(file, []byte("x"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	before.createCWD = file
+	before.setCreateText(createFieldCWD, file)
 	updated, _ := before.Update(key("enter"))
 	after := updated.(Model)
 	if !strings.Contains(after.createError, "is not a directory") {
 		t.Fatalf("createError = %q, want mention of 'is not a directory'", after.createError)
 	}
-	if after.createCWD != file {
-		t.Errorf("createCWD changed: %q -> %q", file, after.createCWD)
+	if after.createText(createFieldCWD) != file {
+		t.Errorf("createCWD changed: %q -> %q", file, after.createText(createFieldCWD))
 	}
 	assertFieldsRetained(t, before, after)
 }
 
 func TestCreateModalMalformedEnvKeyMessage(t *testing.T) {
 	before := newCreatingModel(t)
-	before.createEnv = "novalue,GOOD=1"
+	before.setCreateText(createFieldEnv, "novalue,GOOD=1")
 	updated, _ := before.Update(key("enter"))
 	after := updated.(Model)
 	if !strings.Contains(after.createError, "key=value") {
@@ -89,22 +89,22 @@ func TestCreateModalMalformedEnvKeyMessage(t *testing.T) {
 	if !strings.Contains(after.createError, "novalue") {
 		t.Fatalf("createError = %q, want the offending entry named", after.createError)
 	}
-	if after.createEnv != "novalue,GOOD=1" {
-		t.Errorf("createEnv changed: %q", after.createEnv)
+	if after.createText(createFieldEnv) != "novalue,GOOD=1" {
+		t.Errorf("createEnv changed: %q", after.createText(createFieldEnv))
 	}
 	assertFieldsRetained(t, before, after)
 }
 
 func TestCreateModalMalformedLaunchArgsJSONMessage(t *testing.T) {
 	before := newCreatingModel(t)
-	before.createLaunchArgs = "{not json"
+	before.setCreateText(createFieldLaunchArgs, "{not json")
 	updated, _ := before.Update(key("enter"))
 	after := updated.(Model)
 	if !strings.Contains(after.createError, "launch_args must be a JSON array") {
 		t.Fatalf("createError = %q, want mention of launch_args JSON", after.createError)
 	}
-	if after.createLaunchArgs != "{not json" {
-		t.Errorf("createLaunchArgs changed: %q", after.createLaunchArgs)
+	if after.createText(createFieldLaunchArgs) != "{not json" {
+		t.Errorf("createLaunchArgs changed: %q", after.createText(createFieldLaunchArgs))
 	}
 	assertFieldsRetained(t, before, after)
 }

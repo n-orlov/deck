@@ -73,8 +73,8 @@ func TestCreateModalTypingIntoPostDestroyField(t *testing.T) {
 
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("rm -rf $DECK_SESSION_DIR")})
 	after := updated.(Model)
-	if after.createPostDestroy != "rm -rf $DECK_SESSION_DIR" {
-		t.Fatalf("createPostDestroy = %q, want the typed text", after.createPostDestroy)
+	if after.createText(createFieldPostDestroy) != "rm -rf $DECK_SESSION_DIR" {
+		t.Fatalf("createPostDestroy = %q, want the typed text", after.createText(createFieldPostDestroy))
 	}
 
 	view := after.createBody()
@@ -90,7 +90,7 @@ func TestCreateModalTypingIntoPostDestroyField(t *testing.T) {
 func TestCreateModalShellSubmitPassesPostDestroyThrough(t *testing.T) {
 	before := newCreatingModel(t)
 	before.createAgent = "shell"
-	before.createPostDestroy = "echo teardown >> log"
+	before.setCreateText(createFieldPostDestroy, "echo teardown >> log")
 
 	var got service.ShellCreateInput
 	before.create = func(ctx context.Context, in service.ShellCreateInput) (store.Session, error) {
@@ -107,8 +107,8 @@ func TestCreateModalShellSubmitPassesPostDestroyThrough(t *testing.T) {
 	}
 	cmd()
 
-	if got.PostDestroy != before.createPostDestroy {
-		t.Fatalf("CreateShell received PostDestroy %q, want the modal's own field %q", got.PostDestroy, before.createPostDestroy)
+	if got.PostDestroy != before.createText(createFieldPostDestroy) {
+		t.Fatalf("CreateShell received PostDestroy %q, want the modal's own field %q", got.PostDestroy, before.createText(createFieldPostDestroy))
 	}
 }
 
@@ -119,7 +119,7 @@ func TestCreateModalShellSubmitPassesPostDestroyThrough(t *testing.T) {
 func TestCreateModalAgentSubmitPassesPostDestroyThrough(t *testing.T) {
 	before := newCreatingModel(t)
 	before.createAgent = "claude"
-	before.createPostDestroy = "echo teardown >> log"
+	before.setCreateText(createFieldPostDestroy, "echo teardown >> log")
 
 	var got service.AgentCreateInput
 	before.createAgentSession = func(ctx context.Context, in service.AgentCreateInput) (store.Session, error) {
@@ -136,7 +136,7 @@ func TestCreateModalAgentSubmitPassesPostDestroyThrough(t *testing.T) {
 	}
 	cmd()
 
-	if got.PostDestroy != before.createPostDestroy {
-		t.Fatalf("CreateAgent received PostDestroy %q, want the modal's own field %q", got.PostDestroy, before.createPostDestroy)
+	if got.PostDestroy != before.createText(createFieldPostDestroy) {
+		t.Fatalf("CreateAgent received PostDestroy %q, want the modal's own field %q", got.PostDestroy, before.createText(createFieldPostDestroy))
 	}
 }

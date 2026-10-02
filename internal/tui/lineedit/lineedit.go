@@ -276,3 +276,9 @@ func (e Editor) wordRight() int {
 	}
 	return off
 }
+
+// FirstCluster splits s into its first grapheme cluster and the rest.
+func FirstCluster(s string) (first, rest string) {
+	first, rest, _, _ = uniseg.FirstGraphemeClusterInString(s, -1)
+	return first, rest
+}

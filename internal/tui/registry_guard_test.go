@@ -220,8 +220,8 @@ func TestBlackBoxRegistrySwapNeedsNoTUIEdit(t *testing.T) {
 	m = m.WithAvailableAgentKindsProber(func() []string { return registry.Kinds() })
 	m.createAvailableAgentKinds = m.computeAvailableAgentKinds()
 	m.creating = true
-	m.createName = "guard-session"
-	m.createCWD = t.TempDir()
+	m.setCreateText(createFieldName, "guard-session")
+	m.setCreateText(createFieldCWD, t.TempDir())
 	m.createAgent = registry.Kinds()[0]
 	m.createProfile = "safe"
 	m.createField = 2

@@ -616,8 +616,8 @@ func TestAllDialogsRejectMouseAtBorderBodyAndOutside(t *testing.T) {
 			name: "create",
 			setup: func(m *Model) {
 				m.creating = true
-				m.createName = "my session"
-				m.createCWD = "/work/infra"
+				m.setCreateText(createFieldName, "my session")
+				m.setCreateText(createFieldCWD, "/work/infra")
 				m.createAgent = "shell"
 				m.createField = 0
 			},

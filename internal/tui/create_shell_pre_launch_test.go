@@ -18,7 +18,7 @@ import (
 func TestCreateModalShellSubmitPassesPreLaunchThrough(t *testing.T) {
 	before := newCreatingModel(t)
 	before.createAgent = "shell"
-	before.createPreLaunch = "eval \"$(load-secrets)\""
+	before.setCreateText(createFieldPreLaunch, "eval \"$(load-secrets)\"")
 
 	var got service.ShellCreateInput
 	before.create = func(ctx context.Context, in service.ShellCreateInput) (store.Session, error) {
@@ -35,8 +35,8 @@ func TestCreateModalShellSubmitPassesPreLaunchThrough(t *testing.T) {
 	}
 	cmd()
 
-	if got.PreLaunch != before.createPreLaunch {
-		t.Fatalf("CreateShell received PreLaunch %q, want the modal's own field %q", got.PreLaunch, before.createPreLaunch)
+	if got.PreLaunch != before.createText(createFieldPreLaunch) {
+		t.Fatalf("CreateShell received PreLaunch %q, want the modal's own field %q", got.PreLaunch, before.createText(createFieldPreLaunch))
 	}
 	if got.Name != "my session" || got.CWD == "" {
 		t.Fatalf("CreateShell received %#v, want the modal's name and resolved cwd alongside the hook", got)
