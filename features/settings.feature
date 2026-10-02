@@ -377,9 +377,9 @@ Feature: The `,` settings takeover (requirement 48)
   @requirement-17-clear-recent-cwds-history
   Scenario: settings offers clearing the recent-directory history, and clearing it costs only the prefill, never a session
     Given deck client "A" is started
-    When deck client "A" creates shell session "clear-recent-seed" with a fresh working directory labelled "clear-recent-seed"
+    When deck client "A" creates shell session "clear-recent-seed" with a fresh working directory labelled "crs"
     And deck client "A" opens the create modal
-    Then deck client "A" screen contains the directory labelled "clear-recent-seed"
+    Then deck client "A" screen contains the directory labelled "crs"
     # "(last used) " also prefixes the Agent field's help (R85, task 024,
     # internal/tui/tui.go:6486-6516) with the identical literal, so this
     # must pin the cwd row's own help text, not just the shared prefix, or
@@ -427,9 +427,9 @@ Feature: The `,` settings takeover (requirement 48)
     # clearing recent cwds), so the bare literal would pass even if the
     # cwd prefill this scenario is actually testing had not been cleared.
     Then deck client "A" screen does not contain "(last used) the session's cwd"
-    And deck client "A" screen does not contain the directory labelled "clear-recent-seed"
+    And deck client "A" screen does not contain the directory labelled "crs"
     When deck client "A" closes the create modal
-    And deck client "A" creates shell session "clear-recent-after" with a fresh working directory labelled "clear-recent-after"
+    And deck client "A" creates shell session "clear-recent-after" with a fresh working directory labelled "cra"
     Then the state database contains session "clear-recent-seed"
     And the state database contains session "clear-recent-after"
     And the state database has exactly 2 sessions
