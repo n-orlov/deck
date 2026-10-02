@@ -19,6 +19,7 @@ type Editor struct {
 	text    string
 	caret   int // byte offset, always on a grapheme-cluster boundary
 	offered bool
+	scroll  int // byte offset of the first drawn cluster, set by Fit
 }
 
 // New returns an editor holding text with the caret at its end. The text is
