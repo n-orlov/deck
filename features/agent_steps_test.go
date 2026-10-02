@@ -383,6 +383,18 @@ func clientCreatesAgentSessionWithProfileAndOptionalMessage(ctx context.Context,
 	return waitForAgentCreateRecorded(ctx, h, client, name, offsets)
 }
 
+// typedFieldTail is the suffix of text a scrolling text field still shows
+// once everything is typed: the last 20 runes (well inside the narrowest
+// field a scenario's terminal gives, which leaves room for the "..." clip
+// mark and the label).
+func typedFieldTail(text string) string {
+	runes := []rune(text)
+	if len(runes) > 20 {
+		runes = runes[len(runes)-20:]
+	}
+	return string(runes)
+}
+
 // clientCreatesAgentSessionWithProfileAndEnv is clientCreatesAgentSessionWithProfile's
 // counterpart that also fills the Env field (createFieldRows field 5, two
 // down-arrows past Permission profile (task 025 moved field navigation off
@@ -403,7 +415,12 @@ func clientCreatesAgentSessionWithProfileAndEnv(ctx context.Context, clientName,
 		return err
 	}
 	time.Sleep(75 * time.Millisecond)
-	if err := client.WaitForFrame(ctx, false, envText); err != nil {
+	// The Env field is a horizontally scrolling single-line editor: a value
+	// wider than the field shows as "..." plus its tail, never in full
+	// (internal/tui/lineedit), so waiting for the whole text can never match
+	// a long value. Its tail is what is on screen once the LAST typed key has
+	// been applied, which makes it the stronger sync for "everything typed".
+	if err := client.WaitForFrame(ctx, false, typedFieldTail(envText)); err != nil {
 		return fmt.Errorf("type Env field with %q: %w", envText, err)
 	}
 	// Durable sync point, never a frame wait on the transient "starting"
