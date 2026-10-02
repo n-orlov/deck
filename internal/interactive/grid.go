@@ -18,6 +18,7 @@ import (
 	"time"
 
 	uv "github.com/charmbracelet/ultraviolet"
+	"github.com/charmbracelet/x/ansi"
 	vt "github.com/charmbracelet/x/vt"
 
 	"github.com/n-orlov/deck/internal/tmux"
@@ -59,7 +60,82 @@ var capturePollInterval = 200 * time.Millisecond
 // would silently diverge the moment those two disagreed, which is the
 // failure mode task 042 rules out by construction rather than by
 // convention.
-type Grid = vt.SafeEmulator
+//
+// Grid is a struct embedding the vt emulator (every emulator method is
+// promoted, so callers use it exactly as before) because it also carries
+// the terminal modes the emulator reports only through callbacks: cursor
+// visibility and the mouse-reporting modes (R182/R183). newGrid registers
+// those callbacks before any byte is written, so a seed's replay and the
+// live stream both land in the same state, and a grid rebuilt by a reseed
+// or a resize starts from the seed's replay of the pane's real modes.
+type Grid struct {
+	*vt.SafeEmulator
+	cursorHidden atomic.Bool
+	mouseModes   atomic.Uint32
+}
+
+// MouseMode is a bit set of the mouse-reporting modes a pane has enabled.
+type MouseMode uint32
+
+// The six mouse modes the grid tracks (DEC private modes by number).
+const (
+	MouseNormal MouseMode = 1 << iota // 1000
+	MouseButton                       // 1002
+	MouseAny                          // 1003
+	MouseUTF8                         // 1005
+	MouseSGR                          // 1006
+	MouseURXVT                        // 1015
+)
+
+// mouseBit maps a DEC private mode number to its MouseMode bit (0 when the
+// mode is not one of the six tracked).
+func mouseBit(mode ansi.Mode) (MouseMode, bool) {
+	dm, ok := mode.(ansi.DECMode)
+	if !ok {
+		return 0, false
+	}
+	switch int(dm) {
+	case 1000:
+		return MouseNormal, true
+	case 1002:
+		return MouseButton, true
+	case 1003:
+		return MouseAny, true
+	case 1005:
+		return MouseUTF8, true
+	case 1006:
+		return MouseSGR, true
+	case 1015:
+		return MouseURXVT, true
+	}
+	return 0, false
+}
+
+func (g *Grid) setMouse(bit MouseMode, on bool) {
+	for {
+		old := g.mouseModes.Load()
+		n := old &^ uint32(bit)
+		if on {
+			n |= uint32(bit)
+		}
+		if g.mouseModes.CompareAndSwap(old, n) {
+			return
+		}
+	}
+}
+
+// CursorVisible reports whether the pane's cursor is currently shown
+// (DECTCEM; visible until a program hides it).
+func (g *Grid) CursorVisible() bool { return !g.cursorHidden.Load() }
+
+// MouseModes returns the mouse-reporting modes currently enabled.
+func (g *Grid) MouseModes() MouseMode { return MouseMode(g.mouseModes.Load()) }
+
+// Has reports whether every bit of m is set.
+func (m MouseMode) Has(bit MouseMode) bool { return m&bit == bit }
+
+// Any reports whether any mouse-reporting mode is on.
+func (m MouseMode) Any() bool { return m != 0 }
 
 // ScrollbackMaxLines bounds every Grid's own scrollback (PRD II-51): vt's
 // library default (vt.DefaultScrollbackSize, 10000 lines) is already a
@@ -86,9 +162,27 @@ type Grid = vt.SafeEmulator
 const ScrollbackMaxLines = 2000
 
 func newGrid(width, height int) *Grid {
-	g := vt.NewSafeEmulator(width, height)
+	g := &Grid{SafeEmulator: vt.NewSafeEmulator(width, height)}
 	g.SetScrollbackSize(ScrollbackMaxLines)
+	// Registered here, before newGrid returns, so before any caller's
+	// first (seed) byte is written: a mode set in a seed's replay must
+	// not be missed.
+	g.SetCallbacks(vt.Callbacks{
+		CursorVisibility: func(visible bool) { g.cursorHidden.Store(!visible) },
+		EnableMode:       func(m ansi.Mode) { g.modeChanged(m, true) },
+		DisableMode:      func(m ansi.Mode) { g.modeChanged(m, false) },
+	})
 	return g
+}
+
+func (g *Grid) modeChanged(mode ansi.Mode, on bool) {
+	if mode == ansi.ModeTextCursorEnable {
+		g.cursorHidden.Store(!on)
+		return
+	}
+	if bit, ok := mouseBit(mode); ok {
+		g.setMouse(bit, on)
+	}
 }
 
 // replyDrainBufSize bounds one reply-drain read (see startReplyDrain).
@@ -208,6 +302,28 @@ type renderedFrame struct {
 	// stale frame out to a taller request uses the same blank row
 	// RenderRows itself would have produced.
 	width int
+	// cursor/visible/mouse are the cursor and mode state read in the SAME
+	// composition as rows (see RenderSnapshot).
+	cursorX, cursorY int
+	cursorViewRow    int
+	cursorVisible    bool
+	mouse            MouseMode
+}
+
+// RenderSnapshot is one RenderRows composition together with the cursor
+// and mode state read from the same grid under the same lock hold, so a
+// caller drawing the cursor never pairs rows from one moment with a
+// cursor from another (R182/R183).
+type RenderSnapshot struct {
+	Rows       []string
+	UsedOffset int
+	// CursorX/CursorY are the cursor's position on the live screen
+	// (0-based). CursorViewRow is the same row in Rows' coordinates; it is
+	// outside [0, len(Rows)) when the scrolled view does not show it.
+	CursorX, CursorY int
+	CursorViewRow    int
+	CursorVisible    bool
+	Mouse            MouseMode
 }
 
 // installGrid publishes fresh as the session's current grid and retires
@@ -822,10 +938,19 @@ func (s *Session) Grid() *Grid { return s.currentGrid() }
 // flight -- and that write will mark it dirty in turn. The last write
 // always ends in a fresh composition.
 func (s *Session) RenderRows(offset, height int) (rows []string, usedOffset int) {
+	snap := s.RenderSnapshot(offset, height)
+	return snap.Rows, snap.UsedOffset
+}
+
+// RenderSnapshot is RenderRows plus the cursor position and visibility and
+// the mouse modes, all taken from ONE locked read of ONE grid (the same
+// s.mu + s.writes hold RenderRows documents), or, when a write is in
+// flight, all from the one previously composed frame.
+func (s *Session) RenderSnapshot(offset, height int) RenderSnapshot {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	if !s.writes.TryRLock() {
-		return s.staleRows(offset, height)
+		return s.staleSnapshot(offset, height)
 	}
 	defer s.writes.RUnlock()
 	g := s.grid
@@ -846,7 +971,7 @@ func (s *Session) RenderRows(offset, height int) (rows []string, usedOffset int)
 	end := total - offset
 	start := end - height
 
-	rows = make([]string, 0, height)
+	rows := make([]string, 0, height)
 	blank := strings.Repeat(" ", width)
 	for i := start; i < end; i++ {
 		switch {
@@ -863,7 +988,8 @@ func (s *Session) RenderRows(offset, height int) (rows []string, usedOffset int)
 			}
 		}
 	}
-	s.lastFrame.Store(&renderedFrame{
+	cur := g.CursorPosition()
+	frame := &renderedFrame{
 		// A private copy: the caller owns what it is handed (internal/tui
 		// prepends the II-49 notice to it), and a cached frame a caller
 		// could mutate would corrupt every later stale hit.
@@ -871,8 +997,18 @@ func (s *Session) RenderRows(offset, height int) (rows []string, usedOffset int)
 		usedOffset:    offset,
 		scrollbackLen: sbLen,
 		width:         width,
-	})
-	return rows, offset
+		cursorX:       cur.X,
+		cursorY:       cur.Y,
+		cursorViewRow: sbLen + cur.Y - start,
+		cursorVisible: g.CursorVisible(),
+		mouse:         g.MouseModes(),
+	}
+	s.lastFrame.Store(frame)
+	return RenderSnapshot{
+		Rows: rows, UsedOffset: offset,
+		CursorX: frame.cursorX, CursorY: frame.cursorY, CursorViewRow: frame.cursorViewRow,
+		CursorVisible: frame.cursorVisible, Mouse: frame.mouse,
+	}
 }
 
 // staleRows is RenderRows' answer while a grid mutation is in flight: the
@@ -883,6 +1019,13 @@ func (s *Session) RenderRows(offset, height int) (rows []string, usedOffset int)
 // when the view is taller than the content -- the live bottom edge is the
 // part a viewer is looking at.
 func (s *Session) staleRows(offset, height int) (rows []string, usedOffset int) {
+	snap := s.staleSnapshot(offset, height)
+	return snap.Rows, snap.UsedOffset
+}
+
+// staleSnapshot is staleRows plus the cached frame's own cursor and mode
+// state (a frame never mixes moments).
+func (s *Session) staleSnapshot(offset, height int) RenderSnapshot {
 	if height < 0 {
 		height = 0
 	}
@@ -897,22 +1040,29 @@ func (s *Session) staleRows(offset, height int) (rows []string, usedOffset int) 
 		// rows, and the caller's own offset back unchanged, since there
 		// is no scrollback length to clamp it against and inventing 0
 		// would silently reset a scroll position.
-		return make([]string, height), offset
+		return RenderSnapshot{Rows: make([]string, height), UsedOffset: offset, CursorViewRow: -1, CursorVisible: true}
 	}
 	if offset > last.scrollbackLen {
 		offset = last.scrollbackLen
 	}
 	out := make([]string, 0, height)
 	blank := strings.Repeat(" ", last.width)
+	pad := 0
 	for i := len(last.rows); i < height; i++ {
 		out = append(out, blank)
+		pad++
 	}
 	start := 0
 	if len(last.rows) > height {
 		start = len(last.rows) - height
 	}
 	out = append(out, last.rows[start:]...)
-	return out, offset
+	return RenderSnapshot{
+		Rows: out, UsedOffset: offset,
+		CursorX: last.cursorX, CursorY: last.cursorY,
+		CursorViewRow: last.cursorViewRow + pad - start,
+		CursorVisible: last.cursorVisible, Mouse: last.mouse,
+	}
 }
 
 // AbsoluteRow converts a view-relative row -- 0 at the top of whatever
