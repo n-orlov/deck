@@ -6,6 +6,8 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/n-orlov/deck/internal/store"
+	"github.com/n-orlov/deck/internal/theme"
+	"github.com/n-orlov/deck/internal/tui/lineedit"
 )
 
 // This file is task 123's `/` list filter (SPEC.md:984/§11.3, requirement
@@ -132,6 +134,7 @@ func (m Model) updateFilter(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		prevSession, prevOk := m.selectedSession()
 		m.filtering = false
 		m.filterQuery = ""
+		m.filterEdit = lineedit.Editor{}
 		m.sessions = m.filteredSessions()
 		m.selectVisibleStopAfterReload(selectedGroupHadNoRows)
 		m.followSelectionViewport()
@@ -150,15 +153,20 @@ func (m Model) updateFilter(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		// Esc changes it again.
 		m.filtering = false
 		return m, nil
-	case "backspace", "ctrl+h":
-		if m.filterQuery != "" {
-			runes := []rune(m.filterQuery)
-			m.filterQuery = string(runes[:len(runes)-1])
-		}
 	default:
-		if runes := msg.Runes; len(runes) > 0 {
-			m.filterQuery += string(runes)
+		// Every editing key, a typed rune and a bracketed paste belong to the
+		// shared line editor (§11.11); a key it does not own (up/down, tab, ...)
+		// changes nothing. The applied query is always the editor's text.
+		edited, ok := m.filterEdit.Update(msg)
+		if !ok {
+			return m, nil
 		}
+		m.filterEdit = edited.Fit(m.filterFieldWidth(), m.filterEditStyle())
+		if m.filterEdit.Value() == m.filterQuery {
+			// A caret move: the query is unchanged, so nothing re-narrows.
+			return m, nil
+		}
+		m.filterQuery = m.filterEdit.Value()
 	}
 	// cure-01-05 follow-up (task 022 sweep): fail-before was
 	// features/filter.feature's own "dd found through / tombstones an
@@ -215,7 +223,39 @@ func (m Model) filterStatusLine(width int) []string {
 		return nil
 	}
 	if m.filtering {
-		return m.canvasWrapText("Filter: "+m.filterQuery+"_", width)
+		// One line: the editor scrolls inside the field instead of wrapping,
+		// and draws its own caret (a reverse-video cell, never a stand-in).
+		return []string{m.canvasFillLine(theme.Background, filterFieldLabel+m.filterFieldText(width), width)}
 	}
 	return m.canvasWrapText(fmt.Sprintf("Filter %q in force (%d matching) \u2014 / to change, Esc to clear", m.filterQuery, len(m.sessions)), width)
+}
+
+// filterFieldLabel is the filter field's label; its width is what the field's
+// own cells are budgeted against.
+const filterFieldLabel = "Filter: "
+
+// filterFieldWidth is the number of cells the filter field has once its label
+// has been drawn, at the current terminal width.
+func (m Model) filterFieldWidth() int {
+	return m.filterFieldWidthFor(m.width)
+}
+
+func (m Model) filterFieldWidthFor(width int) int {
+	w := width - stringWidth(filterFieldLabel)
+	if w < 1 {
+		w = 1
+	}
+	return w
+}
+
+// filterEditStyle is how the shared editor is drawn here: clip marks follow
+// DECK_ASCII; the filter's value is never offered, so no selection colour.
+func (m Model) filterEditStyle() lineedit.Style {
+	return lineedit.Style{ASCII: m.settings.ASCII}
+}
+
+// filterFieldText is the field's drawn text, caret included.
+func (m Model) filterFieldText(width int) string {
+	w := m.filterFieldWidthFor(width)
+	return m.filterEdit.Fit(w, m.filterEditStyle()).View(w, m.filterEditStyle())
 }

@@ -715,6 +715,9 @@ type Model struct {
 	// closes the text field, clearing only on Esc.
 	filtering   bool
 	filterQuery string
+	// filterEdit is the shared line editor (§11.11) holding the `/` field's
+	// text and caret while filtering; filterQuery is its applied text.
+	filterEdit lineedit.Editor
 	// baseSessions is exactly what sessionsLoaded's ListSessions() call
 	// returned (SPEC's default view: excludes both tombstoned and
 	// archived rows) -- the one thing that handler ever assigns directly.
@@ -4529,6 +4532,9 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			// discarding it.
 			if !m.help {
 				m.filtering = true
+				// A held query is kept, with the caret at its end (not an
+				// offer: a second `/` refines it).
+				m.filterEdit = lineedit.New(m.filterQuery).Fit(m.filterFieldWidth(), m.filterEditStyle())
 				return m, m.loadArchivedSessions
 			}
 		case " ":
