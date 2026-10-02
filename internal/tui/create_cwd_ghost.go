@@ -8,10 +8,12 @@ import (
 )
 
 // createCWDGhostCompletion computes §11.7's directory-only ghost completion
-// (task 010) for the cwd field's CURRENT raw text. There is no other
-// cursor position in this field (typing only appends, backspace only
-// trims the end), so "the cursor is at end of field" always holds and the
-// segment being completed is always whatever follows the last '/' in raw.
+// (task 010) for the cwd field's CURRENT raw text. It is asked only while the
+// caret is at the END of the field (createCWDCaretAtEnd, SPEC §11.7): with
+// the caret anywhere else there is no ghost and tab does nothing, because
+// completing a segment in the middle of a path would have to decide what
+// becomes of the text after the caret. At the end, the segment being
+// completed is whatever follows the last '/' in raw.
 //
 // It returns the missing suffix of a UNIQUE matching directory's name plus
 // a trailing '/' -- exactly what accepting the ghost appends to raw -- and
