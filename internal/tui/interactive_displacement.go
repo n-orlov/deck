@@ -21,6 +21,10 @@ type interactiveDisplacementChecked struct {
 	windowTarget string
 	displaced    bool
 	sessionName  string
+	// paneDead is the dead-pane check that shares the backstop's one
+	// `display-message` (R185): pane_dead was read, or the target no
+	// longer resolves, on this tick.
+	paneDead bool
 }
 
 // interactiveDisplacementFastPath is task 118's cheap, no-tmux-call check
@@ -46,23 +50,26 @@ func (m Model) interactiveDisplacementFastPath() bool {
 // issued alongside the fast path above on every previewTick while
 // m.interactive is true (never per keystroke -- SPEC §11.9: "not paid
 // for with a tmux round-trip per keystroke", and updateInteractive itself
-// gains no check at all). It answers "displaced" unless BOTH hold:
+// gains no check at all). Since R185 it is ALSO the dead-pane check: ONE
+// `display-message` reads `#{pane_dead}`, `#{session_attached}` and the
+// window's `#{@deck_isize_owner}` together, so interactive mode costs one
+// tmux process per tick and a dead pane or a displacement is noticed
+// within that same tick. It answers "displaced" unless BOTH hold:
 //
-//   - claimStillMine (task 103's probe): a stolen claim (ClaimForeignLive)
-//     is the `F`-flavour, and this is the only way to catch it under
-//     interactive.TransportCapture, where the fast path never fires at
-//     all;
-//   - SessionAttachedCount(target) == 0: deck's own interactive mode is
-//     never itself a tmux "attached client" (it only pipes/captures the
-//     pane), so a nonzero count means some OTHER client has attached
-//     directly -- SPEC §11.9's "full attach arriving and re-expressing
-//     its own size" flavour, which never touches deck's own ownership
-//     option and so is invisible to the claim probe on its own.
+//   - the claim is still ours (task 103's probe, read from the tick): a
+//     stolen claim (ClaimForeignLive) is the `F`-flavour, and this is the
+//     only way to catch it under interactive.TransportCapture, where the
+//     fast path never fires at all;
+//   - session_attached == 0: deck's own interactive mode is never itself
+//     a tmux "attached client" (it only pipes/captures the pane), so a
+//     nonzero count means some OTHER client has attached directly --
+//     SPEC §11.9's "full attach arriving and re-expressing its own size"
+//     flavour, which never touches deck's own ownership option and so is
+//     invisible to the claim probe on its own.
 //
-// A transport error from either tmux call is treated as "not displaced"
-// (best-effort, like previewFit's own no-live-pane skip): acting on an
-// unconfirmed read is never safer here than leaving the dialog closed
-// for one more tick, and the very next tick tries again.
+// The same read failing means the target no longer resolves: that is as
+// terminal for the pane as pane_dead==1 (paneDead), and, as before, an
+// unreadable claim is not "still mine".
 func (m Model) checkInteractiveDisplacementBackstop() tea.Cmd {
 	if !m.interactive || m.interactiveOwnership == nil {
 		return nil
@@ -75,14 +82,12 @@ func (m Model) checkInteractiveDisplacementBackstop() tea.Cmd {
 		name = session.Name
 	}
 	return func() tea.Msg {
-		ctx := context.Background()
-		displaced := !claimStillMine(ctx, ownership)
-		if !displaced {
-			if attached, err := client.SessionAttachedCount(ctx, target); err == nil && attached != 0 {
-				displaced = true
-			}
+		tick, err := client.InteractiveTickRead(context.Background(), target)
+		if err != nil {
+			return interactiveDisplacementChecked{windowTarget: target, displaced: true, sessionName: name, paneDead: true}
 		}
-		return interactiveDisplacementChecked{windowTarget: target, displaced: displaced, sessionName: name}
+		displaced := !ownership.StillMine(tick) || tick.Attached != 0
+		return interactiveDisplacementChecked{windowTarget: target, displaced: displaced, sessionName: name, paneDead: tick.PaneDead}
 	}
 }
 

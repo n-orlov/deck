@@ -23,12 +23,6 @@ import (
 	"github.com/n-orlov/deck/internal/tmux"
 )
 
-// paneDeadPollInterval is how often the live path polls `#{pane_dead}`
-// (PRD II-23). A test may lower this (it is a var, not a const) to keep
-// the death-detection assertion fast without changing production
-// behaviour.
-var paneDeadPollInterval = 200 * time.Millisecond
-
 // Transport selects which mechanism a Session uses to keep its Grid fed
 // (PRD II-5, task 070). TransportPipe (the default -- see Start) arms
 // tmux's `pipe-pane -IO` and streams every byte it delivers into the
@@ -280,17 +274,14 @@ type Session struct {
 	pipe *tmux.PanePipe
 	done chan struct{}
 
-	// deadOnce/deadCh back Dead(): pane_dead polling (below) and Close
-	// both call markDead, and exactly one of them may be the one that
-	// actually closes deadCh and the pipe.
+	// deadOnce/deadCh back Dead(): NotePaneDead (fed by the owner's
+	// preview tick) and Close both call markDead, and exactly one of them
+	// may be the one that actually closes deadCh and the pipe.
 	deadOnce sync.Once
 	deadCh   chan struct{}
 
-	// pollCancel/pollDone stop the pane_dead poll goroutine and let
-	// Close wait for it to have actually returned, the same shape
-	// drain/done already uses.
+	// pollCancel stops the captureLoop/fallbackLoop goroutines.
 	pollCancel context.CancelFunc
-	pollDone   chan struct{}
 
 	// pipeGoneOnce/statusMu/status back Status() and the displacement
 	// fallback (task 046/II-24): drain calls handlePipeGone exactly once,
@@ -399,7 +390,6 @@ func StartWithTransport(ctx context.Context, client tmux.Client, target string, 
 		done:         make(chan struct{}),
 		deadCh:       make(chan struct{}),
 		pollCancel:   pollCancel,
-		pollDone:     make(chan struct{}),
 		fallbackCh:   make(chan struct{}),
 		fallbackDone: make(chan struct{}),
 		renders:      NewRenderCoalescer(renderCoalesceInterval),
@@ -459,7 +449,6 @@ func StartWithTransport(ctx context.Context, client tmux.Client, target string, 
 		go s.drain(client, target)
 		go s.fallbackLoop(pollCtx, client, target)
 	}
-	go s.pollPaneDead(pollCtx, client, target)
 	failed = false
 	return s, nil
 }
@@ -479,8 +468,8 @@ func StartWithTransport(ctx context.Context, client tmux.Client, target string, 
 // regardless of which transport a Session was started with. A
 // CaptureSeed error (a transient tmux error, or the target vanishing) is
 // not treated as fatal here -- it keeps polling until ctx is cancelled;
-// pollPaneDead, running independently, is the mechanism that decides
-// whether target has actually died.
+// NotePaneDead, fed by the owner's preview tick, is the mechanism that
+// decides whether target has actually died.
 func (s *Session) captureLoop(ctx context.Context, client tmux.Client, target string) {
 	defer close(s.done)
 	ticker := time.NewTicker(capturePollInterval)
@@ -506,49 +495,21 @@ func (s *Session) captureLoop(ctx context.Context, client tmux.Client, target st
 	}
 }
 
-// pollPaneDead is the live path's ONLY liveness signal (PRD II-23):
-// `pipe-pane`'s stream gives none of its own. Under `remain-on-exit
-// failed` (deck's own server default) a dead pane's pipe never closes --
-// tmux keeps the pane object, and therefore the still-open write end of
-// the FIFO, around for as long as remain-on-exit keeps the pane, which
-// under "failed" is forever -- so drain's read(2) blocks indefinitely and
-// the grid would otherwise render a stale frame with no way to notice.
-// Polling here, independently of drain, is what lets the session notice
-// a crashed target at all: on the first observed `pane_dead` (or the
-// target vanishing outright, which display-message reports as an error),
+// NotePaneDead is the live path's ONLY liveness hook (PRD II-23), and it
+// is fed by the owner's own preview tick rather than a poll of its own
+// (R185): `pipe-pane`'s stream gives no liveness signal, and under
+// `remain-on-exit failed` (deck's own server default) a dead pane's pipe
+// never closes, so drain's read(2) would block indefinitely and the grid
+// would render a stale frame with no way to notice. The tick's single
+// `display-message` already reads `#{pane_dead}` (tmux.Client.
+// InteractiveTickRead); on the first observed `pane_dead` -- or the target
+// vanishing outright, which that read reports as an error and is as
+// terminal for this session as pane_dead==1 -- the caller reports it here.
 // markDead closes the pipe itself, which unblocks drain deterministically
 // instead of leaving it parked on a read that would otherwise never
 // return, and closes deadCh so a caller selecting on Dead() observes the
-// death directly rather than inferring it from drain's side effects.
-func (s *Session) pollPaneDead(ctx context.Context, client tmux.Client, target string) {
-	defer close(s.pollDone)
-	ticker := time.NewTicker(paneDeadPollInterval)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-s.done:
-			// drain already stopped through some other path (e.g. the
-			// pipe was displaced and disarmed, or Close ran); nothing
-			// left for this poll to detect or correct.
-			return
-		case <-ticker.C:
-		}
-		dead, err := client.PaneDead(ctx, target)
-		if err != nil {
-			// The target itself is gone (session/pane no longer
-			// resolves) -- as terminal as pane_dead==1 for this
-			// session's purposes.
-			s.markDead()
-			return
-		}
-		if dead {
-			s.markDead()
-			return
-		}
-	}
-}
+// death directly. It is idempotent.
+func (s *Session) NotePaneDead() { s.markDead() }
 
 // markDead is the one place that closes deadCh and disarms the pipe on a
 // detected death; sync.Once makes it safe to call from both the poll
@@ -670,7 +631,7 @@ var pipeDisplacedFallbackInterval = 200 * time.Millisecond
 // merely to fall back silently.
 const pipeDisplacedNotice = "\r\n[deck: preview pipe displaced by another process -- showing periodic snapshots]\r\n"
 
-// fallbackLoop is always started alongside drain/pollPaneDead, and always
+// fallbackLoop is always started alongside drain, and always
 // runs to completion by the time Close returns (Close waits on
 // fallbackDone unconditionally) -- but it does nothing at all unless
 // handlePipeGone closes fallbackCh, which only happens on a confirmed
@@ -1188,7 +1149,6 @@ func (s *Session) close(disarm bool) error {
 		}
 	}
 	<-s.done
-	<-s.pollDone
 	<-s.fallbackDone
 	// Every goroutine that could install a grid has returned by now, so
 	// the current grid is the last one: retire it and join its reply

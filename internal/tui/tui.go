@@ -3704,6 +3704,10 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		// path above may already have raised the dialog this same tick, or
 		// Ctrl+Q may have left interactive mode (and possibly re-entered a
 		// different session) before this round trip landed.
+		if msg.paneDead && m.interactive && m.interactiveWindowTarget == msg.windowTarget && m.interactiveGrid != nil {
+			// R185: the dead-pane check rides the backstop's one read.
+			m.interactiveGrid.NotePaneDead()
+		}
 		if msg.displaced && m.interactive && m.interactiveWindowTarget == msg.windowTarget {
 			next, cmd := m.raiseLostAttach(msg.sessionName)
 			return next, cmd
