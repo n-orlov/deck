@@ -2416,6 +2416,7 @@ func (m Model) settingsEnvViewLines(categories []settingsCategory, leftWidth, ri
 			{text: m.settingsRenderRowOpen([]settingsRowSegment{{Text: keyMarker + "Key: " + m.settingsEnvKeyText(), Tok: theme.Text}}), bg: keyBg},
 			{text: m.settingsRenderRowOpen([]settingsRowSegment{{Text: valueMarker + "Value: " + m.settingsEnvValueText(), Tok: theme.Text}}), bg: valueBg},
 		}
+		rightLines = append(rightLines, m.settingsEditKeyRows(rightWidth-4)...)
 	} else {
 		title = "[env]"
 		keys := settingsEnvKeys(m.settingsEdits)
@@ -2499,6 +2500,7 @@ func (m Model) settingsStringEditViewLines(categories []settingsCategory, leftWi
 		text: m.settingsRenderRowOpen([]settingsRowSegment{{Text: "> " + m.settingsStringEdit.View(m.settingsStringFieldWidth(), m.settingsEditStyle()), Tok: theme.Text}}),
 		bg:   theme.Selection,
 	})
+	rightLines = append(rightLines, m.settingsEditKeyRows(innerWidth)...)
 	if haveField {
 		envVar, _ := settingsFieldEnvOverride(f, m.settings)
 		fileValue := settingsFieldValueDisplay(f, m.settingsEdits)
@@ -2659,6 +2661,9 @@ func (m Model) settingsGroupsViewLines(categories []settingsCategory, leftWidth,
 		pushBlock("", theme.Text, "")
 		label := m.settingsGroupLabel()
 		pushBlock(label+m.settingsGroupEdit.View(m.settingsGroupFieldWidth(), m.settingsEditStyle()), theme.Text, theme.Selection)
+		for _, l := range wrapText(textFieldEditKeysLine, innerWidth) {
+			pushBlock(l, theme.Dimmed, "")
+		}
 	}
 	if confirming {
 		pushBlock("", theme.Text, "")
@@ -2804,7 +2809,8 @@ func (m Model) settingsSearchViewLines(categories []settingsCategory, leftWidth,
 		text: m.settingsRenderRowOpen([]settingsRowSegment{{Text: settingsSearchLabel + m.settingsSearchEdit.View(m.settingsSearchFieldWidth(), m.settingsEditStyle()), Tok: theme.Text}}),
 		bg:   theme.Selection,
 	}
-	rightLines = fitLines(append([]settingsListLine{queryLine}, rightLines...), contentRows)
+	head := append([]settingsListLine{queryLine}, m.settingsEditKeyRows(rightWidth-4)...)
+	rightLines = fitLines(append(head, rightLines...), contentRows)
 	title := "Search"
 	lines := make([]string, 0, height)
 	lines = append(lines, m.settingsLeftTopLine(leftWidth, "Categories", leftFocused)+m.settingsRightTopLine(rightWidth, title, rightFocused))
@@ -2814,4 +2820,16 @@ func (m Model) settingsSearchViewLines(categories []settingsCategory, leftWidth,
 	lines = append(lines, m.settingsLeftBottomLine(leftWidth, leftFocused)+m.settingsRightBottomLine(rightWidth, rightFocused))
 	lines = append(lines, m.settingsFooterLine())
 	return strings.Join(lines, "\n")
+}
+
+// settingsEditKeyRows is the settings takeover's help line for a typed field
+// (SPEC §11.11, R186): textFieldEditKeysLine wrapped to the right panel's inner
+// width, dimmed, one row per wrapped line, the way every other explanatory row
+// in the panel is drawn.
+func (m Model) settingsEditKeyRows(innerWidth int) []settingsListLine {
+	var rows []settingsListLine
+	for _, l := range wrapText(textFieldEditKeysLine, innerWidth) {
+		rows = append(rows, settingsListLine{text: m.settingsRenderRowOpen([]settingsRowSegment{{Text: l, Tok: theme.Dimmed}})})
+	}
+	return rows
 }

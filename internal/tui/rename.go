@@ -344,6 +344,7 @@ func (m Model) renameBody() string {
 	fmt.Fprintf(&b, "%s\n", m.detailField(renameFieldLabel, m.renameFieldText()))
 	fmt.Fprintf(&b, "\nThis changes only the display name. The tmux session stays named\n%q; it is never renamed, so a rename can never move or disturb a\nlive pane's identity.\n", "deck_"+session.Slug)
 	b.WriteString("\nType a new name · Enter confirms · Esc cancels\n")
+	b.WriteString(textFieldEditKeysLine + "\n")
 	if m.renameNote != "" {
 		fmt.Fprintf(&b, "\n%s\n", m.renameNote)
 	}
@@ -424,6 +425,7 @@ func (m Model) styledRenameBody() string {
 	colorWhole(theme.Dimmed, fmt.Sprintf("This changes only the display name. The tmux session stays named\n%q; it is never renamed, so a rename can never move or disturb a\nlive pane's identity.", "deck_"+session.Slug))
 	out = append(out, "")
 	colorFooterLine("Type a new name · Enter confirms · Esc cancels")
+	out = append(out, m.styledTextFieldEditKeys(m.wrapDialogLines)...)
 	if m.renameNote != "" {
 		out = append(out, "")
 		colorWhole(theme.Error, m.renameNote)

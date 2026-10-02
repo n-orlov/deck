@@ -9843,12 +9843,12 @@ func (m Model) createBody() string {
 			fmt.Fprintf(&b, "%s%s/\n", marker, name)
 		}
 	}
-	b.WriteString("\u2191/\u2193 field · Left/Right/Space cycles · Enter submits · Esc cancels\n")
+	b.WriteString(m.createFooterLine() + "\n")
 	if m.createError != "" {
 		if strings.Contains(m.createError, "collides with existing slug") {
-			b.WriteString("\nCannot create session: name collides with existing slug.\n")
+			b.WriteString("Cannot create session: name collides with existing slug.\n")
 		} else {
-			fmt.Fprintf(&b, "\nCannot create session: %s\n", m.createError)
+			fmt.Fprintf(&b, "Cannot create session: %s\n", m.createError)
 		}
 	}
 	return b.String()
@@ -10043,9 +10043,8 @@ func (m Model) styledCreateBody() string {
 			colorWhole(theme.Text, marker+name+"/")
 		}
 	}
-	colorFooterLine("\u2191/\u2193 field · Left/Right/Space cycles · Enter submits · Esc cancels")
+	colorFooterLine(m.createFooterLine())
 	if m.createError != "" {
-		out = append(out, "")
 		if strings.Contains(m.createError, "collides with existing slug") {
 			colorWhole(theme.Error, "Cannot create session: name collides with existing slug.")
 		} else {
@@ -10173,8 +10172,12 @@ Keys
     full width; while interactive, a wheel notch or Shift+PgUp/PgDn
     scrolls this bounded, deck-owned scrollback of the fitted view --
     seeded on entry from the pane's own tmux history where it has any,
-    then grown from what the pane prints -- rather than forwarding to
-    the pane; a wheel notch over the sidebar instead scrolls the list,
+    then grown from what the pane prints -- unless the pane's program
+    tracks the mouse (less, btop, an agent's full-screen renderer), in
+    which case a wheel notch is forwarded to it as the pane cell under
+    the pointer, the way tmux does under mouse on, and Shift+wheel
+    still scrolls the scrollback; a wheel notch over the sidebar
+    instead scrolls the list,
     without leaving interactive mode or resizing anything (see Mouse
     below), exactly as it does outside interactive mode;
     a full-screen app (editor, pager, agent TUI) sits on the
@@ -10316,6 +10319,24 @@ Create dialog fields
                       agent argv directly
   ↑/↓ changes field; ↵ advances or submits; Esc cancels
 
+Text fields (create, rename, launch inputs, env editor, settings, the / filter)
+  One line editor with a real caret everywhere (SPEC §11.11):
+  ←/→ or ctrl+b/ctrl+f  caret one character left/right
+  home/end or ctrl+a/ctrl+e  caret to the start/end
+  alt+b/alt+f or ctrl+←/ctrl+→  caret one word left/right
+  backspace (ctrl+h) / delete (ctrl+d)  delete the character before/under the caret
+  ctrl+w                delete back to the previous whitespace
+  alt+backspace         delete back one word
+  ctrl+u / ctrl+k       delete from the caret to the start / to the end
+  typing, paste         insert at the caret (a paste is one insertion)
+  alt+w                 copy the whole field's text (tmux buffer and, best
+                        effort, the system clipboard); a masked secret
+                        copies only while revealed
+  A value a field merely offers (the last-used cwd, the current value a
+  rename or edit opens on) is drawn as a selection: typing replaces it,
+  any caret or editing key accepts it first. ↑/↓, ↵ and Esc keep their
+  dialog meaning.
+
 Yolo is gated by allow_yolo: it must be enabled in config.toml, or yolo is
 not offered at all (the UI states why). Once allow_yolo is enabled, choosing
 yolo -- at create time or when switching profile with P -- takes effect
@@ -10438,6 +10459,10 @@ Mouse (every binding duplicates a key above; nothing here is mouse-only)
                             dialog, this still does nothing (Esc cancels)
   wheel over the preview     while interactive, scrolls the grid's own
                             bounded scrollback (like Shift+PgUp/PgDn);
+                            when the pane's program has mouse reporting
+                            on, the notch is forwarded to it instead,
+                            unless the grid is already scrolled back;
+                            Shift+wheel always scrolls the scrollback;
                             otherwise does nothing
   drag over the preview      while interactive, selects text; releasing
                             copies it into deck's own tmux buffer and

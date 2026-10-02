@@ -178,6 +178,9 @@ func (m Model) launchInputsBody() string {
 	}
 	b.WriteString("\n" + launchInputsVerbatimNote + "\n")
 	b.WriteString(launchInputsFooterLine + "\n")
+	if launchInputsFieldIsText(m.launchInputsField) {
+		b.WriteString(textFieldEditKeysLine + "\n")
+	}
 	if m.launchInputsNote != "" {
 		fmt.Fprintf(&b, "\n%s\n", m.launchInputsNote)
 	}
@@ -269,6 +272,9 @@ func (m Model) styledLaunchInputsBody() string {
 	out = append(out, "")
 	colorWhole(theme.Dimmed, launchInputsVerbatimNote)
 	colorLegendLine(launchInputsFooterLine, launchInputsLegendKeys)
+	if launchInputsFieldIsText(m.launchInputsField) {
+		out = append(out, m.styledTextFieldEditKeys(wrap)...)
+	}
 	if m.launchInputsNote != "" {
 		out = append(out, "")
 		colorWhole(theme.Error, m.launchInputsNote)
