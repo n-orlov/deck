@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"time"
 
 	"github.com/cucumber/godog"
 )
@@ -45,11 +44,7 @@ func clientPressesCaretOrEditKeyInCWDField(ctx context.Context, name, key string
 		return err
 	}
 	seq := map[string]string{"left": "\x1b[D", "backspace": "\x7f"}[key]
-	if err := client.Send(seq); err != nil {
-		return err
-	}
-	time.Sleep(60 * time.Millisecond)
-	return nil
+	return client.Send(seq)
 }
 
 // clientCWDFieldComesToShowNoGhostText waits until the cwd field's rows hold no
