@@ -10176,8 +10176,8 @@ Keys
     tracks the mouse (less, btop, an agent's full-screen renderer), in
     which case a wheel notch is forwarded to it as the pane cell under
     the pointer, the way tmux does under mouse on, and Shift+wheel
-    still scrolls the scrollback; a wheel notch over the sidebar
-    instead scrolls the list,
+    still scrolls the scrollback;
+    a wheel notch over the sidebar instead scrolls the list,
     without leaving interactive mode or resizing anything (see Mouse
     below), exactly as it does outside interactive mode;
     a full-screen app (editor, pager, agent TUI) sits on the

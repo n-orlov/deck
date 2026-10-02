@@ -250,3 +250,32 @@ func TestDetailViewScrollReachesEveryLineAndFieldsScrollTogether(t *testing.T) {
 		}
 	}
 }
+
+// TestHelpOverlayBottomReachableWithinPTYPagePresses guards cmd/deck's
+// TestDeckBinaryEmptyHelpAndQuitThroughPTY, which opens the real binary in a
+// 330x100 PTY and presses PgDn helpPagesToBottom (10) times to reach the
+// closing "q quits deck." line (task 028; mirror those three numbers). The
+// overlay no longer fits one 330-row page (340 wrapped lines at width 100),
+// so the PTY test scrolls like a user. This fast test fails -- naming the
+// cause, rather than an 8 s PTY timeout -- if the help ever grows past what
+// that many presses can reach, in which case raise the press count there and
+// here together.
+func TestHelpOverlayBottomReachableWithinPTYPagePresses(t *testing.T) {
+	const ptyRows, ptyCols, presses = 330, 100, 10
+	model := New(nil, config.Settings{}, "")
+	model.width, model.height = ptyCols, ptyRows
+	model.help = true
+
+	m := model
+	for i := 0; i < presses; i++ {
+		updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyPgDown})
+		m = updated.(Model)
+	}
+	if !strings.Contains(m.View(), "q quits deck.") {
+		t.Fatalf("the help overlay (%d wrapped lines at %d cols) is not reachable to its closing line with %d PgDn presses of a %d-row page: raise cmd/deck's helpPagesToBottom and this test's presses together",
+			len(model.wrapDialogLines(helpText(false))), ptyCols, presses, ptyRows)
+	}
+	if first := model.View(); !strings.Contains(first, "deck help") {
+		t.Fatalf("the first page no longer contains the \"deck help\" title the PTY test waits on before paging:\n%s", first)
+	}
+}
