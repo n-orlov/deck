@@ -9,6 +9,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/n-orlov/deck/internal/store"
 	"github.com/n-orlov/deck/internal/theme"
+	"github.com/n-orlov/deck/internal/tui/lineedit"
 )
 
 // envLayerServer, envLayerCapturedPath, envLayerConfig and envLayerSession
@@ -160,9 +161,48 @@ func (m Model) envRowLine(row envRow, focused bool) (label, value string) {
 // styledEnvBody colours the key part in `hint` and the typed value in
 // `text`, over the focused row's own `selection` background.
 func (m Model) envEditPromptLine() (label, value string) {
-	label = fmt.Sprintf("Editing %s: ", m.envEditKey)
-	value = m.maskEnvValue(m.envEditKey, m.envEditValue, m.envReveal) + "_"
-	return label, value
+	label = envEditLabel(m.envEditKey)
+	return label, m.envFieldText()
+}
+
+// envEditLabel is the edit prompt's label; its width is what the field's own
+// cells are budgeted against.
+func envEditLabel(key string) string { return fmt.Sprintf("Editing %s: ", key) }
+
+// envFieldWidth is the number of cells the value field has inside the dialog's
+// box once its label has been drawn: the editor scrolls within it, so the row
+// never wraps.
+func (m Model) envFieldWidth() int {
+	w := m.dialogWidth() - 4 - stringWidth(envEditLabel(m.envEditKey))
+	if w < 1 {
+		w = 1
+	}
+	return w
+}
+
+// envEditStyle is how the shared editor is drawn here: the clip marks follow
+// DECK_ASCII and an offered value carries the theme's selection background
+// (none under NO_COLOR).
+func (m Model) envEditStyle() lineedit.Style {
+	sel, _ := m.backgroundSGR(theme.Selection)
+	return lineedit.Style{ASCII: m.settings.ASCII, Selection: sel}
+}
+
+// envFieldText is the field's drawn value, caret included (the edit prompt is
+// the dialog's one field, so it is always the focused one). A secret-shaped
+// key's value stays masked until the reveal toggle is on (§6.4): the editor then
+// draws the fixed placeholder, never the real text or its length, with the
+// caret at its end and the offered-value treatment kept.
+func (m Model) envFieldText() string {
+	ed := m.envEdit
+	if masked := m.maskEnvValue(m.envEditKey, ed.Value(), m.envReveal); masked != ed.Value() {
+		if ed.Offered() {
+			ed = lineedit.NewOffered(masked)
+		} else {
+			ed = lineedit.New(masked)
+		}
+	}
+	return ed.View(m.envFieldWidth(), m.envEditStyle())
 }
 
 // envBody builds the env editor's PLAIN, unstyled content -- byte for byte
@@ -324,7 +364,7 @@ func (m Model) updateEnvDialog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if m.envEditKey != "" {
 		switch msg.String() {
 		case "esc":
-			m.envEditKey, m.envEditValue, m.envEditPrefilled, m.envNote = "", "", false, ""
+			m.envEditKey, m.envEdit, m.envNote = "", lineedit.Editor{}, ""
 			return m, nil
 		case "enter":
 			cmd := m.submitEnvEdit()
@@ -342,27 +382,14 @@ func (m Model) updateEnvDialog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 			m.envScroll = m.dialogScrollByPage(m.envScroll, m.envBody(), dir)
 			return m, nil
-		case "backspace", "ctrl+h":
-			// Backspace is also an edit (SPEC §11.7's "typing replaces it
-			// wholesale" pattern, already used by createView's cwd field):
-			// while the buffer still holds nothing but the row's untouched
-			// current value, backspace clears it wholesale rather than
-			// trimming one rune off the end of it.
-			if m.envEditPrefilled {
-				m.envEditValue, m.envEditPrefilled = "", false
-				return m, nil
-			}
-			if m.envEditValue != "" {
-				runs := []rune(m.envEditValue)
-				m.envEditValue = string(runs[:len(runs)-1])
-			}
-			return m, nil
 		}
-		if runes := msg.Runes; len(runes) > 0 {
-			if m.envEditPrefilled {
-				m.envEditValue, m.envEditPrefilled = "", false
-			}
-			m.envEditValue += string(runes)
+		// Every editing key, a typed rune and a bracketed paste belong to the
+		// shared line editor (§11.11): the opening value is an offered value, so
+		// a printable key or a paste replaces it and a caret or editing key
+		// accepts it and edits it in place. A key the editor does not own is
+		// left alone.
+		if edited, ok := m.envEdit.Update(msg); ok {
+			m.envEdit = edited.Fit(m.envFieldWidth(), m.envEditStyle())
 		}
 		return m, nil
 	}
@@ -390,13 +417,11 @@ func (m Model) updateEnvDialog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		row := rows[m.envCursor]
-		// The buffer opens preloaded with the row's current value rather
-		// than empty, so a small correction to a long value never requires
-		// retyping it in full -- envEditPrefilled marks it untouched, so
-		// the very first keystroke (typed or backspace) replaces it
-		// wholesale instead of editing within it, exactly like createView's
-		// own cwd field prefill.
-		m.envEditKey, m.envEditValue, m.envEditPrefilled, m.envNote = row.Key, row.Value, true, ""
+		// The field opens on the row's current value as an offered value
+		// (§11.11), so a small correction to a long value never requires
+		// retyping it in full.
+		m.envEditKey, m.envNote = row.Key, ""
+		m.envEdit = lineedit.NewOffered(row.Value).Fit(m.envFieldWidth(), m.envEditStyle())
 	case "r":
 		// SPEC §6.4/requirement 21: the explicit per-view reveal toggle.
 		// Only meaningful while browsing -- while a value is being typed
@@ -430,13 +455,13 @@ func (m Model) updateEnvDialog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func (m *Model) submitEnvEdit() tea.Cmd {
 	if m.setSessionEnv == nil {
 		m.envNote = "editing the environment is unavailable"
-		m.envEditKey, m.envEditValue, m.envEditPrefilled = "", "", false
+		m.envEditKey, m.envEdit = "", lineedit.Editor{}
 		return nil
 	}
 	session, _ := m.selectedSession()
-	sessionID, key, value := session.ID, m.envEditKey, m.envEditValue
+	sessionID, key, value := session.ID, m.envEditKey, m.envEdit.Value()
 	setSessionEnv := m.setSessionEnv
-	m.envEditKey, m.envEditValue, m.envEditPrefilled = "", "", false
+	m.envEditKey, m.envEdit = "", lineedit.Editor{}
 	return func() tea.Msg {
 		updated, err := setSessionEnv(context.Background(), sessionID, key, value)
 		return envEdited{session: updated, err: err}
