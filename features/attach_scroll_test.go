@@ -153,6 +153,9 @@ func clientFillsAttachedPaneWithScrollback(ctx context.Context, name string) err
 	if err := waitForAutomaticRenameToRender(ctx, name, h.Socket); err != nil {
 		return err
 	}
+	if err := pinAttachedStatusRight(ctx, name, h.Socket); err != nil {
+		return err
+	}
 	// Let the pane settle at its live tail before the scenario captures its
 	// "before" baseline, so that baseline is the pane at rest, not mid-scroll.
 	time.Sleep(100 * time.Millisecond)
@@ -202,6 +205,41 @@ func waitForAutomaticRenameToRender(ctx context.Context, name, socket string) er
 	})
 	if err != nil {
 		return fmt.Errorf("waiting for window name %q to reach client %q's own frame: %w", command, name, err)
+	}
+	return nil
+}
+
+// attachedStatusRight is the fixed text pinAttachedStatusRight puts in
+// place of tmux's default status-right.
+const attachedStatusRight = "deck-scenario-status"
+
+// pinAttachedStatusRight removes the one wall-clock-driven field from the
+// attached client's frame. deck's Bootstrap never sets status-right, so an
+// attached client paints tmux's default, `"#{=21:pane_title}" %H:%M
+// %d-%b-%y`: the host clock to the minute. attach_scroll.feature's
+// "before-wheel-scroll" baseline is a byte-exact copy of the whole attached
+// frame, status line included, so any run whose capture and compare fell on
+// either side of a wall-clock minute boundary failed with an otherwise
+// identical frame (a -race rep at 4012be8a92 captured "00:41" and compared
+// "00:42", every pane line equal). Replacing status-right on this
+// scenario's private socket keeps the comparison byte-exact across the
+// whole frame; nothing the scenario proves about the pane, the shell's
+// input line or the window name lives in status-right. Like
+// waitForAutomaticRenameToRender above, it waits for the change to reach
+// the client's own frame before returning, so the baseline cannot be
+// captured from a frame painted before the change.
+func pinAttachedStatusRight(ctx context.Context, name, socket string) error {
+	if out, err := exec.CommandContext(ctx, "tmux", "-L", socket, "set-option", "-g", "status-right", attachedStatusRight).CombinedOutput(); err != nil {
+		return fmt.Errorf("tmux -L %s set-option -g status-right %q: %w: %s", socket, attachedStatusRight, err, strings.TrimSpace(string(out)))
+	}
+	client, err := mouseSynthesisClient(ctx, name)
+	if err != nil {
+		return err
+	}
+	if _, err := client.WaitForFrameFunc(ctx, false, func(frame string) bool {
+		return strings.Contains(frame, attachedStatusRight)
+	}); err != nil {
+		return fmt.Errorf("waiting for status-right %q to reach client %q's own frame: %w", attachedStatusRight, name, err)
 	}
 	return nil
 }
