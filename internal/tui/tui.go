@@ -763,15 +763,16 @@ type Model struct {
 	// SPEC §11.5: "tab/left/right switch between the category list and the
 	// field list, up/down move within the focused list."
 	settingsFocus int
-	// settingsSearchActive/settingsSearchQuery/settingsSearchIndex are
+	// settingsSearchActive/settingsSearchEdit/settingsSearchIndex are
 	// task 014's `/` fuzzy search: settingsSearchActive is true while the
-	// query is being typed and results browsed, settingsSearchQuery holds
-	// the typed text, settingsSearchIndex selects among the matches
-	// settingsSearchMatches(settingsSearchQuery) returns (in schema order,
+	// query is being typed and results browsed, settingsSearchEdit holds
+	// the typed text in the shared line editor (§11.11), settingsSearchIndex
+	// selects among the matches
+	// settingsSearchMatches(settingsSearchEdit.Value()) returns (in schema order,
 	// searched across every category, per §11.5's "search every field by
 	// label and description").
 	settingsSearchActive bool
-	settingsSearchQuery  string
+	settingsSearchEdit   lineedit.Editor
 	settingsSearchIndex  int
 	// settingsEdits is task 015's staged working copy of every schema field's
 	// value: a config.FileConfig seeded from m.settings when the takeover
@@ -4069,7 +4070,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				m.settingsFieldIndex = 0
 				m.settingsFocus = settingsFocusCategories
 				m.settingsSearchActive = false
-				m.settingsSearchQuery = ""
+				m.settingsSearchEdit = lineedit.Editor{}
 				m.settingsSearchIndex = 0
 				m.settingsEdits = settingsEditsFromSettings(m.settings)
 				m.settingsSavedEdits = settingsEditsFromSettings(m.settings)

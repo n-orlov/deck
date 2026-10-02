@@ -300,7 +300,7 @@ func (m Model) updateSettings(msg tea.KeyMsg) (Model, tea.Cmd) {
 		m.settingsAdjustField(-1)
 	case "/":
 		m.settingsSearchActive = true
-		m.settingsSearchQuery = ""
+		m.settingsSearchEdit = lineedit.Editor{}
 		m.settingsSearchIndex = 0
 	case "n":
 		// R131 part 1: "n" creates a group, reachable ONLY from inside the
@@ -1902,21 +1902,23 @@ func settingsSearchMatches(query string) []settingsSearchResult {
 }
 
 // updateSettingsSearch handles key input while the `/` search box is
-// active: typed runes extend the query, backspace shortens it, up/down
-// move among the current matches, enter jumps the two lists to the
-// highlighted match and leaves search mode with focus on the field list,
-// and esc leaves search mode (clearing the query) without moving the
-// selection -- mirroring the closing-without-saving shape task 016 will
+// active: the query is a shared line editor (§11.11), so every editing key,
+// typed rune and paste is its and left/right move its caret instead of
+// switching lists; up/down move among the current matches, enter jumps the
+// two lists to the highlighted match and leaves search mode with focus on the
+// field list, and esc leaves search mode (clearing the query) without moving
+// the selection -- mirroring the closing-without-saving shape task 016 will
 // give the takeover as a whole, but scoped to just the search box.
 func (m Model) updateSettingsSearch(msg tea.KeyMsg) (Model, tea.Cmd) {
+	query := m.settingsSearchEdit.Value()
 	switch msg.String() {
 	case "esc":
 		m.settingsSearchActive = false
-		m.settingsSearchQuery = ""
+		m.settingsSearchEdit = lineedit.Editor{}
 		m.settingsSearchIndex = 0
 		return m, nil
 	case "enter":
-		results := settingsSearchMatches(m.settingsSearchQuery)
+		results := settingsSearchMatches(query)
 		if m.settingsSearchIndex >= 0 && m.settingsSearchIndex < len(results) {
 			match := results[m.settingsSearchIndex]
 			m.settingsCategoryIndex = match.CategoryIndex
@@ -1924,32 +1926,40 @@ func (m Model) updateSettingsSearch(msg tea.KeyMsg) (Model, tea.Cmd) {
 			m.settingsFocus = settingsFocusFields
 		}
 		m.settingsSearchActive = false
-		m.settingsSearchQuery = ""
-		m.settingsSearchIndex = 0
-		return m, nil
-	case "backspace", "ctrl+h":
-		if q := m.settingsSearchQuery; q != "" {
-			r := []rune(q)
-			m.settingsSearchQuery = string(r[:len(r)-1])
-		}
+		m.settingsSearchEdit = lineedit.Editor{}
 		m.settingsSearchIndex = 0
 		return m, nil
 	case "up", "ctrl+p":
-		if n := len(settingsSearchMatches(m.settingsSearchQuery)); n > 0 {
+		if n := len(settingsSearchMatches(query)); n > 0 {
 			m.settingsSearchIndex = (m.settingsSearchIndex - 1 + n) % n
 		}
 		return m, nil
 	case "down", "ctrl+n":
-		if n := len(settingsSearchMatches(m.settingsSearchQuery)); n > 0 {
+		if n := len(settingsSearchMatches(query)); n > 0 {
 			m.settingsSearchIndex = (m.settingsSearchIndex + 1) % n
 		}
 		return m, nil
 	}
-	if runes := msg.Runes; len(runes) > 0 {
-		m.settingsSearchQuery += string(runes)
-		m.settingsSearchIndex = 0
+	if edited, ok := m.settingsSearchEdit.Update(msg); ok {
+		m.settingsSearchEdit = edited.Fit(m.settingsSearchFieldWidth(), m.settingsEditStyle())
+		if edited.Value() != query {
+			m.settingsSearchIndex = 0
+		}
 	}
 	return m, nil
+}
+
+// settingsSearchLabel is the prompt drawn before the search field.
+const settingsSearchLabel = "Search: "
+
+// settingsSearchFieldWidth is the cells the search field has after its label,
+// so the row never wraps.
+func (m Model) settingsSearchFieldWidth() int {
+	w := m.settingsRightInner() - stringWidth(settingsSearchLabel)
+	if w < 1 {
+		w = 1
+	}
+	return w
 }
 
 // settingsCategoryWidth picks the left category panel's width the same way
@@ -2750,7 +2760,7 @@ func (m Model) settingsSearchViewLines(categories []settingsCategory, leftWidth,
 	}
 	leftLines = fitLines(leftLines, contentRows)
 
-	results := settingsSearchMatches(m.settingsSearchQuery)
+	results := settingsSearchMatches(m.settingsSearchEdit.Value())
 	rightLines := make([]settingsListLine, len(results))
 	for i, r := range results {
 		marker := "  "
@@ -2768,9 +2778,16 @@ func (m Model) settingsSearchViewLines(categories []settingsCategory, leftWidth,
 		}
 		rightLines[i] = settingsListLine{text: m.settingsRenderRowOpen(segs), bg: bg}
 	}
-	rightLines = fitLines(rightLines, contentRows)
 
-	title := "Search: " + m.settingsSearchQuery
+	// The query is the panel's first row, drawn with the editor's caret on the
+	// `selection` background like every other typed row here; the matches
+	// follow it.
+	queryLine := settingsListLine{
+		text: m.settingsRenderRowOpen([]settingsRowSegment{{Text: settingsSearchLabel + m.settingsSearchEdit.View(m.settingsSearchFieldWidth(), m.settingsEditStyle()), Tok: theme.Text}}),
+		bg:   theme.Selection,
+	}
+	rightLines = fitLines(append([]settingsListLine{queryLine}, rightLines...), contentRows)
+	title := "Search"
 	lines := make([]string, 0, height)
 	lines = append(lines, m.settingsLeftTopLine(leftWidth, "Categories", leftFocused)+m.settingsRightTopLine(rightWidth, title, rightFocused))
 	for i := 0; i < contentRows; i++ {

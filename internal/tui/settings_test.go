@@ -307,13 +307,13 @@ func TestSettingsSearchKeyEntersSearchModeAndEnterJumps(t *testing.T) {
 
 	updated, _ = m.Update(key("verdict"))
 	m = updated.(Model)
-	if m.settingsSearchQuery != "verdict" {
-		t.Fatalf("settingsSearchQuery = %q, want %q", m.settingsSearchQuery, "verdict")
+	if m.settingsSearchEdit.Value() != "verdict" {
+		t.Fatalf("settingsSearchQuery = %q, want %q", m.settingsSearchEdit.Value(), "verdict")
 	}
 
-	results := settingsSearchMatches(m.settingsSearchQuery)
+	results := settingsSearchMatches(m.settingsSearchEdit.Value())
 	if len(results) != 1 || results[0].Field.FullKey() != "stale_after" {
-		t.Fatalf("unexpected search results for %q: %+v", m.settingsSearchQuery, results)
+		t.Fatalf("unexpected search results for %q: %+v", m.settingsSearchEdit.Value(), results)
 	}
 
 	updated, _ = m.Update(key("enter"))
@@ -348,8 +348,8 @@ func TestSettingsSearchEscCancelsWithoutMovingSelection(t *testing.T) {
 	if m.settingsSearchActive {
 		t.Fatal("esc did not leave search mode")
 	}
-	if m.settingsSearchQuery != "" {
-		t.Fatalf("esc left settingsSearchQuery = %q, want empty", m.settingsSearchQuery)
+	if m.settingsSearchEdit.Value() != "" {
+		t.Fatalf("esc left settingsSearchQuery = %q, want empty", m.settingsSearchEdit.Value())
 	}
 	if m.settingsCategoryIndex != 0 || m.settingsFieldIndex != 0 {
 		t.Fatalf("esc from search moved selection to category=%d field=%d", m.settingsCategoryIndex, m.settingsFieldIndex)
@@ -371,7 +371,7 @@ func TestSettingsSearchBackspaceShortensQuery(t *testing.T) {
 	m = updated.(Model)
 	updated, _ = m.Update(key("backspace"))
 	m = updated.(Model)
-	if m.settingsSearchQuery != "th" {
-		t.Fatalf("settingsSearchQuery after backspace = %q, want %q", m.settingsSearchQuery, "th")
+	if m.settingsSearchEdit.Value() != "th" {
+		t.Fatalf("settingsSearchQuery after backspace = %q, want %q", m.settingsSearchEdit.Value(), "th")
 	}
 }
