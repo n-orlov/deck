@@ -24,6 +24,11 @@ type ScenarioHarness struct {
 	Socket string
 	Binary string
 
+	// tmuxSpawnWindowCount/Seconds hold the last measured tmux spawn window
+	// (tmux_spawn_budget_test.go).
+	tmuxSpawnWindowCount   int
+	tmuxSpawnWindowSeconds int
+
 	clients         []*ScreenDriver
 	namedClients    map[string]*ScreenDriver
 	workingDir      string

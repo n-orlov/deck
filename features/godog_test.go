@@ -171,6 +171,7 @@ func initializeScenario(sc *godog.ScenarioContext) {
 	registerInteractiveForceAttachSteps(sc)
 	registerInteractiveSidebarWheelFeatureSteps(sc)
 	registerPinPersistenceSteps(sc)
+	registerTmuxSpawnBudgetSteps(sc)
 }
 
 // TestGodogFormatBuildsJUnitOnlyWhenTheEnvVarIsSet pins the option builder
