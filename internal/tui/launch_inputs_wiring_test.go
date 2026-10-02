@@ -7,6 +7,7 @@ import (
 
 	"github.com/n-orlov/deck/internal/config"
 	"github.com/n-orlov/deck/internal/store"
+	"github.com/n-orlov/deck/internal/tui/lineedit"
 )
 
 // This file closes task 023's own wiring gap: the launch-inputs editor is
@@ -28,9 +29,11 @@ func launchInputsWiringModel() Model {
 	m.selected = rowCursor(0)
 	m.detail = true
 	m.launchInputsEditing = true
-	m.launchInputsPreLaunch = "echo pre"
-	m.launchInputsPostDestroy = "echo post"
-	m.launchInputsLaunchArgs = `["--flag","value"]`
+	m.launchInputsEdits = [launchInputsTextFieldCount]lineedit.Editor{
+		launchInputsFieldPreLaunch:   lineedit.NewOffered("echo pre"),
+		launchInputsFieldPostDestroy: lineedit.NewOffered("echo post"),
+		launchInputsFieldLaunchArgs:  lineedit.NewOffered(`["--flag","value"]`),
+	}
 	m.launchInputsLoginShell = true
 	return m
 }
@@ -98,7 +101,7 @@ func TestLaunchInputsSubmitWithoutASetterSaysSoAndCallsNothing(t *testing.T) {
 	if !strings.Contains(m.launchInputsNote, "unavailable") {
 		t.Fatalf("note = %q, want it to say editing is unavailable", m.launchInputsNote)
 	}
-	if m.launchInputsPreLaunch != "echo pre" || m.launchInputsPostDestroy != "echo post" || m.launchInputsLaunchArgs != `["--flag","value"]` || !m.launchInputsLoginShell {
+	if m.launchInputsValue(launchInputsFieldPreLaunch) != "echo pre" || m.launchInputsValue(launchInputsFieldPostDestroy) != "echo post" || m.launchInputsValue(launchInputsFieldLaunchArgs) != `["--flag","value"]` || !m.launchInputsLoginShell {
 		t.Fatal("a refused submit discarded typed fields; validation must retain what the user typed")
 	}
 	if !m.launchInputsEditing {

@@ -99,6 +99,48 @@ func TestApplyDialogContractCoreKeys(t *testing.T) {
 		}
 	})
 
+	t.Run("left, right and space fall through unhandled while a text field is focused", func(t *testing.T) {
+		for _, k := range []string{"left", "right", " "} {
+			var cancelled, submitted bool
+			index, value := 0, "a"
+			c := newContract(&cancelled, &submitted, &index, &value)
+			c.Fields.TextFocused = func() bool { return true }
+			if _, handled := applyDialogContract(key(k), c); handled || value != "a" {
+				t.Fatalf("%q on a text field: handled=%v value=%q, want unhandled and unchanged (the editor's keys)", k, handled, value)
+			}
+		}
+	})
+
+	t.Run("left, right and space still change a selection field while TextFocused is false", func(t *testing.T) {
+		var cancelled, submitted bool
+		index, value := 0, "a"
+		c := newContract(&cancelled, &submitted, &index, &value)
+		c.Fields.TextFocused = func() bool { return false }
+		for _, k := range []string{"right", " ", "left"} {
+			if _, handled := applyDialogContract(key(k), c); !handled {
+				t.Fatalf("%q on a selection field was not handled", k)
+			}
+		}
+		if value != "b" {
+			t.Fatalf("value = %q after right, space, left, want b", value)
+		}
+	})
+
+	t.Run("up, down, enter and esc stay contract keys on a text field", func(t *testing.T) {
+		var cancelled, submitted bool
+		index, value := 0, "a"
+		c := newContract(&cancelled, &submitted, &index, &value)
+		c.Fields.TextFocused = func() bool { return true }
+		for _, k := range []string{"down", "up", "enter", "esc"} {
+			if _, handled := applyDialogContract(key(k), c); !handled {
+				t.Fatalf("%q was not handled on a text field", k)
+			}
+		}
+		if !submitted || !cancelled {
+			t.Fatalf("submitted=%v cancelled=%v, want both", submitted, cancelled)
+		}
+	})
+
 	t.Run("a key outside the contract vocabulary is unhandled", func(t *testing.T) {
 		var cancelled, submitted bool
 		index, value := 0, "a"

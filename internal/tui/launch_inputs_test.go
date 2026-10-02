@@ -2,8 +2,10 @@ package tui
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/n-orlov/deck/internal/config"
@@ -240,8 +242,8 @@ func TestLaunchInputsEditorUpDownMoveBetweenFourFieldsTabDoesNot(t *testing.T) {
 	if m.launchInputsField != before {
 		t.Fatalf("tab moved the field from %d to %d; tab must never move between fields", before, m.launchInputsField)
 	}
-	if m.launchInputsPreLaunch != "" {
-		t.Fatalf("tab typed into pre_launch: %q, want unchanged", m.launchInputsPreLaunch)
+	if got := m.launchInputsValue(launchInputsFieldPreLaunch); got != "" {
+		t.Fatalf("tab typed into pre_launch: %q, want unchanged", got)
 	}
 }
 
@@ -276,8 +278,8 @@ func TestLaunchInputsEditorInvalidLaunchArgsReportsInDialogAndRetainsTyped(t *te
 	if !m.launchInputsEditing {
 		t.Fatal("an invalid submit closed the editor; it must stay open for correction")
 	}
-	if m.launchInputsLaunchArgs != invalid {
-		t.Fatalf("launchInputsLaunchArgs = %q, want the typed value %q retained", m.launchInputsLaunchArgs, invalid)
+	if got := m.launchInputsValue(launchInputsFieldLaunchArgs); got != invalid {
+		t.Fatalf("launch_args field = %q, want the typed value %q retained", got, invalid)
 	}
 
 	row, err := db.GetSession(context.Background(), id)
@@ -286,5 +288,43 @@ func TestLaunchInputsEditorInvalidLaunchArgsReportsInDialogAndRetainsTyped(t *te
 	}
 	if row.LaunchDirty || row.PreLaunch != "" || row.PostDestroy != "" || len(row.LaunchArgs) != 0 {
 		t.Fatalf("an invalid submit reached the store: %+v", row)
+	}
+}
+
+// TestLaunchInputsDialogKeepsNoHandRolledTextEditing is the source scan R178
+// asks for: the byte-trimming backspace helper is gone and the dialog has no
+// backspace or rune-append case of its own; every text key goes to the shared
+// editor.
+func TestLaunchInputsDialogKeepsNoHandRolledTextEditing(t *testing.T) {
+	src, err := os.ReadFile("launch_inputs.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, banned := range []string{"backspaceLaunchInputsField", `case "backspace"`, "+= string(runes)", "+= string(msg.Runes)"} {
+		if strings.Contains(string(src), banned) {
+			t.Errorf("launch_inputs.go still contains %q", banned)
+		}
+	}
+}
+
+// TestLaunchInputsCaretIsDrawnOnTheFocusedTextFieldOnly: the focused text
+// field draws the reverse-video caret (SGR 7), the others do not.
+func TestLaunchInputsCaretIsDrawnOnTheFocusedTextFieldOnly(t *testing.T) {
+	db, id := newLaunchInputsTestStore(t)
+	m := launchInputsTestModel(t, db, id)
+	m.width, m.height = 100, 40
+	m = typeInto(t, m, "ab")
+	body := m.launchInputsBody()
+	if n := strings.Count(body, "\x1b[7m"); n != 1 {
+		t.Fatalf("body carries %d carets, want exactly 1 (the focused field's)", n)
+	}
+	got, _ := m.Update(key("down"))
+	m = got.(Model)
+	got, _ = m.Update(key("down"))
+	m = got.(Model)
+	got, _ = m.Update(key("down"))
+	m = got.(Model)
+	if strings.Contains(m.launchInputsBody(), "\x1b[7m") {
+		t.Fatal("a caret is drawn while the login_shell selection is focused")
 	}
 }

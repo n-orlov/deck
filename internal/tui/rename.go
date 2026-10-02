@@ -91,9 +91,14 @@ func (m Model) updateDetailView(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		session, _ := m.selectedSession()
 		m.launchInputsEditing = true
 		m.launchInputsField = 0
-		m.launchInputsPreLaunch = session.PreLaunch
-		m.launchInputsPostDestroy = session.PostDestroy
-		m.launchInputsLaunchArgs = launchArgsToText(session.LaunchArgs)
+		// Each text field opens on its stored value as an offered value
+		// (§11.11): a printable key or a paste replaces it, a caret or
+		// editing key accepts it and edits it in place.
+		m.launchInputsEdits = [launchInputsTextFieldCount]lineedit.Editor{
+			launchInputsFieldPreLaunch:   lineedit.NewOffered(session.PreLaunch),
+			launchInputsFieldPostDestroy: lineedit.NewOffered(session.PostDestroy),
+			launchInputsFieldLaunchArgs:  lineedit.NewOffered(launchArgsToText(session.LaunchArgs)),
+		}
 		m.launchInputsLoginShell = session.LoginShell
 		m.launchInputsNote = ""
 		m.launchInputsScroll = 0

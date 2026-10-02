@@ -23,6 +23,13 @@ type dialogFields struct {
 	// containing a space) and falls through to the dialog's own switch
 	// instead of being consumed as a cycle.
 	SpaceTypesText func() bool
+	// TextFocused, when non-nil, is asked before left, right and space are
+	// treated as "change a selection" (SPEC §11.4, §11.11): if it reports
+	// true the focused field is a text field, whose caret keys and typed
+	// space belong to the shared line editor, so none of the three is a
+	// contract key here and all fall through to the dialog's own handler.
+	// Cycle then applies to selection fields only.
+	TextFocused func() bool
 }
 
 // dialogContract is what a §11.4 dialog hands the shared implementation:
@@ -92,18 +99,27 @@ func applyDialogContract(msg tea.KeyMsg, c dialogContract) (cmd tea.Cmd, handled
 		*c.Fields.Index = (*c.Fields.Index - 1 + c.Fields.Count) % c.Fields.Count
 		return nil, true
 	case "left":
+		if c.Fields.TextFocused != nil && c.Fields.TextFocused() {
+			return nil, false
+		}
 		if c.Fields.Cycle == nil {
 			return nil, false
 		}
 		c.Fields.Cycle(-1)
 		return nil, true
 	case "right":
+		if c.Fields.TextFocused != nil && c.Fields.TextFocused() {
+			return nil, false
+		}
 		if c.Fields.Cycle == nil {
 			return nil, false
 		}
 		c.Fields.Cycle(1)
 		return nil, true
 	case " ":
+		if c.Fields.TextFocused != nil && c.Fields.TextFocused() {
+			return nil, false
+		}
 		if c.Fields.SpaceTypesText != nil && c.Fields.SpaceTypesText() {
 			return nil, false
 		}
