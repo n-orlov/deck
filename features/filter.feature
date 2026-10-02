@@ -24,6 +24,25 @@ Feature: The / list filter: by name, group and cwd, and the route back to an arc
     Then deck client "A" screen contains "filter-name-beta"
     And deck client "A" exits cleanly
 
+  @requirement-33-filter-edit-middle
+  Scenario: / edits the query in its middle with the caret keys and the list re-narrows to the edited query
+    # SPEC §11.11: the filter is the shared line editor, so a typo in the
+    # middle of the query is fixed in place instead of retyping the line.
+    Given deck client "A" is started
+    And deck client "A" creates shell session "filter-edit-alpha"
+    And deck client "A" creates shell session "filter-edit-beta"
+    When deck client "A" opens the list filter
+    And deck client "A" types "filter-edit-apha" into the filter field
+    Then deck client "A" screen does not contain "filter-edit-beta"
+    When deck client "A" presses left 3 times in the filter field
+    And deck client "A" inserts "l" at the caret of the filter field
+    Then deck client "A" screen contains "Filter: filter-edit-alpha"
+    And deck client "A" screen contains "filter-edit-alpha"
+    And deck client "A" screen does not contain "filter-edit-beta"
+    When deck client "A" clears the list filter with escape
+    Then deck client "A" screen contains "filter-edit-beta"
+    And deck client "A" exits cleanly
+
   @requirement-33-filter-by-cwd
   Scenario: / filters the list down to the one row whose cwd matches
     # internal/tui/filter_test.go's own unit tests construct sessions with
