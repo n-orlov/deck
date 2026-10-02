@@ -144,15 +144,14 @@ func TestSettingsEnvEditExistingValue(t *testing.T) {
 	if m.settingsEnvEditingKeyPart {
 		t.Fatal("editing an existing entry should start on its value, not its key")
 	}
-	if m.settingsEnvEditKey != "A" || m.settingsEnvEditValue != "old" {
-		t.Fatalf("editing buffers = key %q value %q, want A/old", m.settingsEnvEditKey, m.settingsEnvEditValue)
+	if m.settingsEnvKeyEdit.Value() != "A" || m.settingsEnvValueEdit.Value() != "old" {
+		t.Fatalf("editing buffers = key %q value %q, want A/old", m.settingsEnvKeyEdit.Value(), m.settingsEnvValueEdit.Value())
 	}
 
-	// Clear the seeded value before typing the replacement (backspace
-	// three times for "old").
-	for i := 0; i < 3; i++ {
-		updated, _ = m.Update(key("backspace"))
-		m = updated.(Model)
+	// The value opens as an offered value (§11.11): the first printable key
+	// replaces it, so the old value needs no clearing before the new one.
+	if !m.settingsEnvValueEdit.Offered() {
+		t.Fatal("an existing entry's value did not open as an offered value")
 	}
 	updated, _ = m.Update(key("new"))
 	m = updated.(Model)
