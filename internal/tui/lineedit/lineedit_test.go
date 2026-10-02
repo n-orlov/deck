@@ -308,10 +308,24 @@ func TestOfferedRule(t *testing.T) {
 			t.Fatal("empty text is offered")
 		}
 	})
-	t.Run("a paste of only control characters keeps the offer", func(t *testing.T) {
-		e, _ := NewOffered(offered).Update(paste("\n"))
-		if e.Value() != offered || !e.Offered() {
-			t.Fatalf("got %q offered=%v", e.Value(), e.Offered())
+	t.Run("a paste of only control characters still replaces the offer", func(t *testing.T) {
+		for _, p := range []string{"\n", "\r\n\t", ""} {
+			e, handled := NewOffered(offered).Update(paste(p))
+			if !handled || e.Value() != "" || e.Caret() != 0 || e.Offered() {
+				t.Errorf("paste %q: handled=%v got %q %d offered=%v", p, handled, e.Value(), e.Caret(), e.Offered())
+			}
+		}
+	})
+	t.Run("a paste of only control characters into an accepted value changes nothing", func(t *testing.T) {
+		e, handled := at("abcd", 2).Update(paste("\r\n"))
+		if !handled || e.Value() != "abcd" || e.Caret() != 2 || e.Offered() {
+			t.Fatalf("got %q %d offered=%v", e.Value(), e.Caret(), e.Offered())
+		}
+	})
+	t.Run("a paste with a tab replaces the whole offer, tab dropped", func(t *testing.T) {
+		e, _ := NewOffered(offered).Update(paste("a\tb"))
+		if e.Value() != "ab" || e.Caret() != 2 || e.Offered() {
+			t.Fatalf("got %q %d offered=%v", e.Value(), e.Caret(), e.Offered())
 		}
 	})
 }
