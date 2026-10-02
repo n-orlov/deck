@@ -1,6 +1,7 @@
 package tmux
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -529,32 +530,61 @@ func (c Client) PreviewPane(ctx context.Context, slug string) (pane Pane, ok boo
 }
 
 // CapturePreview is the whole read-only preview capture engine (SPEC
-// requirements 21, 22): it resolves the session's live pane and, if one
-// exists, captures exactly its visible screen (StartLine "0", the top of
-// the visible pane, through EndLine "-", the bottom of the visible pane —
-// deliberately excluding scrollback history) with escape sequences
-// preserved, so the preview can reproduce colour and cursor state exactly.
-// It performs a single capture-pane invocation per call and nothing else:
-// no client ever attaches, no control-mode server ever spawns, pipe-pane is
-// never used, and the pane is never resized. A session with no live pane,
-// or one tmux has already reaped between the two commands, is reported as
-// Live: false rather than an error.
+// requirements 21, 22): it captures exactly the selected session's visible
+// screen (StartLine "0", the top of the visible pane, through EndLine "-",
+// the bottom of the visible pane — deliberately excluding scrollback
+// history) with escape sequences preserved, so the preview can reproduce
+// colour and cursor state exactly.
+//
+// R185 (GH #49): the capture addresses the session by its target and costs
+// ONE tmux process regardless of how many sessions exist — no List first.
+// One invocation carries two tmux commands joined by tmux's own `;`
+// separator: a display-message reading the pane's death and geometry,
+// then the capture-pane, so the geometry and the screen describe the same
+// moment. No client ever attaches, no control-mode server ever spawns,
+// pipe-pane is never used, and the pane is never resized. A session with no
+// live pane (a dead pane, a vanished session, an absent server) is
+// reported as Live: false with a nil error, exactly as before; the next
+// reconcile tick corrects the selection.
 func (c Client) CapturePreview(ctx context.Context, slug string) (PreviewCapture, error) {
-	pane, ok, err := c.PreviewPane(ctx, slug)
+	if c.Socket == "" {
+		return PreviewCapture{}, errors.New("tmux socket name is required")
+	}
+	name, err := sessionName(slug)
 	if err != nil {
 		return PreviewCapture{}, err
 	}
-	if !ok {
-		return PreviewCapture{}, nil
-	}
-	data, err := c.CapturePane(ctx, pane.ID, CaptureOptions{StartLine: "0", EndLine: "-", IncludeEscapeSequences: true})
+	// "=" makes the session match exact (tmux otherwise prefix-matches),
+	// and the trailing ":" names its current window's active pane.
+	target := "=" + name + ":"
+	data, err := c.run(ctx,
+		"display-message", "-p", "-t", target, "#{pane_dead}|#{pane_width}|#{pane_height}",
+		";",
+		"capture-pane", "-p", "-e", "-S", "0", "-E", "-", "-t", target)
 	if err != nil {
 		if IsTargetAbsent(err) {
 			return PreviewCapture{}, nil
 		}
-		return PreviewCapture{}, err
+		return PreviewCapture{}, fmt.Errorf("capture preview %q: %w", name, err)
 	}
-	return PreviewCapture{Live: true, Bytes: data, Width: pane.Width, Height: pane.Height}, nil
+	newline := bytes.IndexByte(data, '\n')
+	if newline < 0 {
+		return PreviewCapture{}, fmt.Errorf("capture preview %q: no pane facts in %q", name, data)
+	}
+	fields := strings.Split(string(data[:newline]), "|")
+	if len(fields) != 3 {
+		return PreviewCapture{}, fmt.Errorf("capture preview %q: parse pane facts %q", name, data[:newline])
+	}
+	if fields[0] == "1" {
+		// A corpse is never a legitimate preview target.
+		return PreviewCapture{}, nil
+	}
+	width, werr := strconv.Atoi(fields[1])
+	height, herr := strconv.Atoi(fields[2])
+	if werr != nil || herr != nil {
+		return PreviewCapture{}, fmt.Errorf("capture preview %q: parse pane geometry %q", name, data[:newline])
+	}
+	return PreviewCapture{Live: true, Bytes: data[newline+1:], Width: width, Height: height}, nil
 }
 
 // Exists reports whether a tmux session named deck_<slug> is already

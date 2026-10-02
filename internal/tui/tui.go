@@ -2220,7 +2220,8 @@ func (m Model) loadArchivedSessions() tea.Msg {
 
 // capturePreview issues exactly one read-only capture-pane for the
 // currently selected row (SPEC requirement 21, task 017), or nil when there
-// is no engine wired, no row to capture, or the preview panel is not shown
+// is no engine wired, no row to capture, the model is interactive (R185),
+// or the preview panel is not shown
 // this frame (requirement 27: no capture tick runs while the preview is
 // below its floor and the sidebar has taken its space — task 021). The
 // command captures the slug selected at the moment the tick fired, not
@@ -2228,6 +2229,11 @@ func (m Model) loadArchivedSessions() tea.Msg {
 // mid-flight cannot mislabel a frame.
 func (m Model) capturePreview() tea.Cmd {
 	if m.previewCapture == nil || !m.hasSelectedSession() {
+		return nil
+	}
+	// R185 (GH #49): while interactive the grid is what the preview shows,
+	// so no passive capture-pane runs at all.
+	if m.interactive {
 		return nil
 	}
 	if !m.computeLayout().PreviewShown {

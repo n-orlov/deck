@@ -1587,7 +1587,11 @@ hold them side by side.
 - Sidebar default width 35 columns, user-adjustable and persisted; the preview takes the
   rest.
 - Preview: pane capture with escapes preserved (`capture-pane -e`), **250 ms tick**,
-  selected row only. Passive preview runs no PTY emulator — it is a capture, so it cannot be
+  selected row only. A passive tick is **one** tmux process however many sessions exist: it
+  captures the selected session's pane by its target, with no `list-sessions` first, and
+  a target that has vanished is the same transient, inert answer as before (the next
+  reconcile tick corrects the selection). No passive capture runs while interactive mode
+  (§11.9) is on — the grid is what the preview shows. Passive preview runs no PTY emulator — it is a capture, so it cannot be
   typed into; `↵` (§11.9) and `a` are the two ways to reach a real terminal.
 - **The preview attaches no tmux client.** This is the load-bearing property, not an
   implementation detail: a second client sized to the panel reflows the shared window under

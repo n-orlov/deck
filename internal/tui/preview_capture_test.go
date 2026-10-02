@@ -169,3 +169,36 @@ func TestCapturePreviewStopsWhenPreviewNotShown(t *testing.T) {
 		t.Fatal("capturePreview did not invoke the engine once the preview is shown again")
 	}
 }
+
+// TestCapturePreviewIssuesNoPassiveCaptureWhileInteractive pins R185
+// (GH #49): while interactive the grid is what the preview shows, so the
+// preview tick runs no passive capture-pane at all, and resumes after.
+func TestCapturePreviewIssuesNoPassiveCaptureWhileInteractive(t *testing.T) {
+	calls := 0
+	model := New(nil, config.Settings{}, "")
+	model.sessions = []store.Session{{ID: "s1", Slug: "one", Status: "running"}}
+	model.width, model.height = 120, 40
+	model.previewCapture = func(context.Context, string) (tmux.PreviewCapture, error) {
+		calls++
+		return tmux.PreviewCapture{Live: true, Bytes: []byte("frame")}, nil
+	}
+	if got := model.computeLayout(); !got.PreviewShown {
+		t.Fatal("test setup: preview not shown at 120x40")
+	}
+	model.interactive = true
+	if cmd := model.capturePreview(); cmd != nil {
+		cmd()
+	}
+	if calls != 0 {
+		t.Fatalf("passive capture ran %d times while interactive, want 0", calls)
+	}
+	model.interactive = false
+	cmd := model.capturePreview()
+	if cmd == nil {
+		t.Fatal("capturePreview returned nil once interactive mode ended")
+	}
+	cmd()
+	if calls != 1 {
+		t.Fatalf("passive capture ran %d times after interactive ended, want 1", calls)
+	}
+}
