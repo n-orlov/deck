@@ -71,18 +71,18 @@ func TestEnvEditorEditsAKeyThroughSetSessionEnvAndStaysOpen(t *testing.T) {
 
 	next, _ := model.updateEnvDialog(tea.KeyMsg{Type: tea.KeyEnter})
 	m := next.(Model)
-	if m.envEditKey != "K" || m.envEditValue != "before" {
-		t.Fatalf("enter on the highlighted row = key %q value %q, want K/before", m.envEditKey, m.envEditValue)
+	if m.envEditKey != "K" || m.envEdit.Value() != "before" {
+		t.Fatalf("enter on the highlighted row = key %q value %q, want K/before", m.envEditKey, m.envEdit.Value())
 	}
 
-	for len(m.envEditValue) > 0 {
+	for len(m.envEdit.Value()) > 0 {
 		next, _ = m.updateEnvDialog(tea.KeyMsg{Type: tea.KeyBackspace})
 		m = next.(Model)
 	}
 	next, _ = m.updateEnvDialog(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("after")})
 	m = next.(Model)
-	if m.envEditValue != "after" {
-		t.Fatalf("typed buffer = %q, want after", m.envEditValue)
+	if m.envEdit.Value() != "after" {
+		t.Fatalf("typed buffer = %q, want after", m.envEdit.Value())
 	}
 
 	next, cmd := m.updateEnvDialog(tea.KeyMsg{Type: tea.KeyEnter})
@@ -139,8 +139,8 @@ func TestEnvEditorEscCancelsEditWithoutClosingThenClosesTheDialog(t *testing.T) 
 	if !m.envEditing {
 		t.Fatalf("esc while typing closed the whole dialog; want only the edit cancelled")
 	}
-	if m.envEditKey != "" || m.envEditValue != "" {
-		t.Fatalf("esc while typing left edit state behind: key=%q value=%q", m.envEditKey, m.envEditValue)
+	if m.envEditKey != "" || m.envEdit.Value() != "" {
+		t.Fatalf("esc while typing left edit state behind: key=%q value=%q", m.envEditKey, m.envEdit.Value())
 	}
 
 	next, _ = m.updateEnvDialog(tea.KeyMsg{Type: tea.KeyEsc})
@@ -176,34 +176,102 @@ func TestEnvEditorSubmitWithoutSetterStatesUnavailable(t *testing.T) {
 	}
 }
 
-// TestEnvEditorFirstTypedRuneReplacesThePrefilledValueWholesale proves the
-// cwd-field-style prefill (task 021): the buffer opens holding the row's
-// current value, but the very first typed rune replaces it wholesale
-// rather than appending to it -- exactly like createView's own cwd field
-// -- while a second batch of typed runes appends normally.
-func TestEnvEditorFirstTypedRuneReplacesThePrefilledValueWholesale(t *testing.T) {
+// envEditOpened returns a model with the env editor open on key K (value
+// "before") and enter already pressed on that row.
+func envEditOpened(t *testing.T) Model {
+	t.Helper()
 	model := New(nil, config.Settings{}, "")
 	model.sessions = []store.Session{{ID: "s1", Name: "sess", Agent: "claude", Env: map[string]string{"K": "before"}}}
 	model.envEditing = true
-
 	next, _ := model.updateEnvDialog(tea.KeyMsg{Type: tea.KeyEnter})
-	m := next.(Model)
-	if m.envEditValue != "before" || !m.envEditPrefilled {
-		t.Fatalf("opening for edit = value %q prefilled %v, want before/true", m.envEditValue, m.envEditPrefilled)
-	}
+	return next.(Model)
+}
 
-	next, _ = m.updateEnvDialog(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("after")})
-	m = next.(Model)
-	if m.envEditValue != "after" {
-		t.Fatalf("first typed rune run = %q, want it to replace the prefill wholesale (after)", m.envEditValue)
-	}
-	if m.envEditPrefilled {
-		t.Fatalf("envEditPrefilled still true after the first typed rune")
-	}
+func envKey(m Model, k tea.KeyMsg) Model {
+	next, _ := m.updateEnvDialog(k)
+	return next.(Model)
+}
 
-	next, _ = m.updateEnvDialog(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("2")})
-	m = next.(Model)
-	if m.envEditValue != "after2" {
-		t.Fatalf("second typed rune run = %q, want it appended (after2)", m.envEditValue)
+// TestEnvEditorOpensOnTheCurrentValueAsAnOfferedValue proves the opening
+// value is an offered value (§11.11): the whole text, caret at its end.
+func TestEnvEditorOpensOnTheCurrentValueAsAnOfferedValue(t *testing.T) {
+	m := envEditOpened(t)
+	if m.envEdit.Value() != "before" || !m.envEdit.Offered() {
+		t.Fatalf("opening for edit = value %q offered %v, want before/true", m.envEdit.Value(), m.envEdit.Offered())
+	}
+	if m.envEdit.Caret() != len("before") {
+		t.Fatalf("caret = %d, want it at the end (%d)", m.envEdit.Caret(), len("before"))
+	}
+}
+
+// TestEnvEditorPrintableKeyReplacesTheOfferedValueThenAppends proves a
+// printable key replaces the offered value wholesale, and a second batch of
+// runes is then ordinary typing at the caret.
+func TestEnvEditorPrintableKeyReplacesTheOfferedValueThenAppends(t *testing.T) {
+	m := envEditOpened(t)
+	m = envKey(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("after")})
+	if m.envEdit.Value() != "after" || m.envEdit.Offered() {
+		t.Fatalf("first typed run = %q offered %v, want it to replace the offer (after, not offered)", m.envEdit.Value(), m.envEdit.Offered())
+	}
+	m = envKey(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("2")})
+	if m.envEdit.Value() != "after2" {
+		t.Fatalf("second typed run = %q, want after2", m.envEdit.Value())
+	}
+}
+
+// TestEnvEditorBackspaceAcceptsTheOfferedValueAndDeletesOneCharacter proves
+// backspace on an offered value accepts it and deletes only its last
+// character, rather than clearing it wholesale.
+func TestEnvEditorBackspaceAcceptsTheOfferedValueAndDeletesOneCharacter(t *testing.T) {
+	m := envEditOpened(t)
+	m = envKey(m, tea.KeyMsg{Type: tea.KeyBackspace})
+	if m.envEdit.Value() != "befor" || m.envEdit.Offered() {
+		t.Fatalf("backspace on the offer = %q offered %v, want befor/not offered", m.envEdit.Value(), m.envEdit.Offered())
+	}
+}
+
+// TestEnvEditorEditsInTheMiddleOfTheValue proves the field has a real
+// caret: left steps into the accepted value and typing inserts there.
+func TestEnvEditorEditsInTheMiddleOfTheValue(t *testing.T) {
+	m := envEditOpened(t)
+	for i := 0; i < 3; i++ {
+		m = envKey(m, tea.KeyMsg{Type: tea.KeyLeft})
+	}
+	m = envKey(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("-")})
+	if m.envEdit.Value() != "bef-ore" {
+		t.Fatalf("value = %q, want bef-ore", m.envEdit.Value())
+	}
+}
+
+// TestEnvEditorDrawsACaretNotAnUnderscore proves the edit prompt carries the
+// shared editor's reverse-video caret and no `_` stand-in.
+func TestEnvEditorDrawsACaretNotAnUnderscore(t *testing.T) {
+	m := envEditOpened(t)
+	m = envKey(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("ab")})
+	_, value := m.envEditPromptLine()
+	if strings.Contains(value, "_") {
+		t.Fatalf("edit prompt value %q draws an underscore stand-in", value)
+	}
+	if !strings.Contains(value, "\x1b[7m") {
+		t.Fatalf("edit prompt value %q has no reverse-video caret", value)
+	}
+}
+
+// TestEnvEditorMaskedSecretStaysMaskedWhileEditing proves a secret-shaped
+// key's text is never drawn while editing until reveal is on.
+func TestEnvEditorMaskedSecretStaysMaskedWhileEditing(t *testing.T) {
+	model := New(nil, config.Settings{}, "")
+	model.sessions = []store.Session{{ID: "s1", Name: "sess", Agent: "claude", Env: map[string]string{"API_TOKEN": "hunter2"}}}
+	model.envEditing = true
+	m := envKey(model, tea.KeyMsg{Type: tea.KeyEnter})
+	m = envKey(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("swordfish")})
+	_, value := m.envEditPromptLine()
+	if strings.Contains(value, "swordfish") || strings.Contains(value, "hunter2") {
+		t.Fatalf("masked edit prompt leaks the value: %q", value)
+	}
+	m.envReveal = true
+	_, value = m.envEditPromptLine()
+	if !strings.Contains(value, "swordfish") {
+		t.Fatalf("revealed edit prompt %q does not show the typed value", value)
 	}
 }

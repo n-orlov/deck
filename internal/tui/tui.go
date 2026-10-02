@@ -639,15 +639,15 @@ type Model struct {
 	// dialog, changing nothing further. setSessionEnv persists a committed
 	// edit (env_dirty, tmux mirror); nil means editing is unavailable and
 	// submitting states so rather than silently doing nothing.
-	envEditing               bool
-	envCursor                int
-	envEditKey, envEditValue string
-	// envEditPrefilled tracks task 021's cwd-field-style prefill: enter
-	// preloads envEditValue with the row's current value, and the very
-	// FIRST typed rune or backspace replaces it wholesale rather than
-	// editing within it (see updateEnvDialog).
-	envEditPrefilled bool
-	envNote          string
+	envEditing bool
+	envCursor  int
+	envEditKey string
+	// envEdit is the value being typed, in the shared line editor (§11.11):
+	// enter opens it on the row's current value as an offered value, so a
+	// printable key or a paste replaces it and a caret or editing key accepts
+	// it and edits it in place (see updateEnvDialog).
+	envEdit lineedit.Editor
+	envNote string
 	// envReveal is task 010's per-view explicit reveal toggle (SPEC §6.4,
 	// requirement 21): false (the default every time the dialog opens, per
 	// "r" below) masks every secret-shaped row's value via maskEnvValue;
@@ -4502,8 +4502,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			// needed here anymore.
 			m.envEditing = true
 			m.envCursor = 0
-			m.envEditKey, m.envEditValue, m.envNote = "", "", ""
-			m.envEditPrefilled = false
+			m.envEditKey, m.envEdit, m.envNote = "", lineedit.Editor{}, ""
 			m.envReveal = false
 			m.envScroll = 0
 		case "E":

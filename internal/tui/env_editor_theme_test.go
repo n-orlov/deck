@@ -8,6 +8,7 @@ import (
 	"github.com/n-orlov/deck/internal/config"
 	"github.com/n-orlov/deck/internal/store"
 	"github.com/n-orlov/deck/internal/theme"
+	"github.com/n-orlov/deck/internal/tui/lineedit"
 )
 
 // task017EnvTestModel builds a colour-enabled `e` env editor Model at
@@ -96,7 +97,7 @@ func TestStyledEnvBodyMatchesPlainBodyLineForLine(t *testing.T) {
 	browsing := task017EnvTestModel(t)
 
 	editing := task017EnvTestModel(t)
-	editing.envEditKey, editing.envEditValue, editing.envEditPrefilled = "ALPHA_VAR", "typed-value", false
+	editing.envEditKey, editing.envEdit = "ALPHA_VAR", lineedit.New("typed-value")
 
 	withNote := task017EnvTestModel(t)
 	withNote.envNote = "Cannot edit environment: boom"
@@ -114,7 +115,11 @@ func TestStyledEnvBodyMatchesPlainBodyLineForLine(t *testing.T) {
 		{"revealed", revealed},
 	} {
 		plainBody := tc.m.envBody()
-		if strings.ContainsRune(plainBody, 0x1b) {
+		// The one escape the plain body may carry is the shared editor's
+		// reverse-video caret (SGR 7/27), which §11.11 requires to survive
+		// NO_COLOR; no colour token is allowed in it.
+		withoutCaret := strings.NewReplacer("\x1b[7m", "", "\x1b[27m", "").Replace(plainBody)
+		if strings.ContainsRune(withoutCaret, 0x1b) {
 			t.Fatalf("%s: envBody() contains an escape byte:\n%q", tc.name, plainBody)
 		}
 		plain := tc.m.wrapDialogLines(plainBody)
@@ -123,7 +128,7 @@ func TestStyledEnvBodyMatchesPlainBodyLineForLine(t *testing.T) {
 			t.Fatalf("%s: styledEnvBody has %d physical lines, wrapDialogLines(envBody()) has %d:\nplain: %q\nstyled: %q", tc.name, len(styled), len(plain), plain, styled)
 		}
 		for i := range plain {
-			if got := stripANSI(styled[i]); got != plain[i] {
+			if got := stripANSI(styled[i]); got != stripANSI(plain[i]) {
 				t.Fatalf("%s: line %d differs once escapes are stripped:\n styled: %q\n  plain: %q", tc.name, i, got, plain[i])
 			}
 		}
@@ -293,7 +298,7 @@ func TestEnvViewClosingHintKeysAreKeyToken(t *testing.T) {
 	}
 
 	editing := task017EnvTestModel(t)
-	editing.envEditKey, editing.envEditValue = "ALPHA_VAR", "typed"
+	editing.envEditKey, editing.envEdit = "ALPHA_VAR", lineedit.New("typed")
 	editView := editing.envView()
 	editTerm := renderSettingsToEmulator(t, editView, editing.width, editing.height)
 	editRow := findRowContaining(t, editTerm, "Enter saves this key")
