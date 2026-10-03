@@ -175,6 +175,22 @@ test that fails twice in a row fails the check.
   (`--junitfile`), `features/` through Godog's own JUnit formatter
   (`pretty,junit:<path>`), so each scenario is its own Allure test case
   rather than one opaque `TestFeatures`.
+- `features/` can also write native Allure 2 results: with
+  `DECK_GODOG_ALLURE=<dir>` set, `godogFormat()` adds the in-repo `allure`
+  formatter (`features/allure_formatter_test.go`, standard library plus Godog
+  only) beside pretty and JUnit, writing `*-result.json`, one
+  `*-container.json` per feature file and attachment files into `<dir>`. The
+  feature is the Allure `feature`, the scenario the test and each Gherkin step
+  an Allure step (verbatim text, own status and duration). `@gh-NN` becomes an
+  issue link to `https://github.com/n-orlov/deck/issues/NN`, `@multiclient`/
+  `@slow`/`@nightly` become `tag` labels and `@claude`/`@pi`/`@codex` the
+  `parentSuite`. A failing step carries only what the harness already writes
+  into its error text (last normalized pty frame, tmux captures, deck-log
+  slice, store dump), cut out by its section headers; nothing is collected
+  anew. The `historyId` is a digest of feature file, scenario name (and, for an
+  outline, its substituted steps), so the one-retry rerun of a failed
+  scenario (`DECK_GODOG_PATHS=<file>:<line>`) into the same directory is a
+  retry of the same test, not a second one.
 - `main`/`schedule`/`workflow_dispatch` runs publish to the Pages **site
   root**, with Allure's own history/trend carried forward across runs. A
   `pull_request` run instead publishes under `/pr/<number>/`, with no shared
