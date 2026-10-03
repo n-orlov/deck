@@ -212,16 +212,22 @@ func TestStaleSnapshotKeepsRowsOffsetAndScrollIntent(t *testing.T) {
 		t.Fatalf("cached live frame requested at 3: used=%d scroll=%d stale=%v, want used=0 scroll=3", h.UsedOffset, h.ScrollOffset, h.Stale)
 	}
 
-	// Case 3: the intent is clamped against the cached scrollback length,
-	// and the cached frame's offset is untouched.
+	// Case 3: the intent is NOT clamped against the cached scrollback
+	// length (the write in flight may be growing it), only to the grid's
+	// hard cap; the cached frame's offset is untouched, and the next fresh
+	// composition clamps the intent against the real length.
 	s3 := staleScrollSession(t)
 	defer retireGrid(s3.grid)
 	s3.RenderSnapshot(1, 5)
 	s3.writes.Lock()
 	c := s3.RenderSnapshot(10000, 5)
 	s3.writes.Unlock()
-	if c.UsedOffset != 1 || c.ScrollOffset != s3.lastFrame.Load().scrollbackLen || c.ScrollOffset <= 1 {
-		t.Fatalf("clamp: used=%d scroll=%d", c.UsedOffset, c.ScrollOffset)
+	if c.UsedOffset != 1 || c.ScrollOffset != ScrollbackMaxLines {
+		t.Fatalf("cap: used=%d scroll=%d, want used=1 scroll=%d", c.UsedOffset, c.ScrollOffset, ScrollbackMaxLines)
+	}
+	realLen := s3.grid.Scrollback().Len()
+	if f := s3.RenderSnapshot(c.ScrollOffset, 5); f.Stale || f.UsedOffset != realLen || f.ScrollOffset != realLen {
+		t.Fatalf("fresh frame after an over-long intent: stale=%v used=%d scroll=%d, want both %d", f.Stale, f.UsedOffset, f.ScrollOffset, realLen)
 	}
 
 	// Case 4: a taller request pads the cached frame at the top, and the
@@ -244,5 +250,78 @@ func TestStaleSnapshotWithoutFrameEchoesRequest(t *testing.T) {
 	snap := s.staleSnapshot(4, 3)
 	if snap.UsedOffset != 4 || snap.ScrollOffset != 4 || !snap.Stale || len(snap.Rows) != 3 {
 		t.Fatalf("no-frame snapshot = %+v", snap)
+	}
+}
+
+// The verifier's case for R182's stale path: history GROWS during the write
+// that forces the cached frame, so a request past the cached scrollback
+// length is valid for the next fresh frame and must not be cut down to the
+// cached length (which would discard the user's scroll intent), while the
+// cached live rows keep their own live labelling.
+func TestStaleSnapshotKeepsScrollIntentWhileHistoryGrows(t *testing.T) {
+	s := newModesSession() // 20x5
+	defer retireGrid(s.grid)
+	s.writeGrid([]byte("A0\r\nA1\r\nA2\r\nA3\r\nA4\r\nA5"))
+	live := s.RenderSnapshot(0, 5)
+	if cached := s.lastFrame.Load().scrollbackLen; cached != 1 || live.UsedOffset != 0 {
+		t.Fatalf("fixture: cached scrollback %d used %d, want 1 and 0", cached, live.UsedOffset)
+	}
+
+	s.writes.Lock()
+	// The in-flight write pushes eight more lines into history.
+	if _, err := s.grid.Write([]byte("\r\nB0\r\nB1\r\nB2\r\nB3\r\nB4\r\nB5\r\nB6\r\nB7")); err != nil {
+		s.writes.Unlock()
+		t.Fatal(err)
+	}
+	var got []RenderSnapshot
+	for _, req := range []int{2, 5, 9} {
+		got = append(got, s.RenderSnapshot(req, 5))
+	}
+	s.writes.Unlock()
+
+	for i, req := range []int{2, 5, 9} {
+		g := got[i]
+		if !g.Stale || g.ScrollOffset != req {
+			t.Fatalf("request %d during a growing write: stale=%v scroll=%d, want stale scroll=%d (intent kept)", req, g.Stale, g.ScrollOffset, req)
+		}
+		// The rows are still the cached LIVE frame, so their labels say live
+		// and the cursor row is the cached one, in view.
+		if g.UsedOffset != 0 || g.CursorViewRow != live.CursorViewRow || strings.Join(g.Rows, "\n") != strings.Join(live.Rows, "\n") {
+			t.Fatalf("request %d: cached live frame relabelled: used=%d cursorViewRow=%d (want 0, %d)", req, g.UsedOffset, g.CursorViewRow, live.CursorViewRow)
+		}
+	}
+
+	// The next fresh frame honours the kept intent at the grown length, and
+	// it is history, so the live cursor row is out of its view.
+	if n := s.grid.Scrollback().Len(); n != 9 {
+		t.Fatalf("fixture: scrollback after the write = %d, want 9", n)
+	}
+	fresh := s.RenderSnapshot(got[1].ScrollOffset, 5)
+	if fresh.Stale || fresh.UsedOffset != 5 || fresh.ScrollOffset != 5 {
+		t.Fatalf("fresh frame at the kept intent: stale=%v used=%d scroll=%d, want used=scroll=5", fresh.Stale, fresh.UsedOffset, fresh.ScrollOffset)
+	}
+	if fresh.CursorViewRow >= 0 && fresh.CursorViewRow < len(fresh.Rows) {
+		t.Fatalf("history frame at offset 5 places the live cursor in view at row %d", fresh.CursorViewRow)
+	}
+	if !strings.HasPrefix(fresh.Rows[0], "A4") || !strings.HasPrefix(fresh.Rows[4], "B2") {
+		t.Fatalf("fresh frame at offset 5 rows = %q, want A4..B2", fresh.Rows)
+	}
+}
+
+// A negative request during a write is the live bottom: the intent comes
+// back as 0 and the cached history frame keeps its own offset, so the
+// cursor is still not placed on it.
+func TestStaleSnapshotNegativeRequestIsLiveIntentNotLiveRows(t *testing.T) {
+	s := staleScrollSession(t)
+	defer retireGrid(s.grid)
+	hist := s.RenderSnapshot(4, 5)
+	s.writes.Lock()
+	got := s.RenderSnapshot(-3, 5)
+	s.writes.Unlock()
+	if !got.Stale || got.ScrollOffset != 0 || got.UsedOffset != 4 || got.CursorViewRow != hist.CursorViewRow {
+		t.Fatalf("negative request: stale=%v scroll=%d used=%d cursorViewRow=%d, want stale scroll=0 used=4 cursorViewRow=%d", got.Stale, got.ScrollOffset, got.UsedOffset, got.CursorViewRow, hist.CursorViewRow)
+	}
+	if hist.CursorViewRow >= 0 && hist.CursorViewRow < len(hist.Rows) {
+		t.Fatalf("fixture: history frame at offset 4 shows the cursor row %d", hist.CursorViewRow)
 	}
 }

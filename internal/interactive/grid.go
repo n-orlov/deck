@@ -322,12 +322,14 @@ type RenderSnapshot struct {
 	// from the cache keeps the offset it was composed at, never the one
 	// the current request asked for.
 	UsedOffset int
-	// ScrollOffset is the caller's requested offset clamped against the
-	// scrollback length known to the composition that answered: what the
-	// caller should store as its scroll position. It equals UsedOffset on a
-	// fresh composition; on a cached frame it can differ, because a scroll
-	// request that arrives while a write is in flight is not a statement
-	// about the old frame and must survive until the next fresh one.
+	// ScrollOffset is what the caller should store as its scroll position.
+	// On a fresh composition it is the request clamped against the real
+	// scrollback length and equals UsedOffset. On a cached frame the real
+	// length is unknowable (the write in flight may be growing or wiping
+	// history), so it is the request clamped only to [0,
+	// ScrollbackMaxLines]: a scroll request that arrives while a write is
+	// in flight is not a statement about the old frame and must survive
+	// until the next fresh one, which clamps it for real.
 	ScrollOffset int
 	// Stale is true when Rows came from the cached frame because a write
 	// was in flight.
@@ -954,9 +956,10 @@ func (s *Session) Grid() *Grid { return s.currentGrid() }
 // always ends in a fresh composition.
 func (s *Session) RenderRows(offset, height int) (rows []string, usedOffset int) {
 	snap := s.RenderSnapshot(offset, height)
-	// The returned offset is the caller's scroll position clamped against
-	// the known scrollback length (RenderSnapshot.ScrollOffset), which is
-	// what a caller stores. On a cached frame it can differ from the offset
+	// The returned offset is the caller's scroll position to store
+	// (RenderSnapshot.ScrollOffset): clamped against the real scrollback
+	// length on a fresh composition, kept as requested (within the grid's
+	// hard cap) on a cached frame. On a cached frame it can differ from the offset
 	// the rows were composed at (RenderSnapshot.UsedOffset); callers that
 	// need the latter use RenderSnapshot.
 	return snap.Rows, snap.ScrollOffset
@@ -1057,8 +1060,15 @@ func (s *Session) staleSnapshot(offset, height int) RenderSnapshot {
 		// would silently reset a scroll position.
 		return RenderSnapshot{Rows: make([]string, height), UsedOffset: offset, ScrollOffset: offset, Stale: true, CursorViewRow: -1, CursorVisible: true}
 	}
-	if offset > last.scrollbackLen {
-		offset = last.scrollbackLen
+	// The request is NOT clamped against last.scrollbackLen: that is the
+	// length the cached frame saw, and the write in flight right now may be
+	// adding history, so a request that is past the cached length can be
+	// perfectly valid for the next fresh frame. Clamping it here would
+	// throw that scroll intent away. The only bound that holds whatever
+	// the in-flight write does is the grid's own hard cap; the next fresh
+	// composition clamps against the real length (and the TUI stores that).
+	if offset > ScrollbackMaxLines {
+		offset = ScrollbackMaxLines
 	}
 	out := make([]string, 0, height)
 	blank := strings.Repeat(" ", last.width)

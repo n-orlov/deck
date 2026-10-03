@@ -19,6 +19,7 @@ package interactive
 
 import (
 	"context"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -271,6 +272,11 @@ func TestStalledWriteKeepsCachedFrameOffsetAndScrollIntent(t *testing.T) {
 	started, _ := stall()
 	<-started
 	defer unpark()
+	// Polling at the cached frame's own offset keeps the cache unchanged
+	// even if a poll lands before the write takes the lock.
+	if !awaitWriteInFlight(s, 3, height) {
+		t.Fatalf("the write never took s.writes within %s", writeStallDeadline)
+	}
 
 	for _, req := range []int{0, 1, 7} {
 		got := s.RenderSnapshot(req, height)
@@ -281,4 +287,62 @@ func TestStalledWriteKeepsCachedFrameOffsetAndScrollIntent(t *testing.T) {
 			t.Fatalf("request %d: cached rows/cursor were altered", req)
 		}
 	}
+}
+
+// The same rule with a REAL parked write that itself adds history before it
+// parks: a scroll request past the cached frame's scrollback length is kept
+// as the intent, the cached live frame stays labelled live, and once the
+// write ends the next fresh frame is composed at the kept offset.
+func TestStalledWriteThatGrowsHistoryKeepsScrollIntent(t *testing.T) {
+	const width, height = 40, 5
+	s, _, _, unpark := stalledWriteSession(t, width, height)
+	s.writeNotice("top\r\n")
+	live := s.RenderSnapshot(0, height)
+	if live.UsedOffset != 0 || s.lastFrame.Load().scrollbackLen != 0 {
+		t.Fatalf("setup: used=%d cached sb=%d", live.UsedOffset, s.lastFrame.Load().scrollbackLen)
+	}
+	started, returned := make(chan struct{}), make(chan struct{})
+	go func() {
+		defer close(returned)
+		close(started)
+		var b strings.Builder
+		for i := 0; i < 12; i++ {
+			b.WriteString("grow" + itoa(i) + "\r\n")
+		}
+		// Twelve lines of history, then a DA query that parks the write on
+		// its reply until unpark.
+		s.writeNotice(b.String() + "\x1b[c")
+	}()
+	<-started
+	if !awaitWriteInFlight(s, 0, height) {
+		unpark()
+		t.Fatalf("the write never took s.writes within %s", writeStallDeadline)
+	}
+	got := s.RenderSnapshot(6, height)
+	if !got.Stale || got.ScrollOffset != 6 || got.UsedOffset != 0 || got.CursorViewRow != live.CursorViewRow {
+		unpark()
+		t.Fatalf("request 6 during a growing write: stale=%v scroll=%d used=%d cursorViewRow=%d, want stale scroll=6 used=0 cursorViewRow=%d", got.Stale, got.ScrollOffset, got.UsedOffset, got.CursorViewRow, live.CursorViewRow)
+	}
+	unpark()
+	<-returned
+	fresh := s.RenderSnapshot(got.ScrollOffset, height)
+	if fresh.Stale || fresh.UsedOffset != 6 || fresh.ScrollOffset != 6 {
+		t.Fatalf("fresh frame after the write: stale=%v used=%d scroll=%d, want used=scroll=6", fresh.Stale, fresh.UsedOffset, fresh.ScrollOffset)
+	}
+}
+
+// awaitWriteInFlight returns once a RenderSnapshot(offset, height) is
+// answered from the cached frame, i.e. a write really holds s.writes (a
+// goroutine's "started" signal precedes its Lock). Callers pass the cached
+// frame's own offset so a poll that lands before the lock recomposes the
+// same frame. False if no write took the lock within writeStallDeadline.
+func awaitWriteInFlight(s *Session, offset, height int) bool {
+	deadline := time.Now().Add(writeStallDeadline)
+	for !s.RenderSnapshot(offset, height).Stale {
+		if time.Now().After(deadline) {
+			return false
+		}
+		runtime.Gosched()
+	}
+	return true
 }
