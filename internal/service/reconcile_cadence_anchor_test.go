@@ -72,7 +72,7 @@ for arg in "$@"; do
 		if [ ! -e '@STATE@/first-taken' ]; then
 			: > '@STATE@/first-taken'
 			while [ ! -e '@STATE@/release' ]; do sleep 0.005; done
-			printf '%s\n' 'deck_@SLUG@|%1|/tmp|4242|0|||sh|80|24'
+			printf '%s\n' 'deck_@SLUG@|%1|4242|0|||80|24'
 		fi
 		exit 0
 		;;

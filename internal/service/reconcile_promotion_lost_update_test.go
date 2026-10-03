@@ -87,7 +87,7 @@ for arg in "$@"; do
 			fi
 			sleep 0.05
 		done
-		printf '%s\n' 'deck_@SLUG@|%1|/tmp|4242|0|||sh|80|24'
+		printf '%s\n' 'deck_@SLUG@|%1|4242|0|||80|24'
 		exit 0
 		;;
 	esac

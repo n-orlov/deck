@@ -54,8 +54,12 @@ func TestCreateShellPersistsLaunchesAndAudits(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(live) != 1 || live[0].Name != "deck_shell-session" || len(live[0].Panes) != 1 || live[0].Panes[0].CurrentPath != cwd {
+	if len(live) != 1 || live[0].Name != "deck_shell-session" || len(live[0].Panes) != 1 || live[0].Panes[0].Dead {
 		t.Fatalf("live tmux sessions = %#v", live)
+	}
+	// List carries no free-text field, so the launch cwd is read from tmux directly.
+	if out, err := exec.Command("tmux", "-L", socket, "display-message", "-p", "-t", "deck_shell-session", "#{pane_current_path}").CombinedOutput(); err != nil || strings.TrimSpace(string(out)) != cwd {
+		t.Fatalf("pane_current_path = %q, %v; want %q", out, err, cwd)
 	}
 	rows, err := db.ListSessions(context.Background())
 	if err != nil || len(rows) != 1 || rows[0].ID != session.ID || rows[0].StatusSource != "tmux" {
