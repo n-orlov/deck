@@ -29,6 +29,7 @@ func registerBlackBoxAssertionSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^deck client "([^"]+)" sends "([^"]*)"$`, sendClientKeys)
 	sc.Step(`^deck client "([^"]+)" screen contains "([^"]+)"$`, clientScreenContains)
 	sc.Step(`^within one configured reconcile interval deck client "([^"]+)" screen contains "([^"]+)"$`, clientScreenContainsWithinReconcileInterval)
+	sc.Step(`^within one configured reconcile interval deck client "([^"]+)" screen does not contain "([^"]+)"$`, clientScreenDoesNotContainWithinReconcileInterval)
 	sc.Step(`^after one configured reconcile interval deck client "([^"]+)" screen still contains "([^"]+)"$`, clientScreenStillContainsAfterReconcileInterval)
 	sc.Step(`^after one configured reconcile interval deck client "([^"]+)" row "([^"]+)" does not contain "([^"]+)"$`, clientRowDoesNotContainAfterReconcileInterval)
 	sc.Step(`^the private tmux session "([^"]+)" exists$`, privateSessionExists)
@@ -152,6 +153,29 @@ func clientRowDoesNotContainAfterReconcileInterval(ctx context.Context, clientNa
 	case <-timer.C:
 	}
 	return clientRowDoesNotContain(ctx, clientName, sessionName, unwanted)
+}
+
+// clientScreenDoesNotContainWithinReconcileInterval is the polling negation of
+// clientScreenContainsWithinReconcileInterval: it passes as soon as the frame
+// stops showing unwanted, within the same deadline. A one-shot Frame check
+// races the TUI applying an async result (e.g. R's sessionRestarted) that
+// the store and the pane have already reflected.
+func clientScreenDoesNotContainWithinReconcileInterval(ctx context.Context, name, unwanted string) error {
+	h, err := assertionHarness(ctx)
+	if err != nil {
+		return err
+	}
+	client, err := h.Client(name)
+	if err != nil {
+		return err
+	}
+	timeout := reconcileIntervalPollDeadline(scenarioReconcileInterval, racebuild.Enabled)
+	wait, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	if err := client.WaitForFrameGone(wait, false, unwanted); err != nil {
+		return fmt.Errorf("client %q still showed %q after %s: %w", name, unwanted, timeout, err)
+	}
+	return nil
 }
 
 func clientScreenContainsBefore(ctx context.Context, name, want string, timeout time.Duration) error {

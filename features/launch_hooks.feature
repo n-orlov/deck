@@ -114,6 +114,6 @@ Feature: Every pane carries its own session's DECK_SESSION_* context (R104, SPEC
     When deck client "A" presses R on session "launch edit target"
     Then within one configured reconcile interval deck client "A" screen contains "fake-claude resume:"
     And the state database session "launch edit target" is not marked launch_dirty
-    And deck client "A" screen does not contain "launch*"
+    And within one configured reconcile interval deck client "A" screen does not contain "launch*"
     And the live pane process environment for session "launch edit target" key "DECK_LAUNCH_EDIT_MARKER" is "applied"
     When deck client "A" exits cleanly
