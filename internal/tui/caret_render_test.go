@@ -407,3 +407,29 @@ func TestOfferedValueCarriesTheSelectionBackground(t *testing.T) {
 		})
 	}
 }
+
+// A bracketed paste that joins the clusters on either side of the caret
+// (R177, §11.11) leaves the caret on a boundary of the joined text, so the
+// focused field still draws its reverse-video caret and one backspace deletes
+// the whole joined grapheme.
+func TestRenameJoiningPasteKeepsAVisibleCaretOnABoundary(t *testing.T) {
+	const woman, laptop, zwj = "\U0001F469", "\U0001F4BB", "\u200d"
+	for _, c := range []struct{ name, text, paste, afterBackspace string }{
+		{"zwj between emoji", woman + laptop, zwj, ""},
+		{"combining mark after a letter", "ab", "\u0301", "b"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			m := caretRenameModel(t, c.text)
+			m = caretPress(m, "left")
+			next, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(c.paste), Paste: true})
+			m = next.(Model)
+			if got := reverseCells(frameOf(t, m)); len(got) == 0 {
+				t.Fatalf("no reverse-video caret after a joining paste: value=%q caret=%d", m.renameEdit.Value(), m.renameEdit.Caret())
+			}
+			m = caretPress(m, "backspace")
+			if got := m.renameEdit.Value(); got != c.afterBackspace {
+				t.Fatalf("backspace left %q, want %q", got, c.afterBackspace)
+			}
+		})
+	}
+}
