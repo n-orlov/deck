@@ -25,7 +25,7 @@ func TestListOracleFixtureServerResultIsPinned(t *testing.T) {
 	client := Client{Socket: socket, Timeout: 10 * time.Second}
 	ctx := context.Background()
 
-	// A fixed cwd, so CurrentPath is a literal rather than a temp dir name.
+	// A fixed cwd, so the fixture does not depend on a temp dir.
 	const cwd = "/tmp"
 	// Session names sort the same by name and by creation order, so the
 	// expectation does not depend on how this tmux orders list-sessions.
@@ -66,13 +66,12 @@ func TestListOracleFixtureServerResultIsPinned(t *testing.T) {
 		}
 		return pid0(t, value)
 	}
-	// A dead pane reports no current path, and its command is the `env` Create
-	// wraps every launch in; a signal death is 128 + signal (KILL = 9).
+	// A signal death is 128 + signal (KILL = 9).
 	status7, status137 := 7, 137
 	want := []Session{
-		{Name: "deck_a-live", Panes: []Pane{{ID: "%0", CurrentPath: "/tmp", PID: pid("%0"), Dead: false, DeadStatus: nil, Command: "sleep", Width: 80, Height: 24}}},
-		{Name: "deck_b-exit", Panes: []Pane{{ID: "%1", CurrentPath: "", PID: pid("%1"), Dead: true, DeadStatus: &status7, Command: "env", Width: 80, Height: 24}}},
-		{Name: "deck_c-signal", Panes: []Pane{{ID: "%3", CurrentPath: "", PID: pid("%3"), Dead: true, DeadStatus: &status137, Command: "env", Width: 80, Height: 24}}},
+		{Name: "deck_a-live", Panes: []Pane{{ID: "%0", PID: pid("%0"), Dead: false, DeadStatus: nil, Width: 80, Height: 24}}},
+		{Name: "deck_b-exit", Panes: []Pane{{ID: "%1", PID: pid("%1"), Dead: true, DeadStatus: &status7, Width: 80, Height: 24}}},
+		{Name: "deck_c-signal", Panes: []Pane{{ID: "%3", PID: pid("%3"), Dead: true, DeadStatus: &status137, Width: 80, Height: 24}}},
 	}
 
 	got, err := client.List(ctx)

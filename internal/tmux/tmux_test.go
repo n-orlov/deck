@@ -78,8 +78,8 @@ func TestCreateListAndKillRealTmux(t *testing.T) {
 		t.Fatalf("listed sessions = %#v, want one deck session and pane", listed)
 	}
 	pane := listed[0].Panes[0]
-	if pane.CurrentPath != cwd || pane.ID == "" || pane.PID <= 0 || pane.Command == "" {
-		t.Errorf("listed pane facts = %#v, want id, pid, command, and cwd %q", pane, cwd)
+	if pane.ID == "" || pane.PID <= 0 || pane.Dead {
+		t.Errorf("listed pane facts = %#v, want a live pane with an id and pid", pane)
 	}
 	if err := client.Kill(context.Background(), "shell_test"); err != nil {
 		t.Fatalf("kill private tmux session: %v", err)

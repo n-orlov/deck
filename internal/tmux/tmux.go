@@ -67,12 +67,10 @@ type Session struct {
 // Pane is a deliberately small set of facts that reconciliation needs from
 // tmux. All fields are read from tmux format strings, never inferred locally.
 type Pane struct {
-	ID          string
-	CurrentPath string
-	PID         int
-	Dead        bool
-	DeadStatus  *int
-	Command     string
+	ID         string
+	PID        int
+	Dead       bool
+	DeadStatus *int
 	// Width and Height are the pane's real terminal geometry (tmux's
 	// pane_width/pane_height), independent of how much of it capture-pane
 	// actually returns for a given row (trailing blank lines/columns are
@@ -390,7 +388,9 @@ func (c Client) List(ctx context.Context) ([]Session, error) {
 		if !ok {
 			return nil, fmt.Errorf("parse pane facts: %q", line)
 		}
-		if !strings.HasPrefix(name, "deck_") {
+		// Only the deck_<slug> names sessionName produces are deck's; any other
+		// session on the socket (one made by hand, say) is not ours to report.
+		if !sessionNamePattern.MatchString(name) {
 			continue
 		}
 		pane, err := parsePaneFacts(name, facts)
@@ -785,38 +785,45 @@ func (c Client) session(ctx context.Context, name string) (Session, error) {
 }
 
 // paneFactsFormat is the per-pane field list List reads; parsePaneFacts is its
-// only reader.
-const paneFactsFormat = "#{pane_id}|#{pane_current_path}|#{pane_pid}|#{pane_dead}|#{pane_dead_status}|#{pane_dead_signal}|#{pane_current_command}|#{pane_width}|#{pane_height}"
+// only reader. It must carry no free-text tmux field (pane_current_path,
+// pane_current_command, pane_title, ...): List splits ONE `list-panes -a` read
+// on newline and `|`, and tmux prints such fields raw, so a directory named
+// with a newline and a fake line could forge a dead pane for another deck
+// session. Every field here is a number or a %-prefixed pane id.
+const paneFactsFormat = "#{pane_id}|#{pane_pid}|#{pane_dead}|#{pane_dead_status}|#{pane_dead_signal}|#{pane_width}|#{pane_height}"
+
+// sessionNamePattern is the shape of every name sessionName produces.
+var sessionNamePattern = regexp.MustCompile(`^deck_[a-z0-9_-]+$`)
 
 func parsePaneFacts(name, line string) (Pane, error) {
 	fields := strings.Split(line, "|")
-	if len(fields) != 9 {
+	if len(fields) != 7 || !paneIDPattern.MatchString(fields[0]) {
 		return Pane{}, fmt.Errorf("parse pane facts for session %q: %q", name, line)
 	}
-	pid, err := strconv.Atoi(fields[2])
+	pid, err := strconv.Atoi(fields[1])
 	if err != nil {
 		return Pane{}, fmt.Errorf("parse pane PID for session %q: %w", name, err)
 	}
-	width, err := strconv.Atoi(fields[7])
+	width, err := strconv.Atoi(fields[5])
 	if err != nil {
 		return Pane{}, fmt.Errorf("parse pane width for session %q: %w", name, err)
 	}
-	height, err := strconv.Atoi(fields[8])
+	height, err := strconv.Atoi(fields[6])
 	if err != nil {
 		return Pane{}, fmt.Errorf("parse pane height for session %q: %w", name, err)
 	}
-	pane := Pane{ID: fields[0], CurrentPath: fields[1], PID: pid, Dead: fields[3] == "1", Command: fields[6], Width: width, Height: height}
-	if fields[4] != "" {
-		status, err := strconv.Atoi(fields[4])
+	pane := Pane{ID: fields[0], PID: pid, Dead: fields[2] == "1", Width: width, Height: height}
+	if fields[3] != "" {
+		status, err := strconv.Atoi(fields[3])
 		if err != nil {
 			return Pane{}, fmt.Errorf("parse pane exit status for session %q: %w", name, err)
 		}
 		pane.DeadStatus = &status
-	} else if fields[5] != "" {
+	} else if fields[4] != "" {
 		// tmux reports signal deaths separately from ordinary exit status.
 		// Preserve the conventional shell status (128 + signal) so SIGKILL
 		// remains a nonzero crash observation instead of an unclassified corpse.
-		signal, err := strconv.Atoi(fields[5])
+		signal, err := strconv.Atoi(fields[4])
 		if err != nil {
 			return Pane{}, fmt.Errorf("parse pane death signal for session %q: %w", name, err)
 		}
