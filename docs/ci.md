@@ -452,6 +452,23 @@ seeds a `DECK_*` variable and a `go` wrapper on `PATH` that records every
 `DECK_*` variable any invocation of `go` sees, and fails if that log is ever
 non-empty.
 
+**The loosening test (`TestThresholdsNotLoosened`, task 085, R187).** The
+same package's `TestThresholdsNotLoosened` compares the checked-in
+`ci/quality.json` against the base-branch copy, resolved exactly as R187
+specifies: `git merge-base HEAD origin/main`, falling back to `HEAD~1` on a
+shallow clone, with a clear error naming both failures if even that
+fallback cannot resolve a ref. It fails if any floor dropped, any ceiling
+rose, or a gate switched from on to off relative to base; tightening (or an
+unchanged copy) always passes. The comparison and the "resolve the base
+copy" step are split apart (`looserThresholds`, `checkThresholdsNotLoosened`,
+`loadBaseConfig`/`resolveBaseRef`) so a dedicated unit test can stub the
+resolver to simulate "no base copy resolves" and assert the result is a
+returned error, never a skip -- there is no code path in
+`checkThresholdsNotLoosened` that calls `t.Skip`. Other unit tests seed a
+loosened copy (a lower floor, a raised ceiling, a gate switched off) against
+a fixed base and assert the comparison fails, and a tightened copy against
+the same base and assert it passes.
+
 ## The release gate (`release.yml`, R147)
 
 Before `release.yml` builds or publishes anything for a pushed `vX.Y.Z` tag,
