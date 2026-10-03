@@ -46,13 +46,23 @@ func TestFeatures(t *testing.T) {
 // "pretty,junit:<path>" multi-formatter syntax is used: the terminal output
 // stays pretty, and godog's built-in JUnit formatter additionally writes one
 // <testcase> per scenario to <path> (task 014, R146). Local runs that never
-// set the variable are byte-for-byte unaffected.
+// set either variable are byte-for-byte unaffected.
 func godogFormat() string {
-	path := strings.TrimSpace(os.Getenv("DECK_GODOG_JUNIT"))
-	if path == "" {
-		return "pretty"
+	format := "pretty"
+	if path := strings.TrimSpace(os.Getenv("DECK_GODOG_JUNIT")); path != "" {
+		format = "pretty,junit:" + path
 	}
-	return "pretty,junit:" + path
+	// DECK_GODOG_ALLURE names an allure-results directory (task 004, R195):
+	// the in-repo "allure" formatter (allure_formatter_test.go) additionally
+	// writes Allure 2 results there, alongside whatever JUnit output is set.
+	// godog needs a file for every "name:path" formatter part, so a small
+	// summary file is created beside the results.
+	if dir := strings.TrimSpace(os.Getenv(allureDirEnv)); dir != "" {
+		if err := os.MkdirAll(dir, 0o755); err == nil {
+			format += ",allure:" + filepath.Join(dir, "godog-allure-summary.txt")
+		}
+	}
+	return format
 }
 
 // godogPaths returns the feature paths the suite runs. It is the whole
