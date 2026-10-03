@@ -16,7 +16,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/n-orlov/deck/internal/config"
-	_ "modernc.org/sqlite"
+	sqlite "modernc.org/sqlite"
 )
 
 // SchemaVersion is the newest schema understood by this binary.
@@ -43,6 +43,31 @@ type Store struct {
 	// introducing a separate mock/interface layer over the concrete *Store
 	// type every other tui code path already depends on directly.
 	eventsListCalls int64
+}
+
+func init() { sqlite.RegisterConnectionHook(persistWAL) }
+
+// persistWAL keeps state.db-wal on disk when the last connection closes
+// (SQLITE_FCNTL_PERSIST_WAL). Without it that close deletes the WAL, and the
+// next writer -- in practice a short-lived `deck _hook` while no TUI is open
+// -- must start a fresh one, which SQLite fsyncs before the first frame even
+// at synchronous=NORMAL. That one fsync was nearly the whole of the hook's
+// measured store write (SPEC §3.1's 20 ms budget): about 5 ms on an idle
+// btrfs disk and past 20 ms on a busy CI host, against about 0.1 ms for the
+// transaction itself. The frames left behind are already checkpointed, so
+// state.db alone stays complete. It is a driver-wide connection hook rather
+// than a step in OpenPath so that every connection gets it, including one the
+// pool reopens and any other connection in the same process (test fixtures
+// included), since any connection that closes without it deletes the WAL.
+func persistWAL(conn sqlite.ExecQuerierContext, _ string) error {
+	fc, ok := conn.(sqlite.FileControl)
+	if !ok {
+		return fmt.Errorf("sqlite connection %T has no file control for a persistent WAL", conn)
+	}
+	if _, err := fc.FileControlPersistWAL("main", 1); err != nil {
+		return fmt.Errorf("keep the state database WAL across closes: %w", err)
+	}
+	return nil
 }
 
 // Open creates or migrates the state database addressed by paths. The database
@@ -108,6 +133,17 @@ func OpenPath(home, path string) (*Store, error) {
 		db.Close()
 		return nil, fmt.Errorf("secure store directory: %w", err)
 	}
+	// Tighten state.db before journal_mode=WAL: SQLite creates -wal and -shm
+	// with the main file's mode, and the WAL now persists across closes, so a
+	// loose main file would leave session env values in a 0644 WAL on disk
+	// (SPEC section 6.4). Siblings left loose by an earlier binary are fixed
+	// here too; SQLite never changes an existing file's mode.
+	for _, p := range []string{path, path + "-wal", path + "-shm"} {
+		if err := os.Chmod(p, 0o600); err != nil && !errors.Is(err, os.ErrNotExist) {
+			db.Close()
+			return nil, fmt.Errorf("secure state database: %w", err)
+		}
+	}
 	if _, err := db.Exec(`PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL; PRAGMA busy_timeout=5000; PRAGMA foreign_keys=ON`); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("configure state database: %w", err)
@@ -115,10 +151,6 @@ func OpenPath(home, path string) (*Store, error) {
 	if err := store.migrate(version); err != nil {
 		db.Close()
 		return nil, err
-	}
-	if err := os.Chmod(path, 0o600); err != nil {
-		db.Close()
-		return nil, fmt.Errorf("secure state database: %w", err)
 	}
 	return store, nil
 }
