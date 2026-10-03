@@ -63,6 +63,13 @@ func filterMatches(session store.Session, query string) bool {
 	if strings.Contains(strings.ToLower(session.CWD), q) {
 		return true
 	}
+	// SPEC §11.10: the filter runs over what a row already shows, and a
+	// row always shows its status word (renderSessionRow), so that word is
+	// the fourth matched field. archived_at is a flag, not a status, so
+	// "archived" is deliberately not matched here.
+	if strings.Contains(strings.ToLower(session.Status), q) {
+		return true
+	}
 	return false
 }
 
