@@ -89,7 +89,11 @@ func (e Editor) Insert(s string) Editor {
 	}
 	e.text = e.text[:e.caret] + s + e.text[e.caret:]
 	e.caret += len(s)
-	return e
+	// The typed text can join the clusters on either side of the seam (a ZWJ
+	// between two emoji, a combining mark, a regional indicator): the caret
+	// then sits inside the joined cluster, so it moves past the whole cluster,
+	// the way it follows what was typed.
+	return e.snap(true)
 }
 
 // Update applies one key message. handled is false for a key the editor does
@@ -165,6 +169,40 @@ func (e Editor) moveTo(pos int) Editor {
 func (e Editor) deleteRange(from, to int) Editor {
 	e.text = e.text[:from] + e.text[to:]
 	e.caret = from
+	// Closing the gap can join the clusters on either side of it; the caret
+	// stays before the joined cluster.
+	return e.snap(false)
+}
+
+// snap moves a caret that lies inside a grapheme cluster of the current text
+// to that cluster's end (forward) or start, so the caret is always on a
+// boundary of the complete text.
+func (e Editor) snap(forward bool) Editor {
+	if e.caret <= 0 {
+		e.caret = 0
+		return e
+	}
+	if e.caret >= len(e.text) {
+		e.caret = len(e.text)
+		return e
+	}
+	off := 0
+	for off < len(e.text) {
+		cl, _, _, _ := uniseg.FirstGraphemeClusterInString(e.text[off:], -1)
+		end := off + len(cl)
+		if e.caret == off {
+			return e
+		}
+		if e.caret < end {
+			if forward {
+				e.caret = end
+			} else {
+				e.caret = off
+			}
+			return e
+		}
+		off = end
+	}
 	return e
 }
 
