@@ -635,6 +635,10 @@ Session `env` values are stored literally in `state.db`. Therefore:
 - Values whose key matches `*TOKEN*|*SECRET*|*KEY*|*PASSWORD*|*CREDENTIAL*` are masked in
   every view and in event-hook payloads; reveal is a per-view explicit toggle.
 - Env values never enter `events`, event-hook payloads, or logs.
+- Deleted and overwritten env values are not left readable on disk: `state.db` runs with
+  `PRAGMA secure_delete=ON`, so freed pages and stale WAL frames are zeroed rather than kept.
+  The WAL stays on disk across closes (a reset WAL would bring back the fresh-WAL fsync on the
+  hook path), so `journal_size_limit=0` is deliberately not used.
 - `pre_launch` exists precisely so secrets need not be stored at all: one shell line run
   in the pane before the agent starts (typically sourcing a file the user already keeps
   outside deck). Recommended in help over putting tokens in `env`.
@@ -2740,6 +2744,23 @@ in the help view.
   and a wall-clock budget (such as `_hook`'s 20 ms, §3.1) is asserted on normal builds only, never on
   the `-race` build. A transient failure of the hosted Pages deploy is retried, not reported as
   red. Only a superseded pull-request run is ever cancelled.
+- **Quality gates.** CI also gates the code's own quality, through one entry point,
+  `ci/run.sh ci/quality.sh`, with the tools pinned in `ci/Dockerfile`, so a local run and CI give
+  the same verdict. Every gate is on only because the product already passes it **with zero
+  exceptions** — there is no allow-list of offending functions, no baseline file of existing debt
+  and no grandfathered code — and then prevents regression. The gates: coverage of the merged
+  unit-plus-`features/` profile (total ≥ 85%, every product package ≥ 80%); CRAP (per function,
+  `cc² × (1 − cov)³ + cc`) at a ratcheted ceiling that ends at 10; golangci-lint with a checked-in
+  config; `govulncheck` on code deck calls; and `trivy fs` for vulnerable dependencies, secrets and
+  misconfiguration, re-run by the nightly because new advisories appear without code changes. A
+  gate that finds no input — no packages, an empty profile, no scored functions — **fails**; it
+  never passes vacuously. Every threshold lives in one checked-in file, and a test fails if one is
+  loosened relative to the merge-base. A `//nolint` names its linter and gives a reason; a
+  `.trivyignore` entry gives a reason and a review-by date and fails once that date passes. A
+  quality failure means the code is broken, never harness noise. Before a release tag, the
+  operator may ask for an on-demand security review of the range since the last reviewed tag; a
+  confirmed HIGH or CRITICAL finding blocks the release, and nothing about a review is tracked in
+  the repository.
 - **tmux.** A real tmux on a per-scenario socket. Steps may assert tmux facts directly
   (`session exists`, `pane command is …`, `environment contains …`) — that's observable
   outside the app. Two of those facts carry §11's central preview guarantee and are
