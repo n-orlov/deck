@@ -2171,9 +2171,9 @@ front, deduplicated by resolved absolute path, evicting the oldest beyond the li
   history it pre-fills the directory deck itself was started in. The value is **offered,
   not committed**, under §11.11's rule for an offered value: a printable first keystroke or a
   paste replaces it wholesale, while a caret or editing key accepts it and edits it in place —
-  so `/home/me/proj-a` becomes `/home/me/proj-b` with `←` and one character, not a retyped
-  path. The field labels it as the last used so nothing is silently assumed on the user's
-  behalf.
+  so `/home/me/proj-a` becomes `/home/me/proj-b` with `backspace` and one character, not a
+  retyped path. The field labels it as the last used so nothing is silently assumed on the
+  user's behalf.
 - `Ctrl+P`/`Ctrl+N` in the field cycle the recent list, shell-history style, showing
   `recent 2/5` so the user knows both where they are and that more exist. This is a declared
   per-field key set under §11.4's contract, and the field's own help line names it. Each step
