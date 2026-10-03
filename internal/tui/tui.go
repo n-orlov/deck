@@ -9893,6 +9893,21 @@ func (m Model) renderCreateRowSegments(focused bool, segs []settingsRowSegment) 
 	return b.String()
 }
 
+// renderCreateGhost draws the cwd ghost completion, SPEC §11.7's "theme's
+// `dimmed` token". It is deliberately not composed over `selection` with the
+// rest of the focused row: `dimmed` is below R84's 3.0:1 floor against
+// `selection` on cobalt, empire and parchment, so the band ends where the
+// ghost begins and the ghost sits on `surface`, the dialog interior that
+// internal/theme holds `dimmed` to the floor against on every built-in
+// (dimmed/surface, hex and 16-colour). The caret SGR the ghost carries
+// (createCWDGhostView, §11.11) is inside the text and survives. "" draws "".
+func (m Model) renderCreateGhost(ghost string) string {
+	if ghost == "" {
+		return ""
+	}
+	return m.bgColorToken(theme.Surface, m.colorToken(theme.Dimmed, ghost))
+}
+
 // styledCreateBody re-derives createBody's exact structure -- same field
 // loop, same reuse-warning/candidate/footer/error branches, in the same
 // order -- but colours each finished PHYSICAL line rather than the
@@ -9922,17 +9937,14 @@ func (m Model) styledCreateBody() string {
 	// colorLabelValue colours one field row's already-wrapped label/value
 	// line. ghost is the plain trailing suffix of plainLine that is a ghost
 	// completion rather than typed text (createCWDGhostSuffix; "" for every
-	// row but the focused cwd one): those bytes take `hint` while the typed
+	// row but the focused cwd one): those bytes take `dimmed` while the typed
 	// part keeps `text`, which is how the ghost stays visibly provisional
-	// now that the suffix itself reaches here uncoloured. `hint`, not
-	// `dimmed`: this row's focused rendering composes every segment over
-	// theme.Selection (renderCreateRowSegments), and `dimmed` was, before
-	// task 1203 moved this ghost off it, the one token that sat below
-	// R84's 3.0:1 floor against Selection on cobalt/empire/parchment --
-	// `hint` clears that floor on every built-in (both the authored hex
-	// and its 16-colour quantisation, internal/theme's
-	// TestThemedDialogTokensClearContrastFloor) while staying visually
-	// distinct from the typed segment's own `text` token.
+	// now that the suffix itself reaches here uncoloured. The ghost's token
+	// is `dimmed`, as SPEC §11.7 specifies. `dimmed` is below R84's 3.0:1
+	// floor against theme.Selection on cobalt/empire/parchment, so
+	// renderCreateGhost does not compose the ghost over Selection: the
+	// selection band ends at the ghost, which is drawn on theme.Surface,
+	// where internal/theme holds dimmed to the floor on every built-in.
 	colorLabelValue := func(labelPrefix, plainLine, ghost string, focused bool) {
 		lines := wrap(plainLine)
 		// ghostSpan[i] is how many TRAILING bytes of lines[i] belong to the
@@ -9971,13 +9983,17 @@ func (m Model) styledCreateBody() string {
 			if typed := value[:len(value)-n]; typed != "" {
 				segs = append(segs, settingsRowSegment{Text: typed, Tok: theme.Text})
 			}
-			if n > 0 {
-				segs = append(segs, settingsRowSegment{Text: value[len(value)-n:], Tok: theme.Hint})
-			}
-			if len(segs) == 0 {
+			ghostText := value[len(value)-n:]
+			if len(segs) == 0 && ghostText == "" {
 				segs = []settingsRowSegment{{Text: l, Tok: theme.Text}}
 			}
-			out = append(out, m.renderCreateRowSegments(focused, segs))
+			// The ghost is NOT a segment of the focused row's selection
+			// band: see renderCreateGhost.
+			var rendered string
+			if len(segs) > 0 {
+				rendered = m.renderCreateRowSegments(focused, segs)
+			}
+			out = append(out, rendered+m.renderCreateGhost(ghostText))
 		}
 	}
 	// colorFooterLine colours createBody's already-wrapped footer legend

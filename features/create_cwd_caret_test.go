@@ -48,7 +48,7 @@ func clientPressesCaretOrEditKeyInCWDField(ctx context.Context, name, key string
 }
 
 // clientCWDFieldComesToShowNoGhostText waits until the cwd field's rows hold no
-// `hint`-token cell. The scenario has shown a ghost there first, so the wait
+// `dimmed`-token cell. The scenario has shown a ghost there first, so the wait
 // ends on the frame the caret move repainted, rather than passing on the
 // frame that still carries the ghost.
 func clientCWDFieldComesToShowNoGhostText(ctx context.Context, name string) error {
@@ -56,18 +56,18 @@ func clientCWDFieldComesToShowNoGhostText(ctx context.Context, name string) erro
 	if err != nil {
 		return err
 	}
-	hint, err := resolveScenarioTokenHex(ctx, "hint")
+	dimmed, err := resolveScenarioTokenHex(ctx, "dimmed")
 	if err != nil {
 		return err
 	}
 	var last string
 	_, err = client.WaitForFrameFunc(ctx, false, func(string) bool {
-		found, row, col, content, _, _, ferr := cwdFieldDimmedCell(client, hint)
+		found, row, col, content, _, _, ferr := cwdFieldDimmedCell(client, dimmed)
 		if ferr != nil {
 			return false
 		}
 		if found {
-			last = fmt.Sprintf("a hint-token cell %q at row %d column %d", content, row, col)
+			last = fmt.Sprintf("a dimmed-token cell %q at row %d column %d", content, row, col)
 			return false
 		}
 		return true

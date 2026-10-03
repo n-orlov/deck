@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/n-orlov/deck/internal/config"
 	"github.com/n-orlov/deck/internal/theme"
 )
@@ -177,45 +178,108 @@ func TestCreateCWDGhostValueCarriesNoSGRBytes(t *testing.T) {
 	}
 }
 
-// TestCreateViewGhostRendersHintAtRenderTime is the other half: moving
-// the colour out of createFieldRows must not lose it. The cwd row is the
-// one this task (1203) focuses -- task016GhostModel leaves it focused
-// (m.createField == 1), so this row's background is theme.Selection
-// (renderCreateRowSegments), exactly the pair R84's contrast floor holds
-// every dialogSelectionTokens entry (internal/theme/contrast_test.go) to.
-// The ghost's cells render in
-// the `hint` token (not the sub-floor `dimmed` this test used to assert,
-// before task 1203: `dimmed` measures 2.59:1 on cobalt, 2.69:1 on empire
-// and 2.51:1 on parchment over theme.Selection, all below the 3.0:1 floor,
-// while `hint` clears it on every built-in), and the typed part of the
-// same value still renders in `text` -- distinct from the ghost's `hint`,
-// read per-cell off a real emulator grid, so the ghost stays visually
-// distinguishable from what the user actually typed even though both now
-// clear the floor.
-func TestCreateViewGhostRendersHintAtRenderTime(t *testing.T) {
-	m, _ := task016GhostModel(t)
-	hintHex := tokenHex(t, m, theme.Hint)
-	textHex := tokenHex(t, m, theme.Text)
-	if hintHex == textHex {
-		t.Fatalf("theme.Hint and theme.Text resolve to the same colour %s -- this test needs them visually distinct to be non-vacuous", hintHex)
+// TestCreateViewGhostRendersDimmedAtRenderTime is the other half: moving
+// the colour out of createFieldRows must not lose it. SPEC §11.7 says the
+// ghost completion is shown "in the theme's `dimmed` token", and §11.11 says
+// the focused row carries `selection`. Those two meet on the cwd row, and
+// `dimmed` over `selection` is below R84's 3.0:1 floor on cobalt, empire and
+// parchment -- so the selection band ends where the ghost begins and the
+// ghost is `dimmed` on `surface`, the pair internal/theme holds to the floor
+// (dimmed/surface) on every built-in. On EVERY built-in, read per-cell off a
+// real emulator grid: the ghost's foreground is `dimmed`, its background is
+// `surface` and clears the floor against it, the typed text before it stays
+// `text` on `selection`, and the caret (reverse video, §11.11) is still the
+// ghost's first cell.
+func TestCreateViewGhostRendersDimmedAtRenderTime(t *testing.T) {
+	for _, bt := range theme.Builtins() {
+		bt := bt
+		t.Run(bt.Name, func(t *testing.T) {
+			m, _ := task016GhostModel(t)
+			m.settings.Theme = bt
+			assertCreateGhostIsDimmedOnSurface(t, m, "que-directory/")
+		})
 	}
+}
 
+// TestCreateViewGhostDimmedWhenTheGhostWraps is a second shape of the same
+// rule: a ghost that word-wraps across two physical lines keeps the `dimmed`
+// foreground on both halves, so the colour does not depend on the ghost
+// fitting one row.
+func TestCreateViewGhostDimmedWhenTheGhostWraps(t *testing.T) {
+	m, ghost := task016SpacedGhostModel(t)
 	view := m.createView()
 	term := renderSettingsToEmulator(t, view, m.width, m.height)
+	dimmed := tokenHex(t, m, theme.Dimmed)
+	typed := tokenHex(t, m, theme.Text)
+	words := strings.Fields(ghost)
+	if len(words) == 0 || !strings.Contains(ghost, " ") {
+		t.Fatalf("ghost %q has no space to wrap on", ghost)
+	}
+	for _, w := range []string{strings.TrimSuffix(words[len(words)-1], "/")} {
+		row := findRowContaining(t, term, w)
+		col := findCol(t, term, row, w)
+		fg, ok := cellFgHex(t, term, col+len([]rune(w))-1, row)
+		if !ok || fg != dimmed {
+			t.Fatalf("ghost word %q last cell foreground = %q ok=%v, want dimmed %s (text is %s)", w, fg, ok, dimmed, typed)
+		}
+	}
+}
 
-	row := findRowContaining(t, term, "que-directory/")
-	ghostCol := findCol(t, term, row, "que-directory/")
-	ghostFg, ok := cellFgHex(t, term, ghostCol, row)
-	if !ok || ghostFg != hintHex {
-		t.Fatalf("ghost completion foreground = %q ok=%v, want hint token %s", ghostFg, ok, hintHex)
+// TestCreateViewGhostIsAbsentOnAnUnfocusedCWDRow keeps the ghost's
+// dimmed-on-surface composition from leaking onto a row that has no ghost:
+// the focused row with nothing to complete stays wholly `selection`.
+func TestCreateViewGhostIsAbsentOnAnUnfocusedCWDRow(t *testing.T) {
+	m := task016CreateTestModel(t)
+	m.createField = 1
+	m.setCreateText(createFieldCWD, t.TempDir()+"/") // no directory below it: no ghost
+	if g := m.createCWDGhostSuffix(); g != "" {
+		t.Fatalf("test needs a ghost-free cwd, got ghost %q", g)
 	}
-	typedCol := ghostCol - 1 // the "i" of the typed ".../uni"
-	typedFg, ok := cellFgHex(t, term, typedCol, row)
-	if !ok || typedFg != textHex {
-		t.Fatalf("typed cwd text foreground = %q ok=%v, want text token %s -- the hint span must cover the ghost only", typedFg, ok, textHex)
+	term := renderSettingsToEmulator(t, m.createView(), m.width, m.height)
+	row := findRowContaining(t, term, "Working directory:")
+	sel := tokenHex(t, m, theme.Selection)
+	surface := tokenHex(t, m, theme.Surface)
+	col := findCol(t, term, row, "Working directory:")
+	for x := col; x < col+len("Working directory:"); x++ {
+		bg, ok := cellBgHex(t, term, x, row)
+		if !ok || bg != sel {
+			t.Fatalf("cell %d of the focused ghost-free cwd row has background %q, want selection %s (surface %s must not appear)", x, bg, sel, surface)
+		}
 	}
-	if ghostFg == typedFg {
-		t.Fatalf("ghost segment foreground %s equals the typed segment's foreground %s -- the ghost must stay visually distinct from typed text", ghostFg, typedFg)
+}
+
+func assertCreateGhostIsDimmedOnSurface(t *testing.T, m Model, ghost string) {
+	t.Helper()
+	dimmed := tokenHex(t, m, theme.Dimmed)
+	surface := tokenHex(t, m, theme.Surface)
+	textHex := tokenHex(t, m, theme.Text)
+	selection := tokenHex(t, m, theme.Selection)
+	if dimmed == textHex {
+		t.Fatalf("theme.Dimmed and theme.Text resolve to the same colour %s -- the ghost would not be distinct", dimmed)
+	}
+	term := renderSettingsToEmulator(t, m.createView(), m.width, m.height)
+	row := findRowContaining(t, term, ghost)
+	ghostCol := findCol(t, term, row, ghost)
+	runes := []rune(ghost)
+	for i := range runes {
+		fg, fok := cellFgHex(t, term, ghostCol+i, row)
+		bg, bok := cellBgHex(t, term, ghostCol+i, row)
+		cell := term.CellAt(ghostCol+i, row)
+		reversed := cell != nil && cell.Style.Attrs&uv.AttrReverse != 0
+		if reversed != (i == 0) {
+			t.Fatalf("ghost cell %d (%q) reverse=%v, want only the first cell (the caret) reversed", i, string(runes[i]), reversed)
+		}
+		if !fok || fg != dimmed || !bok || bg != surface {
+			t.Fatalf("ghost cell %d (%q) = fg %q bg %q, want SPEC §11.7's dimmed %s on surface %s", i, string(runes[i]), fg, bg, dimmed, surface)
+		}
+	}
+	if ratio, err := wcagRatio(dimmed, surface); err != nil || ratio < 3.0 {
+		t.Fatalf("ghost dimmed %s on surface %s = %.2f:1 (err %v), below R84's 3.0:1 floor", dimmed, surface, ratio, err)
+	}
+	typedFg, ok := cellFgHex(t, term, ghostCol-1, row)
+	typedBg, bok := cellBgHex(t, term, ghostCol-1, row)
+	if !ok || typedFg != textHex || !bok || typedBg != selection {
+		t.Fatalf("typed cwd text = fg %q bg %q, want text %s on selection %s -- the dimmed span must cover the ghost only", typedFg, typedBg, textHex, selection)
 	}
 }
 

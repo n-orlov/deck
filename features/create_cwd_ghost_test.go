@@ -234,11 +234,11 @@ func clientCWDFieldShowsNoGhostText(ctx context.Context, name string) error {
 	if err != nil {
 		return err
 	}
-	hint, err := resolveScenarioTokenHex(ctx, "hint")
+	dimmed, err := resolveScenarioTokenHex(ctx, "dimmed")
 	if err != nil {
 		return err
 	}
-	found, row, col, content, first, last, err := cwdFieldDimmedCell(client, hint)
+	found, row, col, content, first, last, err := cwdFieldDimmedCell(client, dimmed)
 	if err != nil {
 		return fmt.Errorf("client %q %w", name, err)
 	}
@@ -294,8 +294,8 @@ func cwdFieldRowBounds(client *ScreenDriver) (first, last int, err error) {
 // begins. It returns 0 (no skip) when the label text is not found on
 // that row, which only happens for a wrapped continuation row that never
 // carries the label. SPEC.md:1355 puts a field's label in the `hint`
-// token unconditionally, the same token task 005 re-points the ghost
-// itself onto (R95), so cwdFieldDimmedCell below must skip exactly the
+// token unconditionally (the ghost's own token is `dimmed`, SPEC §11.7),
+// so cwdFieldDimmedCell below must skip exactly the
 // label's own columns on the label row -- otherwise every field, ghosted
 // or not, would show a `hint` cell there and the negative proof
 // (clientCWDFieldShowsNoGhostText) could never pass.
@@ -318,7 +318,7 @@ func cwdFieldLabelEndCol(client *ScreenDriver, y int) int {
 // cwdFieldDimmedCell scans exactly the bounded rows cwdFieldRowBounds
 // returns -- skipping the label row's own "Working directory: " columns
 // (cwdFieldLabelEndCol) -- for the first cell whose foreground equals the
-// hint token (already resolved to hex), reading real Style.Fg values via
+// dimmed token (already resolved to hex), reading real Style.Fg values via
 // CellAt, exactly as the per-cell steps in features/cell_attributes_test.go
 // do. found is false when no such cell exists in bounds. Shared by
 // clientCWDFieldShowsNoGhostText (the negative proof) and
@@ -363,11 +363,11 @@ func clientCWDFieldShowsGhostText(ctx context.Context, name string) error {
 	if err != nil {
 		return err
 	}
-	hint, err := resolveScenarioTokenHex(ctx, "hint")
+	dimmed, err := resolveScenarioTokenHex(ctx, "dimmed")
 	if err != nil {
 		return err
 	}
-	found, _, _, _, first, last, err := cwdFieldDimmedCell(client, hint)
+	found, _, _, _, first, last, err := cwdFieldDimmedCell(client, dimmed)
 	if err != nil {
 		return fmt.Errorf("client %q %w", name, err)
 	}
