@@ -33,8 +33,27 @@ results_dir=${1:?"usage: ci/allure-report.sh <ci/suite.sh output dir> <report ou
 report_dir=${2:?"usage: ci/allure-report.sh <ci/suite.sh output dir> <report output dir> [<history dir>]"}
 history_dir=${3:-}
 
+# The archive is verified against a pinned SHA-256 before it is unpacked
+# (a mismatch aborts; nothing from an unverified archive is ever run). The
+# pin below belongs to the default version; overriding ALLURE_VERSION
+# requires ALLURE_SHA256 for that version too. ALLURE_URL overrides the
+# download location (used by ci/allureverify's test to serve a local file).
 ALLURE_VERSION=${ALLURE_VERSION:-2.34.1}
-allure_url="https://github.com/allure-framework/allure2/releases/download/${ALLURE_VERSION}/allure-${ALLURE_VERSION}.tgz"
+default_allure_sha256=df13c5883429edd5041a24d6d072a8944e65274d1d76a441fd45d2585511349a
+if [ "$ALLURE_VERSION" = 2.34.1 ]; then
+    ALLURE_SHA256=${ALLURE_SHA256:-$default_allure_sha256}
+else
+    ALLURE_SHA256=${ALLURE_SHA256:?"ci/allure-report.sh: ALLURE_VERSION=$ALLURE_VERSION has no pinned checksum; set ALLURE_SHA256"}
+fi
+allure_url=${ALLURE_URL:-"https://github.com/allure-framework/allure2/releases/download/${ALLURE_VERSION}/allure-${ALLURE_VERSION}.tgz"}
+
+sha256_of() { # sha256_of <file>: sha256sum on Linux, shasum on macOS
+    if command -v sha256sum >/dev/null 2>&1; then
+        sha256sum "$1" | cut -d' ' -f1
+    else
+        shasum -a 256 "$1" | cut -d' ' -f1
+    fi
+}
 
 work=$(mktemp -d "${TMPDIR:-/tmp}/deck-allure.XXXXXX")
 trap 'rm -rf "$work"' EXIT
@@ -43,6 +62,11 @@ allure_bin=$(command -v allure 2>/dev/null || true)
 if [ -z "$allure_bin" ]; then
     echo "ci/allure-report.sh: fetching Allure CLI ${ALLURE_VERSION}" >&2
     curl -fsSL "$allure_url" -o "$work/allure.tgz"
+    got_sha256=$(sha256_of "$work/allure.tgz")
+    if [ "$got_sha256" != "$ALLURE_SHA256" ]; then
+        echo "ci/allure-report.sh: checksum mismatch for the Allure ${ALLURE_VERSION} archive: want ${ALLURE_SHA256}, got ${got_sha256}; aborting" >&2
+        exit 1
+    fi
     mkdir -p "$work/allure"
     tar -xzf "$work/allure.tgz" -C "$work/allure" --strip-components=1
     allure_bin="$work/allure/bin/allure"

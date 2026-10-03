@@ -18,6 +18,12 @@ look at the Actions run itself, found by its head sha.
 | `pr-comment` | `ubuntu-latest`, `needs: report` | Runs `go run ./ci/prcomment`, which pages through every existing PR comment and creates or updates the one comment (keyed on an HTML marker) carrying the PR's own `/pr/<n>/` Allure link and its head sha. Only for `pull_request` events whose head repo is this repository. |
 | `notify` | self-hosted, `needs: [lint, suite]` | Posts exactly one message to the Telegram notifier when `lint` or `suite` failed/was cancelled, and only for `push` to `main`, `schedule`, or `workflow_dispatch` (never for a PR). |
 
+`ci/allure-report.sh` verifies the Allure CLI archive it downloads against a
+pinned SHA-256 and aborts on a mismatch (changing `ALLURE_VERSION` needs a new
+`ALLURE_SHA256`). `install.sh` downloads over `--proto =https` only; its
+`checksums.txt` comes from the same release as the binary, so the check catches
+a corrupt download, not tampering.
+
 `release.yml` adds one more gate, described under "The release gate" below.
 `pages-pr-publish.yml`, a separate `workflow_run`-triggered workflow, is
 described under "Publishing a PR's own report" below.

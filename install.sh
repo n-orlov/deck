@@ -6,6 +6,11 @@
 # Env:  DECK_VERSION=vX.Y.Z   pin a release (default: latest)
 #       DECK_INSTALL_DIR=DIR  where to put the binary (default: ~/.local/bin)
 #
+# Integrity: the asset is checked against checksums.txt, which is downloaded
+# from the SAME release as the asset. That catches a corrupt or truncated
+# download, not tampering: whoever can replace the asset can replace
+# checksums.txt as well. All downloads are HTTPS-only (--proto =https).
+#
 # Uses an authenticated `gh` when present, otherwise plain curl. Linux and macOS only; on Windows run it inside WSL.
 set -eu
 
@@ -42,7 +47,7 @@ fetch() { # fetch <asset> into $tmp
     else
       url="https://github.com/$REPO/releases/download/$version/$1"
     fi
-    curl -fsSL -o "$tmp/$1" "$url"
+    curl --proto =https --tlsv1.2 -fsSL -o "$tmp/$1" "$url"
   fi
 }
 
