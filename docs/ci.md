@@ -340,12 +340,25 @@ comparison vs. widen the bound), not in whether they consult it at all.
   into the same legacy text format `go tool cover` understands, so one
   small package-by-package aggregator can read both without needing two
   unrelated summarizers.
+- The unit pass also runs with `-coverpkg=./...`, so its counters cover
+  every package in the module, not only the package each test lives in.
+  Both counter directories are then merged by one `go tool covdata textfmt
+  -i=<unit>,<features>` call into `<outdir>/coverage-merged.out`, and
+  `ci/suite.sh` exits non-zero when that merged profile has no blocks.
+- `ci/suite.sh [<outdir>]` takes its output directory as an optional first
+  argument (`DECK_CI_OUT` is still honoured when it is absent). After
+  reading its own `DECK_CI_*` settings (including `DECK_CI_GO_EXTRA_FLAGS`,
+  captured first so `-race` still reaches both passes), it unsets every
+  `DECK_*` variable in its environment before launching `go test`, so a
+  leaked `DECK_GODOG_PATHS`/`DECK_HOME` from the caller's shell never
+  reaches the tests; the `DECK_GODOG_*` values the script sets itself are
+  passed per invocation.
 - `ci/suite.sh` prints a per-package coverage table (`unit` column vs
   `features/ (black-box)` column) plus a `TOTAL` row. That table is
   surfaced in exactly two places: the job summary (`ci/summary.sh` cats it
   under a `#### coverage` heading) and the uploaded raw results artifact
   (`ci-results-<run>`, which carries the whole results directory --
-  `coverage-summary.txt` and both legacy-format profiles included). The
+  `coverage-summary.txt`, both per-pass legacy-format profiles and `coverage-merged.out` included). The
   Allure report does not display it. There is no coverage threshold gating
   anything.
 

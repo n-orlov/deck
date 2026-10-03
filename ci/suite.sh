@@ -110,8 +110,14 @@ pkgs=${DECK_CI_GO_PACKAGES:-$(go list ./...)}
 # refuses `set`/`count` alongside it), so the unit pass's covermode tracks
 # whether the extra flags mention -race rather than hardcoding `set`; every
 # other caller (extra flags unset) keeps the original `set` mode.
+#
+# go_extra_flags captures the value NOW, before the DECK_* scrub below
+# unsets DECK_CI_GO_EXTRA_FLAGS itself: both `go test` invocations expand
+# this shell variable, never the (by then unset) environment variable, so
+# the nightly lane's -race still reaches both passes (task 002 cure).
+go_extra_flags=${DECK_CI_GO_EXTRA_FLAGS:-}
 covermode=set
-case " ${DECK_CI_GO_EXTRA_FLAGS:-} " in
+case " $go_extra_flags " in
     *' -race '*) covermode=atomic ;;
 esac
 
@@ -141,7 +147,7 @@ unit_test_timeout=${DECK_CI_UNIT_TEST_TIMEOUT:-15m}
 
 # Scrub leaked DECK_* environment (task 002, R187): every DECK_CI_* setting
 # this script itself reads has already been captured into a shell variable
-# above (outdir, pkgs, covermode, features_test_timeout,
+# above (outdir, pkgs, go_extra_flags, covermode, features_test_timeout,
 # unit_test_timeout) -- so any DECK_* variable still present in the
 # environment at this point came from the CALLER's own shell (a stray
 # DECK_GODOG_PATHS left over from a manual `DECK_GODOG_PATHS=... go test
@@ -212,7 +218,7 @@ if [ -n "$pkgs" ]; then
         --rerun-fails=1 \
         --rerun-fails-report "$go_rerun_report" \
         --packages "$pkgs" \
-        -- -p=1 -count=1 -skip '^TestFeatures$' "-timeout=$unit_test_timeout" "-covermode=$covermode" -cover -coverpkg=./... ${DECK_CI_GO_EXTRA_FLAGS:-} -args "-test.gocoverdir=$unit_covdir" \
+        -- -p=1 -count=1 -skip '^TestFeatures$' "-timeout=$unit_test_timeout" "-covermode=$covermode" -cover -coverpkg=./... $go_extra_flags -args "-test.gocoverdir=$unit_covdir" \
         || go_status=$?
 
     # gotestsum's own rerun report lists every test it reran, whether or not
@@ -272,7 +278,7 @@ run_test_features() {
         --format standard-verbose \
         --junitfile "$junit" \
         --packages ./features/ \
-        -- -p=1 -count=1 -run '^TestFeatures$' "-timeout=$features_test_timeout" ${DECK_CI_GO_EXTRA_FLAGS:-}
+        -- -p=1 -count=1 -run '^TestFeatures$' "-timeout=$features_test_timeout" $go_extra_flags
 }
 
 features_status=0
