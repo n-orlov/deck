@@ -11,7 +11,9 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 	"unicode/utf8"
 
@@ -46,6 +48,11 @@ type Store struct {
 }
 
 func init() { sqlite.RegisterConnectionHook(persistWAL) }
+
+// openUmaskMu serializes OpenPath's umask-tightening window (see OpenPath)
+// against any other concurrent OpenPath call in the same process; the umask
+// is process-wide, not per-goroutine.
+var openUmaskMu sync.Mutex
 
 // persistWAL keeps state.db-wal on disk when the last connection closes
 // (SQLITE_FCNTL_PERSIST_WAL). Without it that close deletes the WAL, and the
@@ -108,6 +115,22 @@ func OpenPath(home, path string) (*Store, error) {
 	} else {
 		dsn += "?_txlock=immediate"
 	}
+	// Tighten the process umask before the first connection opens (and so,
+	// for a database that does not exist yet, before SQLite creates it): a
+	// brand-new state.db -- and the -wal/-shm siblings SQLite gives the main
+	// file's mode at their own creation -- must land on disk already 0600,
+	// never briefly at the default create mode while a chmod-after catches
+	// up (SPEC section 6.4, R197/#61). The umask is process-wide state, so
+	// openUmaskMu serializes this window against any other concurrent
+	// OpenPath call in the same process rather than letting them race each
+	// other's umask; it is restored when OpenPath returns, by which point
+	// every file this call creates already exists.
+	openUmaskMu.Lock()
+	oldUmask := syscall.Umask(0o177)
+	defer func() {
+		syscall.Umask(oldUmask)
+		openUmaskMu.Unlock()
+	}()
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("open state database: %w", err)
@@ -144,7 +167,14 @@ func OpenPath(home, path string) (*Store, error) {
 			return nil, fmt.Errorf("secure state database: %w", err)
 		}
 	}
-	if _, err := db.Exec(`PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL; PRAGMA busy_timeout=5000; PRAGMA foreign_keys=ON`); err != nil {
+	// secure_delete=ON (R197/#61) zeroes freed pages and stale WAL frames
+	// instead of leaving session env values recoverable from unallocated
+	// space. journal_size_limit is deliberately left unset: forcing it to 0
+	// would reset (truncate and recreate) the WAL on every checkpoint, and a
+	// fresh WAL's header is fsynced before the first frame -- the exact cost
+	// persistWAL above exists to avoid (SPEC section 3.1's 20ms hook write
+	// budget).
+	if _, err := db.Exec(`PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL; PRAGMA busy_timeout=5000; PRAGMA foreign_keys=ON; PRAGMA secure_delete=ON`); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("configure state database: %w", err)
 	}
