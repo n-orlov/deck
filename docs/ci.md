@@ -366,9 +366,9 @@ comparison vs. widen the bound), not in whether they consult it at all.
 
 `go run ./ci/crapgate -profile <coverprofile> -max <ceiling> [-filter
 <pkg-dir>[:<file,...>]]` is a stdlib-only (no `golang.org/x/tools/cover`, no
-third-party module of any kind) CRAP scorer. It is not yet wired into any
-gate script -- that lands with `ci/quality.sh` -- but its rules are locked by
-its own table tests (`ci/run.sh go test -count=1 ./ci/crapgate/`):
+third-party module of any kind) CRAP scorer. `ci/quality.sh`'s crap gate
+(below) drives it over the whole module; its own rules are locked by its
+own table tests (`ci/run.sh go test -count=1 ./ci/crapgate/`):
 
 - McCabe complexity via `go/ast`: `cc = 1 + if + for + range + case +
   comm-case + && + ||`. A `default:`/`case` with no `List` (the `select`
@@ -395,6 +395,62 @@ its own table tests (`ci/run.sh go test -count=1 ./ci/crapgate/`):
   usage/input error -- a missing or empty profile, or a scan that found zero
   scored functions (a typo'd `-filter` must never read as a clean bill of
   health).
+
+## The quality gates (`ci/quality.sh`, `ci/quality.json`, R187)
+
+`ci/quality.sh [<suite-outdir>] [<config-path>]` is the one entry point for
+every quality gate (`ci/run.sh ci/quality.sh`, defaulting `<suite-outdir>` to
+`ci-results` -- the same directory `ci/suite.sh ci-results` writes
+`coverage-merged.out` into -- and `<config-path>` to the checked-in
+`ci/quality.json`). Like `ci/suite.sh`, it scrubs every `DECK_*` variable
+from its own environment before running anything, so a variable leaked from
+the caller's shell can never reach a gate subprocess. It is wired into
+`ci.yml` as a step in the existing `lint`/`suite` jobs, not a new lane.
+
+`ci/quality.json` is the single thresholds file -- every gate reads its
+threshold from here and nowhere else:
+
+```json
+{
+    "coverage": {
+        "enabled": false, "total_floor": 85, "package_floor": 80, "fixture_floor": 50
+    },
+    "crap": {
+        "enabled": false, "ceiling": 30, "fixture_ceiling": 30
+    }
+}
+```
+
+- `coverage.total_floor`/`package_floor` are R189's eventual gate (total
+  >= 85%, every product package >= 80%); `coverage.fixture_floor` is the
+  `cmd/fake-*` fixtures' own, lower floor (R187). The scorer behind this
+  gate (`ci/covgate`) is added by a later task; until it exists, switching
+  `coverage.enabled` on fails loudly rather than passing vacuously.
+- `crap.ceiling` is the CRAP gate's ceiling (`ci/crapgate -max`), ratcheted
+  30 -> 20 -> 15 -> 10 by R191-R193. `crap.fixture_ceiling` is carried as
+  its own field even though R187 sets it equal to `ceiling` ("the same CRAP
+  ceiling as product") -- a separate field is what lets a loosening test
+  catch either one being loosened on its own. The gate itself always scans
+  the whole module in one pass (no `-filter`), so the two thresholds only
+  diverge in the config, never in enforcement, for as long as they stay
+  equal.
+- Every gate starts `enabled: false` (R187: "no gate on yet"). A later task
+  flips one on only once the product passes it locally.
+
+`ci/qualitycheck` (`go run ./ci/qualitycheck -config <path> -profile
+<path>`) does the actual gate work behind `ci/quality.sh`: it reads
+`ci/quality.json`, runs every gate whose flag is on, prints one `=== <gate>
+gate ===` report section per on gate (top offenders, then a "what to do"
+line), and exits non-zero if any on gate failed -- `0` if every on gate
+passed (or none are on), `1` if at least one failed, `2` on a usage/input
+error (a missing/malformed config, or a profile a gate needed but did not
+get). Its own tests (`ci/run.sh go test -count=1 ./ci/qualitycheck/`) drive
+the real `ci/quality.sh` end to end: one seeds a failing crap gate (a
+ceiling of 0 against a profile with no real coverage data, so every scanned
+function in the whole repo is over it) and asserts the non-zero exit; another
+seeds a `DECK_*` variable and a `go` wrapper on `PATH` that records every
+`DECK_*` variable any invocation of `go` sees, and fails if that log is ever
+non-empty.
 
 ## The release gate (`release.yml`, R147)
 
