@@ -57,7 +57,7 @@ worktree per task. What's actually needed is three things:
 | **R5** | **Lightweight, portable.** One static binary plus tmux, on any Linux. | Go, no cgo, no node, no browser, no Docker, no root, no daemon. systemd is *optional*. No assumption about shell, distro, terminal, or network. |
 | **R6** | **Four agents:** Claude Code, Pi / oh-my-pi, Codex CLI, and a plain `bash` shell session. | Adapter interface with capability degradation — hooks where they exist, pane heuristics where they don't, and honest UI about the difference. |
 | **R7** | **TUI-only.** All actions in the UI: create, resume, kill, delete, env edit, permission mode, conversation lock, sidebar pin, search, config. | Discoverability is a feature, not a nicety: inline help, no hidden verbs a user needs. |
-| **R8** | **Black-box testable, BDD-specified.** Every behaviour in this spec is expressed as Gherkin and verified against the **real binary** driven through a real terminal, with no in-process hooks and no test-only code paths in the product. | The binary must be *drivable* (keystrokes in) and *observable* (rendered screen, tmux state, files, outbound webhooks, structured log) from outside. Determinism controls — state dir redirection, frozen clock, fixed tick, no animation, no colour — are documented, supported configuration, not test scaffolding (§13). |
+| **R8** | **Black-box testable, BDD-specified.** Every behaviour in this spec is expressed as Gherkin and verified against the **real binary** driven through a real terminal, with no in-process hooks and no test-only code paths in the product. | The binary must be *drivable* (keystrokes in) and *observable* (rendered screen, tmux state, files, event-hook invocations, structured log) from outside. Determinism controls — state dir redirection, frozen clock, fixed tick, no animation, no colour — are documented, supported configuration, not test scaffolding (§13). |
 
 ### Non-goals (out — do not add)
 
@@ -69,7 +69,7 @@ user-facing CLI or scripting surface** (choosing a profile at launch, §3.4, is 
 (one agent or shell per session, full stop) · orchestration, task queues, kanban,
 auto-approval · env profiles or secret-manager integrations · auto-restart on crash ·
 idle reaping or any timer that stops a running session · **inbound remote control**
-(notifications are one-way; see §10) · cost/token dashboards · MCP management · Windows.
+(event hooks are one-way; see §10) · cost/token dashboards · MCP management · Windows.
 
 ---
 
@@ -110,7 +110,7 @@ idle reaping or any timer that stops a running session · **inbound remote contr
   others, never reported as an error.
 - Runtime deps: `tmux`, plus whichever agent CLIs the user has. Nothing else.
 - Test tooling (never linked into the release binary): `cucumber/godog` for Gherkin, a
-  VT100 emulator for screen parsing, `net/http/httptest` for webhook capture, and the
+  VT100 emulator for screen parsing, a capture script for event-hook assertions, and the
   `cmd/fake-*` agent binaries. The harness drives the real `deck` binary (§13).
 - Paths: XDG with fallbacks — `$XDG_DATA_HOME/deck/` (default `~/.local/share/deck/`),
   `$XDG_CONFIG_HOME/deck/config.toml`, `$XDG_STATE_HOME/deck/log`. `state.db` is `0600`.
@@ -133,8 +133,8 @@ internal/agent/claude.go  hook injection, assigned session id
 internal/agent/pi.go      assigned session id
 internal/agent/codex.go   hook injection, id reported by the first hook
 internal/agent/shell.go   bash/zsh/fish session, history + scrollback + cwd
-internal/hookrecv/        stdin JSON → store event → notify dispatch
-internal/notify/          channel abstraction: webhook | command | desktop
+internal/hookrecv/        stdin JSON → store event → event-hook dispatch
+internal/notify/          event-hook spawner: argv + env + JSON stdin, timeout, output tail
 internal/search/          cross-session search over events + transcripts
 internal/unit/            embedded systemd user unit template (optional install)
 ```
@@ -152,8 +152,8 @@ internal/unit/            embedded systemd user unit template (optional install)
                           │ read + targeted writes
              ┌────────────▼──────────────┐      ┌──────────────────────────────┐
              │ SQLite  state.db  (WAL)   │◄─────┤ deck _hook  (short-lived)    │
-             │ sessions · events · outbox│      │ spawned by the agent's hooks;│
-             └────────────┬──────────────┘      │ writes status, sends notifs  │
+             │ sessions · events         │      │ spawned by the agent's hooks;│
+             └────────────┬──────────────┘      │ writes status, runs the hook │
                           │ mirrors             └──────────────────────────────┘
              ┌────────────▼──────────────┐
              │ tmux server   -L deck     │      No daemon. Nothing runs when you
@@ -167,9 +167,8 @@ permission mode) and caches the last known *status*. A session in the DB with no
 session is `stopped` — the normal state after a reboot.
 
 **No daemon, by construction.** Status is written by `deck _hook`, a short-lived process
-the agent's own hook system spawns. Notifications are dispatched by that same process
-(§10). If no TUI is running, hook-instrumented agents still record status and still
-notify. Liveness is reconciled by whichever TUI is running, and lazily by `_hook`.
+the agent's own hook system spawns. The event hook (§10) is spawned by that same process. If no TUI is running, hook-instrumented agents still record status and still
+fire it. Liveness is reconciled by whichever TUI is running, and lazily by `_hook`.
 
 **Honest limitation to surface in the UI:** agents without a hook mechanism (Pi, `bash`)
 are classified by pane heuristics, which only run while a TUI is open. Their rows show a
@@ -186,7 +185,7 @@ undocumented in the UI, excluded from help, and prefixed `_`:
 
 | verb | invoked by | contract |
 |---|---|---|
-| `deck _hook` | agent hook config | reads one JSON object on stdin, writes one status update + one event, then dispatches or enqueues notifications, then — on the non-session-end path only — runs one bounded liveness pass before exiting, which is what "lazily by `_hook`" in §3 and "the next `_hook` invocation" in §7 mean. It never probes: pane heuristics are the TUI's, and putting them on the agent's critical path would also falsify §10.3's second limitation. **Two separate budgets:** the store write completes in < 20 ms **uncontended** (measured on a monotonic clock, §13.1 — under multi-client write contention SQLite may legally hold a writer up to `busy_timeout`, so the budget assertion belongs in a single-writer scenario, not a `@multiclient` one; it is a budget for a normal build, so a `-race` build, several times slower by design, does not assert it); notification dispatch is bounded separately by the channel timeout (§10.3) and is skipped entirely on the session-end path. |
+| `deck _hook` | agent hook config | reads one JSON object on stdin, writes one status update + one event, then spawns the event hook (§10), then — on the non-session-end path only — runs one bounded liveness pass before exiting, which is what "lazily by `_hook`" in §3 and "the next `_hook` invocation" in §7 mean. It never probes: pane heuristics are the TUI's, and putting them on the agent's critical path would also falsify §10.3's second limitation. **Two separate budgets:** the store write completes in < 20 ms **uncontended** (measured on a monotonic clock, §13.1 — under multi-client write contention SQLite may legally hold a writer up to `busy_timeout`, so the budget assertion belongs in a single-writer scenario, not a `@multiclient` one; it is a budget for a normal build, so a `-race` build, several times slower by design, does not assert it); event-hook dispatch is bounded separately by `event_hook_timeout` (§10.3) and never waits on the session-end path. |
 | `deck _serve-tmux` | optional systemd unit | starts the `deck` tmux server with the right server options and exits. |
 | `deck _debug ...` | developers | inspection helpers, built only with the `debug` build tag. Not in release binaries. |
 
@@ -386,11 +385,13 @@ CREATE TABLE sessions (
   killed_by_user     INTEGER NOT NULL DEFAULT 0, -- terminal user verdict; hooks can't undo it
   pane_exit_status   INTEGER,               -- from tmux pane_dead_status; NULL = not dead
   crash_tail         TEXT,                  -- pane tail at death, last 200 lines (§7)
-  notify_epoch       INTEGER NOT NULL DEFAULT 0, -- bumped when an attention state resolves (§10.2)
+  notify_epoch       INTEGER NOT NULL DEFAULT 0, -- bumped when an attention state resolves (§10.3)
   last_message       TEXT,                  -- last assistant message, truncated 2 KiB
   sensitive          INTEGER NOT NULL DEFAULT 0, -- suppress scrollback capture (§8)
-  notify_rules       TEXT,                  -- JSON override of global rules (§10); NULL = inherit
-  important          INTEGER NOT NULL DEFAULT 0, -- eligible for "milestones only" rules
+  event_hook_enabled INTEGER,               -- tri-state (§10.2): NULL = inherit, 1 = on, 0 = off
+  event_hook_events  TEXT,                  -- JSON list of event kinds replacing the global list; NULL = inherit
+  hook_fired         TEXT,                  -- JSON (kind,reason) pairs fired in this notify_epoch (§10.3)
+  important          INTEGER NOT NULL DEFAULT 0, -- exported to the event hook (§10.1)
   group_id           INTEGER,               -- manual group (§11); NULL = the implicit "default"
   snoozed_until      INTEGER NOT NULL DEFAULT 0,
   acknowledged       INTEGER NOT NULL DEFAULT 1,
@@ -404,7 +405,7 @@ CREATE TABLE sessions (
   deleted_at         INTEGER NOT NULL DEFAULT 0  -- tombstone; purged after grace (§9.2)
 );
 
-CREATE TABLE events (               -- append-only within a retention bound: audit trail, search corpus, notify source
+CREATE TABLE events (               -- append-only within a retention bound: audit trail, search corpus, event-hook source
   seq        INTEGER PRIMARY KEY AUTOINCREMENT,
   session_id TEXT REFERENCES sessions(id) ON DELETE CASCADE,
   at         INTEGER NOT NULL,
@@ -416,17 +417,6 @@ CREATE TABLE events (               -- append-only within a retention bound: aud
 
 CREATE INDEX events_at ON events(at DESC, seq DESC);         -- §12's newest-first reads are never a full scan
 CREATE INDEX events_session_kind ON events(session_id, kind); -- §6.4's env-apply reads likewise
-
-CREATE TABLE outbox (               -- notifications; dispatched inline, retried opportunistically
-  id         INTEGER PRIMARY KEY AUTOINCREMENT,
-  session_id TEXT, at INTEGER NOT NULL,
-  channel    TEXT NOT NULL, kind TEXT NOT NULL,
-  body       TEXT NOT NULL,         -- rendered payload
-  dedupe_key TEXT UNIQUE,       -- session:kind:reason:notify_epoch — see §10.2
-  sent_at    INTEGER NOT NULL DEFAULT 0,
-  attempts   INTEGER NOT NULL DEFAULT 0,
-  last_error TEXT
-);
 
 CREATE TABLE groups (               -- manual session groups (§11); machine-local, not config.toml
   id         INTEGER PRIMARY KEY,
@@ -507,7 +497,7 @@ permissive is not a profile, it is a wish.
   say so in the row detail rather than silently lying.
 - **Persisted**, so a `yolo` session comes back `yolo` on resume. That's the point, and
   that's why it needs a badge visible in the list, in the detail pane, and in every
-  notification body.
+  event-hook payload.
 - `yolo` is offered when `allow_yolo = true` in config (default false), and then needs no
   further ceremony: choosing it in the create modal, or switching to it with `P` inside
   the `i` detail dialog (§11.4), takes effect directly. With `yolo_default = true` (default false) the create modal opens already
@@ -643,8 +633,8 @@ Session `env` values are stored literally in `state.db`. Therefore:
 
 - `state.db` is `0600`; the parent directory is `0700`.
 - Values whose key matches `*TOKEN*|*SECRET*|*KEY*|*PASSWORD*|*CREDENTIAL*` are masked in
-  every view and in notification bodies; reveal is a per-view explicit toggle.
-- Env values never enter `events`, notification payloads, or logs.
+  every view and in event-hook payloads; reveal is a per-view explicit toggle.
+- Env values never enter `events`, event-hook payloads, or logs.
 - `pre_launch` exists precisely so secrets need not be stored at all: one shell line run
   in the pane before the agent starts (typically sourcing a file the user already keeps
   outside deck). Recommended in help over putting tokens in `env`.
@@ -675,10 +665,9 @@ schema:
 
 | where | keys |
 |---|---|
-| top level | `allow_yolo` (default false, §5), `yolo_default` (default false, §5 — inert unless `allow_yolo`), `stale_after` (default 45 s, §7), `capture_min_interval` (§9.4), `tmux_mouse` (default true, §3.2 — `false` restores tmux's own default and with it the arrow-key behaviour), `event_retention_days` (default 30, §12), `pre_launch` (empty by default, §6.4 — the global launch hook), `post_destroy` (empty by default, §9.2 — the global teardown hook) |
+| top level | `allow_yolo` (default false, §5), `yolo_default` (default false, §5 — inert unless `allow_yolo`), `stale_after` (default 45 s, §7), `capture_min_interval` (§9.4), `tmux_mouse` (default true, §3.2 — `false` restores tmux's own default and with it the arrow-key behaviour), `event_retention_days` (default 30, §12), `pre_launch` (empty by default, §6.4 — the global launch hook), `post_destroy` (empty by default, §9.2 — the global teardown hook), `event_hook` (empty by default, §10.1 — the one event script; empty makes §10 inert), `event_hook_default` (default false, §10.2), `event_hook_events` (default `["waiting","error","ended"]`, §10.2), `event_hook_timeout` (default 3 s, §10.3) |
 | `[env]` | the middle PATH/env layer (§6.1) |
 | `[ui]` | `theme` (§11.6), `ascii` (§11), `mouse` (default true, §11.8), `preview_fit` (default true, §11), `preview_paint` (default `"fit"`, one of `fit`/`nofit`/`bg`/`off`, §11.3), `sort_order` (default `"attention"`, one of `attention`/`created`/`activity`/`name`, §11), `default_group_first` (default false, §11), `attach_on_new` (default true, §11), `attach_on_resume` (default false, §9.1), `recent_cwd_limit` (default 5, §11.7). **Not** `layout_mode`, `sidebar_width` or the recent-directory list itself — those are machine-local UI state/history and live in `state.db` (§11.2, §11.7), so a keypress never rewrites this file |
-| `[notify]` | channels and rules (§10) — structured tables, edited via their own dialog (§11.5) |
 
 Environment always outranks the file: `DECK_ASCII` set in the environment overrides
 `[ui] ascii`, as every `DECK_*` knob overrides its file counterpart (§13.1 depends on
@@ -757,7 +746,7 @@ Rules:
   transaction applies to any of them, and a forced entry is an attachment for exactly the
   reason an ordinary one is, since the keyboard reaches the pane either way. Being
   *displaced* from the preview by another client records nothing: that is something done to
-  the user, not by them. Leaving an attention state bumps `notify_epoch` (§10.2).
+  the user, not by them. Leaving an attention state bumps `notify_epoch` (§10.3).
 - **Attaching to a `waiting` row also clears the status to `running`** (not only the
   acknowledgement): answering the prompt is why you attached, deck watched you do it, and
   no hook fires on a prompt being answered — the subscribed hooks (§8.1) are per-turn, not
@@ -844,10 +833,10 @@ Rules:
   row's `starting` label is plain `starting`, never `starting · awaiting signal` — that
   suffix names a signal a shell will never have, so it is agent-only copy.
 - **Crash detection is not instantaneous when unattended.** A `SIGKILL`ed or OOM-killed
-  agent fires no hook, so the transition to `error` — and its notification — happens on the
+  agent fires no hook, so the transition to `error` — and its event hook — happens on the
   next TUI tick or the next `_hook` invocation for that session, whichever comes first.
   Stated plainly rather than implied to be live. (`StopFailure` *is* a hook, so ordinary
-  turn/API failures do notify unattended; process death does not.)
+  turn/API failures do fire the hook unattended; process death does not.)
 - **Never auto-relaunch** (non-goal): a crash loop must not be able to burn tokens or retry
   a destructive action.
 
@@ -1143,7 +1132,7 @@ two could be confused:
 **What `dd` removes, exactly.** *Purge* was doing two unrelated jobs in that table, so they
 are named apart: the conversation purge is the checkbox, and the tombstone is **reaped**.
 Reaping deletes the `sessions` row and every deck-owned row hanging off it — events,
-notification outbox entries, the `waiting` and `notify_epoch` state — together with deck's
+the `waiting` and `notify_epoch` state — together with deck's
 own per-session files, meaning §9.4's history file and captured scrollback. Afterwards
 nothing remains to list, to search (§12) or to resume: the session is gone from deck without
 a trace. The one deliberate exception is the JSONL log (§13.1), which keeps its append-only
@@ -1276,88 +1265,114 @@ templated per profile (§3.4), one instance per socket.
 
 ---
 
-## 10. Notifications
+## 10. Event hooks
 
-A pluggable, service-agnostic dispatch layer. deck knows nothing about any specific
-notification service; integrating one is configuration, not code.
+deck has no notification client, no channel types and no templates. It has **one** extension
+point: a user-supplied executable, the *event hook*, that deck spawns when a session records
+a status-change event. The script decides what that means — a Telegram message, a desktop
+notification, a webhook call, a log line, a screenshot upload. Integrating a service is a
+script, not code in deck, and deck ships no service-specific client. It is the same shape as
+`pre_launch` and `post_destroy` (§6.4, §9.2): one user-owned program, handed the session's
+facts, that selects for itself. It is called an *event hook* rather than a notification
+because nothing restricts it to messages.
 
-### 10.1 Channels
+### 10.1 The script and its contract
 
-Declared in `config.toml`. Three types, all generic:
+`event_hook` (§6.5, top level, empty by default) is one executable path or argv, run **without
+a shell** on the same footing as an agent binary. **No script configured means the whole
+feature is inert**, whatever any per-session setting says: the per-session fields are never
+read and nothing is spawned.
 
-| type | behaviour |
+Invocation: `event_hook <event>`.
+
+- **argv[1]** is the event kind, one of the **offered set**: `started`, `resumed`,
+  `waiting`, `idle`, `error`, `ended`, `killed`. The remaining §4 kinds (`prompt`, `env`,
+  `note`) are never offered: they are the audit trail's, and a hook for each keystroke-grained
+  event would be noise on the agent's critical path.
+- **Environment:** every `DECK_SESSION_*` variable of §6.1, exactly as `pre_launch` sees them
+  (always exported, empty rather than absent), plus `DECK_EVENT_KIND`, `DECK_EVENT_REASON`
+  (the `status_reason`, e.g. a notification type), `DECK_EVENT_MESSAGE` (the last assistant
+  message or crash summary, truncated and redacted per §6.4) and `DECK_EVENT_AT` (RFC 3339).
+- **stdin:** the full payload as one JSON object, versioned:
+  `{version, session: {id, name, cwd, agent, status, reason, permission_profile, group,
+  important}, event: {kind, at, reason, message}, deck: {host, version}}`. A script that only
+  needs the kind reads argv and never touches stdin.
+- Bodies are size-capped. **Env values never appear** in the environment variables above, in
+  the payload, or in the captured output record (§6.4); `message` is withheld, not truncated,
+  for a `sensitive` session (§8).
+
+### 10.2 Per-session control
+
+| field | meaning |
 |---|---|
-| `webhook` | HTTP request to a user-supplied URL: configurable method (default `POST`), headers, and a body **template**. Timeout, TLS verification, and retry count are per-channel. This is how any hosted or self-hosted notifier is integrated — deck ships no service-specific client. |
-| `command` | Execute a user-supplied argv with the rendered payload on stdin (and as env vars). Covers desktop notifiers, local scripts, anything on the box. |
-| `desktop` | Convenience wrapper over `command` for a freedesktop notification. **Does not degrade silently:** unreachability is recorded as a channel error on the outbox row and surfaced in the health view. This matters because a `_hook` spawned from a tmux server that systemd started has no session bus, so the channel is unavailable in precisely the deployment §6.3 warns about — the health view therefore probes the bus alongside `PATH`. |
+| `event_hook_enabled` | tri-state: inherit (default) · on · off |
+| `event_hook_events` | optional list of offered kinds; absent = inherit the global list |
 
-Body rendering is a text template over a documented, versioned payload:
-`{session: {name, cwd, agent, status, reason, permission_profile, group, important},
-event: {kind, at, message}, deck: {host, version}}`. Templates are user-authored, so any
-JSON shape a target expects can be produced — including nesting the message inside a
-service-specific envelope. Rendered bodies are size-capped and redacted per §6.4.
-
-### 10.2 Rules
-
-A rules table, global with per-session override (`notify_rules`), evaluated per event:
-
-```toml
-[notify]
-quiet_hours = "23:30-07:30"        # local time; suppressed events are still logged
-[[notify.rule]]
-on       = ["waiting", "error"]    # any event kind from §4
-channels = ["ops-webhook"]
-[[notify.rule]]
-on       = ["idle"]
-only     = "important"             # milestone-style: only sessions flagged important
-channels = ["ops-webhook", "desktop"]
-```
-
-- Every event kind in §4 (`started, prompt, waiting, idle, error, ended, resumed, killed,
-  env, note`) is a valid `on` value — the rule grammar and the event vocabulary are one
-  list, not two.
-- Every rule is configurable; a per-session rule set **replaces** the global one entirely
-  (no partial merge — merge semantics are a support burden and a debugging trap).
-- **No debounce, deliberately.** "Suppress if it resolves within 20 s" needs something
-  awake 20 s later to fire the survivors; with no daemon, the only thing that would ever
-  wake up is the next hook — which, for a session blocked waiting on you, never comes. A
-  debounced `waiting` would therefore be a notification that is *never* sent, in exactly
-  the case the product exists to catch. So dispatch is immediate, and the cost is accepted:
-  a prompt you answer in three seconds still pinged you.
-- **Dedupe with an epoch, not forever.** The key is
-  `session:kind:reason:notify_epoch`; `notify_epoch` increments whenever the session leaves
-  an attention state (§7). A re-fired prompt within the same attention episode notifies
-  once; the same prompt tomorrow is a new epoch and notifies again. A permanently unique
-  key would silently mute a recurring prompt for the lifetime of the session.
-- `snoozed_until` and quiet hours suppress dispatch but never suppress the event log.
+- The global defaults are `event_hook_default` (on/off for a session whose own flag is
+  *inherit*; **default off**) and `event_hook_events` (the default list; default
+  `["waiting", "error", "ended"]`), both in §6.5 and both editable in settings (§11.5).
+- A session's list **replaces** the global one entirely. There is no partial merge — merge
+  semantics are a support burden and a debugging trap.
+- **deck filters before it spawns.** An event whose kind is not enabled for the session never
+  starts a process. Anything finer — only `important` sessions, quiet hours, a per-agent
+  rule — is the script's to decide from `DECK_SESSION_*` and the clock; deck has no
+  `quiet_hours`, no `only = "important"` filter and no snooze that suppresses a hook.
+- Both fields are set in the create dialog and in the launch-inputs editor (§11.4), and
+  **apply immediately**: unlike a launch input they are read at dispatch, not consumed at
+  launch, so they are not restart-to-apply and set no dirty flag (§6.2).
 
 ### 10.3 Delivery
 
-Dispatched inline by `deck _hook` (per-channel timeout, default 3 s), so notifications work
-with no TUI open and no daemon. Session-end events only enqueue (§8.1). Failures land in
-`outbox` and are retried by the next hook invocation or TUI tick.
+- **Fire-and-forget.** The script runs under a bounded timeout (`event_hook_timeout`, default
+  3 s) and is killed — its whole process group — when it expires. deck keeps **no outbox and
+  never retries**: a script that wants retries owns them.
+- The **exit status and a capped tail of stdout and stderr** are recorded against the event
+  and shown in the session detail and the health view (§11.4). A non-zero exit or a timeout is
+  a visible fact on the row, never a silent no-op. The health view also probes that the
+  configured script exists and is executable, alongside `PATH`.
+- **Dedupe by epoch, not forever.** `notify_epoch` increments whenever the session leaves an
+  attention state (§7). Within one epoch, a `(kind, reason)` pair spawns the hook once: a
+  re-fired prompt in the same attention episode is one spawn, and the same prompt tomorrow is
+  a new epoch and spawns again. The set of pairs already fired in the current epoch is
+  `hook_fired` (§4), cleared when the epoch advances. A permanently unique key would silently
+  mute a recurring prompt for the lifetime of the session.
+- **No debounce, deliberately.** "Suppress if it resolves within 20 s" needs something awake
+  20 s later to fire the survivors; with no daemon the only thing that would ever wake up is
+  the next hook — which, for a session blocked waiting on you, never comes. So dispatch is
+  immediate, and a prompt you answer in three seconds still pinged you.
+- The hook never suppresses or delays the event log: the event is written first, and a
+  failing or slow script cannot lose it.
+- **Skipped on the session-end path.** `deck _hook` never waits for a script while shutting a
+  session down (§8.1); an `ended` event for a session-end payload is dispatched detached,
+  with no timeout record, rather than holding the agent's exit.
 
-The three limits this design accepts, all of which belong in the help view rather than in
-a footnote:
+### 10.4 Who spawns it
 
-1. **Retry needs a next event.** A delivery that fails at 02:00, with no TUI open and no
-   further hook activity for that session, sits in the outbox until morning. There is no
-   timer, because a timer is a daemon.
-2. **Probe-classified agents notify only while a TUI runs.** Pi and shell sessions have no
-   event source of their own (§8), so unattended they change status — and therefore
-   notify — never. Claude and Codex sessions notify unattended (Codex from its first prompt
-   on, §8.2). Only Claude reports turn and API failures that way, via the stop-failure hook:
+**Whichever deck process records the event**, through one dispatch function called from every
+event-write path: `deck _hook` for the payloads a Claude or Codex hook delivers, and the
+running TUI for events deck detects by itself — a probe-classified Pi or shell status change,
+a reconcile-detected process death, and the user's own `killed`. Dispatch never happens twice
+for one event: the dedupe above is the guard, and the process that wrote the event is the one
+that dispatches it.
+
+The three limits this accepts, all of which belong in the help view rather than in a footnote:
+
+1. **There is no retry**, and so no outbox to drain: a hook that fails at 02:00 has failed,
+   and the only record is the exit status on the event.
+2. **Probe-classified agents fire only while a TUI runs.** Pi and shell sessions have no
+   event source of their own (§8), so unattended they change status — and therefore fire the
+   hook — never. Claude and Codex sessions fire unattended (Codex from its first prompt on,
+   §8.2). Only Claude reports turn and API failures that way, via the stop-failure hook:
    Codex has no equivalent event, so an unattended codex failure waits for a TUI.
-3. **Process death is detected late.** A `SIGKILL`ed or OOM-killed agent of any kind fires
-   no hook, so its `error` notification waits for the next tick or hook (§7).
+3. **Process death is detected late.** A `SIGKILL`ed or OOM-killed agent of any kind fires no
+   hook, so its `error` event waits for the next tick or hook (§7).
 
-### 10.4 Out of scope
+### 10.5 Out of scope
 
 **Inbound remote control.** Replying into a session from a phone would require a
 long-polling daemon and a service-specific protocol, contradicting both the no-daemon and
-service-agnostic constraints. Notifications are one-way in v1. If it's ever wanted, the
-natural shape is a separate program that writes to deck's store — not deck growing a
-listener.
+service-agnostic constraints. The hook is one-way. If it's ever wanted, the natural shape is a
+separate program that writes to deck's store — not deck growing a listener.
 
 ---
 
@@ -1679,7 +1694,7 @@ hold them side by side.
 - Since there is no CLI (R7), **every** capability is reachable and discoverable in the
   UI: create modal (name, cwd picker, agent — available kinds only, §6.3 — permission profile, env, pre_launch,
   post_destroy, args), env editor, launch-inputs editor (§6.2), permission switcher,
-  pin/unpin, rename, notification rules editor, health
+  pin/unpin, rename, health
   view (tmux version, socket, agents on PATH, PATH resolvability, optional unit install),
   event log, search, **a settings view over every config key (§11.5)**, and a help overlay
   with the full keymap. A capability that can only be reached by editing a file by hand is
@@ -2012,8 +2027,12 @@ vs purge) ·
 send message (§11.1) · env editor · **launch-inputs editor** (§6.2 — `pre_launch`,
 `post_destroy`, `launch_args`, `login_shell`; every field labelled *restart-to-apply*. The two
 hook lines are shown verbatim rather than masked — they are commands, not values, and §6.4's
-whole recommendation is that the command *sources* a secret rather than containing one) ·
-snooze duration · notification rules · theme picker (§11.6) · event log · health view ·
+whole recommendation is that the command *sources* a secret rather than containing one. The
+session's **event-hook** fields, `event_hook_enabled` and `event_hook_events` (§10.2), are
+also edited here but are *not* restart-to-apply: they are read at dispatch, apply immediately
+and set no dirty flag; the last hook exit status and output tail (§10.3) are shown in the
+detail) ·
+snooze duration · theme picker (§11.6) · event log · health view ·
 find (§12) · **lost attach (§11.9)** · help overlay. Settings is deliberately *not* a dialog
 — see below.
 
@@ -2029,10 +2048,8 @@ the TUI must be the place it is edited.
 - **Every flat key in `config.toml` is editable here**, and the view is generated from the
   same schema that parses the file, so a new flat key cannot be added without appearing in
   settings. `allow_yolo` reachable only by hand-editing a file is exactly the R7 violation
-  this closes. **Structured tables are the stated exception**: `[notify]`'s channels and
-  `[[notify.rule]]` arrays are edited in the notification rules dialog (§11.4), and settings
-  shows them as a single navigable entry that opens it rather than flattening them into
-  fields they don't fit.
+  this closes. The event hook (§10) adds no structured table: its keys are flat, so there
+  is currently no exception to this rule.
 - Field kinds are explicit: toggle, integer with bounds, string, path (with a picker),
   enum (cycled), list-of-strings, and *link* (opens the owning dialog, per the exception
   above). Each field states what it does and what changes when it changes.
@@ -2186,7 +2203,7 @@ front, deduplicated by resolved absolute path, evicting the oldest beyond the li
   deterministic and assertable while `DECK_CLOCK` is frozen (§13.1): anything ordered by a
   frozen clock has no order at all.
 - The list is history, and paths can themselves be sensitive: settings (§11.5) offers
-  clearing it, and it is never included in notification payloads.
+  clearing it, and it is never included in event-hook payloads.
 
 **Completion happens at the end of the field, and only there.** Ghost and `tab` both complete
 the segment the caret ends, and with the caret anywhere else there is no ghost and `tab` does
@@ -2666,7 +2683,7 @@ listed here rather than left to a test package:
 | **Bounded ticks** | `DECK_RECONCILE_MS` (default 500) and `DECK_PREVIEW_MS` (default 250) — two rates, two knobs, matching §7 and §11. | Tests wait on state, not on wall clock; low values make scenarios fast. |
 | **Interactive render rate** | `DECK_INTERACTIVE_MS` — §11.9's grid render-coalescing interval. A duration, like the two ticks above. | Render frequency, not parsing, dominates the transport's cost, so it is the one axis worth pinning in a scenario. |
 | **Interactive transport** | `DECK_INTERACTIVE_TRANSPORT=pipe\|capture` pins §11.9's render path. | A *selector over two implementations of one contract*, not a behaviour switch: both paths must satisfy the same scenarios, so a scenario can exercise either deterministically. The **scrollback scenarios are the one exception**, and named as such: §11.9 gives interactive scrollback to the pipe transport only, because the capture path's own poll tick rebuilds the grid from the visible screen, so those scenarios are pipe-only by construction rather than by oversight. Stated explicitly because this section otherwise forbids knobs that change what the product does. |
-| **Structured log** | JSONL to `$DECK_HOME/log/deck.jsonl`: every state transition, launch argv, hook receipt with duration, notification attempt with outcome. | The observability surface for things not visible on screen — argv, timings, retries. |
+| **Structured log** | JSONL to `$DECK_HOME/log/deck.jsonl`: every state transition, launch argv, hook receipt with duration, event-hook invocation with exit status and duration. | The observability surface for things not visible on screen — argv, timings, retries. |
 | **Launch audit** | Each launch appends the exact argv + resolved env keys (values redacted) to the log. | Proves "resume by id, never `--continue`" (R2) without reading agent internals. |
 
 Nothing above changes behaviour; they narrow non-determinism. `DECK_*` variables are listed
@@ -2678,12 +2695,12 @@ in the help view.
  feature files (Gherkin)
         │  godog
  ┌──────▼───────────────────────────────────────────────────────────┐
- │ steps: keys in · screen out · files · webhooks · log             │
+ │ steps: keys in · screen out · files · hook calls · log           │
  └──┬──────────────┬───────────────┬──────────────┬────────────────┘
     │              │               │              │
  ┌──▼───────┐  ┌───▼──────────┐ ┌──▼───────────┐ ┌▼───────────────┐
- │ pty +    │  │ real tmux    │ │ fake agents  │ │ httptest       │
- │ VT100    │  │ private sock │ │ on PATH      │ │ webhook sink   │
+ │ pty +    │  │ real tmux    │ │ fake agents  │ │ capture script │
+ │ VT100    │  │ private sock │ │ on PATH      │ │ (event hook)   │
  │ emulator │  │              │ │              │ │                │
  └──────────┘  └──────────────┘ └──────────────┘ └────────────────┘
 ```
@@ -2743,9 +2760,11 @@ in the help view.
   coalesced to one `SIGWINCH` per settled selection rather than one per row walked, that no
   fit reaches a pane below the 7-row floor, and that `preview_fit = false` produces none at
   all.
-- **Webhook sink.** An `httptest` server registered as a `webhook` channel; steps assert
-  on requests received, bodies rendered, dedupe collapses, and non-delivery during quiet
-  hours. Notification behaviour is fully black-box because §10 has no built-in service.
+- **Capture script.** A script registered as `event_hook` that appends its argv, its
+  `DECK_*` environment and its stdin to a file; steps assert on invocations received, the
+  payload, dedupe collapses, and non-invocation for a disabled or filtered kind. Event-hook
+  behaviour is fully black-box because §10 has no built-in service. A slow variant (sleeps past
+  the timeout) and a failing variant (exits non-zero) cover §10.3.
 - **Resize and attributes.** §11.2's "a resize re-chooses the mode" requires the driver to
   resize the pty mid-scenario (`TIOCSWINSZ` + `SIGWINCH`) and re-read the grid; §11.6's
   theme assertions require the emulator's per-cell SGR attributes, not only its text. Both
@@ -2796,12 +2815,12 @@ features/
                                 gate, degradation
   status_claude_hooks.feature   R6 — waiting/running/idle/error via hook payloads, live badge
   status_probe.feature          R6 — sampled badge, staleness, precedence over probe
-  crash.feature                 §7 — error + crash tail + notify, and never auto-relaunch
+  crash.feature                 §7 — error + crash tail + event hook, and never auto-relaunch
   environment.feature           §6 — layering, env↻, restart applies (and only restart)
   kill_delete_undo.feature      §9.2 — x/dd, undo windows, tombstone, cwd never touched,
                                 reap leaves no trace, the agent's transcript survives `dd`
   shell_state.feature           §9.4 — history, scrollback replay, cwd restore, sensitive
-  notifications.feature         §10 — rules, epoch dedupe, quiet hours, templates, retry
+  event_hooks.feature           §10 — contract, per-session replace-not-merge, epoch dedupe, timeout
   codex_hooks.feature           §8.2 — inline hook injection, the id adopted from
                                 SessionStart, PermissionRequest → waiting, and no id (so no
                                 resume) before the first prompt
@@ -2859,16 +2878,16 @@ Scenario: two clients cannot double-launch one session                  # R4
 
 Scenario: waiting is truthful, deduped per episode, and cleared         # R6
   Given a running session "api" for agent "claude"
-  And notification rules sending kind "waiting" to the sink
+  And an event hook enabled for kind "waiting"
   When the agent fires notification type "permission_prompt"
   Then "api" shows "waiting" with reason "permission_prompt" within 1 reconcile
-  And the webhook sink receives 1 request for kind "waiting"   # immediate, no debounce
+  And the event hook is invoked 1 time with kind "waiting"   # immediate, no debounce
   When the same notification type fires again
-  Then the webhook sink has still received 1 request           # dedupe, same epoch
+  Then the event hook has still been invoked 1 time             # dedupe, same epoch
   When the agent fires "stop" with message "done"
   Then "api" shows "idle" and the detail pane contains "done"
   When the agent fires notification type "permission_prompt" again
-  Then the webhook sink receives a 2nd request                 # new epoch after resolution
+  Then the event hook is invoked a 2nd time                     # new epoch after resolution
 ```
 
 And three that pin the distinctions most easily got wrong — a clean exit read as a crash, a
@@ -2879,7 +2898,7 @@ Scenario: a shell session that exits cleanly is stopped, not an error    # §7
   Given a session "notes" for agent "shell"
   When I type "exit" in its pane
   Then "notes" shows status "stopped"
-  And no notification is sent
+  And the event hook is not invoked
   And no crash tail is recorded
 
 Scenario: a crashed agent is an error with its exit status               # §7
@@ -2911,10 +2930,10 @@ enqueue-only path; store migration from the previous schema version; scrollback 
 identical modulo the cap, absent entirely when `sensitive`, and off by default for agent
 sessions; capture ownership (kill, session end, TUI shutdown, opportunistic) each covered;
 env edit shows `env↻` and applies **only** after restart, with the conversation preserved;
-`captured_path` precedence, and `login_shell` overriding it; notification templates render,
-redact secret-shaped keys, respect a per-session rule set replacing the global one, and
-record a channel error rather than silently no-op'ing when a channel is unreachable;
-outbox retry on the next hook or tick; `s` refused from every status except `idle`;
+`captured_path` precedence, and `login_shell` overriding it; the event hook receives the §10.1 contract (argv, env, versioned stdin), is
+filtered before spawning, respects a per-session list replacing the global one, is inert
+with no script configured, is killed at its timeout with its exit status and output tail
+recorded rather than silently no-op'ing, and never delays the session-end path; `s` refused from every status except `idle`;
 `A` on a live session opening a confirm that names the kill and **writing nothing until it is
 confirmed**; resume and restart refused for an archived session, asserted by the *absence of a
 tmux session* rather than by the returned outcome; unarchive returning a row to the default
@@ -2960,8 +2979,8 @@ redesign upstream is a one-fixture fix.
    some agents, produce divergent transcripts. Detect and offer fork, or refuse the second
    resume via the lease?
 6. **Binary name** `deck` vs Kong's `decK` on `$PATH`.
-7. **Immediate notification vs noise.** Dropping debounce (§10.2) means a prompt answered in
-   three seconds still pinged you. Acceptable, or is a *resolution* notification ("no longer
+7. **Immediate event hook vs noise.** Dropping debounce (§10.3) means a prompt answered in
+   three seconds still pinged you. Acceptable, or is a *resolution* event ("no longer
    waiting") the better shape — the same information without needing a timer?
 8. **Shared attach geometry** (§3.3). Living with `window-size latest` is still the plan, and
    §11.9 has now shown a bounded resize is survivable and byte-exactly reversible, at exactly
