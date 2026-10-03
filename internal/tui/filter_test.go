@@ -520,3 +520,99 @@ func TestFilterFrameBudgetAccountsForTheStatusLine(t *testing.T) {
 		})
 	}
 }
+
+// filterStatusSessions gives three rows whose name, group and cwd share no
+// substring with any status word, so a status-only query can only match by
+// status.
+func filterStatusSessions() []store.Session {
+	return []store.Session{
+		{ID: "s-a", Name: "aaa", GroupName: "g1", CWD: "/r/one", Agent: "shell", Status: "running"},
+		{ID: "s-b", Name: "bbb", GroupName: "g2", CWD: "/r/two", Agent: "shell", Status: "waiting"},
+		{ID: "s-c", Name: "ccc", GroupName: "g3", CWD: "/r/three", Agent: "shell", Status: "stopped"},
+	}
+}
+
+func filterIDs(m Model) []string {
+	var ids []string
+	for _, s := range m.filteredSessions() {
+		ids = append(ids, s.ID)
+	}
+	return ids
+}
+
+// TestFilterMatchesTheDisplayedStatus is SPEC §11.10's "name, cwd, group and
+// status": a status-only query keeps exactly the rows showing that status.
+// It checks the matching rows themselves, not the input echo.
+func TestFilterMatchesTheDisplayedStatus(t *testing.T) {
+	model := newFilterTestModel(filterStatusSessions())
+	got, _ := model.Update(key("/"))
+	model = got.(Model)
+	for _, r := range "waiting" {
+		got, _ = model.Update(key(string(r)))
+		model = got.(Model)
+	}
+	if ids := filterIDs(model); len(ids) != 1 || ids[0] != "s-b" {
+		t.Fatalf("status query kept %v, want [s-b]", ids)
+	}
+	if len(model.sessions) != 1 || model.sessions[0].ID != "s-b" {
+		t.Fatalf("m.sessions = %v, want only s-b", model.sessions)
+	}
+	view := model.View()
+	if rowLine(view, "bbb") == "" || rowLine(view, "aaa") != "" || rowLine(view, "ccc") != "" {
+		t.Fatalf("rows on screen do not match the status query:\n%s", view)
+	}
+}
+
+// Cases of the same rule beyond the finding's own example: case-insensitive
+// and partial status, incremental narrowing, an archived row's status, and
+// non-mutation of the underlying sessions.
+func TestFilterStatusIsCaseInsensitivePartialAndIncremental(t *testing.T) {
+	model := newFilterTestModel(filterStatusSessions())
+	for _, tc := range []struct {
+		q    string
+		want []string
+	}{
+		{"RUNN", []string{"s-a"}},
+		{"stop", []string{"s-c"}},
+		{"ing", []string{"s-a", "s-b"}}, // running, waiting
+		{"zzz", nil},
+	} {
+		model.filterQuery = tc.q
+		got := filterIDs(model)
+		if strings.Join(got, ",") != strings.Join(tc.want, ",") {
+			t.Fatalf("query %q kept %v, want %v", tc.q, got, tc.want)
+		}
+	}
+	// Incremental: typing "w" then "waiting" re-narrows as the field grows.
+	model = newFilterTestModel(filterStatusSessions())
+	g, _ := model.Update(key("/"))
+	model = g.(Model)
+	for i, r := range "waiting" {
+		g, _ = model.Update(key(string(r)))
+		model = g.(Model)
+		if i == 0 && len(model.sessions) != 1 {
+			// "w" appears only in "waiting" among names/groups/cwds/statuses.
+			t.Fatalf("after \"w\" kept %v", filterIDs(model))
+		}
+	}
+	if len(model.sessions) != 1 || model.sessions[0].ID != "s-b" {
+		t.Fatalf("after full query kept %v", filterIDs(model))
+	}
+}
+
+func TestFilterStatusReachesArchivedRowAndDoesNotMutate(t *testing.T) {
+	base := filterStatusSessions()
+	model := newFilterTestModel(base)
+	model.archivedSessions = []store.Session{
+		{ID: "s-arch", Name: "old", GroupName: "g9", CWD: "/r/old", Agent: "shell", Status: "error", ArchivedAt: 5},
+	}
+	model.filterQuery = "error"
+	if ids := filterIDs(model); len(ids) != 1 || ids[0] != "s-arch" {
+		t.Fatalf("status query over the archived pool kept %v", ids)
+	}
+	model.filterQuery = "waiting"
+	_ = model.filteredSessions()
+	if base[1].Status != "waiting" || len(model.baseSessions) != 3 || model.baseSessions[1].ID != "s-b" {
+		t.Fatalf("filtering mutated the sessions: %+v", model.baseSessions)
+	}
+}
