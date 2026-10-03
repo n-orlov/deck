@@ -30,12 +30,12 @@ Feature: The create modal's cwd field is edited under a caret (requirement 179, 
     When deck client "A" opens the create modal
     And deck client "A" tabs to the cwd field
     And deck client "A" types the scratch directory labelled "mid" followed by "uniquep" into the cwd field
-    Then deck client "A" text "rojmid/" has foreground token "hint"
+    Then deck client "A" text "rojmid/" has foreground token "dimmed"
     When deck client "A" presses "left" in the cwd field
     Then deck client "A" cwd field comes to show no ghost text
     When deck client "A" presses "tab" in the cwd field
     And deck client "A" presses "right" in the cwd field
-    Then deck client "A" text "rojmid/" has foreground token "hint"
+    Then deck client "A" text "rojmid/" has foreground token "dimmed"
     When deck client "A" closes the create modal
     And deck client "A" exits cleanly
 
@@ -51,7 +51,7 @@ Feature: The create modal's cwd field is edited under a caret (requirement 179, 
     And deck client "A" presses "left" in the cwd field
     Then deck client "A" cwd field comes to show no ghost text
     When deck client "A" presses "right" in the cwd field
-    Then deck client "A" text "rojback/" has foreground token "hint"
+    Then deck client "A" text "rojback/" has foreground token "dimmed"
     When deck client "A" presses "right" in the cwd field
     Then deck client "A" screen contains "uniqueprojback/"
     When deck client "A" submits the create modal
