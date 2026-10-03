@@ -362,6 +362,40 @@ comparison vs. widen the bound), not in whether they consult it at all.
   Allure report does not display it. There is no coverage threshold gating
   anything.
 
+## CRAP scoring (`ci/crapgate`, R187)
+
+`go run ./ci/crapgate -profile <coverprofile> -max <ceiling> [-filter
+<pkg-dir>[:<file,...>]]` is a stdlib-only (no `golang.org/x/tools/cover`, no
+third-party module of any kind) CRAP scorer. It is not yet wired into any
+gate script -- that lands with `ci/quality.sh` -- but its rules are locked by
+its own table tests (`ci/run.sh go test -count=1 ./ci/crapgate/`):
+
+- McCabe complexity via `go/ast`: `cc = 1 + if + for + range + case +
+  comm-case + && + ||`. A `default:`/`case` with no `List` (the `select`
+  equivalent, a `CommClause` with a nil `Comm`) adds nothing. A closure
+  (`FuncLit`) defined inside a named function is walked into, not skipped --
+  its branches count into the enclosing function's score, and a closure is
+  never scored as a function of its own.
+- `CRAP = cc² × (1 − cov)³ + cc`. A function with zero top-level statements
+  (an empty body) is defined as 100% covered, so its CRAP collapses to its
+  own `cc` regardless of what the profile does or does not say about it.
+- Coverage per function comes from the profile's own blocks (the same
+  `name:startLine.startCol,endLine.endCol numStmt count` format `go test
+  -coverprofile`/`go tool covdata textfmt` both emit), summed over whichever
+  blocks fall inside that function's line range. A function present in
+  source whose file has no matching block anywhere in the profile at all
+  (never built under the profile's own `-coverpkg`/package selection) is
+  scored at 0% -- never silently skipped.
+- `-filter` takes either a bare package directory (every non-test `.go` file
+  directly inside it) or `<pkg-dir>:<file,...>` (only the named files); with
+  no `-filter` the whole module (found by walking up from the working
+  directory for `go.mod`) is scanned.
+- Exit codes: `0` nothing over `-max`; `1` one or more functions over it,
+  named in the report by `file:line`, `cc`, `cov` and `CRAP`; `2` a
+  usage/input error -- a missing or empty profile, or a scan that found zero
+  scored functions (a typo'd `-filter` must never read as a clean bill of
+  health).
+
 ## The release gate (`release.yml`, R147)
 
 Before `release.yml` builds or publishes anything for a pushed `vX.Y.Z` tag,
