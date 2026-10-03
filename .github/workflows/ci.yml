@@ -111,6 +111,11 @@ jobs:
         continue-on-error: true
         run: ci/run.sh ci/suite.sh
 
+      - name: Quality gates (ci/quality.sh; every gate off until a later task flips one on, R187)
+        id: quality
+        continue-on-error: true
+        run: ci/run.sh ci/quality.sh "$DECK_CI_OUT"
+
       - name: Nightly stability (3 clean-state runs, R145)
         id: stability
         if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
@@ -158,8 +163,8 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
-      - name: Fail the job if the suite or the nightly stability run failed
-        if: steps.suite.outcome == 'failure' || steps.stability.outcome == 'failure'
+      - name: Fail the job if the suite, quality gates, or the nightly stability run failed
+        if: steps.suite.outcome == 'failure' || steps.quality.outcome == 'failure' || steps.stability.outcome == 'failure'
         run: exit 1
 
   # R146: build the Allure report from the JUnit results `suite` produced,
