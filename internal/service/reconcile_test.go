@@ -48,23 +48,29 @@ func TestReconcilerStopsDisappearedSessionAndDoesNotRelaunchServer(t *testing.T)
 	}
 
 	const reconcileInterval = 250 * time.Millisecond
-	ctx, cancel := context.WithCancel(context.Background())
-	done := make(chan error, 1)
-	go func() {
-		err := service.RunReconciler(ctx, reconcileInterval)
-		if err != nil {
-			t.Errorf("reconcile loop exited early: %v", err)
+	// The detecting pass runs on the first tick, so the cadence bound is one
+	// interval plus the cost of a pass. Measure that cost on this host with the
+	// same live sessions instead of guessing a grace period.
+	var passCost time.Duration
+	for i := 0; i < 3; i++ {
+		begun := time.Now()
+		if err := service.Reconcile(context.Background()); err != nil {
+			t.Fatalf("warm-up reconcile: %v", err)
 		}
-		done <- err
-	}()
+		if elapsed := time.Since(begun); elapsed > passCost {
+			passCost = elapsed
+		}
+	}
+	loopStart := time.Now()
+	stop := startReconciler(t, service, reconcileInterval)
 	if err := service.TMux.Kill(context.Background(), alpha.Slug); err != nil {
 		t.Fatal(err)
 	}
-	// The disappearance must be visible within the configured cadence, not
-	// merely eventually after an arbitrary multi-interval grace period.
-	waitForStatus(t, db, alpha.ID, "stopped", reconcileInterval)
-	cancel()
-	if err := <-done; err != nil {
+	// The disappearance must be visible within the configured cadence (the
+	// first tick after the loop started, plus one measured pass), not merely
+	// eventually after an arbitrary multi-interval grace period.
+	waitForStatus(t, db, alpha.ID, "stopped", time.Until(loopStart.Add(reconcileInterval+3*passCost)))
+	if err := stop(); err != nil {
 		t.Fatalf("reconcile loop: %v", err)
 	}
 
@@ -664,6 +670,32 @@ func reconcileSession(t *testing.T, db *store.Store, id, name, cwd, agent, statu
 		t.Fatal(err)
 	}
 	return session
+}
+
+// startReconciler runs RunReconciler in the background and returns its stop
+// function. Stop cancels and joins the loop; it is also registered as a test
+// cleanup, so a failed assertion (t.Fatal) on any path still cancels and joins
+// the goroutine before the test completes and nothing can report after that.
+func startReconciler(t *testing.T, service Service, interval time.Duration) (stop func() error) {
+	t.Helper()
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- service.RunReconciler(ctx, interval) }()
+	var once sync.Once
+	var result error
+	stop = func() error {
+		once.Do(func() {
+			cancel()
+			result = <-done
+		})
+		return result
+	}
+	t.Cleanup(func() {
+		if err := stop(); err != nil {
+			t.Errorf("reconcile loop exited early: %v", err)
+		}
+	})
+	return stop
 }
 
 func waitForStatus(t *testing.T, db *store.Store, id, want string, timeout time.Duration) {
