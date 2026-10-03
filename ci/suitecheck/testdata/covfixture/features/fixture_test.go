@@ -2,9 +2,26 @@
 // point (task 002, R187): a no-op TestFeatures, fast enough that
 // ci/suite.sh's second pass contributes nothing to this fixture's
 // coverage data either -- which is the point, see unit/unit_test.go's own
-// header.
+// header. Test files are never instrumented, so the marker below keeps the
+// fixture statement-free.
 package features
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"testing"
+)
 
-func TestFeatures(t *testing.T) {}
+// extraFlagMarker is set by extraflag_test.go, which only builds under
+// -tags=suiteextraflag.
+var extraFlagMarker string
+
+func TestFeatures(t *testing.T) {
+	dir := os.Getenv("EXTRA_PROBE_DIR")
+	if dir == "" || extraFlagMarker == "" {
+		return
+	}
+	if err := os.WriteFile(filepath.Join(dir, "features"), []byte(extraFlagMarker), 0o644); err != nil {
+		t.Fatalf("write marker: %v", err)
+	}
+}

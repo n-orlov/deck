@@ -20,7 +20,21 @@ import (
 	"testing"
 )
 
-func TestSuiteScriptScrubsDeckEnvironmentAndFailsOnEmptyMergedCoverage(t *testing.T) {
+// covFixtureRun is one ci/suite.sh run against a fresh copy of
+// testdata/covfixture/.
+type covFixtureRun struct {
+	module string
+	outdir string
+	probe  string
+	out    []byte
+	err    error
+}
+
+// runCovFixture copies the covfixture module plus the real ci/suite.sh and
+// ci/junitflaky into a temp dir and runs the script there with the caller's
+// DECK_* stripped, then extraEnv appended.
+func runCovFixture(t *testing.T, extraEnv ...string) covFixtureRun {
+	t.Helper()
 	if _, err := exec.LookPath("go"); err != nil {
 		t.Fatalf("go toolchain not on PATH: %v", err)
 	}
@@ -31,41 +45,51 @@ func TestSuiteScriptScrubsDeckEnvironmentAndFailsOnEmptyMergedCoverage(t *testin
 	fixture := filepath.Join(root, "ci", "suitecheck", "testdata", "covfixture")
 	module := t.TempDir()
 	copyFile(t, filepath.Join(fixture, "go.mod.fixture"), filepath.Join(module, "go.mod"), 0o644)
-	copyFile(t, filepath.Join(fixture, "unit", "unit_test.go"), filepath.Join(module, "unit", "unit_test.go"), 0o644)
-	copyFile(t, filepath.Join(fixture, "features", "fixture_test.go"), filepath.Join(module, "features", "fixture_test.go"), 0o644)
+	for _, rel := range []string{"unit/unit_test.go", "unit/extraflag_test.go", "features/fixture_test.go", "features/extraflag_test.go"} {
+		copyFile(t, filepath.Join(fixture, filepath.FromSlash(rel)), filepath.Join(module, filepath.FromSlash(rel)), 0o644)
+	}
 	copyFile(t, filepath.Join(root, "ci", "suite.sh"), filepath.Join(module, "ci", "suite.sh"), 0o755)
 	copyFile(t, filepath.Join(root, "ci", "junitflaky", "main.go"), filepath.Join(module, "ci", "junitflaky", "main.go"), 0o644)
 
-	outdir := filepath.Join(module, "out")
-	probe := filepath.Join(module, "probe.txt")
+	run := covFixtureRun{
+		module: module,
+		outdir: filepath.Join(module, "out"),
+		probe:  filepath.Join(module, "probe.txt"),
+	}
 
-	env := make([]string, 0, len(os.Environ())+6)
+	env := make([]string, 0, len(os.Environ())+6+len(extraEnv))
 	for _, kv := range os.Environ() {
-		if strings.HasPrefix(kv, "DECK_") || strings.HasPrefix(kv, "GOWORK=") || strings.HasPrefix(kv, "GOCOVERDIR=") {
+		if strings.HasPrefix(kv, "DECK_") || strings.HasPrefix(kv, "GOWORK=") || strings.HasPrefix(kv, "GOCOVERDIR=") || strings.HasPrefix(kv, "EXTRA_PROBE_DIR=") {
 			continue
 		}
 		env = append(env, kv)
 	}
 	env = append(env,
 		"GOWORK=off",
-		"DECK_CI_OUT="+outdir,
+		"DECK_CI_OUT="+run.outdir,
 		"DECK_CI_GO_PACKAGES=./unit/",
-		// The seeded leak this test exists to catch: a DECK_* variable
-		// present in the CALLER's own environment for a reason that has
-		// nothing to do with this run (DECK_SEED_PROBE stands in for a
-		// real one like DECK_GODOG_PATHS/DECK_HOME).
-		"DECK_SEED_PROBE=leaked-value",
 		// Not a DECK_* name, so the scrub must leave it alone -- it is how
 		// the fixture's own test process reports what it saw back to this
 		// test, across the subprocess boundary.
-		"PROBE_OUT="+probe,
+		"PROBE_OUT="+run.probe,
 	)
+	env = append(env, extraEnv...)
 
 	cmd := exec.Command("sh", filepath.Join(module, "ci", "suite.sh"))
 	cmd.Dir = module
 	cmd.Env = env
-	out, runErr := cmd.CombinedOutput()
-	t.Logf("ci/suite.sh output:\n%s", out)
+	run.out, run.err = cmd.CombinedOutput()
+	t.Logf("ci/suite.sh output:\n%s", run.out)
+	return run
+}
+
+func TestSuiteScriptScrubsDeckEnvironmentAndFailsOnEmptyMergedCoverage(t *testing.T) {
+	// The seeded leak this test exists to catch: a DECK_* variable present
+	// in the CALLER's own environment for a reason that has nothing to do
+	// with this run (DECK_SEED_PROBE stands in for a real one like
+	// DECK_GODOG_PATHS/DECK_HOME).
+	run := runCovFixture(t, "DECK_SEED_PROBE=leaked-value")
+	probe, outdir, runErr := run.probe, run.outdir, run.err
 
 	seen, err := os.ReadFile(probe)
 	if err != nil {
@@ -96,5 +120,27 @@ func TestSuiteScriptScrubsDeckEnvironmentAndFailsOnEmptyMergedCoverage(t *testin
 	}
 	if blocks != 0 {
 		t.Fatalf("%s unexpectedly has %d coverage block line(s); fixture precondition (zero instrumented statements) no longer holds:\n%s", mergedPath, blocks, merged)
+	}
+}
+
+// TestSuiteScriptPassesCapturedExtraFlagsToBothPasses is the regression for
+// the scrub unsetting DECK_CI_GO_EXTRA_FLAGS before the two `go test`
+// invocations expanded it (task 002, first validation): the nightly lane's
+// -race silently vanished from both passes. -tags=suiteextraflag stands in
+// for -race (which needs cgo) -- it builds the fixture's extraflag_test.go
+// files only when the flag actually reaches `go test`, and each pass then
+// writes its own marker.
+func TestSuiteScriptPassesCapturedExtraFlagsToBothPasses(t *testing.T) {
+	markers := t.TempDir()
+	runCovFixture(t, "DECK_CI_GO_EXTRA_FLAGS=-tags=suiteextraflag", "EXTRA_PROBE_DIR="+markers)
+	for _, pass := range []string{"unit", "features"} {
+		got, err := os.ReadFile(filepath.Join(markers, pass))
+		if err != nil {
+			t.Errorf("%s pass never built its -tags=suiteextraflag file: DECK_CI_GO_EXTRA_FLAGS did not reach that pass's go test (%v)", pass, err)
+			continue
+		}
+		if string(got) != "tagged" {
+			t.Errorf("%s pass marker = %q, want \"tagged\"", pass, got)
+		}
 	}
 }
