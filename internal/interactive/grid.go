@@ -315,8 +315,23 @@ type renderedFrame struct {
 // caller drawing the cursor never pairs rows from one moment with a
 // cursor from another (R182/R183).
 type RenderSnapshot struct {
-	Rows       []string
+	Rows []string
+	// UsedOffset is the scrollback offset Rows were actually composed at.
+	// It is what decides whether Rows is the live screen (0) or history
+	// (>0), and therefore whether the cursor may be drawn. A frame served
+	// from the cache keeps the offset it was composed at, never the one
+	// the current request asked for.
 	UsedOffset int
+	// ScrollOffset is the caller's requested offset clamped against the
+	// scrollback length known to the composition that answered: what the
+	// caller should store as its scroll position. It equals UsedOffset on a
+	// fresh composition; on a cached frame it can differ, because a scroll
+	// request that arrives while a write is in flight is not a statement
+	// about the old frame and must survive until the next fresh one.
+	ScrollOffset int
+	// Stale is true when Rows came from the cached frame because a write
+	// was in flight.
+	Stale bool
 	// CursorX/CursorY are the cursor's position on the live screen
 	// (0-based). CursorViewRow is the same row in Rows' coordinates; it is
 	// outside [0, len(Rows)) when the scrolled view does not show it.
@@ -939,7 +954,12 @@ func (s *Session) Grid() *Grid { return s.currentGrid() }
 // always ends in a fresh composition.
 func (s *Session) RenderRows(offset, height int) (rows []string, usedOffset int) {
 	snap := s.RenderSnapshot(offset, height)
-	return snap.Rows, snap.UsedOffset
+	// The returned offset is the caller's scroll position clamped against
+	// the known scrollback length (RenderSnapshot.ScrollOffset), which is
+	// what a caller stores. On a cached frame it can differ from the offset
+	// the rows were composed at (RenderSnapshot.UsedOffset); callers that
+	// need the latter use RenderSnapshot.
+	return snap.Rows, snap.ScrollOffset
 }
 
 // RenderSnapshot is RenderRows plus the cursor position and visibility and
@@ -1005,26 +1025,21 @@ func (s *Session) RenderSnapshot(offset, height int) RenderSnapshot {
 	}
 	s.lastFrame.Store(frame)
 	return RenderSnapshot{
-		Rows: rows, UsedOffset: offset,
+		Rows: rows, UsedOffset: offset, ScrollOffset: offset,
 		CursorX: frame.cursorX, CursorY: frame.cursorY, CursorViewRow: frame.cursorViewRow,
 		CursorVisible: frame.cursorVisible, Mouse: frame.mouse,
 	}
 }
 
-// staleRows is RenderRows' answer while a grid mutation is in flight: the
-// previously composed frame, adapted to the requested height, with no
-// emulator call of any kind (RenderRows' point 3 says why touching the
-// emulator would defeat the purpose). Padding goes at the TOP and
+// staleSnapshot is RenderSnapshot's answer while a grid mutation is in
+// flight: the previously composed frame, adapted to the requested height,
+// with no emulator call of any kind (RenderRows' point 3 says why touching
+// the emulator would defeat the purpose). Padding goes at the TOP and
 // cropping keeps the LAST rows, both matching what RenderRows itself does
 // when the view is taller than the content -- the live bottom edge is the
-// part a viewer is looking at.
-func (s *Session) staleRows(offset, height int) (rows []string, usedOffset int) {
-	snap := s.staleSnapshot(offset, height)
-	return snap.Rows, snap.UsedOffset
-}
-
-// staleSnapshot is staleRows plus the cached frame's own cursor and mode
-// state (a frame never mixes moments).
+// part a viewer is looking at. The cached frame's own cursor and mode
+// state come with it (a frame never mixes moments), and so does its own
+// UsedOffset; the requested offset only shows up as ScrollOffset.
 func (s *Session) staleSnapshot(offset, height int) RenderSnapshot {
 	if height < 0 {
 		height = 0
@@ -1040,7 +1055,7 @@ func (s *Session) staleSnapshot(offset, height int) RenderSnapshot {
 		// rows, and the caller's own offset back unchanged, since there
 		// is no scrollback length to clamp it against and inventing 0
 		// would silently reset a scroll position.
-		return RenderSnapshot{Rows: make([]string, height), UsedOffset: offset, CursorViewRow: -1, CursorVisible: true}
+		return RenderSnapshot{Rows: make([]string, height), UsedOffset: offset, ScrollOffset: offset, Stale: true, CursorViewRow: -1, CursorVisible: true}
 	}
 	if offset > last.scrollbackLen {
 		offset = last.scrollbackLen
@@ -1057,8 +1072,11 @@ func (s *Session) staleSnapshot(offset, height int) RenderSnapshot {
 		start = len(last.rows) - height
 	}
 	out = append(out, last.rows[start:]...)
+	// Rows are the cached frame's, so every label that describes them
+	// (UsedOffset, and with it whether a cursor may be drawn) is the
+	// frame's own; only ScrollOffset follows the request.
 	return RenderSnapshot{
-		Rows: out, UsedOffset: offset,
+		Rows: out, UsedOffset: last.usedOffset, ScrollOffset: offset, Stale: true,
 		CursorX: last.cursorX, CursorY: last.cursorY,
 		CursorViewRow: last.cursorViewRow + pad - start,
 		CursorVisible: last.cursorVisible, Mouse: last.mouse,

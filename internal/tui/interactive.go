@@ -644,8 +644,13 @@ func (m Model) previewContentSize() (width, height int) {
 // cue itself) and R135 read that same stored position.
 func (m *Model) interactiveBodyLines(contentWidth, contentHeight int) ([]string, []previewLineOwner) {
 	snap := m.interactiveGrid.RenderSnapshot(m.interactiveScrollOffset(), contentHeight)
+	// usedOffset is where these rows were composed (it decides live versus
+	// history for the cursor and the notice); the stored scroll position
+	// takes snap.ScrollOffset, which on a frame cached during a write keeps
+	// the user's latest request for the next fresh frame instead of
+	// adopting the cached frame's position.
 	lines, usedOffset := snap.Rows, snap.UsedOffset
-	m.setInteractiveScrollOffset(usedOffset)
+	m.setInteractiveScrollOffset(snap.ScrollOffset)
 	// R93/task 206: mark an in-progress drag-to-copy selection, if any,
 	// before the not-repainted check below -- highlightInProgressSelection
 	// only ever adds self-closing SGR spans around existing content, so
@@ -664,7 +669,7 @@ func (m *Model) interactiveBodyLines(contentWidth, contentHeight int) ([]string,
 	// looking straight at something that did. m.interactiveScrollOffset()
 	// is the HEALED value from above, so a stale-high stored offset can no
 	// longer suppress this while the real, clamped position is 0.
-	notice := m.interactiveScrollOffset() == 0 && interactiveGridIsBlank(lines)
+	notice := usedOffset == 0 && interactiveGridIsBlank(lines)
 	return fitInteractiveBodyLines(lines, contentHeight, notice)
 }
 

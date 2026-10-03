@@ -160,3 +160,89 @@ func TestRenderSnapshotRowsAndCursorComeFromOneRead(t *testing.T) {
 		t.Fatalf("fresh snapshot = cursor (%d,%d) visible=%v rows=%q", fresh.CursorX, fresh.CursorY, fresh.CursorVisible, fresh.Rows)
 	}
 }
+
+// staleScrollSession builds a 20x5 grid whose scrollback holds lines
+// L00..L09 (L10..L14 on screen would need more writes; here the screen holds
+// the tail), so offsets 0..sbLen are all meaningful.
+func staleScrollSession(t *testing.T) *Session {
+	t.Helper()
+	s := newModesSession()
+	var b strings.Builder
+	for i := 0; i < 12; i++ {
+		b.WriteString("L" + string(rune('0'+i/10)) + string(rune('0'+i%10)) + "\r\n")
+	}
+	s.writeGrid([]byte(b.String()))
+	return s
+}
+
+// Rows served from the cached frame keep the cached frame's own offset and
+// cursor labelling no matter what offset the new request carries.
+func TestStaleSnapshotKeepsRowsOffsetAndScrollIntent(t *testing.T) {
+	// Case 1: frame cached scrolled back, next request asks for live.
+	s := staleScrollSession(t)
+	defer retireGrid(s.grid)
+	hist := s.RenderSnapshot(2, 5)
+	if hist.UsedOffset != 2 || hist.Stale {
+		t.Fatalf("fixture: history frame used=%d stale=%v", hist.UsedOffset, hist.Stale)
+	}
+	s.writes.Lock()
+	live := s.RenderSnapshot(0, 5)
+	s.writes.Unlock()
+	if !live.Stale || live.UsedOffset != 2 {
+		t.Fatalf("cached history frame requested live: used=%d stale=%v, want used=2 (the rows' own offset)", live.UsedOffset, live.Stale)
+	}
+	if live.ScrollOffset != 0 {
+		t.Fatalf("scroll intent = %d, want 0: the user's request must survive for the next fresh frame", live.ScrollOffset)
+	}
+	if strings.Join(live.Rows, "\n") != strings.Join(hist.Rows, "\n") || live.CursorViewRow != hist.CursorViewRow {
+		t.Fatalf("cached rows/cursor changed: %q vs %q", live.Rows, hist.Rows)
+	}
+	if rows, off := s.RenderRows(0, 5); off != 0 || len(rows) != 5 {
+		t.Fatalf("fresh render after the write: offset=%d rows=%d", off, len(rows))
+	}
+
+	// Case 2: frame cached live, next request asks for history.
+	s2 := staleScrollSession(t)
+	defer retireGrid(s2.grid)
+	s2.RenderSnapshot(0, 5)
+	s2.writes.Lock()
+	h := s2.RenderSnapshot(3, 5)
+	s2.writes.Unlock()
+	if h.UsedOffset != 0 || h.ScrollOffset != 3 || !h.Stale {
+		t.Fatalf("cached live frame requested at 3: used=%d scroll=%d stale=%v, want used=0 scroll=3", h.UsedOffset, h.ScrollOffset, h.Stale)
+	}
+
+	// Case 3: the intent is clamped against the cached scrollback length,
+	// and the cached frame's offset is untouched.
+	s3 := staleScrollSession(t)
+	defer retireGrid(s3.grid)
+	s3.RenderSnapshot(1, 5)
+	s3.writes.Lock()
+	c := s3.RenderSnapshot(10000, 5)
+	s3.writes.Unlock()
+	if c.UsedOffset != 1 || c.ScrollOffset != s3.lastFrame.Load().scrollbackLen || c.ScrollOffset <= 1 {
+		t.Fatalf("clamp: used=%d scroll=%d", c.UsedOffset, c.ScrollOffset)
+	}
+
+	// Case 4: a taller request pads the cached frame at the top, and the
+	// cursor row and offset labels stay consistent with the padded rows.
+	s4 := staleScrollSession(t)
+	defer retireGrid(s4.grid)
+	base := s4.RenderSnapshot(2, 5)
+	s4.writes.Lock()
+	tall := s4.RenderSnapshot(0, 7)
+	s4.writes.Unlock()
+	if tall.UsedOffset != 2 || len(tall.Rows) != 7 || tall.CursorViewRow != base.CursorViewRow+2 {
+		t.Fatalf("padded cached frame: used=%d rows=%d cursorViewRow=%d (base %d)", tall.UsedOffset, len(tall.Rows), tall.CursorViewRow, base.CursorViewRow)
+	}
+}
+
+// With no cached frame there is nothing to relabel: the request comes back
+// as both labels.
+func TestStaleSnapshotWithoutFrameEchoesRequest(t *testing.T) {
+	s := &Session{}
+	snap := s.staleSnapshot(4, 3)
+	if snap.UsedOffset != 4 || snap.ScrollOffset != 4 || !snap.Stale || len(snap.Rows) != 3 {
+		t.Fatalf("no-frame snapshot = %+v", snap)
+	}
+}

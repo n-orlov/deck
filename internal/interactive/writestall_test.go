@@ -253,3 +253,32 @@ func TestConcurrentWritesAndReadsStayConsistent(t *testing.T) {
 			rounds, writeStallDeadline)
 	}
 }
+
+// A scroll request that arrives while a real write is parked inside the
+// emulator is answered from the cached frame, which keeps its own offset
+// (so a history frame is never relabelled live and given a cursor) while
+// the request itself is reported back as the scroll intent.
+func TestStalledWriteKeepsCachedFrameOffsetAndScrollIntent(t *testing.T) {
+	const width, height = 40, 5
+	s, _, stall, unpark := stalledWriteSession(t, width, height)
+	for i := 0; i < 15; i++ {
+		s.writeNotice("row" + itoa(i) + "\r\n")
+	}
+	hist := s.RenderSnapshot(3, height)
+	if hist.UsedOffset != 3 || hist.Stale {
+		t.Fatalf("setup: history frame used=%d stale=%v", hist.UsedOffset, hist.Stale)
+	}
+	started, _ := stall()
+	<-started
+	defer unpark()
+
+	for _, req := range []int{0, 1, 7} {
+		got := s.RenderSnapshot(req, height)
+		if !got.Stale || got.UsedOffset != 3 || got.ScrollOffset != req {
+			t.Fatalf("request %d during a write: stale=%v used=%d scroll=%d, want stale used=3 scroll=%d", req, got.Stale, got.UsedOffset, got.ScrollOffset, req)
+		}
+		if strings.Join(got.Rows, "\n") != strings.Join(hist.Rows, "\n") || got.CursorViewRow != hist.CursorViewRow {
+			t.Fatalf("request %d: cached rows/cursor were altered", req)
+		}
+	}
+}
