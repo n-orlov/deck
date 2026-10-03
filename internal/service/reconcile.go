@@ -383,15 +383,20 @@ func stripTerminalControls(text string) string {
 // configured interval until ctx is cancelled. It does not create or bootstrap
 // a tmux server, so a killed server is observed as an empty server rather than
 // being relaunched.
+//
+// The cadence is anchored at the loop's start, not at the end of the first
+// pass: the ticker is created before the immediate pass, so a first snapshot
+// that is slow to return (and may have been taken just before a session
+// vanished) cannot push the detecting second pass a whole extra interval out.
 func (s Service) RunReconciler(ctx context.Context, interval time.Duration) error {
 	if interval <= 0 {
 		return errors.New("reconciliation interval must be positive")
 	}
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
 	if err := s.ReconcileWithin(ctx, interval); err != nil {
 		return err
 	}
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
 	for {
 		select {
 		case <-ctx.Done():
