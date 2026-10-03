@@ -15,6 +15,17 @@
 #   ci/run.sh ci/suite.sh                  # from a sandbox without local Go
 #   ci/suite.sh                            # on a runner with Go on PATH already
 #   DECK_CI_OUT=/path/to/artifacts ci/suite.sh   # keep the JUnit/flaky files
+#   ci/suite.sh /path/to/artifacts               # same, as a positional argument
+#
+# Coverage: the unit pass runs with -coverpkg=./... (every package in the
+# module, not just the ones a given test imports), and the per-pass
+# covdata this script already collects is merged into one
+# <outdir>/coverage-merged.out legacy profile (task 002, R187) in addition
+# to the two separate per-pass profiles below. This script also unsets
+# every DECK_* variable from its own environment, right after reading the
+# handful of DECK_CI_* settings it honours itself, so a leaked
+# DECK_GODOG_PATHS/DECK_HOME from the caller's shell cannot reach `go
+# test` or the deck binaries it spawns.
 #
 # Why features/ gets a second, different retry path
 # ---------------------------------------------------
@@ -48,7 +59,17 @@ gotestsum_pkg="gotest.tools/gotestsum@${GOTESTSUM_VERSION}"
 repo_root=$(cd "$(dirname "$0")/.." && pwd)
 cd "$repo_root"
 
-outdir=${DECK_CI_OUT:-}
+# outdir (task 002, R187): an optional first positional argument, so a
+# caller that already knows its own result directory does not have to go
+# through the environment at all; DECK_CI_OUT is still honoured when no
+# argument is given, and the mktemp fallback below still applies when
+# neither is set. `${1:-}` rather than `$1` because `set -u` would otherwise
+# treat a plain no-argument invocation (every existing caller) as an
+# unbound-variable error.
+outdir=${1:-}
+if [ -z "$outdir" ]; then
+    outdir=${DECK_CI_OUT:-}
+fi
 if [ -z "$outdir" ]; then
     outdir=$(mktemp -d "${TMPDIR:-/tmp}/deck-ci-suite.XXXXXX")
 fi
@@ -118,6 +139,24 @@ esac
 features_test_timeout=${DECK_CI_FEATURES_TEST_TIMEOUT:-25m}
 unit_test_timeout=${DECK_CI_UNIT_TEST_TIMEOUT:-15m}
 
+# Scrub leaked DECK_* environment (task 002, R187): every DECK_CI_* setting
+# this script itself reads has already been captured into a shell variable
+# above (outdir, pkgs, covermode, features_test_timeout,
+# unit_test_timeout) -- so any DECK_* variable still present in the
+# environment at this point came from the CALLER's own shell (a stray
+# DECK_GODOG_PATHS left over from a manual `DECK_GODOG_PATHS=... go test
+# ./features/` run, a DECK_HOME pointed at a throwaway profile, ...) and
+# must not be allowed to reach `go test`/the deck binaries it spawns,
+# which otherwise inherit it exactly like any other ordinary environment
+# variable. run_test_features's own DECK_GODOG_JUNIT/DECK_GODOG_PATHS
+# below are set per invocation through `env NAME=value ...`, which adds a
+# variable to that one child's environment regardless of what this
+# process has unset, so this scrub cannot remove the few DECK_GODOG_*
+# values the script sets on purpose.
+for deck_var in $(env | sed -n 's/^\(DECK_[A-Za-z_][A-Za-z0-9_]*\)=.*/\1/p' | sort -u); do
+    unset "$deck_var"
+done
+
 go_junit="$outdir/junit-go.xml"
 go_rerun_report="$outdir/rerun-report-go.txt"
 go_flaky="$outdir/flaky-go.txt"
@@ -173,7 +212,7 @@ if [ -n "$pkgs" ]; then
         --rerun-fails=1 \
         --rerun-fails-report "$go_rerun_report" \
         --packages "$pkgs" \
-        -- -p=1 -count=1 -skip '^TestFeatures$' "-timeout=$unit_test_timeout" "-covermode=$covermode" -cover ${DECK_CI_GO_EXTRA_FLAGS:-} -args "-test.gocoverdir=$unit_covdir" \
+        -- -p=1 -count=1 -skip '^TestFeatures$' "-timeout=$unit_test_timeout" "-covermode=$covermode" -cover -coverpkg=./... ${DECK_CI_GO_EXTRA_FLAGS:-} -args "-test.gocoverdir=$unit_covdir" \
         || go_status=$?
 
     # gotestsum's own rerun report lists every test it reran, whether or not
@@ -469,6 +508,34 @@ if ! go tool covdata textfmt -i="$unit_covdir" -o="$unit_coverprofile" 2>"$outdi
 fi
 ensure_legacy_profile "$unit_coverprofile"
 
+# merged_coverprofile (task 002, R187): one profile covering BOTH passes'
+# own covdata directories (unit_covdir, covdir), merged in a single
+# `covdata textfmt -i=dir1,dir2` call rather than concatenating the two
+# already-bridged legacy files above -- `covdata textfmt` itself does the
+# per-package/per-block de-duplication a naive `cat` of two legacy
+# profiles would not. The unit pass now also carries `-coverpkg=./...`
+# (above), so unit_covdir already holds counters for every package in the
+# module, not just the ones its own tests import directly, which is what
+# makes this merged profile meaningfully wider than either input alone.
+#
+# `covdata textfmt` on an input set with no counter data at all (both
+# directories empty, e.g. every tested package reporting "[no
+# statements]") exits 0 and writes a zero-byte file, exactly like the
+# per-pass case ensure_legacy_profile above already guards against -- so
+# merged_blocks (every line after the `mode:` header ensure_legacy_profile
+# guarantees) is what actually decides pass/fail here, not the command's
+# own exit status.
+merged_coverprofile="$outdir/coverage-merged.out"
+if ! go tool covdata textfmt -i="$unit_covdir,$covdir" -o="$merged_coverprofile" 2>"$outdir/covdata-merged-textfmt.log"; then
+    echo "ci/suite.sh: could not merge unit+features coverage into $merged_coverprofile (see $outdir/covdata-merged-textfmt.log)" >&2
+fi
+ensure_legacy_profile "$merged_coverprofile"
+merged_blocks=$(($(wc -l < "$merged_coverprofile") - 1))
+if [ "$merged_blocks" -le 0 ]; then
+    echo "ci/suite.sh: merged coverage profile $merged_coverprofile has no blocks (unit+features coverage data was empty)" >&2
+    overall_status=1
+fi
+
 # coverage_table <unit-profile> <features-profile>: prints one
 # package-by-package table (plus a TOTAL row) with a column for each
 # profile's statement coverage. Both profiles share the same legacy format
@@ -520,5 +587,5 @@ coverage_table() {
 coverage_summary="$outdir/coverage-summary.txt"
 coverage_table "$unit_coverprofile" "$features_coverprofile" | tee "$coverage_summary"
 
-echo "ci/suite.sh: done (go_flaky=$go_flaky, features_flaky=$features_flaky, outdir=$outdir, coverage_summary=$coverage_summary)"
+echo "ci/suite.sh: done (go_flaky=$go_flaky, features_flaky=$features_flaky, outdir=$outdir, coverage_summary=$coverage_summary, coverage_merged=$merged_coverprofile)"
 exit "$overall_status"
