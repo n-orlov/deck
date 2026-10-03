@@ -1,7 +1,9 @@
 package features
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -10,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/charmbracelet/x/vt"
 	"github.com/cucumber/godog"
 )
 
@@ -37,7 +40,32 @@ Feature: Allure fixture
     When a flaky step
 `
 
-const allureFixtureFrame = "┌ sessions ┐\n│ alpha     │\n└──────────┘"
+// allureFixtureScreen is what the fixture's in-memory ScreenDriver receives:
+// visible text plus escape sequences, so its raw stream differs from its
+// normalized frame.
+const allureFixtureScreen = "\x1b[?25l\x1b[1;1Hsessions\x1b[2;1Halpha\x1b[3;1Hbeta-not-yet"
+
+const allureFixtureCapture = "$ echo hi\nhi"
+
+// allureFixtureDriver is a real ScreenDriver with no process behind it, fed
+// allureFixtureScreen, so a failing WaitForFrame returns the exact error text
+// (frame section, then the raw PTY stream) the harness writes for real.
+func allureFixtureDriver() *ScreenDriver {
+	d := &ScreenDriver{screen: vt.NewEmulator(30, 4), done: make(chan struct{}), updated: make(chan struct{})}
+	_, _ = d.screen.Write([]byte(allureFixtureScreen))
+	d.raw.WriteString(allureFixtureScreen)
+	return d
+}
+
+// allureFixtureFailure is the failing step's error: ScreenDriver's own
+// WaitForFrame timeout, followed by a tmux capture in the shape the agent steps
+// print ("...; last capture (err=<nil>):\n<capture>").
+func allureFixtureFailure() error {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	err := allureFixtureDriver().WaitForFrame(ctx, false, "beta-ready")
+	return fmt.Errorf("%w\nsession \"alpha\"'s private tmux pane never printed \"ready\"; last capture (err=<nil>):\n%s", err, allureFixtureCapture)
+}
 
 // allureFixtureRun runs the fixture feature through the Format string
 // godogFormat builds for DECK_GODOG_ALLURE, with the given path selector.
@@ -55,10 +83,7 @@ func allureFixtureRun(t *testing.T, dir, path string, flakyFails bool) int {
 				}
 				return nil
 			})
-			sc.Step(`^the harness fails with a frame$`, func() error {
-				// The shape the harness itself writes into a failing step's error.
-				return &fixtureHarnessError{}
-			})
+			sc.Step(`^the harness fails with a frame$`, allureFixtureFailure)
 		},
 		Options: &godog.Options{
 			Format: godogFormat(),
@@ -68,14 +93,6 @@ func allureFixtureRun(t *testing.T, dir, path string, flakyFails bool) int {
 		},
 	}
 	return suite.Run()
-}
-
-type fixtureHarnessError struct{}
-
-func (*fixtureHarnessError) Error() string {
-	return "timed out waiting for frame \"beta\": context deadline exceeded\n" +
-		"frame:\n" + allureFixtureFrame + "\n" +
-		"session \"alpha\"'s private tmux pane never printed \"ready\"; last capture:\n$ echo hi\nhi\n"
 }
 
 func readAllureResults(t *testing.T, dir string) []map[string]any {
@@ -226,10 +243,19 @@ func TestAllureFormatterWritesResultsForAFixtureRun(t *testing.T) {
 			}
 			bodies[att["name"].(string)] = string(raw)
 		}
-		if bodies["last normalized pty frame"] != allureFixtureFrame {
-			t.Fatalf("frame attachment = %q, want the frame", bodies["last normalized pty frame"])
+		wantFrame := strings.TrimRight(allureFixtureDriver().Frame(false), "\n")
+		if !strings.Contains(wantFrame, "beta-not-yet") {
+			t.Fatalf("fixture driver frame = %q, want the fed screen text", wantFrame)
 		}
-		if bodies["tmux capture"] != "$ echo hi\nhi" {
+		if bodies["last normalized pty frame"] != wantFrame {
+			t.Fatalf("frame attachment = %q, want exactly the normalized frame %q (no raw PTY stream)", bodies["last normalized pty frame"], wantFrame)
+		}
+		for name, body := range bodies {
+			if strings.Contains(body, "raw:") || strings.Contains(body, "\x1b") || strings.Contains(body, `\x1b`) {
+				t.Fatalf("attachment %q carries the raw PTY stream, which R195 does not list: %q", name, body)
+			}
+		}
+		if bodies["tmux capture"] != allureFixtureCapture {
 			t.Fatalf("tmux capture attachment = %q", bodies["tmux capture"])
 		}
 		for i, s := range steps {
@@ -324,6 +350,27 @@ func TestAllureFailureSectionsAreCutOutOfTheErrorText(t *testing.T) {
 		if got[name] != body {
 			t.Fatalf("section %q = %q, want %q", name, got[name], body)
 		}
+	}
+	// ScreenDriver's own shapes: the raw PTY stream after a frame, the hung
+	// client's input timeline, and comparison pairs end a section and are
+	// never attachments.
+	text = "hung deck client killed after 5s\nsent (input timeline):\n  [12:00:00.000] +0 \"j\"\nframe:\nF1\n" +
+		"raw (includes a SIGQUIT goroutine dump if the runtime managed to print one before the follow-up SIGKILL): \"\\x1b[?25lF1\"\n" +
+		"last capture (err=<nil>):\nC1\nwant:\nW1\ngot:\nG1\nbefore: \"b\"\nafter:  \"a\"\ninput:\nI1"
+	headline, sections = splitFailureText(text)
+	if headline != "hung deck client killed after 5s" {
+		t.Fatalf("headline = %q", headline)
+	}
+	got = map[string]string{}
+	for _, s := range sections {
+		got[s.name] = s.body
+	}
+	if len(got) != 2 || got["last normalized pty frame"] != "F1" || got["tmux capture"] != "C1" {
+		t.Fatalf("sections = %q, want only the frame F1 and the capture C1", got)
+	}
+	_, sections = splitFailureText("timed out waiting for frame \"x\": context canceled\nframe:\nNORMALIZED\nraw: \"\\x1b[?25l\"")
+	if len(sections) != 1 || sections[0].body != "NORMALIZED" {
+		t.Fatalf("WaitForFrame's frame+raw shape = %q, want one frame attachment holding only NORMALIZED", sections)
 	}
 	if _, sections := splitFailureText("plain error: no artifacts here"); len(sections) != 0 {
 		t.Fatalf("an error with no artifact headers produced sections: %v", sections)

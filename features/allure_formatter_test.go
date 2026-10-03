@@ -22,7 +22,9 @@ package features
 //   - on the failing step it attaches only what the harness already writes into
 //     the step's error text on failure -- the last normalized pty frame, tmux
 //     captures, a deck-log slice, a store dump -- cut out of that text by the
-//     section headers the harness prints. Nothing is collected anew.
+//     section headers the harness prints; the raw PTY stream, input timeline
+//     and comparison dumps end a section but are never attached. Nothing is
+//     collected anew.
 //
 // The formatter learns step timing from the moment godog calls it, so under
 // godog's concurrent mode (replayed at flush) durations are approximate; this
@@ -326,8 +328,23 @@ var allureSectionKinds = []struct {
 	{regexp.MustCompile(`(?i)\b(capture|pane)\b.*:$`), "tmux capture"},
 }
 
+// allureUnlistedHeader matches the harness's other diagnostic headers -- the
+// raw PTY byte stream ScreenDriver prints after every frame ("raw: %q", "raw
+// (includes a SIGQUIT goroutine dump ...): %q"), the input timeline ("sent
+// (input timeline):", "input:") and comparison pairs ("before:"/"after:",
+// "want:"/"got:", "first:"/"second:", "now:"). Each ends the section before it
+// and is not itself an attachment: R195 attaches only the listed artifacts.
+// It is checked before allureSectionKinds and anchored to the whole line, so
+// "first pane capture:" stays a tmux capture.
+var allureUnlistedHeader = regexp.MustCompile(`^(raw|sent|input|before|after|want|got|first|second|now|fixture)( \([^\n]*\))?:( +".*")?$`)
+
+// classifyFailureHeader reports whether line is a section header and, if so,
+// the attachment it opens ("" for an unlisted header that opens none).
 func classifyFailureHeader(line string) (string, bool) {
 	line = strings.TrimRight(line, " \t")
+	if allureUnlistedHeader.MatchString(line) {
+		return "", true
+	}
 	for _, kind := range allureSectionKinds {
 		if kind.re.MatchString(line) {
 			return kind.name, true
@@ -336,28 +353,35 @@ func classifyFailureHeader(line string) (string, bool) {
 	return "", false
 }
 
-// splitFailureText returns the text before the first recognised header and the
-// sections that follow it.
+// splitFailureText returns the text before the first header and the listed
+// sections that follow it; an unlisted header's text is dropped (the full
+// error stays in the step's trace).
 func splitFailureText(text string) (string, []allureSection) {
 	var headline []string
 	var sections []allureSection
-	var cur *allureSection
+	inHeadline := true
+	discard := false
 	counts := map[string]int{}
 	for _, line := range strings.Split(text, "\n") {
 		if name, ok := classifyFailureHeader(line); ok {
+			inHeadline = false
+			discard = name == ""
+			if discard {
+				continue
+			}
 			counts[name]++
 			label := name
 			if counts[name] > 1 {
 				label = fmt.Sprintf("%s (%d)", name, counts[name])
 			}
 			sections = append(sections, allureSection{name: label})
-			cur = &sections[len(sections)-1]
 			continue
 		}
-		if cur == nil {
+		switch {
+		case inHeadline:
 			headline = append(headline, line)
-		} else {
-			cur.body += line + "\n"
+		case !discard:
+			sections[len(sections)-1].body += line + "\n"
 		}
 	}
 	kept := sections[:0]
