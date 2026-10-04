@@ -252,14 +252,8 @@ func (s *Store) ReleaseLaunchLease(ctx context.Context, sessionID, heldOwner str
 // The token is random, not a timestamp: two launches of one row can share a
 // clock reading (deck's clock is injectable) but must never share a token.
 func (s *Store) AcquireLaunchLease(ctx context.Context, sessionID, owner string, ttl time.Duration, at int64) (LaunchLeaseResult, error) {
-	if sessionID == "" {
-		return LaunchLeaseResult{}, errors.New("session id is required")
-	}
-	if owner == "" {
-		return LaunchLeaseResult{}, errors.New("lease owner is required")
-	}
-	if at == 0 {
-		return LaunchLeaseResult{}, errors.New("launch lease timestamp is required")
+	if err := checkAcquireLeaseArgs(sessionID, owner, at); err != nil {
+		return LaunchLeaseResult{}, err
 	}
 	if ttl <= 0 {
 		ttl = DefaultLaunchLeaseTTL
@@ -281,27 +275,80 @@ func (s *Store) AcquireLaunchLease(ctx context.Context, sessionID, owner string,
 	}
 	defer rollbackTx(tx)
 
-	var status string
-	var curOwner sql.NullString
-	var curUntil int64
+	status, curOwner, curUntil, err := readLeaseRowTx(ctx, tx, sessionID)
+	if err != nil {
+		return LaunchLeaseResult{}, err
+	}
+	if refusal, refused := leaseRefusal(status, curOwner, curUntil, at); refused {
+		return refusal, nil
+	}
+
+	won, err := casAcquireLeaseTx(ctx, tx, sessionID, storedOwner, curOwner, until, curUntil)
+	if err != nil {
+		return LaunchLeaseResult{}, err
+	}
+	if !won {
+		// Lost a race with a concurrent acquirer between our read and our
+		// write; the row is untouched by us and remains usable by whoever
+		// won, or by a later legitimate acquire.
+		return LaunchLeaseResult{Outcome: LaunchLeaseHeldElsewhere}, nil
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO events (session_id, at, kind, reason, payload)
+		VALUES (?, ?, ?, ?, ?)`, sessionID, at, "launch_lease_acquired", "user", storedOwner); err != nil {
+		return LaunchLeaseResult{}, fmt.Errorf("record launch lease event: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return LaunchLeaseResult{}, fmt.Errorf("commit launch lease acquisition: %w", err)
+	}
+	return LaunchLeaseResult{Outcome: LaunchLeaseAcquired, HeldBy: storedOwner, LaunchGeneration: generation}, nil
+}
+
+// checkAcquireLeaseArgs rejects an AcquireLaunchLease call that names no
+// session, no owner or no timestamp.
+func checkAcquireLeaseArgs(sessionID, owner string, at int64) error {
+	if sessionID == "" {
+		return errors.New("session id is required")
+	}
+	if owner == "" {
+		return errors.New("lease owner is required")
+	}
+	if at == 0 {
+		return errors.New("launch lease timestamp is required")
+	}
+	return nil
+}
+
+// readLeaseRowTx reads the row's status and lease columns inside the
+// acquisition transaction.
+func readLeaseRowTx(ctx context.Context, tx *sql.Tx, sessionID string) (status string, curOwner sql.NullString, curUntil int64, err error) {
 	row := tx.QueryRowContext(ctx,
 		`SELECT status, launch_lease_owner, launch_lease_until FROM sessions WHERE id = ?`, sessionID)
 	if err := row.Scan(&status, &curOwner, &curUntil); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return LaunchLeaseResult{}, fmt.Errorf("session %q not found", sessionID)
+			return "", curOwner, 0, fmt.Errorf("session %q not found", sessionID)
 		}
-		return LaunchLeaseResult{}, fmt.Errorf("read launch lease: %w", err)
+		return "", curOwner, 0, fmt.Errorf("read launch lease: %w", err)
 	}
+	return status, curOwner, curUntil, nil
+}
 
+// leaseRefusal reports the non-acquired outcome an observed row forces (a
+// live lease held elsewhere, or a row that is not stopped), if any.
+func leaseRefusal(status string, curOwner sql.NullString, curUntil, at int64) (LaunchLeaseResult, bool) {
 	leaseHeld := curOwner.Valid && curOwner.String != "" &&
 		curUntil > at && leaseOwnerAlive(curOwner.String)
 	if leaseHeld {
-		return LaunchLeaseResult{Outcome: LaunchLeaseHeldElsewhere, HeldBy: curOwner.String, HeldStatus: status}, nil
+		return LaunchLeaseResult{Outcome: LaunchLeaseHeldElsewhere, HeldBy: curOwner.String, HeldStatus: status}, true
 	}
 	if status != "stopped" {
-		return LaunchLeaseResult{Outcome: LaunchLeaseNotLeasable, HeldBy: curOwner.String, HeldStatus: status}, nil
+		return LaunchLeaseResult{Outcome: LaunchLeaseNotLeasable, HeldBy: curOwner.String, HeldStatus: status}, true
 	}
+	return LaunchLeaseResult{}, false
+}
 
+// casAcquireLeaseTx writes the new lease owner and reports whether exactly
+// one row was updated.
+func casAcquireLeaseTx(ctx context.Context, tx *sql.Tx, sessionID, storedOwner string, curOwner sql.NullString, until, curUntil int64) (bool, error) {
 	// CAS on the exact previously-observed owner/until pair: within this one
 	// transaction nothing else can have changed them (SQLite serializes
 	// writers), and a mismatch here can only mean the row was no longer
@@ -323,24 +370,11 @@ func (s *Store) AcquireLaunchLease(ctx context.Context, sessionID, owner string,
 		   AND launch_lease_until = ?`,
 		storedOwner, until, sessionID, ownerMatch, curUntil)
 	if err != nil {
-		return LaunchLeaseResult{}, fmt.Errorf("acquire launch lease: %w", err)
+		return false, fmt.Errorf("acquire launch lease: %w", err)
 	}
 	affected, err := result.RowsAffected()
 	if err != nil {
-		return LaunchLeaseResult{}, fmt.Errorf("check launch lease acquisition: %w", err)
+		return false, fmt.Errorf("check launch lease acquisition: %w", err)
 	}
-	if affected != 1 {
-		// Lost a race with a concurrent acquirer between our read and our
-		// write; the row is untouched by us and remains usable by whoever
-		// won, or by a later legitimate acquire.
-		return LaunchLeaseResult{Outcome: LaunchLeaseHeldElsewhere}, nil
-	}
-	if _, err := tx.ExecContext(ctx, `INSERT INTO events (session_id, at, kind, reason, payload)
-		VALUES (?, ?, ?, ?, ?)`, sessionID, at, "launch_lease_acquired", "user", storedOwner); err != nil {
-		return LaunchLeaseResult{}, fmt.Errorf("record launch lease event: %w", err)
-	}
-	if err := tx.Commit(); err != nil {
-		return LaunchLeaseResult{}, fmt.Errorf("commit launch lease acquisition: %w", err)
-	}
-	return LaunchLeaseResult{Outcome: LaunchLeaseAcquired, HeldBy: storedOwner, LaunchGeneration: generation}, nil
+	return affected == 1, nil
 }
