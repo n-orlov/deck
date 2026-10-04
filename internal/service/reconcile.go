@@ -58,189 +58,226 @@ func (s Service) reconcile(ctx context.Context, staleAfter time.Duration) error 
 		liveByName[session.Name] = session
 	}
 	for _, session := range rows {
-		// terminal marks the rows this pass takes no *liveness verdict* from. A
-		// user-sourced starting row is between the durable create and tmux
-		// launch; once launch observes tmux it changes the source to tmux. A
-		// stopped row has no return edge here, and a stored crash is terminal:
-		// collection deliberately removes its tmux session, but that absence
-		// must not turn the error into a clean stop.
-		//
-		// It deliberately no longer suppresses crashed-pane COLLECTION (#6).
-		// deck's server runs `remain-on-exit failed`, so a non-zero exit RETAINS
-		// the pane and its session; when a SessionEnd hook writes `stopped` in
-		// the same millisecond, a status-first short-circuit skipped the row
-		// before tmux was ever consulted, so the corpse was never captured,
-		// never killed, and held the session name against every later resume --
-		// exactly the retention SPEC.md:547 forbids. A dead pane is therefore
-		// collected on sight whatever the row says. Only the *status write*
-		// stays guarded, and it is guarded where it always was, inside
-		// UpdateSessionStatus: first-writer-wins on pane_exit_status keeps an
-		// already-stored crash verdict and tail intact, so collecting a corpse
-		// for an already-terminal row tears tmux down without rewriting history.
-		//
-		// An `error` row whose source is `tmux` or `user` (task 011, M9) is
-		// ALSO terminal here, for the absent-pane case specifically, not only
-		// the present-pane one below: launchFailed (resume.go/shell.go) writes
-		// exactly this shape for every one of SPEC §9.3's three named resume
-		// failures (unknown conversation id, missing cwd, agent binary not on
-		// PATH), none of which ever create a tmux session for this attempt --
-		// so there is nothing for this pass to observe as "gone" that the row
-		// does not already claim. Before this clause, a reconcile pass whose
-		// ListSessions read landed after that error write (and before the next
-		// one) saw a non-"stopped", non-pane-exit, non-"starting" status with
-		// no live pane and fell through to the write below, replacing the
-		// specific, SPEC-mandated reason with the generic "tmux session
-		// disappeared" -- losing the one explanation the scenario exists to
-		// retain. This is exactly the self-heal eligibility test the present
-		// branch already uses below (a row claiming the process is gone), read
-		// the other direction: there, a live pane CONTRADICTS the claim and is
-		// repaired; here, an absent pane CONFIRMS it and needs no write at all.
-		// A hook- or probe-sourced error (a turn/API failure with the pane
-		// still presumably alive) is deliberately excluded, same as the
-		// present-branch repair guard: it still owns the write below if its
-		// pane later genuinely disappears (SPEC §7's "any -> stopped" on clean
-		// exit).
-		terminal := session.Status == "stopped" || session.PaneExitStatus != nil ||
-			(session.Status == "error" && (session.StatusSource == "tmux" || session.StatusSource == "user")) ||
-			(session.Status == "starting" && session.StatusSource == "user")
-		observed, present := liveByName["deck_"+session.Slug]
-		if present {
-			pane, crashed := crashedPane(observed)
-			if !crashed {
-				// A live, non-dead pane paired with a stopped row, or with an
-				// error row that itself carries a pane-exit or tmux/user-sourced
-				// verdict, is SPEC §7's invariant violation regardless of
-				// whether terminal (below) also holds for this row: the pane is
-				// the part that is right, and the stored verdict is either
-				// spent (a crash the live pane now contradicts) or was never
-				// more than tmux's own liveness guess in the first place. A
-				// hook- or probe-sourced error with no pane-exit verdict is
-				// deliberately excluded: SPEC §7's transition table allows
-				// running --turn or API failure--> error with no pane death at
-				// all, so that row is the agent's own considered verdict, not a
-				// contradiction tmux liveness gets to overrule (finding F40,
-				// task 901); it still owns :188's session-absent branch,
-				// unmodified.
-				if session.Status == "stopped" ||
-					(session.Status == "error" && (session.PaneExitStatus != nil || session.StatusSource == "tmux" || session.StatusSource == "user")) {
-					if err := s.repairTerminalRowWithLivePane(ctx, session); err != nil {
-						return err
-					}
-					continue
-				}
-				if terminal {
-					// A user-sourced starting row (between the durable create and
-					// the tmux launch) is not an invariant violation, only a
-					// transient window this pass takes no verdict from; it
-					// resolves on its own via tmuxLaunchObservation once the
-					// launch is observed.
-					continue
-				}
-				// Shells have no higher-quality signal or probe, so a live pane is
-				// their sound starting → running transition. For agents it remains
-				// liveness evidence only and must never fabricate working state.
-				if session.Agent == "shell" && session.Status == "starting" {
-					if err := s.Store.UpdateSessionStatus(ctx, store.StatusUpdateInput{
-						SessionID:              session.ID,
-						Status:                 "running",
-						Reason:                 "tmux pane is alive",
-						Source:                 "tmux",
-						At:                     s.Clock.Now().UnixMilli(),
-						AllowedCurrentStatuses: []string{"starting"},
-						EventKind:              "tmux.shell_live",
-					}); err != nil {
-						return fmt.Errorf("promote live shell session %q: %w", session.ID, err)
-					}
-					if err := s.Audit.Transition(session.ID, "tmux.shell_live"); err != nil {
-						return fmt.Errorf("audit live shell session %q: %w", session.ID, err)
-					}
-				}
-				if staleAfter > 0 && session.Agent != "shell" && probeEligible(session, s.Clock.Now(), staleAfter) {
-					if len(observed.Panes) == 0 {
-						continue
-					}
-					captured, err := s.TMux.CapturePane(ctx, observed.Panes[0].ID, tmux.CaptureOptions{StartLine: "-200", EndLine: "-"})
-					if err != nil {
-						if tmux.IsTargetAbsent(err) {
-							continue
-						}
-						return fmt.Errorf("capture probe pane for session %q: %w", session.ID, err)
-					}
-					adapter, ok := s.Agents.Lookup(session.Agent)
-					if !ok {
-						return fmt.Errorf("probe session %q: unknown agent %q", session.ID, session.Agent)
-					}
-					status, reason := adapter.Probe(string(captured))
-					now := s.Clock.Now().UnixMilli()
-					if status != "" {
-						if err := s.Store.UpdateSessionStatus(ctx, store.StatusUpdateInput{
-							SessionID: session.ID, Status: status, Reason: reason, Source: "probe", At: now,
-							StaleAfter: staleAfter.Milliseconds(), EventKind: "probe." + status,
-						}); err != nil {
-							return fmt.Errorf("record probe for session %q: %w", session.ID, err)
-						}
-					} else {
-						// A total miss (no probeRule matched at all) is diagnostic
-						// evidence, not a verdict: it must never touch status,
-						// status_source or status_at (SPEC §7 is untouched), but is
-						// still worth recording so the `i` detail dialog can tell
-						// "sampled, no rule matched" apart from "never sampled"
-						// (task 009).
-						if err := s.Store.RecordProbeMiss(ctx, session.ID, now); err != nil {
-							return fmt.Errorf("record probe miss for session %q: %w", session.ID, err)
-						}
-					}
-				}
-				continue
-			}
-			captured, err := s.TMux.CapturePane(ctx, pane.ID, tmux.CaptureOptions{StartLine: "-", EndLine: "-"})
-			if err != nil {
-				if tmux.IsTargetAbsent(err) {
-					// Another unleased reconciler collected this corpse after our
-					// List. Its atomic first-writer update owns the artifact.
-					continue
-				}
-				return fmt.Errorf("capture crashed pane for session %q: %w", session.ID, err)
-			}
-			exitStatus := *pane.DeadStatus
-			if err := s.Store.UpdateSessionStatus(ctx, store.StatusUpdateInput{
-				SessionID:      session.ID,
-				Status:         "error",
-				Reason:         fmt.Sprintf("tmux pane exited with status %d", exitStatus),
-				Source:         "tmux",
-				At:             s.Clock.Now().UnixMilli(),
-				EventKind:      "tmux.pane_dead",
-				PaneExitStatus: &exitStatus,
-				CrashTail:      crashTail(captured, 200),
-			}); err != nil {
-				return fmt.Errorf("record crashed pane for session %q: %w", session.ID, err)
-			}
-			if err := s.Audit.Transition(session.ID, "tmux.pane_dead"); err != nil {
-				return fmt.Errorf("audit crashed tmux pane %q: %w", session.ID, err)
-			}
-			// Capture and the atomic store write must precede teardown. Kill is
-			// idempotent, so racing observers need no collection lease.
-			if err := s.TMux.Kill(ctx, session.Slug); err != nil {
-				return fmt.Errorf("collect crashed tmux session %q: %w", session.ID, err)
-			}
-			continue
+		if err := s.reconcileRow(ctx, session, liveByName, staleAfter); err != nil {
+			return err
 		}
-		if terminal {
-			continue
+	}
+	return nil
+}
+
+// reconcileRow takes one durable row's verdict from the tmux snapshot: an
+// absent session is recorded as gone, a dead non-zero pane is collected, and a
+// live pane is repaired, promoted or probed.
+func (s Service) reconcileRow(ctx context.Context, session store.Session, liveByName map[string]tmux.Session, staleAfter time.Duration) error {
+	observed, present := liveByName["deck_"+session.Slug]
+	if !present {
+		return s.recordSessionGone(ctx, session)
+	}
+	if pane, crashed := crashedPane(observed); crashed {
+		return s.collectCrashedPane(ctx, session, pane)
+	}
+	return s.reconcileLivePane(ctx, session, observed, staleAfter)
+}
+
+// rowIsTerminal marks the rows this pass takes no *liveness verdict* from. A
+// user-sourced starting row is between the durable create and tmux launch;
+// once launch observes tmux it changes the source to tmux. A stopped row has
+// no return edge here, and a stored crash is terminal: collection deliberately
+// removes its tmux session, but that absence must not turn the error into a
+// clean stop.
+//
+// It deliberately does not suppress crashed-pane COLLECTION (#6). deck's
+// server runs `remain-on-exit failed`, so a non-zero exit RETAINS the pane and
+// its session; when a SessionEnd hook writes `stopped` in the same
+// millisecond, a status-first short-circuit skipped the row before tmux was
+// ever consulted, so the corpse was never captured, never killed, and held the
+// session name against every later resume -- exactly the retention SPEC.md:547
+// forbids. A dead pane is therefore collected on sight whatever the row says.
+// Only the *status write* stays guarded, inside UpdateSessionStatus:
+// first-writer-wins on pane_exit_status keeps an already-stored crash verdict
+// and tail intact.
+//
+// An `error` row whose source is `tmux` or `user` (task 011, M9) is ALSO
+// terminal here, for the absent-pane case specifically: launchFailed
+// (resume.go/shell.go) writes exactly this shape for every one of SPEC §9.3's
+// three named resume failures, none of which ever create a tmux session for
+// this attempt -- so there is nothing for this pass to observe as "gone" that
+// the row does not already claim; without it the specific, SPEC-mandated
+// reason would be replaced by the generic "tmux session disappeared". A hook-
+// or probe-sourced error (a turn/API failure with the pane still presumably
+// alive) is deliberately excluded: it still owns the write if its pane later
+// genuinely disappears (SPEC §7's "any -> stopped" on clean exit).
+func rowIsTerminal(session store.Session) bool {
+	return session.Status == "stopped" || session.PaneExitStatus != nil ||
+		(session.Status == "error" && (session.StatusSource == "tmux" || session.StatusSource == "user")) ||
+		(session.Status == "starting" && session.StatusSource == "user")
+}
+
+// recordSessionGone writes the stopped verdict for a row whose tmux session is
+// absent, unless the row already claims the process is gone.
+func (s Service) recordSessionGone(ctx context.Context, session store.Session) error {
+	if rowIsTerminal(session) {
+		return nil
+	}
+	if err := s.Store.UpdateSessionStatus(ctx, store.StatusUpdateInput{
+		SessionID: session.ID,
+		Status:    "stopped",
+		Reason:    "tmux session disappeared",
+		Source:    "tmux",
+		At:        s.Clock.Now().UnixMilli(),
+		EventKind: "tmux.session_gone",
+	}); err != nil {
+		return fmt.Errorf("mark session %q stopped: %w", session.ID, err)
+	}
+	if err := s.Audit.Transition(session.ID, "tmux.session_gone"); err != nil {
+		return fmt.Errorf("audit disappeared tmux session %q: %w", session.ID, err)
+	}
+	return nil
+}
+
+// collectCrashedPane records the crash verdict and tail of a retained dead
+// pane, then tears its tmux session down. Capture and the atomic store write
+// must precede teardown. Kill is idempotent, so racing observers need no
+// collection lease.
+func (s Service) collectCrashedPane(ctx context.Context, session store.Session, pane tmux.Pane) error {
+	captured, err := s.TMux.CapturePane(ctx, pane.ID, tmux.CaptureOptions{StartLine: "-", EndLine: "-"})
+	if err != nil {
+		if tmux.IsTargetAbsent(err) {
+			// Another unleased reconciler collected this corpse after our
+			// List. Its atomic first-writer update owns the artifact.
+			return nil
 		}
-		if err := s.Store.UpdateSessionStatus(ctx, store.StatusUpdateInput{
-			SessionID: session.ID,
-			Status:    "stopped",
-			Reason:    "tmux session disappeared",
-			Source:    "tmux",
-			At:        s.Clock.Now().UnixMilli(),
-			EventKind: "tmux.session_gone",
-		}); err != nil {
-			return fmt.Errorf("mark session %q stopped: %w", session.ID, err)
+		return fmt.Errorf("capture crashed pane for session %q: %w", session.ID, err)
+	}
+	if err := s.recordCrashedPane(ctx, session, pane, captured); err != nil {
+		return err
+	}
+	if err := s.TMux.Kill(ctx, session.Slug); err != nil {
+		return fmt.Errorf("collect crashed tmux session %q: %w", session.ID, err)
+	}
+	return nil
+}
+
+// recordCrashedPane writes the first-writer crash verdict, with the captured
+// tail, for a dead pane and audits it.
+func (s Service) recordCrashedPane(ctx context.Context, session store.Session, pane tmux.Pane, captured []byte) error {
+	exitStatus := *pane.DeadStatus
+	if err := s.Store.UpdateSessionStatus(ctx, store.StatusUpdateInput{
+		SessionID:      session.ID,
+		Status:         "error",
+		Reason:         fmt.Sprintf("tmux pane exited with status %d", exitStatus),
+		Source:         "tmux",
+		At:             s.Clock.Now().UnixMilli(),
+		EventKind:      "tmux.pane_dead",
+		PaneExitStatus: &exitStatus,
+		CrashTail:      crashTail(captured, 200),
+	}); err != nil {
+		return fmt.Errorf("record crashed pane for session %q: %w", session.ID, err)
+	}
+	if err := s.Audit.Transition(session.ID, "tmux.pane_dead"); err != nil {
+		return fmt.Errorf("audit crashed tmux pane %q: %w", session.ID, err)
+	}
+	return nil
+}
+
+// repairsWithLivePane reports whether a live, non-dead pane contradicts the
+// row's stored verdict: a stopped row, or an error row that itself carries a
+// pane-exit or tmux/user-sourced verdict, is SPEC §7's invariant violation
+// regardless of whether rowIsTerminal also holds -- the pane is the part that
+// is right. A hook- or probe-sourced error with no pane-exit verdict is
+// deliberately excluded: SPEC §7's transition table allows running --turn or
+// API failure--> error with no pane death at all, so that row is the agent's
+// own considered verdict, not a contradiction tmux liveness gets to overrule
+// (finding F40, task 901).
+func repairsWithLivePane(session store.Session) bool {
+	return session.Status == "stopped" ||
+		(session.Status == "error" && (session.PaneExitStatus != nil || session.StatusSource == "tmux" || session.StatusSource == "user"))
+}
+
+// reconcileLivePane handles a row whose tmux session is present with no
+// crashed pane.
+func (s Service) reconcileLivePane(ctx context.Context, session store.Session, observed tmux.Session, staleAfter time.Duration) error {
+	if repairsWithLivePane(session) {
+		return s.repairTerminalRowWithLivePane(ctx, session)
+	}
+	if rowIsTerminal(session) {
+		// A user-sourced starting row (between the durable create and the tmux
+		// launch) is not an invariant violation, only a transient window this
+		// pass takes no verdict from; it resolves on its own via
+		// tmuxLaunchObservation once the launch is observed.
+		return nil
+	}
+	if err := s.promoteLiveShell(ctx, session); err != nil {
+		return err
+	}
+	if staleAfter > 0 && session.Agent != "shell" && probeEligible(session, s.Clock.Now(), staleAfter) {
+		return s.probeLivePane(ctx, session, observed, staleAfter)
+	}
+	return nil
+}
+
+// promoteLiveShell: shells have no higher-quality signal or probe, so a live
+// pane is their sound starting → running transition. For agents it remains
+// liveness evidence only and must never fabricate working state.
+func (s Service) promoteLiveShell(ctx context.Context, session store.Session) error {
+	if session.Agent != "shell" || session.Status != "starting" {
+		return nil
+	}
+	if err := s.Store.UpdateSessionStatus(ctx, store.StatusUpdateInput{
+		SessionID:              session.ID,
+		Status:                 "running",
+		Reason:                 "tmux pane is alive",
+		Source:                 "tmux",
+		At:                     s.Clock.Now().UnixMilli(),
+		AllowedCurrentStatuses: []string{"starting"},
+		EventKind:              "tmux.shell_live",
+	}); err != nil {
+		return fmt.Errorf("promote live shell session %q: %w", session.ID, err)
+	}
+	if err := s.Audit.Transition(session.ID, "tmux.shell_live"); err != nil {
+		return fmt.Errorf("audit live shell session %q: %w", session.ID, err)
+	}
+	return nil
+}
+
+// probeLivePane samples an eligible live agent pane and records the verdict.
+func (s Service) probeLivePane(ctx context.Context, session store.Session, observed tmux.Session, staleAfter time.Duration) error {
+	if len(observed.Panes) == 0 {
+		return nil
+	}
+	captured, err := s.TMux.CapturePane(ctx, observed.Panes[0].ID, tmux.CaptureOptions{StartLine: "-200", EndLine: "-"})
+	if err != nil {
+		if tmux.IsTargetAbsent(err) {
+			return nil
 		}
-		if err := s.Audit.Transition(session.ID, "tmux.session_gone"); err != nil {
-			return fmt.Errorf("audit disappeared tmux session %q: %w", session.ID, err)
+		return fmt.Errorf("capture probe pane for session %q: %w", session.ID, err)
+	}
+	adapter, ok := s.Agents.Lookup(session.Agent)
+	if !ok {
+		return fmt.Errorf("probe session %q: unknown agent %q", session.ID, session.Agent)
+	}
+	status, reason := adapter.Probe(string(captured))
+	return s.recordProbe(ctx, session, status, reason, staleAfter)
+}
+
+// recordProbe stores a probe verdict. A total miss (no probeRule matched at
+// all) is diagnostic evidence, not a verdict: it must never touch status,
+// status_source or status_at (SPEC §7 is untouched), but is still worth
+// recording so the `i` detail dialog can tell "sampled, no rule matched" apart
+// from "never sampled" (task 009).
+func (s Service) recordProbe(ctx context.Context, session store.Session, status, reason string, staleAfter time.Duration) error {
+	now := s.Clock.Now().UnixMilli()
+	if status == "" {
+		if err := s.Store.RecordProbeMiss(ctx, session.ID, now); err != nil {
+			return fmt.Errorf("record probe miss for session %q: %w", session.ID, err)
 		}
+		return nil
+	}
+	if err := s.Store.UpdateSessionStatus(ctx, store.StatusUpdateInput{
+		SessionID: session.ID, Status: status, Reason: reason, Source: "probe", At: now,
+		StaleAfter: staleAfter.Milliseconds(), EventKind: "probe." + status,
+	}); err != nil {
+		return fmt.Errorf("record probe for session %q: %w", session.ID, err)
 	}
 	return nil
 }
