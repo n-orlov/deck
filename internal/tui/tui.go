@@ -3674,6 +3674,17 @@ func (m Model) onUIStatePersisted(msg uiStatePersisted) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+// replaceListedSession swaps the freshly returned row for the listed one
+// with the same id, if the list still shows it.
+func (m *Model) replaceListedSession(session store.Session) {
+	for i := range m.sessions {
+		if m.sessions[i].ID == session.ID {
+			m.sessions[i] = session
+			return
+		}
+	}
+}
+
 func (m Model) onSessionResumed(msg sessionResumed) (tea.Model, tea.Cmd) {
 	if msg.err != nil {
 		m.attachError = "Cannot resume: " + msg.err.Error()
@@ -3690,12 +3701,7 @@ func (m Model) onSessionResumed(msg sessionResumed) (tea.Model, tea.Cmd) {
 		// honest no-op means refreshing the row from whatever the service
 		// returned (untouched) rather than pretending a launch happened.
 		m.resumeNote = "already running"
-		for i := range m.sessions {
-			if m.sessions[i].ID == msg.session.ID {
-				m.sessions[i] = msg.session
-				break
-			}
-		}
+		m.replaceListedSession(msg.session)
 		return m, nil
 	}
 	m.resumeNote = ""
@@ -3703,12 +3709,7 @@ func (m Model) onSessionResumed(msg sessionResumed) (tea.Model, tea.Cmd) {
 		// The resume command was dispatched from a stale stopped frame.
 		// Render the durable status/reason returned by the service rather
 		// than describing it as a launch in another client.
-		for i := range m.sessions {
-			if m.sessions[i].ID == msg.session.ID {
-				m.sessions[i] = msg.session
-				break
-			}
-		}
+		m.replaceListedSession(msg.session)
 		return m, nil
 	}
 	// R117: every outcome above (ResumeStartingElsewhere,
