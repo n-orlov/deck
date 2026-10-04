@@ -14,7 +14,9 @@ package features
 //   - a scenario (pickle) is one test, every Gherkin step one Allure step with
 //     its own status, start/stop and the step text verbatim as its name;
 //   - @gh-NN becomes an issue link, @multiclient/@slow/@nightly `tag` labels,
-//     @claude/@pi/@codex a `parentSuite` label (the feature name is `suite`);
+//     @claude/@pi/@codex the `suite` label (the feature name then moves to
+//     `subSuite`); every result carries `parentSuite` "features", the group
+//     ci/suite.sh's unit results ("unit") sit beside in the one report;
 //   - the historyId is a digest of the feature URI, scenario name and example
 //     row (for an outline: its substituted step texts) only, so the suite's one-retry rerun of a failed scenario (a separate
 //     godog run into the same directory, see ci/suite.sh) carries the same
@@ -228,6 +230,9 @@ func allureURI(uri string) string {
 	return filepath.ToSlash(allureLineSuffix.ReplaceAllString(uri, ""))
 }
 
+// allureFeaturesGroup is the parentSuite every features/ result carries.
+const allureFeaturesGroup = "features"
+
 var allureGHTag = regexp.MustCompile(`^@gh-(\d+)$`)
 
 // allureTagsToLabels maps a pickle's Gherkin tags onto Allure labels and links.
@@ -235,11 +240,12 @@ func allureTagsToLabels(doc *allureFeatureDoc, p *godog.Scenario) ([]allureLabel
 	labels := []allureLabel{
 		{Name: "feature", Value: doc.name},
 		{Name: "package", Value: doc.uri},
-		{Name: "suite", Value: doc.name},
+		{Name: "parentSuite", Value: allureFeaturesGroup},
 		{Name: "framework", Value: "godog"},
 		{Name: "language", Value: "go"},
 	}
 	links := []allureLink{}
+	agent := ""
 	for _, tag := range p.Tags {
 		switch name := tag.Name; {
 		case allureGHTag.MatchString(name):
@@ -248,8 +254,17 @@ func allureTagsToLabels(doc *allureFeatureDoc, p *godog.Scenario) ([]allureLabel
 		case name == "@multiclient", name == "@slow", name == "@nightly":
 			labels = append(labels, allureLabel{Name: "tag", Value: strings.TrimPrefix(name, "@")})
 		case name == "@claude", name == "@pi", name == "@codex":
-			labels = append(labels, allureLabel{Name: "parentSuite", Value: strings.TrimPrefix(name, "@")})
+			agent = strings.TrimPrefix(name, "@")
 		}
+	}
+	// Allure's Suites tree is parentSuite > suite > subSuite, and a second
+	// value for one of those labels makes the test appear under both
+	// branches. So the group is the only parentSuite; an agent tag takes the
+	// `suite` level and the feature name drops to `subSuite`.
+	if agent != "" {
+		labels = append(labels, allureLabel{Name: "suite", Value: agent}, allureLabel{Name: "subSuite", Value: doc.name})
+	} else {
+		labels = append(labels, allureLabel{Name: "suite", Value: doc.name})
 	}
 	return labels, links
 }

@@ -116,6 +116,15 @@ pkgs=${DECK_CI_GO_PACKAGES:-$(go list ./...)}
 # this shell variable, never the (by then unset) environment variable, so
 # the nightly lane's -race still reaches both passes (task 002 cure).
 go_extra_flags=${DECK_CI_GO_EXTRA_FLAGS:-}
+
+# ci_sha / ci_run_url (task 005, R195): what the Allure results' own
+# environment.properties and executor.json (step 3b) name. ci/run.sh forwards
+# only DECK_* variables into its container, so the workflow hands them in as
+# DECK_CI_SHA and DECK_CI_RUN_URL (the Actions run link); both are captured
+# here, before the DECK_* scrub below, and both are optional -- a local run
+# just records an unknown sha and no run link.
+ci_sha=${DECK_CI_SHA:-}
+ci_run_url=${DECK_CI_RUN_URL:-}
 covermode=set
 case " $go_extra_flags " in
     *' -race '*) covermode=atomic ;;
@@ -247,6 +256,15 @@ fi
 
 # --- 2. features/TestFeatures: one run, then a per-scenario rerun of anything failed ---
 features_junit="$outdir/junit-features.xml"
+# allure_dir (task 005, R195/R196): the one Allure results directory of this
+# run. Every features/ invocation below -- the initial run and each solo
+# rerun -- gets DECK_GODOG_ALLURE=<this dir>, so features/'s own formatter
+# writes native results into it, and a scenario rerun alone carries the same
+# historyId as its failed first attempt: Allure reads them as retries of one
+# test (and flaky when the last one passed). Step 3b adds the unit results,
+# environment.properties and executor.json to the same directory.
+allure_dir="$outdir/allure-results"
+mkdir -p "$allure_dir"
 features_log="$outdir/features-run1.log"
 features_flaky="$outdir/flaky-features.txt"
 : > "$features_flaky"
@@ -294,7 +312,7 @@ features_status=0
 # whether a synthetic failed/aborted TestFeatures marker is needed so the
 # report input never silently drops the pass.
 features_aborted_without_locations=0
-if ! run_test_features "$outdir/junit-features-gotestsum.xml" "DECK_GODOG_JUNIT=$features_junit" "GOCOVERDIR=$covdir" > "$features_log" 2>&1; then
+if ! run_test_features "$outdir/junit-features-gotestsum.xml" "DECK_GODOG_JUNIT=$features_junit" "DECK_GODOG_ALLURE=$allure_dir" "GOCOVERDIR=$covdir" > "$features_log" 2>&1; then
     features_status=1
     clean_log="$outdir/features-run1.clean.log"
     sed -E 's/\x1b\[[0-9;]*m//g' "$features_log" > "$clean_log"
@@ -320,7 +338,7 @@ if ! run_test_features "$outdir/junit-features-gotestsum.xml" "DECK_GODOG_JUNIT=
             i=$((i + 1))
             rerun_log="$outdir/features-rerun-$i.log"
             echo "ci/suite.sh: features/ rerunning failed scenario alone: DECK_GODOG_PATHS=$loc" >&2
-            if run_test_features "$outdir/junit-features-rerun-$i-gotestsum.xml" "DECK_GODOG_PATHS=$loc" "DECK_GODOG_JUNIT=$outdir/junit-features-rerun-$i.xml" "GOCOVERDIR=$covdir" > "$rerun_log" 2>&1; then
+            if run_test_features "$outdir/junit-features-rerun-$i-gotestsum.xml" "DECK_GODOG_PATHS=$loc" "DECK_GODOG_JUNIT=$outdir/junit-features-rerun-$i.xml" "DECK_GODOG_ALLURE=$allure_dir" "GOCOVERDIR=$covdir" > "$rerun_log" 2>&1; then
                 echo "$loc" >> "$features_flaky"
             else
                 echo "ci/suite.sh: features/ scenario $loc failed again on its solo rerun" >&2
@@ -470,6 +488,56 @@ fi
 
 if [ "$features_merge_ok" -eq 0 ]; then
     echo "ci/suite.sh: no features/ JUnit data survived to merge (godog JUnit, gotestsum JUnit and every rerun file were all missing, empty or malformed)" >&2
+fi
+
+# --- 3b. one Allure results directory: features native, unit converted, environment, executor (task 005, R195/R196) ---
+# $allure_dir already holds features/'s native results (written by the
+# formatter during step 2). The Go unit pass is converted from its merged
+# JUnit by ci/junit2allure into the same directory under parentSuite "unit"
+# (features/'s results carry parentSuite "features"), keeping the historyId
+# Allure's own JUnit plugin used, so unit trends survive. features/'s JUnit is
+# converted only where native results cannot speak for the pass: when none
+# were written at all (the process died before the formatter flushed), or
+# for the synthetic "aborted" marker, so a failed pass is never missing from
+# the report. ci/allure-report.sh reads this directory; ci/summary.sh keeps
+# reading the merged JUnit, which counts the same tests.
+features_native=0
+for f in "$allure_dir"/*-result.json; do
+    [ -e "$f" ] && features_native=1
+    break
+done
+if [ -s "$merged_dir/junit-go.xml" ]; then
+    go run ./ci/junit2allure -group unit -o "$allure_dir" "$merged_dir/junit-go.xml" || {
+        echo "ci/suite.sh: could not convert $merged_dir/junit-go.xml to Allure results" >&2
+        overall_status=1
+    }
+fi
+if [ "$features_native" -eq 0 ] && [ -s "$merged_dir/junit-features.xml" ]; then
+    echo "ci/suite.sh: no native features/ Allure results; converting $merged_dir/junit-features.xml instead" >&2
+    go run ./ci/junit2allure -group features -o "$allure_dir" "$merged_dir/junit-features.xml" || overall_status=1
+elif [ -s "$outdir/junit-features-aborted.xml" ]; then
+    go run ./ci/junit2allure -group features -o "$allure_dir" "$outdir/junit-features-aborted.xml" || overall_status=1
+fi
+
+# environment.properties: Allure's Environment widget. The tmux version is the
+# one the tests ran against (the deck-ci image's); -race says whether the
+# nightly flag reached both passes.
+case " $go_extra_flags " in
+    *' -race '*) race_mode=yes ;;
+    *) race_mode=no ;;
+esac
+{
+    printf 'go.version=%s\n' "$(go env GOVERSION 2>/dev/null || echo unknown)"
+    printf 'tmux.version=%s\n' "$(tmux -V 2>/dev/null || echo unknown)"
+    printf 'git.sha=%s\n' "${ci_sha:-$(git rev-parse HEAD 2>/dev/null || echo unknown)}"
+    printf 'race=%s\n' "$race_mode"
+} > "$allure_dir/environment.properties"
+
+# executor.json: the Allure "Executor" widget, linking back to the Actions run.
+if [ -n "$ci_run_url" ]; then
+    printf '{"name":"GitHub Actions","type":"github","buildName":"deck CI","buildUrl":"%s","reportName":"deck CI"}\n' "$ci_run_url" > "$allure_dir/executor.json"
+else
+    printf '{"name":"local run","type":"local","buildName":"local suite run","reportName":"deck CI"}\n' > "$allure_dir/executor.json"
 fi
 
 # --- 4. coverage summary (R146/task 016, R146 cure-01-05) ---

@@ -39,7 +39,7 @@ func repositoryRoot(t *testing.T) string {
 // (one top-level directory, bin/allure) whose launcher only records that it ran.
 func fakeAllure(t *testing.T, dir string) (path, sum string) {
 	t.Helper()
-	script := "#!/bin/sh\ncase \"$1\" in\n--version) echo fake-allure;;\ngenerate) mkdir -p \"$5\"; echo ok > \"$5/index.html\";;\nesac\n"
+	script := "#!/bin/sh\ncase \"$1\" in\n--version) echo fake-allure;;\ngenerate) mkdir -p \"$5\"; echo ok > \"$5/index.html\"; for f in \"$2\"/*; do echo \"${f##*/}\"; done > \"$5/inputs.txt\";;\nesac\n"
 	path = filepath.Join(dir, "allure-fake.tgz")
 	f, err := os.Create(path)
 	if err != nil {
@@ -74,6 +74,15 @@ func fakeAllure(t *testing.T, dir string) (path, sum string) {
 // needs (never an `allure`, so it always takes the download branch).
 func runScript(t *testing.T, archive, sha string) (string, error) {
 	t.Helper()
+	out, _, err := runScriptOver(t, archive, sha, t.TempDir())
+	return out, err
+}
+
+// runScriptOver is runScript over a given ci/suite.sh results directory; it
+// also returns the report directory, where the fake allure leaves inputs.txt,
+// the names of the files `allure generate` was handed.
+func runScriptOver(t *testing.T, archive, sha, results string) (string, string, error) {
+	t.Helper()
 	root := repositoryRoot(t)
 	bin := t.TempDir()
 	for _, tool := range []string{"sh", "curl", "tar", "mktemp", "rm", "mkdir", "cp", "cut", "sha256sum", "shasum", "dirname", "gzip"} {
@@ -83,11 +92,86 @@ func runScript(t *testing.T, archive, sha string) (string, error) {
 			}
 		}
 	}
-	results := t.TempDir()
-	cmd := exec.Command("sh", filepath.Join(root, "ci", "allure-report.sh"), results, filepath.Join(t.TempDir(), "report"))
+	report := filepath.Join(t.TempDir(), "report")
+	cmd := exec.Command("sh", filepath.Join(root, "ci", "allure-report.sh"), results, report)
 	cmd.Env = []string{"PATH=" + bin, "HOME=" + t.TempDir(), "TMPDIR=" + t.TempDir(), "ALLURE_URL=file://" + archive, "ALLURE_SHA256=" + sha}
 	out, err := cmd.CombinedOutput()
-	return string(out), err
+	return string(out), report, err
+}
+
+func generatedInputs(t *testing.T, report string) []string {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Join(report, "inputs.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return strings.Fields(string(raw))
+}
+
+// TestAllureReportBuildsOneReportFromTheNativeResultsDir: with an
+// allure-results/ (task 005, R195/R196) the report gets exactly its files --
+// unit and features results, environment.properties, executor.json -- and not
+// the JUnit that would list the same tests a second time.
+func TestAllureReportBuildsOneReportFromTheNativeResultsDir(t *testing.T) {
+	archive, sum := fakeAllure(t, t.TempDir())
+	results := t.TempDir()
+	native := filepath.Join(results, "allure-results")
+	merged := filepath.Join(results, "junit-merged")
+	for _, d := range []string{native, merged} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	files := map[string]string{
+		"allure-results/u1-result.json":           `{"labels":[{"name":"parentSuite","value":"unit"}]}`,
+		"allure-results/f1-result.json":           `{"labels":[{"name":"parentSuite","value":"features"}]}`,
+		"allure-results/f1-attachment.txt":        "frame",
+		"allure-results/environment.properties":   "go.version=go1\n",
+		"allure-results/executor.json":            "{}",
+		"allure-results/godog-allure-summary.txt": "formatter bookkeeping",
+		"junit-merged/junit-go.xml":               "<testsuites/>",
+		"junit-merged/junit-features.xml":         "<testsuites/>",
+	}
+	for name, body := range files {
+		if err := os.WriteFile(filepath.Join(results, name), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	out, report, err := runScriptOver(t, archive, sum, results)
+	if err != nil {
+		t.Fatalf("report: %v\n%s", err, out)
+	}
+	got := strings.Join(generatedInputs(t, report), " ")
+	for _, want := range []string{"u1-result.json", "f1-result.json", "f1-attachment.txt", "environment.properties", "executor.json"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("allure generate was not handed %s; inputs: %s", want, got)
+		}
+	}
+	for _, unwanted := range []string{".xml", "godog-allure-summary.txt"} {
+		if strings.Contains(got, unwanted) {
+			t.Errorf("allure generate was handed %s, which would duplicate or add noise; inputs: %s", unwanted, got)
+		}
+	}
+}
+
+// TestAllureReportFallsBackToTheMergedJUnitWithoutNativeResults: a results dir
+// from before allure-results/ existed still builds a report.
+func TestAllureReportFallsBackToTheMergedJUnitWithoutNativeResults(t *testing.T) {
+	archive, sum := fakeAllure(t, t.TempDir())
+	results := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(results, "junit-merged"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(results, "junit-merged", "junit-go.xml"), []byte("<testsuites/>"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out, report, err := runScriptOver(t, archive, sum, results)
+	if err != nil {
+		t.Fatalf("report: %v\n%s", err, out)
+	}
+	if got := generatedInputs(t, report); len(got) != 1 || got[0] != "junit-go.xml" {
+		t.Fatalf("inputs = %v, want only junit-go.xml", got)
+	}
 }
 
 func TestAllureReportAbortsOnChecksumMismatch(t *testing.T) {

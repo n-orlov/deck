@@ -18,15 +18,13 @@
 # for a report with no carried history, e.g. a PR run's `/pr/<n>/` report,
 # which the design deliberately keeps unlinked to any shared trend.
 #
-# The report is built from ci/suite.sh's junit-merged/*.xml: one file per
-# pass, with every retried test's attempts already folded by ci/junitflaky
-# into one <testcase> (a test that passed on retry is one passing testcase
-# carrying its earlier failures as <rerunFailure>/<rerunError>), which
-# Allure's junit-xml plugin reports as passed and flaky, earlier attempts
-# kept as hidden retries. Fed the raw per-attempt files instead, the plugin
-# can pick the failed attempt as the result and report such a test failed
-# and not flaky. Only a results dir with no junit-merged/ (one written
-# before it existed) falls back to every top-level *.xml, as-is.
+# The report is built from ci/suite.sh's allure-results/: features/'s native
+# results (grouped `features`, a retried scenario being retries of one test),
+# the Go unit tests converted from the merged JUnit (grouped `unit`; every
+# retried test's attempts already folded by ci/junitflaky, earlier failures
+# becoming hidden retries), and the environment.properties / executor.json
+# beside them. A results dir with no allure-results/ (one written before it
+# existed) falls back to junit-merged/*.xml, or every top-level *.xml.
 set -eu
 
 results_dir=${1:?"usage: ci/allure-report.sh <ci/suite.sh output dir> <report output dir> [<history dir>]"}
@@ -76,15 +74,37 @@ fi
 allure_results="$work/allure-results"
 mkdir -p "$allure_results"
 
-junit_dir="$results_dir/junit-merged"
-if [ ! -d "$junit_dir" ]; then
-    echo "ci/allure-report.sh: no $junit_dir, reading the raw per-attempt JUnit files" >&2
-    junit_dir=$results_dir
-fi
-for f in "$junit_dir"/*.xml; do
-    [ -e "$f" ] || continue
-    cp "$f" "$allure_results/"
+# Native results first (task 005, R195/R196): ci/suite.sh writes one
+# allure-results/ holding features/'s native results (parentSuite "features"),
+# the Go unit tests converted from the merged JUnit (parentSuite "unit"),
+# environment.properties and executor.json, so it is copied as it is. Only a
+# results dir without one (written before it existed) falls back to the
+# merged JUnit files, as before.
+native_dir="$results_dir/allure-results"
+have_native=0
+for f in "$native_dir"/*-result.json; do
+    [ -e "$f" ] && have_native=1
+    break
 done
+if [ "$have_native" -eq 1 ]; then
+    for f in "$native_dir"/*; do
+        [ -f "$f" ] || continue
+        case "$f" in */godog-allure-summary.txt) continue ;; esac
+        cp "$f" "$allure_results/"
+    done
+else
+    junit_dir="$results_dir/junit-merged"
+    if [ ! -d "$junit_dir" ]; then
+        echo "ci/allure-report.sh: no $native_dir and no $junit_dir, reading the raw per-attempt JUnit files" >&2
+        junit_dir=$results_dir
+    else
+        echo "ci/allure-report.sh: no native results in $native_dir, reading $junit_dir" >&2
+    fi
+    for f in "$junit_dir"/*.xml; do
+        [ -e "$f" ] || continue
+        cp "$f" "$allure_results/"
+    done
+fi
 
 if [ -n "$history_dir" ] && [ -d "$history_dir" ]; then
     have_history=0

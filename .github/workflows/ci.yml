@@ -96,6 +96,11 @@ jobs:
       # sibling container (ci/suite.sh itself) -- an absolute host path
       # would not exist inside the container's own root filesystem.
       DECK_CI_OUT: ci-results
+      # What ci/suite.sh writes into the Allure results' environment.properties
+      # and executor.json (R195). ci/run.sh forwards only DECK_* variables into
+      # its container, so the sha and the run link ride in under these names.
+      DECK_CI_SHA: ${{ github.sha }}
+      DECK_CI_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
       # nightly-only race detector, per R145; ci/suite.sh switches its
       # -covermode to atomic automatically whenever this mentions -race.
       DECK_CI_GO_EXTRA_FLAGS: ${{ (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && '-race' || '' }}
