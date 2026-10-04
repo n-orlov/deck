@@ -18,23 +18,13 @@ func (m Model) lostAttachView() string {
 	return m.framedDialog(m.styledLostAttachBody())
 }
 
-// lostAttachBody is lostAttachView's plain-text content, split out the
-// same way restartChoiceBody/eventLogBody are so styledLostAttachBody can
-// re-derive the identical structure with colour. It reads only
-// m.lostAttachSession -- the display name captured at the moment the
-// dialog opened -- never m.sessions/m.selected, which may have moved on
-// by the time this renders (SPEC \u00a711.4: "a dialog never reads the store
-// from its render path", and by extension never a possibly-stale
-// selection either).
-func (m Model) lostAttachBody() string {
-	var b strings.Builder
-	fmt.Fprintf(&b, "Lost attach: %s\n\n", m.lostAttachSession)
-	b.WriteString("Another client took over this session's window.\n")
-	b.WriteString("\nEnter dismisses\n")
-	return b.String()
-}
-
-// styledLostAttachBody re-derives lostAttachBody's exact structure with
+// styledLostAttachBody is lostAttachView's content, split out the same way
+// styledRestartChoiceBody/styledEventLogBody are. It reads only
+// m.lostAttachSession -- the display name captured at the moment the dialog
+// opened -- never m.sessions/m.selected, which may have moved on by the time
+// this renders (SPEC \u00a711.4: "a dialog never reads the store from its
+// render path", and by extension never a possibly-stale selection either).
+// It draws the structure with
 // SPEC \u00a711.4's token mapping (SPEC.md:1355): the title line in `title`,
 // the explanatory sentence in `dimmed`, the footer's one contract key
 // ("Enter") in `key` over `hint` prose -- the same split

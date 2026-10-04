@@ -241,13 +241,13 @@ func TestCreateShellComposesGlobalThenSessionPreLaunchBeforeTheShell(t *testing.
 	if err != nil {
 		t.Fatalf("create shell: %v", err)
 	}
-	if !waitForFile(t, globalMarker, 5*time.Second) {
+	if !waitForFile(t, globalMarker) {
 		t.Fatalf("global pre_launch never ran on a shell create: %s missing", globalMarker)
 	}
-	if !waitForFile(t, sessionMarker, 5*time.Second) {
+	if !waitForFile(t, sessionMarker) {
 		t.Fatalf("the shell session's own pre_launch never ran after the global hook: %s missing", sessionMarker)
 	}
-	if !waitForFile(t, shellMarker, 5*time.Second) {
+	if !waitForFile(t, shellMarker) {
 		t.Fatalf("the shell never started after both hooks succeeded: %s missing", shellMarker)
 	}
 

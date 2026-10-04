@@ -54,7 +54,7 @@ func TestInteractiveBodyLinesHealsTheStoredOffsetToTheClampedUsedOffset(t *testi
 	// racing a live pane's own output.
 	const printed = 400
 	socket := selectionTestSocket("scrollheal")
-	newShellPaneWithHistory(t, socket, "deck_scrollheal", 80, 10, printed)
+	newShellPaneWithHistory(t, socket, "deck_scrollheal", printed)
 
 	m.tmuxClient = tmux.Client{Socket: socket}
 	m.sessions = []store.Session{{ID: "sess-scrollheal-1", Name: "scrollheal", Slug: "scrollheal", Status: "waiting"}}

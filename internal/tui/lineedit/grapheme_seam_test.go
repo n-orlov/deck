@@ -4,7 +4,6 @@ import (
 	"strings"
 	"testing"
 
-	tea "github.com/charmbracelet/bubbletea"
 	"github.com/rivo/uniseg"
 )
 
@@ -33,12 +32,10 @@ func mustBoundary(t *testing.T, e Editor, what string) {
 	}
 }
 
-func typed(r string) tea.KeyMsg { return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(r)} }
-
 const (
 	woman  = "\U0001F469"
 	laptop = "\U0001F4BB"
-	zwj    = "‍"
+	zwj    = "\u200d"
 	flagA  = "\U0001F1E6"
 	flagB  = "\U0001F1E7"
 	acute  = "́"

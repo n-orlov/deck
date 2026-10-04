@@ -69,7 +69,7 @@ func TestEventLogStyledBodyMatchesPlainBodyOnceStripped(t *testing.T) {
 			m.eventLogErr = loaded.err
 			return m
 		}},
-		{"populated", func(t *testing.T) Model { return task021EventLogModel(t) }},
+		{"populated", task021EventLogModel},
 	} {
 		m := tc.m(t)
 

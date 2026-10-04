@@ -302,7 +302,7 @@ var Schema = []Field{
 		// package's own renderCoalesceInterval var, currently 60ms to match
 		// this key's default) but nothing in internal/tui constructs an
 		// interactive.Session yet -- that wiring, whenever it lands, is
-		// what would read InteractiveMS out of Settings and set the var
+		// what would read InteractiveInterval out of Settings and set the var
 		// from it. Until then this key still has no live consumer to
 		// apply changes to, the same honest-pending-consumer reasoning as
 		// capture_min_interval and ui.recent_cwd_limit above -- only the

@@ -122,7 +122,6 @@ func TestDeclaredExecutableEqualsLaunchArgv0(t *testing.T) {
 		{name: "claude", adapter: NewClaude(), wantExec: "claude"},
 		{name: "pi", adapter: NewPi(), wantExec: "pi"},
 	} {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			declared := tc.adapter.Capabilities().Executable
 			if declared != tc.wantExec {

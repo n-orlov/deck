@@ -26,7 +26,7 @@ import (
 // performs is observable rather than inferred. Undo is an hour so no tick can
 // race the assertions; expiry is driven by feeding archiveUndoExpired
 // directly, exactly as its siblings' behaviour is reasoned about.
-func archiveUndoTestModel(t *testing.T) (Model, *archiveRecorder, *[]string) {
+func archiveUndoTestModel(t *testing.T) (Model, *[]string) {
 	t.Helper()
 	archiver := &archiveRecorder{}
 	unarchived := []string{}
@@ -41,7 +41,7 @@ func archiveUndoTestModel(t *testing.T) (Model, *archiveRecorder, *[]string) {
 		unarchived = append(unarchived, id)
 		return store.Session{ID: id, Name: "live-agent", Status: "stopped"}, nil
 	}
-	return model, archiver, &unarchived
+	return model, &unarchived
 }
 
 // TestSuccessfulArchiveStartsAnUndoWindowSayingWhatHappened pins the toast
@@ -63,7 +63,7 @@ func TestSuccessfulArchiveStartsAnUndoWindowSayingWhatHappened(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			model, _, _ := archiveUndoTestModel(t)
+			model, _ := archiveUndoTestModel(t)
 			model.sessions[0].Status = tc.status
 			model.width, model.height = 100, 40
 
@@ -121,7 +121,7 @@ func TestSuccessfulArchiveStartsAnUndoWindowSayingWhatHappened(t *testing.T) {
 // list any more -- and the toast goes away so a second `u` cannot unarchive
 // twice.
 func TestArchiveUndoPressingUUnarchivesTheRowAndClearsTheToast(t *testing.T) {
-	model, _, unarchived := archiveUndoTestModel(t)
+	model, unarchived := archiveUndoTestModel(t)
 
 	got, _ := model.Update(key("A"))
 	model = got.(Model)
@@ -172,7 +172,7 @@ func TestArchiveUndoPressingUUnarchivesTheRowAndClearsTheToast(t *testing.T) {
 // deleteGraceExpired, expiry must reap NOTHING -- an expired archive window
 // leaves the archived row exactly where it is.
 func TestArchiveUndoWindowExpiresLikeItsSiblings(t *testing.T) {
-	model, _, unarchived := archiveUndoTestModel(t)
+	model, unarchived := archiveUndoTestModel(t)
 
 	got, _ := model.Update(key("A"))
 	model = got.(Model)
@@ -219,7 +219,7 @@ func TestArchiveUndoWindowExpiresLikeItsSiblings(t *testing.T) {
 // restores second, and only unarchives once both of the pre-existing trios are
 // empty. Ordering is the whole risk of adding a third window to one key.
 func TestArchiveUndoIsCheckedBehindTheKillAndDeleteUndoTrios(t *testing.T) {
-	model, _, unarchived := archiveUndoTestModel(t)
+	model, unarchived := archiveUndoTestModel(t)
 	resumed := []string{}
 	restored := []string{}
 	model.resume = func(_ context.Context, id string) (store.Session, service.ResumeOutcome, error) {

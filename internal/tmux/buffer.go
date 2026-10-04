@@ -26,7 +26,7 @@ const SelectionBufferName = "deck-selection"
 // not go through Dispatcher.Send's pane-identity re-verification; there
 // is no pane identity to protect here at all, only a buffer name.
 func (c Client) SetSelectionBuffer(ctx context.Context, text string) error {
-	if _, err := c.runWithStdin(ctx, strings.NewReader(text), "load-buffer", "-b", SelectionBufferName, "-"); err != nil {
+	if err := c.runWithStdin(ctx, strings.NewReader(text), "load-buffer", "-b", SelectionBufferName, "-"); err != nil {
 		return fmt.Errorf("write drag-to-copy selection (%d bytes) to buffer %q: %w", len(text), SelectionBufferName, err)
 	}
 	return nil

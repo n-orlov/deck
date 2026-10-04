@@ -57,7 +57,7 @@ func killPaneProcessUnderRemainOnExitFailed(t *testing.T, socket, target string)
 // never return (per the sibling red control in internal/tmux).
 func TestSessionNoticesAndClosesDownOnADeadPaneUnderRemainOnExitFailed(t *testing.T) {
 	socket := interactiveSocket("dead-pane")
-	cleanup := newBareInteractiveSession(t, socket, "s0", 40, 10)
+	cleanup := newBareInteractiveSession(t, socket, 40, 10)
 	defer cleanup()
 	client := tmux.Client{Socket: socket, Timeout: 5 * time.Second}
 	ctx := context.Background()
@@ -111,7 +111,7 @@ func TestSessionNoticesAndClosesDownOnADeadPaneUnderRemainOnExitFailed(t *testin
 // reason.
 func TestSessionDeadChannelNeverClosesWithoutAnyDeathAndAPollTick(t *testing.T) {
 	socket := interactiveSocket("alive-pane")
-	cleanup := newBareInteractiveSession(t, socket, "s0", 40, 10)
+	cleanup := newBareInteractiveSession(t, socket, 40, 10)
 	defer cleanup()
 	client := tmux.Client{Socket: socket, Timeout: 5 * time.Second}
 	ctx := context.Background()

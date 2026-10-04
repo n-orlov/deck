@@ -85,11 +85,10 @@ const (
 // is available to a reader again).
 func TestTerminalQueryInPaneOutputNeverStallsSession(t *testing.T) {
 	for _, tc := range replyQueryCases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			const width, height = 80, 12
 			socket := interactiveSocket("reply-" + tc.name)
-			cleanup := newBareInteractiveSession(t, socket, "s0", width, height)
+			cleanup := newBareInteractiveSession(t, socket, width, height)
 			defer cleanup()
 			client := tmux.Client{Socket: socket, Timeout: 5 * time.Second}
 

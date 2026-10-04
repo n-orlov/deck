@@ -25,22 +25,22 @@ func paneDeadSocket(name string) string {
 // running a doomed subcommand): that is what actually makes tmux mark the
 // PANE itself dead rather than merely reporting a foreground command's
 // exit status while the shell is still alive to print another prompt.
-func killPaneProcessUnderRemainOnExitFailed(t *testing.T, socket, target string) {
+func killPaneProcessUnderRemainOnExitFailed(t *testing.T, socket string) {
 	t.Helper()
-	runTmux(t, socket, "set-window-option", "-t", target, "remain-on-exit", "failed")
-	runTmux(t, socket, "send-keys", "-t", target, "-l", "--", "exit 1")
-	runTmux(t, socket, "send-keys", "-t", target, "Enter")
+	runTmux(t, socket, "set-window-option", "-t", "s0", "remain-on-exit", "failed")
+	runTmux(t, socket, "send-keys", "-t", "s0", "-l", "--", "exit 1")
+	runTmux(t, socket, "send-keys", "-t", "s0", "Enter")
 }
 
 // waitForPaneDeadTest polls PaneDead until it reports dead or the timeout
 // passes, failing the test if it never does -- tmux marking a pane dead
 // after its process exits is not instantaneous.
-func waitForPaneDeadTest(t *testing.T, client Client, target string, timeout time.Duration) {
+func waitForPaneDeadTest(t *testing.T, client Client) {
 	t.Helper()
 	ctx := context.Background()
-	deadline := time.Now().Add(timeout)
+	deadline := time.Now().Add(5 * time.Second)
 	for {
-		dead, err := client.PaneDead(ctx, target)
+		dead, err := client.PaneDead(ctx, "s0")
 		if err != nil {
 			t.Fatalf("PaneDead: %v", err)
 		}
@@ -48,7 +48,7 @@ func waitForPaneDeadTest(t *testing.T, client Client, target string, timeout tim
 			return
 		}
 		if time.Now().After(deadline) {
-			t.Fatalf("pane %s never reported pane_dead within %s", target, timeout)
+			t.Fatalf("pane %s never reported pane_dead within %s", "s0", 5*time.Second)
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
@@ -74,8 +74,8 @@ func TestPaneDeadReadsFalseThenTrueAfterProcessExits(t *testing.T) {
 		t.Fatalf("PaneDead reported true for a freshly created, still-live pane")
 	}
 
-	killPaneProcessUnderRemainOnExitFailed(t, socket, "s0")
-	waitForPaneDeadTest(t, client, "s0", 5*time.Second)
+	killPaneProcessUnderRemainOnExitFailed(t, socket)
+	waitForPaneDeadTest(t, client)
 }
 
 // TestPaneDeadRejectsAnAbsentTarget proves PaneDead surfaces tmux's own
@@ -117,8 +117,8 @@ func TestPanePipeNeverClosesOnADeadPaneUnderRemainOnExitFailed(t *testing.T) {
 	}
 	defer pipe.Close()
 
-	killPaneProcessUnderRemainOnExitFailed(t, socket, "s0")
-	waitForPaneDeadTest(t, client, "s0", 5*time.Second)
+	killPaneProcessUnderRemainOnExitFailed(t, socket)
+	waitForPaneDeadTest(t, client)
 
 	// PaneDead is true; #{pane_pipe} must still read 1 -- this is what
 	// distinguishes "died with the pipe still armed" from displacement

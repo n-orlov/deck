@@ -79,7 +79,7 @@ func TestEveryEntryRefusalKindDrawsItsOwnBannerNotTheFooter(t *testing.T) {
 			m.setEntryRefusal("sess-1", kind, "reason for "+string(kind))
 
 			cw, ch := m.previewContentSize()
-			background, backgroundOwners, _ := m.previewBodyLinesBeforeRefusal(cw, ch)
+			background, backgroundOwners := m.previewBodyLinesBeforeRefusal(cw, ch)
 			drawn, drawnOwners, _ := m.previewBodyLines(cw, ch)
 			drawnAgain, drawnAgainOwners, _ := m.previewBodyLines(cw, ch)
 

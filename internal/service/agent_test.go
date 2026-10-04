@@ -282,9 +282,9 @@ func TestCreateAgentResolvesPATHInSPECOrder(t *testing.T) {
 
 // waitForFile polls until path exists or the deadline passes, giving the
 // pane's shell time to actually run in the real (test-socket) tmux server.
-func waitForFile(t *testing.T, path string, timeout time.Duration) bool {
+func waitForFile(t *testing.T, path string) bool {
 	t.Helper()
-	deadline := time.Now().Add(timeout)
+	deadline := time.Now().Add(5 * time.Second)
 	for {
 		if _, err := os.Stat(path); err == nil {
 			return true
@@ -310,10 +310,10 @@ func TestCreateAgentRunsSucceedingPreLaunchBeforeTheAgent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create agent: %v", err)
 	}
-	if !waitForFile(t, preMarker, 5*time.Second) {
+	if !waitForFile(t, preMarker) {
 		t.Fatalf("pre_launch never ran: %s missing", preMarker)
 	}
-	if !waitForFile(t, agentMarker, 5*time.Second) {
+	if !waitForFile(t, agentMarker) {
 		t.Fatalf("agent never started after a succeeding pre_launch: %s missing", agentMarker)
 	}
 }
@@ -585,13 +585,13 @@ func TestCreateAgentGlobalPreLaunchRunsBeforeSessionPreLaunchAndAgent(t *testing
 	if err != nil {
 		t.Fatalf("create agent: %v", err)
 	}
-	if !waitForFile(t, globalMarker, 5*time.Second) {
+	if !waitForFile(t, globalMarker) {
 		t.Fatalf("global pre_launch never ran: %s missing", globalMarker)
 	}
-	if !waitForFile(t, sessionMarker, 5*time.Second) {
+	if !waitForFile(t, sessionMarker) {
 		t.Fatalf("session pre_launch never ran after the global hook: %s missing", sessionMarker)
 	}
-	if !waitForFile(t, agentMarker, 5*time.Second) {
+	if !waitForFile(t, agentMarker) {
 		t.Fatalf("agent never started after both hooks succeeded: %s missing", agentMarker)
 	}
 }

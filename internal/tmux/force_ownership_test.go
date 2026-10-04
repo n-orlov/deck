@@ -32,12 +32,12 @@ import (
 // overwrite it anyway, unconditionally, and acquire.
 func TestForceClaimWindowOwnershipAcquiresOverALiveOwner(t *testing.T) {
 	socket := fmt.Sprintf("priv-force-live-%d-%d", os.Getpid(), time.Now().UnixNano())
-	cleanup := newBareOwnershipSession(t, socket, "s0")
+	cleanup := newBareOwnershipSession(t, socket)
 	defer cleanup()
 	client := Client{Socket: socket, Timeout: 3 * time.Second}
 
 	competing := formatOwnershipClaim("liveforceowner", os.Getpid())
-	setWindowOwnershipRaw(t, socket, "s0", competing)
+	setWindowOwnershipRaw(t, socket, competing)
 	if !pidAlive(os.Getpid()) {
 		t.Fatalf("test's own pid %d reads as dead; the fixture is broken", os.Getpid())
 	}
@@ -49,7 +49,7 @@ func TestForceClaimWindowOwnershipAcquiresOverALiveOwner(t *testing.T) {
 	if !owned || ownership == nil {
 		t.Fatalf("owned = %v, ownership = %v; want a force claim to acquire over a LIVE owner", owned, ownership)
 	}
-	got, err := readTmuxOptionForOwnershipTest(t, socket, "s0")
+	got, err := readTmuxOptionForOwnershipTest(t, socket)
 	if err != nil {
 		t.Fatalf("read after force claim: %v", err)
 	}
@@ -76,7 +76,7 @@ func TestForceClaimWindowOwnershipAcquiresOverALiveOwner(t *testing.T) {
 // fails only if no round out of a generous budget ever does.
 func TestForceClaimWindowOwnershipConfirmReadLosesToACompetingWriter(t *testing.T) {
 	socket := fmt.Sprintf("priv-force-race-%d-%d", os.Getpid(), time.Now().UnixNano())
-	cleanup := newBareOwnershipSession(t, socket, "s0")
+	cleanup := newBareOwnershipSession(t, socket)
 	defer cleanup()
 	client := Client{Socket: socket, Timeout: 3 * time.Second}
 
@@ -128,7 +128,7 @@ func TestForceClaimWindowOwnershipConfirmReadLosesToACompetingWriter(t *testing.
 		if winner.ownership == nil {
 			t.Fatalf("round %d: winning force claim returned owned=true but ownership=nil", round)
 		}
-		got, err := readTmuxOptionForOwnershipTest(t, socket, "s0")
+		got, err := readTmuxOptionForOwnershipTest(t, socket)
 		if err != nil {
 			t.Fatalf("round %d: read after the race: %v", round, err)
 		}
@@ -149,7 +149,7 @@ func TestForceClaimWindowOwnershipConfirmReadLosesToACompetingWriter(t *testing.
 // the later, winning claim's value is left untouched on the wire.
 func TestForceClaimWindowOwnershipLoserReleaseLeavesWinnerIntact(t *testing.T) {
 	socket := fmt.Sprintf("priv-force-release-%d-%d", os.Getpid(), time.Now().UnixNano())
-	cleanup := newBareOwnershipSession(t, socket, "s0")
+	cleanup := newBareOwnershipSession(t, socket)
 	defer cleanup()
 	client := Client{Socket: socket, Timeout: 3 * time.Second}
 
@@ -170,7 +170,7 @@ func TestForceClaimWindowOwnershipLoserReleaseLeavesWinnerIntact(t *testing.T) {
 		t.Fatalf("release the superseded (loser) claim: %v", err)
 	}
 
-	got, err := readTmuxOptionForOwnershipTest(t, socket, "s0")
+	got, err := readTmuxOptionForOwnershipTest(t, socket)
 	if err != nil {
 		t.Fatalf("read after the superseded release: %v", err)
 	}
@@ -186,7 +186,7 @@ func TestForceClaimWindowOwnershipLoserReleaseLeavesWinnerIntact(t *testing.T) {
 // a concatenation, a residue of the first claim, or anything else stale.
 func TestForceClaimWindowOwnershipTwoClaimsHoldExactlyOneValue(t *testing.T) {
 	socket := fmt.Sprintf("priv-force-single-value-%d-%d", os.Getpid(), time.Now().UnixNano())
-	cleanup := newBareOwnershipSession(t, socket, "s0")
+	cleanup := newBareOwnershipSession(t, socket)
 	defer cleanup()
 	client := Client{Socket: socket, Timeout: 3 * time.Second}
 

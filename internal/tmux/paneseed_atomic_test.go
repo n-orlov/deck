@@ -22,9 +22,9 @@ import (
 // session name). Client.List only ever returns deck_-prefixed sessions
 // (its own filter), which newBareGeometrySession deliberately does not
 // create, so this asks tmux directly instead.
-func resolveSolePaneID(t *testing.T, socket, session string) string {
+func resolveSolePaneID(t *testing.T, socket string) string {
 	t.Helper()
-	return runTmux(t, socket, "list-panes", "-t", session, "-F", "#{pane_id}")
+	return runTmux(t, socket, "list-panes", "-t", "s0", "-F", "#{pane_id}")
 }
 
 // TestCapturePaneSeedAtomicMatchesSeparateStateAndBodyReads proves the
@@ -40,8 +40,8 @@ func TestCapturePaneSeedAtomicMatchesSeparateStateAndBodyReads(t *testing.T) {
 	client := Client{Socket: socket, Timeout: 5 * time.Second}
 	ctx := context.Background()
 
-	runInPaneBlocking(t, socket, "s0", `\033[3;7r\033[?6h\033[31mRED\033[0m`)
-	paneID := resolveSolePaneID(t, socket, "s0")
+	runInPaneBlocking(t, socket, `\033[3;7r\033[?6h\033[31mRED\033[0m`)
+	paneID := resolveSolePaneID(t, socket)
 
 	wantState, err := client.PaneSeedState(ctx, paneID)
 	if err != nil {
@@ -318,8 +318,8 @@ func TestCapturePaneSeedAtomicPreservesATrailingRunOfBlankRows(t *testing.T) {
 	// identical pane) and the shell never redraws a prompt further down.
 	// Row 0 gets the echoed command itself, so the pane ends up with a
 	// dozen-plus genuinely blank rows underneath.
-	runInPaneBlocking(t, socket, "s0", `TOP-ROW-CONTENT\n`)
-	paneID := resolveSolePaneID(t, socket, "s0")
+	runInPaneBlocking(t, socket, `TOP-ROW-CONTENT\n`)
+	paneID := resolveSolePaneID(t, socket)
 
 	options := SeedCaptureOptions()
 	want, err := client.CapturePane(ctx, paneID, options)

@@ -159,7 +159,7 @@ func TestSessionRendersAreCoalescedAgainstAKnownByteArrivalPattern(t *testing.T)
 
 	runPattern := func(t *testing.T, interval time.Duration) (count int, renderTime time.Duration) {
 		socket := interactiveSocket("render-coalesce")
-		cleanup := newBareInteractiveSession(t, socket, "s0", 40, 10)
+		cleanup := newBareInteractiveSession(t, socket, 40, 10)
 		defer cleanup()
 		client := tmux.Client{Socket: socket, Timeout: 5 * time.Second}
 		ctx := context.Background()

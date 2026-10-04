@@ -105,7 +105,6 @@ var (
 	r150BackgroundHeaderRe = regexp.MustCompile(`^\s*Background:`)
 	r150ShellCreateRe      = regexp.MustCompile(`creates (?:a )?(?:long-named |persistent )?shell session "([^"]+)"`)
 	r150RowSettleRe        = regexp.MustCompile(`row "([^"]+)" contains "running"`)
-	r150GenericRunningRe   = regexp.MustCompile(`screen contains "running"`)
 	r150RowStartingRe      = regexp.MustCompile(`row "([^"]+)" contains "starting"`)
 	r150GenericStartingRe  = regexp.MustCompile(`screen contains "starting"`)
 	r150CaptureFrameRe     = regexp.MustCompile(`captures its frame as "([^"]+)"`)

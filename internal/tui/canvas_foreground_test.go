@@ -290,11 +290,9 @@ func cellGlyph(term *vt.Emulator, col, row int) string {
 // stops the same regression reappearing behind a dark default.
 func TestDeckOwnedCellsCarryExplicitForegroundOnEveryBuiltin(t *testing.T) {
 	for _, bt := range theme.Builtins() {
-		bt := bt
 		t.Run(bt.Name, func(t *testing.T) {
 			byHex := tokensByHex(t, bt)
 			for _, frame := range canvasForegroundFrames() {
-				frame := frame
 				t.Run(frame.name, func(t *testing.T) {
 					m := frame.build(t, bt)
 					term := renderSettingsToEmulator(t, m.View(), m.width, m.height)
@@ -362,7 +360,6 @@ func TestDeckOwnedCellContrastTable(t *testing.T) {
 	const invisibleRatio = 1.5
 
 	for _, bt := range theme.Builtins() {
-		bt := bt
 		t.Run(bt.Name, func(t *testing.T) {
 			byHex := tokensByHex(t, bt)
 			backgroundHex, err := bt.Color(theme.Background)
@@ -484,7 +481,6 @@ func TestCropMarkerAndGeometryLineCarryExplicitForeground(t *testing.T) {
 	const paneFg = "#0a141e" // 10;20;30, the pane's own foreground below
 
 	for _, bt := range theme.Builtins() {
-		bt := bt
 		t.Run(bt.Name, func(t *testing.T) {
 			m := New(nil, config.Settings{Color: true, Theme: bt, Socket: "deck"}, "")
 			m.width, m.height = 110, 32
@@ -588,7 +584,6 @@ func TestCropMarkerAndGeometryLineCarryExplicitForeground(t *testing.T) {
 // about, and this fails.
 func TestSidebarGutterCellsNeverFallBackToCanvasForeground(t *testing.T) {
 	for _, bt := range theme.Builtins() {
-		bt := bt
 		t.Run(bt.Name, func(t *testing.T) {
 			m := New(nil, config.Settings{Color: true, Theme: bt, Socket: "deck"}, "")
 			m.width, m.height = 110, 32

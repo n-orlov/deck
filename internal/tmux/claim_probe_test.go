@@ -15,7 +15,7 @@ import (
 // window it never claimed.
 func TestClaimStateProbeUnsetOnAFreshWindow(t *testing.T) {
 	socket := fmt.Sprintf("priv-claimprobe-unset-%d-%d", os.Getpid(), time.Now().UnixNano())
-	cleanup := newBareOwnershipSession(t, socket, "s0")
+	cleanup := newBareOwnershipSession(t, socket)
 	defer cleanup()
 	client := Client{Socket: socket, Timeout: 3 * time.Second}
 
@@ -35,13 +35,13 @@ func TestClaimStateProbeUnsetOnAFreshWindow(t *testing.T) {
 // on the SAME window by a caller that then loses it to a steal.
 func TestClaimStateProbeForeignLiveOnAContestedWindow(t *testing.T) {
 	socket := fmt.Sprintf("priv-claimprobe-foreign-%d-%d", os.Getpid(), time.Now().UnixNano())
-	cleanup := newBareOwnershipSession(t, socket, "s0")
+	cleanup := newBareOwnershipSession(t, socket)
 	defer cleanup()
 	client := Client{Socket: socket, Timeout: 3 * time.Second}
 
 	// Target-only form: nobody here has ever claimed s0.
 	foreign := formatOwnershipClaim("livecompetitor", os.Getpid())
-	setWindowOwnershipRaw(t, socket, "s0", foreign)
+	setWindowOwnershipRaw(t, socket, foreign)
 	state, err := client.ProbeWindowOwnership(context.Background(), "s0")
 	if err != nil {
 		t.Fatalf("probe foreign-live window: %v", err)
@@ -64,7 +64,7 @@ func TestClaimStateProbeForeignLiveOnAContestedWindow(t *testing.T) {
 		t.Fatalf("claim s0: owned=%v err=%v", owned, err)
 	}
 	stolenBy := formatOwnershipClaim("laterclaimant", os.Getpid())
-	setWindowOwnershipRaw(t, socket, "s0", stolenBy)
+	setWindowOwnershipRaw(t, socket, stolenBy)
 	state, err = ownership.Probe(context.Background())
 	if err != nil {
 		t.Fatalf("probe stolen-from ownership: %v", err)
@@ -79,7 +79,7 @@ func TestClaimStateProbeForeignLiveOnAContestedWindow(t *testing.T) {
 // touched since it was confirmed reads ClaimStillMine.
 func TestClaimStateProbeStillMineOnAnUnstolenClaim(t *testing.T) {
 	socket := fmt.Sprintf("priv-claimprobe-mine-%d-%d", os.Getpid(), time.Now().UnixNano())
-	cleanup := newBareOwnershipSession(t, socket, "s0")
+	cleanup := newBareOwnershipSession(t, socket)
 	defer cleanup()
 	client := Client{Socket: socket, Timeout: 3 * time.Second}
 
@@ -114,7 +114,7 @@ func TestClaimStateProbeStillMineOnAnUnstolenClaim(t *testing.T) {
 // check ClaimWindowOwnership itself uses to decide whether to steal.
 func TestClaimStateProbeUnsetOnADeadOwner(t *testing.T) {
 	socket := fmt.Sprintf("priv-claimprobe-dead-%d-%d", os.Getpid(), time.Now().UnixNano())
-	cleanup := newBareOwnershipSession(t, socket, "s0")
+	cleanup := newBareOwnershipSession(t, socket)
 	defer cleanup()
 	client := Client{Socket: socket, Timeout: 3 * time.Second}
 
@@ -122,7 +122,7 @@ func TestClaimStateProbeUnsetOnADeadOwner(t *testing.T) {
 	if pidAlive(deadPID) {
 		t.Fatalf("test's chosen dead pid %d is alive; pick another", deadPID)
 	}
-	setWindowOwnershipRaw(t, socket, "s0", formatOwnershipClaim("deadowner", deadPID))
+	setWindowOwnershipRaw(t, socket, formatOwnershipClaim("deadowner", deadPID))
 
 	state, err := client.ProbeWindowOwnership(context.Background(), "s0")
 	if err != nil {

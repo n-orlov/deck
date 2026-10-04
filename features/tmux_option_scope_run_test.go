@@ -11,7 +11,7 @@ import (
 // throwaway harness socket, without the deck binary or any of deck's own
 // bootstrap options, so option-scope reads can be asserted against tmux's
 // own unmodified defaults. The caller must call cleanup once done.
-func newBareTmuxSession(t *testing.T, session string) (socket string, cleanup func()) {
+func newBareTmuxSession(t *testing.T) (socket string, cleanup func()) {
 	t.Helper()
 	h, err := newScenarioHarness("")
 	if err != nil {
@@ -19,7 +19,7 @@ func newBareTmuxSession(t *testing.T, session string) (socket string, cleanup fu
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	if output, err := exec.CommandContext(ctx, "tmux", "-L", h.Socket, "new-session", "-d", "-s", session, "-x", "80", "-y", "24").CombinedOutput(); err != nil {
+	if output, err := exec.CommandContext(ctx, "tmux", "-L", h.Socket, "new-session", "-d", "-s", "s0", "-x", "80", "-y", "24").CombinedOutput(); err != nil {
 		_ = h.KillTMuxServer(ctx)
 		t.Fatalf("start bare tmux session: %v: %s", err, output)
 	}
@@ -46,7 +46,7 @@ func setTmuxOption(t *testing.T, socket string, args ...string) {
 // are read identically as tmuxOptionState{Set: false}, exactly what the PRD
 // asks the step to do rather than trust exit code or output emptiness alone.
 func TestReadTmuxOptionInScopeTreatsBothUnsetShapesAsNone(t *testing.T) {
-	socket, cleanup := newBareTmuxSession(t, "s0")
+	socket, cleanup := newBareTmuxSession(t)
 	defer cleanup()
 	ctx := context.Background()
 
@@ -80,7 +80,7 @@ func TestReadTmuxOptionInScopeTreatsBothUnsetShapesAsNone(t *testing.T) {
 // found when a different value is read from the other -- distinguishing
 // `show -gv` from `show -wv` the way a merged/effective read never could.
 func TestAssertTmuxOptionInScopeDistinguishesGlobalFromWindow(t *testing.T) {
-	socket, cleanup := newBareTmuxSession(t, "s0")
+	socket, cleanup := newBareTmuxSession(t)
 	defer cleanup()
 	ctx := context.Background()
 
@@ -99,7 +99,7 @@ func TestAssertTmuxOptionInScopeDistinguishesGlobalFromWindow(t *testing.T) {
 // control the criteria names by name: the assertion must fail, not merely
 // happen to pass, when the value it wants only exists in the other scope.
 func TestAssertTmuxOptionInScopeFailsWhenValueIsInTheWrongScope(t *testing.T) {
-	socket, cleanup := newBareTmuxSession(t, "s0")
+	socket, cleanup := newBareTmuxSession(t)
 	defer cleanup()
 	ctx := context.Background()
 
@@ -128,7 +128,7 @@ func TestAssertTmuxOptionInScopeFailsWhenValueIsInTheWrongScope(t *testing.T) {
 // TestAssertTmuxOptionUnsetInScope proves the unset-assertion direction:
 // green while genuinely unset, red once a value lands in that exact scope.
 func TestAssertTmuxOptionUnsetInScope(t *testing.T) {
-	socket, cleanup := newBareTmuxSession(t, "s0")
+	socket, cleanup := newBareTmuxSession(t)
 	defer cleanup()
 	ctx := context.Background()
 

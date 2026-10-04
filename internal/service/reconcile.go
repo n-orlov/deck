@@ -371,7 +371,7 @@ func stripTerminalControls(text string) string {
 		default:
 			r, size := utf8.DecodeRuneInString(text[i:])
 			i += size
-			if r == '\n' || r == '\t' || r >= 0x20 && r != 0x7f && !(r >= 0x80 && r <= 0x9f) {
+			if r == '\n' || r == '\t' || r >= 0x20 && r != 0x7f && (r < 0x80 || r > 0x9f) {
 				out.WriteRune(r)
 			}
 		}

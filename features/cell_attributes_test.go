@@ -376,28 +376,6 @@ func cellDoesNotHaveBackground(ctx context.Context, name string, row, col int, u
 	return nil
 }
 
-// textHasBackground's counterpart to textDoesNotHaveForeground.
-func textDoesNotHaveBackground(ctx context.Context, name, text, unwanted string) error {
-	client, err := assertionClient(ctx, name)
-	if err != nil {
-		return err
-	}
-	cells, err := textCells(client, text)
-	if err != nil {
-		return fmt.Errorf("client %q: %w", name, err)
-	}
-	for i, cell := range cells {
-		got, err := cellBackgroundHex(cell)
-		if err != nil {
-			continue
-		}
-		if got == unwanted {
-			return fmt.Errorf("client %q text %q cell %d has background %s, want anything else", name, text, i, got)
-		}
-	}
-	return nil
-}
-
 // cellHasForegroundToken and its siblings below are task 013's token-named
 // forms of the hex-literal steps above: resolveScenarioTokenHex (see
 // theme_pin_test.go) resolves tokenName's colour through internal/theme

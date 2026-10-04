@@ -28,7 +28,7 @@ import (
 // selection with the usual context margin instead of freezing the stale
 // wheel offset.
 func TestWheelDriftFilterQueryEditEndsDriftThenBackgroundResortFollows(t *testing.T) {
-	m := drift005DriftedModel(t, 30, 24, 6)
+	m := drift005DriftedModel(t)
 
 	opened, _ := m.Update(key("/"))
 	afterOpen := opened.(Model)
@@ -70,7 +70,7 @@ func TestWheelDriftFilterQueryEditEndsDriftThenBackgroundResortFollows(t *testin
 // already ran on rather than a fresh one, so nothing about the second
 // Update's own starting sidebarScroll offset could quietly differ.
 func TestWheelDriftForceOnHeaderIsAsInertAsEnter(t *testing.T) {
-	fixture := drift005DriftedModel(t, 30, 24, 6)
+	fixture := drift005DriftedModel(t)
 	fixture.selected = headerCursor(7)
 	before := fixture.sidebarScroll
 
@@ -98,7 +98,7 @@ func TestWheelDriftForceOnHeaderIsAsInertAsEnter(t *testing.T) {
 // leaving the new row tracked off screen the way an ordinary, no-new-
 // selection background reload would.
 func TestWheelDriftNewSessionSelectionIntentEndsWheelDrift(t *testing.T) {
-	m := drift005DriftedModel(t, 30, 24, 6)
+	m := drift005DriftedModel(t)
 	assertDriftStillInForce(t, "fixture before the new session arrives", m)
 
 	created := m.baseSessions[0]

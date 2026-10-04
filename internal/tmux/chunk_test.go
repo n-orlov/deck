@@ -153,7 +153,7 @@ func TestDispatcherSendLiteralStreamsOversizedPayloadViaLoadBufferAndArrivesInta
 	client := Client{Socket: socket, Timeout: 10 * time.Second}
 	ctx := context.Background()
 
-	waitForBarePrompt(t, socket, "s0")
+	waitForBarePrompt(t, socket)
 	dispatcher, err := NewDispatcher(ctx, client, "%0")
 	if err != nil {
 		t.Fatalf("NewDispatcher: %v", err)
@@ -164,7 +164,7 @@ func TestDispatcherSendLiteralStreamsOversizedPayloadViaLoadBufferAndArrivesInta
 		t.Fatalf("SendLiteral(<20000-byte payload>): %v", err)
 	}
 
-	capture := waitForJoinedCaptureContaining(t, socket, "s0", payload)
+	capture := waitForJoinedCaptureContaining(t, socket, payload)
 	if !strings.Contains(capture, payload) {
 		t.Fatalf("joined capture does not contain the 20000-byte payload intact")
 	}
@@ -186,7 +186,7 @@ func TestDispatcherSendLiteralAtExactlyTheChunkBoundaryStillUsesASingleCall(t *t
 	client := Client{Socket: socket, Timeout: 10 * time.Second}
 	ctx := context.Background()
 
-	waitForBarePrompt(t, socket, "s0")
+	waitForBarePrompt(t, socket)
 	dispatcher, err := NewDispatcher(ctx, client, "%0")
 	if err != nil {
 		t.Fatalf("NewDispatcher: %v", err)
@@ -196,7 +196,7 @@ func TestDispatcherSendLiteralAtExactlyTheChunkBoundaryStillUsesASingleCall(t *t
 	if err := dispatcher.SendLiteral(ctx, payload); err != nil {
 		t.Fatalf("SendLiteral(<8192-byte payload>): %v", err)
 	}
-	capture := waitForJoinedCaptureContaining(t, socket, "s0", payload)
+	capture := waitForJoinedCaptureContaining(t, socket, payload)
 	if !strings.Contains(capture, payload) {
 		t.Fatalf("joined capture does not contain the 8192-byte payload intact")
 	}
@@ -216,7 +216,7 @@ func TestDispatcherSendLiteralChunksAnOversizedHexRunAndArrivesIntact(t *testing
 	client := Client{Socket: socket, Timeout: 10 * time.Second}
 	ctx := context.Background()
 
-	waitForBarePrompt(t, socket, "s0")
+	waitForBarePrompt(t, socket)
 	dispatcher, err := NewDispatcher(ctx, client, "%0")
 	if err != nil {
 		t.Fatalf("NewDispatcher: %v", err)
@@ -226,7 +226,7 @@ func TestDispatcherSendLiteralChunksAnOversizedHexRunAndArrivesIntact(t *testing
 	if err := dispatcher.SendLiteral(ctx, payload); err != nil {
 		t.Fatalf("SendLiteral(<6000 trailing semicolons>): %v", err)
 	}
-	capture := waitForJoinedCaptureContaining(t, socket, "s0", payload)
+	capture := waitForJoinedCaptureContaining(t, socket, payload)
 	if !strings.Contains(capture, payload) {
 		t.Fatalf("joined capture does not contain all 6000 semicolons intact")
 	}
@@ -242,7 +242,7 @@ func orderSensitivePayload(n int) string {
 	var b strings.Builder
 	b.Grow(n)
 	for i := 0; b.Len() < n; i++ {
-		b.WriteString(fmt.Sprintf("%08d-", i))
+		fmt.Fprintf(&b, "%08d-", i)
 	}
 	return b.String()[:n]
 }
@@ -253,17 +253,17 @@ func orderSensitivePayload(n int) string {
 // combination is what lets a single very long typed/pasted line that
 // wrapped across far more physical rows than the pane's own height be
 // reassembled and compared as one continuous string.
-func waitForJoinedCaptureContaining(t *testing.T, socket, target, want string) string {
+func waitForJoinedCaptureContaining(t *testing.T, socket, want string) string {
 	t.Helper()
 	deadline := time.Now().Add(5 * time.Second)
 	var capture string
 	for {
-		capture = runTmux(t, socket, "capture-pane", "-p", "-J", "-S", "-", "-t", target)
+		capture = runTmux(t, socket, "capture-pane", "-p", "-J", "-S", "-", "-t", "s0")
 		if strings.Contains(capture, want) {
 			return capture
 		}
 		if time.Now().After(deadline) {
-			t.Fatalf("joined capture for pane %q never contained the expected payload within the deadline", target)
+			t.Fatalf("joined capture for pane %q never contained the expected payload within the deadline", "s0")
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
@@ -281,7 +281,7 @@ func TestDispatcherSendBytesDeliversRawBytesThroughOneVerifiedHexCall(t *testing
 	client := Client{Socket: socket, Timeout: 10 * time.Second}
 	ctx := context.Background()
 
-	waitForBarePrompt(t, socket, "s0")
+	waitForBarePrompt(t, socket)
 	dispatcher, err := NewDispatcher(ctx, client, "%0")
 	if err != nil {
 		t.Fatalf("NewDispatcher: %v", err)
@@ -301,5 +301,5 @@ func TestDispatcherSendBytesDeliversRawBytesThroughOneVerifiedHexCall(t *testing
 	}
 	// The typed line, then both outputs, in order: the CR ran the line and
 	// the semicolon survived as a shell separator.
-	waitForJoinedCaptureContaining(t, socket, "s0", "echo p1;echo p2\np1\np2")
+	waitForJoinedCaptureContaining(t, socket, "echo p1;echo p2\np1\np2")
 }

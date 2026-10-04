@@ -16,8 +16,6 @@ func newModesSession() *Session {
 	return s
 }
 
-const allMouseModes = MouseNormal | MouseButton | MouseAny | MouseUTF8 | MouseSGR | MouseURXVT
-
 func TestGridTracksCursorVisibilityAndMouseModes(t *testing.T) {
 	g := newGrid(20, 5)
 	if !g.CursorVisible() || g.MouseModes().Any() {

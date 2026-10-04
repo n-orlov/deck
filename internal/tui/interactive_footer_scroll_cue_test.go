@@ -66,7 +66,7 @@ func TestInteractiveFooterCueReportsTheClampedScrolledBackPosition(t *testing.T)
 
 	const printed = 400
 	socket := selectionTestSocket("footercue")
-	newShellPaneWithHistory(t, socket, "deck_footercue", 80, 10, printed)
+	newShellPaneWithHistory(t, socket, "deck_footercue", printed)
 
 	m.tmuxClient = tmux.Client{Socket: socket}
 	m.sessions = []store.Session{{ID: "sess-footercue-1", Name: "footercue", Slug: "footercue", Status: "waiting"}}
@@ -129,7 +129,7 @@ func TestInteractiveFooterCueTopOfScrollbackWordingDiffersFromOrdinary(t *testin
 
 	const printed = 400
 	socket := selectionTestSocket("footercuewords")
-	newShellPaneWithHistory(t, socket, "deck_footercuewords", 80, 10, printed)
+	newShellPaneWithHistory(t, socket, "deck_footercuewords", printed)
 
 	m.tmuxClient = tmux.Client{Socket: socket}
 	m.sessions = []store.Session{{ID: "sess-footercuewords-1", Name: "footercuewords", Slug: "footercuewords", Status: "waiting"}}
@@ -213,7 +213,7 @@ func TestInteractiveFooterAtLiveBottomRendersNoCueAndMatchesPreChangeFooter(t *t
 	key := got.colorToken(theme.Key, got.glyph("Ctrl+Q", "Ctrl+Q"))
 	hint := got.colorToken(theme.Hint, "leave interactive mode")
 	preChangeContent := forwardNote + sep + key + " " + hint
-	want := got.canvasFillLine(theme.Background, preChangeContent, width)
+	want := got.canvasFillLine(preChangeContent, width)
 
 	if footer != want {
 		t.Fatalf("footer at offset 0 = %q, want the pre-change footer line %q (no cue)", footer, want)

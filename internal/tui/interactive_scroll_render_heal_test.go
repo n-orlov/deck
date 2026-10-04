@@ -50,7 +50,7 @@ func TestInteractiveScrollOffsetHealsFromTheRenderAfterVisibleOnlyReseed(t *test
 	m := New(nil, config.Settings{}, "")
 	m.width, m.height = 100, 30
 	socket := selectionTestSocket("scrollheal-reseed")
-	newShellPaneWithHistory(t, socket, "deck_scrollheal-reseed", 80, 10, 100)
+	newShellPaneWithHistory(t, socket, "deck_scrollheal-reseed", 100)
 	m.tmuxClient = tmux.Client{Socket: socket}
 	m.sessions = []store.Session{{ID: "reseed-1", Name: "scrollheal-reseed", Slug: "scrollheal-reseed", Status: "waiting"}}
 
@@ -126,7 +126,7 @@ func TestInteractiveScrollOffsetHealsOnTheNextUpdateWithNoRenderInBetween(t *tes
 	m := New(nil, config.Settings{}, "")
 	m.width, m.height = 100, 30
 	socket := selectionTestSocket("scrollheal-update")
-	newShellPaneWithHistory(t, socket, "deck_scrollheal-update", 80, 10, 100)
+	newShellPaneWithHistory(t, socket, "deck_scrollheal-update", 100)
 	m.tmuxClient = tmux.Client{Socket: socket}
 	m.sessions = []store.Session{{ID: "reseed-2", Name: "scrollheal-update", Slug: "scrollheal-update", Status: "waiting"}}
 

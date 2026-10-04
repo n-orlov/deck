@@ -32,9 +32,9 @@ const aeTmuxSession = "deck_born"
 
 // aeModel builds a client wired to socket the way cmd/deck wires one,
 // with prepareAttach counting the attachment transactions entry records.
-func aeModel(t *testing.T, socket string, attachOnNew bool, width, height int, attachments *[]string) Model {
+func aeModel(t *testing.T, socket string, attachOnNew bool, height int, attachments *[]string) Model {
 	t.Helper()
-	return aeModelWith(t, socket, config.Settings{Color: true, AttachOnNew: attachOnNew}, width, height, attachments)
+	return aeModelWith(t, socket, config.Settings{Color: true, AttachOnNew: attachOnNew}, 100, height, attachments)
 }
 
 func aeModelWith(t *testing.T, socket string, settings config.Settings, width, height int, attachments *[]string) Model {
@@ -101,7 +101,7 @@ func aeAssertInteractiveOnBorn(t *testing.T, m Model) {
 func TestAttachOnNewEntersOnceThePaneIsLive(t *testing.T) {
 	socket := selectionTestSocket("aelive")
 	var attachments []string
-	m := aeModel(t, socket, true, 100, 30, &attachments)
+	m := aeModel(t, socket, true, 30, &attachments)
 	m = aeCreate(t, m)
 	if m.interactive {
 		t.Fatalf("entered interactive mode on the create's own reload, before any capture reported the pane live")
@@ -160,7 +160,7 @@ func TestAttachOnNewCancelledByKeyBeforePaneIsLive(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			socket := selectionTestSocket("aecancel" + tc.name)
 			var attachments []string
-			m := aeModel(t, socket, true, 100, 30, &attachments)
+			m := aeModel(t, socket, true, 30, &attachments)
 			m = aeCreate(t, m)
 			m = aeTick(m)
 			if m.interactive {
@@ -197,7 +197,7 @@ func TestAttachOnNewRefusesATooSmallPreviewLikeEnter(t *testing.T) {
 	socket := selectionTestSocket("aefloor")
 	newQuietSelectionPane(t, socket, aeTmuxSession, 80, 24)
 	var attachments []string
-	m := aeModel(t, socket, true, 100, 8, &attachments)
+	m := aeModel(t, socket, true, 8, &attachments)
 	if _, height := m.previewContentSize(); height >= interactiveMinInnerRows {
 		t.Fatalf("test assumption violated: preview content height %d is not below the %d-row floor", height, interactiveMinInnerRows)
 	}
@@ -238,7 +238,7 @@ func TestAttachOnNewOffSelectsOnly(t *testing.T) {
 	socket := selectionTestSocket("aeoff")
 	newQuietSelectionPane(t, socket, aeTmuxSession, 80, 24)
 	var attachments []string
-	m := aeModel(t, socket, false, 100, 30, &attachments)
+	m := aeModel(t, socket, false, 30, &attachments)
 	m = aeCreate(t, m)
 	if m.pendingAutoEnterSessionID != "" {
 		t.Fatalf("pendingAutoEnterSessionID = %q with attach_on_new off, want it never armed", m.pendingAutoEnterSessionID)
@@ -269,8 +269,8 @@ func TestAttachOnNewNeverFiresInASecondClient(t *testing.T) {
 	socket := selectionTestSocket("aesecond")
 	newQuietSelectionPane(t, socket, aeTmuxSession, 80, 24)
 	var attachmentsA, attachmentsB []string
-	a := aeModel(t, socket, true, 100, 30, &attachmentsA)
-	b := aeModel(t, socket, true, 100, 30, &attachmentsB)
+	a := aeModel(t, socket, true, 30, &attachmentsA)
+	b := aeModel(t, socket, true, 30, &attachmentsB)
 
 	a = aeCreate(t, a)
 	b = aeUpdate(b, sessionsLoaded{sessions: []store.Session{aeSession}})
@@ -302,7 +302,7 @@ func TestAttachOnNewNeverFiresInASecondClient(t *testing.T) {
 func TestAttachOnNewDropsAfterItsTickBudget(t *testing.T) {
 	socket := selectionTestSocket("aebudget")
 	var attachments []string
-	m := aeModel(t, socket, true, 100, 30, &attachments)
+	m := aeModel(t, socket, true, 30, &attachments)
 	m = aeCreate(t, m)
 	for i := 0; i <= autoEnterTickBudget; i++ {
 		m = aeTick(m)

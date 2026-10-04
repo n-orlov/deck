@@ -33,7 +33,6 @@ import (
 // cell) and is GREEN after it.
 func TestSettingsFooterCarriesDeckBackground(t *testing.T) {
 	for _, bt := range theme.Builtins() {
-		bt := bt
 		t.Run(bt.Name, func(t *testing.T) {
 			for _, mode := range []string{"normal", "discard", "search", "env-list", "env-edit", "string-edit"} {
 				t.Run(mode, func(t *testing.T) {

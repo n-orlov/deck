@@ -79,7 +79,6 @@ func TestDialogSelectionCellsRenderOnlyFloorTokens(t *testing.T) {
 
 	selectionSeen := false
 	for _, th := range builtins {
-		th := th
 		t.Run(th.Name, func(t *testing.T) {
 			selHex, err := th.Color(theme.Selection)
 			if err != nil {

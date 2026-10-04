@@ -19,10 +19,10 @@ import (
 // cmd/deck/main.go does -- rather than constructing config.Settings by hand,
 // so this test exercises the same Settings.File/resolved-field split tasks
 // 001/002 introduced.
-func settingsLiveApplyTestModel(t *testing.T) (model Model, path string) {
+func settingsLiveApplyTestModel(t *testing.T) Model {
 	t.Helper()
 	dir := t.TempDir()
-	path = filepath.Join(dir, "config.toml")
+	path := filepath.Join(dir, "config.toml")
 	contents := "allow_yolo = false\n" +
 		"stale_after = 45\n" +
 		"capture_min_interval = 5\n" +
@@ -47,7 +47,7 @@ func settingsLiveApplyTestModel(t *testing.T) (model Model, path string) {
 	loaded.Color = true
 	m := New(nil, loaded, "")
 	m.width, m.height = 120, 30
-	return m, path
+	return m
 }
 
 // settingsOpenAndSelect opens the `,` takeover and points the field-list
@@ -82,7 +82,7 @@ func settingsOpenAndSelect(t *testing.T, m Model, categoryIndex, fieldIndex int,
 // struct field flipped somewhere the screen never reads.
 func TestSettingsSaveAppliesLiveScopeFieldsWithoutRestart(t *testing.T) {
 	t.Run("allow_yolo", func(t *testing.T) {
-		m, _ := settingsLiveApplyTestModel(t)
+		m := settingsLiveApplyTestModel(t)
 		if m.settings.AllowYolo {
 			t.Fatal("seed AllowYolo = true, want false")
 		}
@@ -100,7 +100,7 @@ func TestSettingsSaveAppliesLiveScopeFieldsWithoutRestart(t *testing.T) {
 	})
 
 	t.Run("ui.ascii", func(t *testing.T) {
-		m, _ := settingsLiveApplyTestModel(t)
+		m := settingsLiveApplyTestModel(t)
 		updated, _ := m.Update(key("esc"))
 		before := updated.(Model).View()
 		if m.settings.ASCII {
@@ -129,7 +129,7 @@ func TestSettingsSaveAppliesLiveScopeFieldsWithoutRestart(t *testing.T) {
 	})
 
 	t.Run("ui.mouse", func(t *testing.T) {
-		m, _ := settingsLiveApplyTestModel(t)
+		m := settingsLiveApplyTestModel(t)
 		if m.settings.Mouse {
 			t.Fatal("seed Mouse = true, want false")
 		}
@@ -150,7 +150,7 @@ func TestSettingsSaveAppliesLiveScopeFieldsWithoutRestart(t *testing.T) {
 	})
 
 	t.Run("ui.theme", func(t *testing.T) {
-		m, _ := settingsLiveApplyTestModel(t)
+		m := settingsLiveApplyTestModel(t)
 		before := m.View()
 		original := m.settings.Theme.Name
 		builtins := theme.Builtins()
@@ -195,7 +195,7 @@ func TestSettingsSaveAppliesLiveScopeFieldsWithoutRestart(t *testing.T) {
 // exactly alone.
 func TestSettingsSaveDoesNotApplyRestartToApplyFieldsLive(t *testing.T) {
 	t.Run("stale_after", func(t *testing.T) {
-		m, _ := settingsLiveApplyTestModel(t)
+		m := settingsLiveApplyTestModel(t)
 		runningBefore := m.settings.StaleAfter
 		m = settingsOpenAndSelect(t, m, 0, 2, "Stale After")
 		updated, _ := m.Update(key("+"))
@@ -211,7 +211,7 @@ func TestSettingsSaveDoesNotApplyRestartToApplyFieldsLive(t *testing.T) {
 	})
 
 	t.Run("capture_min_interval", func(t *testing.T) {
-		m, _ := settingsLiveApplyTestModel(t)
+		m := settingsLiveApplyTestModel(t)
 		m = settingsOpenAndSelect(t, m, 0, 3, "Capture Min Interval")
 		updated, _ := m.Update(key("+"))
 		m = updated.(Model)
@@ -228,7 +228,7 @@ func TestSettingsSaveDoesNotApplyRestartToApplyFieldsLive(t *testing.T) {
 	})
 
 	t.Run("ui.recent_cwd_limit", func(t *testing.T) {
-		m, _ := settingsLiveApplyTestModel(t)
+		m := settingsLiveApplyTestModel(t)
 		// Field index 5, not 4: ui.preview_paint sits between preview_fit
 		// and recent_cwd_limit in schema.go's ui section (SPEC §11.3).
 		m = settingsOpenAndSelect(t, m, 1, 5, "Recent Cwd Limit")

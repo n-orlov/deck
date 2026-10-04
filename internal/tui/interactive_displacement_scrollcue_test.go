@@ -57,7 +57,7 @@ func TestDisplacementFallbackReseedLeavesNoArtificialScrollbackOrCue(t *testing.
 		historyLen = printed
 	)
 	socket := selectionTestSocket("dispb3")
-	newShellPaneWithHistory(t, socket, tmuxSess, 80, 10, printed)
+	newShellPaneWithHistory(t, socket, tmuxSess, printed)
 
 	m.tmuxClient = tmux.Client{Socket: socket}
 	m.sessions = []store.Session{{ID: "sess-dispb3-1", Name: slug, Slug: slug, Status: "waiting"}}

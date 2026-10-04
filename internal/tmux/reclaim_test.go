@@ -57,7 +57,7 @@ func TestReclaimLeakedInteractivePipesDisarmsRestoresAndRemovesAStaleDeadOwnerCl
 	if pidAlive(deadPID) {
 		t.Fatalf("test's chosen dead pid %d is alive; pick another", deadPID)
 	}
-	setWindowOwnershipRaw(t, socket, "s0", formatOwnershipClaim("deadowner", deadPID))
+	setWindowOwnershipRaw(t, socket, formatOwnershipClaim("deadowner", deadPID))
 	// R100 (task 111/113): the record's Geometry is the RESOLVED original --
 	// what enterInteractive's own ResolveIsizeGeometry would have written to
 	// @deck_isize_geometry on first claim -- so a real reclaim pass has the
@@ -120,7 +120,7 @@ func TestReclaimLeakedInteractivePipesDisarmsRestoresAndRemovesAStaleDeadOwnerCl
 	if width != geometry.Width || height != geometry.Height {
 		t.Fatalf("window is %dx%d after reclaim, want the byte-exact original %dx%d", width, height, geometry.Width, geometry.Height)
 	}
-	_, windowSizeSet, err := client.readBuiltinWindowOption(ctx, "s0", "window-size")
+	_, windowSizeSet, err := client.readBuiltinWindowOption(ctx, "s0")
 	if err != nil {
 		t.Fatalf("read window-size after reclaim: %v", err)
 	}
@@ -166,7 +166,7 @@ func TestReclaimLeakedInteractivePipesLeavesALiveOwnersClaimUntouched(t *testing
 		t.Fatalf("CaptureWindowGeometry: %v", err)
 	}
 	liveClaim := formatOwnershipClaim("livecompetitor", os.Getpid())
-	setWindowOwnershipRaw(t, socket, "s0", liveClaim)
+	setWindowOwnershipRaw(t, socket, liveClaim)
 	// R100 (task 111/113): the live owner's own @deck_isize_geometry record
 	// must be just as untouchable as its ownership option -- reclaim must
 	// not clear the ONE record of the window's true pre-deck size out from

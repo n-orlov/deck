@@ -195,7 +195,7 @@ func caretCases() []caretCase {
 			return caretPress(m, "enter", "enter", "left", "left")
 		}, "Value: val", "u"},
 		{"settings string", func(t *testing.T, color bool) Model {
-			m := settingsOpenOnStringField(t, config.Settings{}, "pre_launch")
+			m := settingsOpenOnStringField(t, config.Settings{})
 			m.settings.Color = color
 			m.width, m.height = 120, 40
 			m = caretPress(m, "enter")

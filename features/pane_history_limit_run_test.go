@@ -11,7 +11,7 @@ import (
 // will be deck's own Client.Bootstrap) explicitly set, against a real tmux
 // server rather than a fixture.
 func TestReadPaneHistoryLimitDistinguishesTmuxDefaultFromADeckValue(t *testing.T) {
-	socket, cleanup := newBareTmuxSession(t, "s0")
+	socket, cleanup := newBareTmuxSession(t)
 	defer cleanup()
 	ctx := context.Background()
 
@@ -47,7 +47,7 @@ func TestReadPaneHistoryLimitDistinguishesTmuxDefaultFromADeckValue(t *testing.T
 // the default when an override is live, and asserting the override's value
 // when it is not).
 func TestAssertPaneHistoryLimitFailsAgainstTheWrongValue(t *testing.T) {
-	socket, cleanup := newBareTmuxSession(t, "s0")
+	socket, cleanup := newBareTmuxSession(t)
 	defer cleanup()
 	ctx := context.Background()
 

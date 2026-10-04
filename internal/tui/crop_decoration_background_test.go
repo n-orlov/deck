@@ -146,7 +146,6 @@ func TestCropDecorationsCarryDeckBackground(t *testing.T) {
 		}
 		t.Run(name, func(t *testing.T) {
 			for _, bt := range theme.Builtins() {
-				bt := bt
 				t.Run(bt.Name, func(t *testing.T) {
 					m, backgroundHex, geo := newCropDecorationModel(t, bt, stacked)
 					view := m.View()

@@ -38,9 +38,9 @@ type panePIDIdentitySnapshot struct {
 	PanePID            string
 }
 
-func capturePanePIDIdentity(t *testing.T, socket, target string) panePIDIdentitySnapshot {
+func capturePanePIDIdentity(t *testing.T, socket string) panePIDIdentitySnapshot {
 	t.Helper()
-	raw := runTmux(t, socket, "display-message", "-p", "-t", target, panePIDIdentityFormat)
+	raw := runTmux(t, socket, "display-message", "-p", "-t", "s0", panePIDIdentityFormat)
 	fields := strings.Split(raw, "|")
 	if len(fields) != 6 {
 		t.Fatalf("display-message %q returned %d fields, want 6: %q", panePIDIdentityFormat, len(fields), raw)
@@ -96,9 +96,9 @@ func (s panePIDIdentitySnapshot) value(field panePIDIdentityField) string {
 // the send command if every named field still matches -- exactly
 // Dispatcher.Send's own refuse-on-drift discipline, but with the checked
 // field set under the test's control instead of fixed at five.
-func verifyAndSendOnFieldSubset(t *testing.T, socket, target string, before panePIDIdentitySnapshot, fields []panePIDIdentityField, sendArgs ...string) error {
+func verifyAndSendOnFieldSubset(t *testing.T, socket string, before panePIDIdentitySnapshot, fields []panePIDIdentityField, sendArgs ...string) error {
 	t.Helper()
-	after := capturePanePIDIdentity(t, socket, target)
+	after := capturePanePIDIdentity(t, socket)
 	for _, field := range fields {
 		if before.value(field) != after.value(field) {
 			return fmt.Errorf("refuse: field %q drifted: before %q, after %q", field, before.value(field), after.value(field))
@@ -115,16 +115,16 @@ func verifyAndSendOnFieldSubset(t *testing.T, socket, target string, before pane
 
 // waitForMarkerInPane polls capture-pane until marker appears, failing the
 // test if it never does within the timeout.
-func waitForMarkerInPane(t *testing.T, socket, target, marker string, timeout time.Duration) {
+func waitForMarkerInPane(t *testing.T, socket, marker string) {
 	t.Helper()
-	deadline := time.Now().Add(timeout)
+	deadline := time.Now().Add(3 * time.Second)
 	for {
-		capture := runTmux(t, socket, "capture-pane", "-p", "-t", target)
+		capture := runTmux(t, socket, "capture-pane", "-p", "-t", "s0")
 		if strings.Contains(capture, marker) {
 			return
 		}
 		if time.Now().After(deadline) {
-			t.Fatalf("marker %q never appeared in pane %q output:\n%s", marker, target, capture)
+			t.Fatalf("marker %q never appeared in pane %q output:\n%s", marker, "s0", capture)
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
@@ -161,12 +161,12 @@ func TestRespawnPaneChangesOnlyPanePID(t *testing.T) {
 	runTmux(t, socket, "respawn-pane", "-k", "-t", "s0", "bash")
 	time.Sleep(200 * time.Millisecond)
 
-	before := capturePanePIDIdentity(t, socket, "s0")
+	before := capturePanePIDIdentity(t, socket)
 
 	runTmux(t, socket, "respawn-pane", "-k", "-t", "s0", "bash")
 	time.Sleep(200 * time.Millisecond)
 
-	after := capturePanePIDIdentity(t, socket, "s0")
+	after := capturePanePIDIdentity(t, socket)
 
 	if before.PaneID != after.PaneID {
 		t.Errorf("pane_id changed across respawn-pane: before %q, after %q", before.PaneID, after.PaneID)
@@ -209,19 +209,19 @@ func TestPaneIDAloneStillDeliversIntoTheReplacementProgramAfterRespawn(t *testin
 	runTmux(t, socket, "respawn-pane", "-k", "-t", "s0", "bash")
 	time.Sleep(200 * time.Millisecond)
 
-	before := capturePanePIDIdentity(t, socket, "s0")
+	before := capturePanePIDIdentity(t, socket)
 
 	runTmux(t, socket, "respawn-pane", "-k", "-t", "s0", "bash")
 	time.Sleep(200 * time.Millisecond)
 
 	marker := "panepid-idalone-marker-71029"
-	err := verifyAndSendOnFieldSubset(t, socket, "s0", before, []panePIDIdentityField{fieldPaneID},
+	err := verifyAndSendOnFieldSubset(t, socket, before, []panePIDIdentityField{fieldPaneID},
 		"send-keys", "-t", "s0", "-l", "--", "echo "+marker)
 	if err != nil {
 		t.Fatalf("verify(pane_id alone) refused a send after respawn-pane, want it to (wrongly) deliver: %v", err)
 	}
 	runTmux(t, socket, "send-keys", "-t", "s0", "Enter")
-	waitForMarkerInPane(t, socket, "s0", marker, 3*time.Second)
+	waitForMarkerInPane(t, socket, marker)
 }
 
 // TestPaneIDPlusSessionNameStillDeliversIntoTheReplacementProgramAfterRespawn
@@ -235,19 +235,19 @@ func TestPaneIDPlusSessionNameStillDeliversIntoTheReplacementProgramAfterRespawn
 	runTmux(t, socket, "respawn-pane", "-k", "-t", "s0", "bash")
 	time.Sleep(200 * time.Millisecond)
 
-	before := capturePanePIDIdentity(t, socket, "s0")
+	before := capturePanePIDIdentity(t, socket)
 
 	runTmux(t, socket, "respawn-pane", "-k", "-t", "s0", "bash")
 	time.Sleep(200 * time.Millisecond)
 
 	marker := "panepid-idsession-marker-40218"
-	err := verifyAndSendOnFieldSubset(t, socket, "s0", before, []panePIDIdentityField{fieldPaneID, fieldSessionName},
+	err := verifyAndSendOnFieldSubset(t, socket, before, []panePIDIdentityField{fieldPaneID, fieldSessionName},
 		"send-keys", "-t", "s0", "-l", "--", "echo "+marker)
 	if err != nil {
 		t.Fatalf("verify(pane_id+session_name) refused a send after respawn-pane, want it to (wrongly) deliver: %v", err)
 	}
 	runTmux(t, socket, "send-keys", "-t", "s0", "Enter")
-	waitForMarkerInPane(t, socket, "s0", marker, 3*time.Second)
+	waitForMarkerInPane(t, socket, marker)
 }
 
 // TestFourFieldVerifyStillDeliversIntoTheReplacementProgramAfterRespawn is
@@ -266,20 +266,20 @@ func TestFourFieldVerifyStillDeliversIntoTheReplacementProgramAfterRespawn(t *te
 	runTmux(t, socket, "respawn-pane", "-k", "-t", "s0", "bash")
 	time.Sleep(200 * time.Millisecond)
 
-	before := capturePanePIDIdentity(t, socket, "s0")
+	before := capturePanePIDIdentity(t, socket)
 
 	runTmux(t, socket, "respawn-pane", "-k", "-t", "s0", "bash")
 	time.Sleep(200 * time.Millisecond)
 
 	fourFields := []panePIDIdentityField{fieldPaneID, fieldSessionName, fieldPaneDead, fieldPaneCurrentCommand}
 	marker := "panepid-fourfield-marker-58301"
-	err := verifyAndSendOnFieldSubset(t, socket, "s0", before, fourFields,
+	err := verifyAndSendOnFieldSubset(t, socket, before, fourFields,
 		"send-keys", "-t", "s0", "-l", "--", "echo "+marker)
 	if err != nil {
 		t.Fatalf("four-field verify (pane_id, session_name, pane_dead, pane_current_command) refused a send after respawn-pane, want it to (wrongly) deliver: %v", err)
 	}
 	runTmux(t, socket, "send-keys", "-t", "s0", "Enter")
-	waitForMarkerInPane(t, socket, "s0", marker, 3*time.Second)
+	waitForMarkerInPane(t, socket, marker)
 }
 
 // TestFourFieldVerifyIsNonVacuousAndDeliversAgainstAnUnmutatedPane is the
@@ -298,19 +298,19 @@ func TestFourFieldVerifyIsNonVacuousAndDeliversAgainstAnUnmutatedPane(t *testing
 	runTmux(t, socket, "respawn-pane", "-k", "-t", "s0", "bash")
 	time.Sleep(200 * time.Millisecond)
 
-	before := capturePanePIDIdentity(t, socket, "s0")
+	before := capturePanePIDIdentity(t, socket)
 	// Deliberately no respawn-pane here: the pane is left exactly as it
 	// was when before was captured.
 
 	fourFields := []panePIDIdentityField{fieldPaneID, fieldSessionName, fieldPaneDead, fieldPaneCurrentCommand}
 	marker := "panepid-fourfield-control-marker-90214"
-	err := verifyAndSendOnFieldSubset(t, socket, "s0", before, fourFields,
+	err := verifyAndSendOnFieldSubset(t, socket, before, fourFields,
 		"send-keys", "-t", "s0", "-l", "--", "echo "+marker)
 	if err != nil {
 		t.Fatalf("four-field verify refused a send against an UNMUTATED pane, want it to deliver (non-vacuous control): %v", err)
 	}
 	runTmux(t, socket, "send-keys", "-t", "s0", "Enter")
-	waitForMarkerInPane(t, socket, "s0", marker, 3*time.Second)
+	waitForMarkerInPane(t, socket, marker)
 }
 
 // TestAddingPanePIDRejectsAfterRespawn is PRD II-29's payoff: take the
@@ -326,14 +326,14 @@ func TestAddingPanePIDRejectsAfterRespawn(t *testing.T) {
 	runTmux(t, socket, "respawn-pane", "-k", "-t", "s0", "bash")
 	time.Sleep(200 * time.Millisecond)
 
-	before := capturePanePIDIdentity(t, socket, "s0")
+	before := capturePanePIDIdentity(t, socket)
 
 	runTmux(t, socket, "respawn-pane", "-k", "-t", "s0", "bash")
 	time.Sleep(200 * time.Millisecond)
 
 	fiveFields := []panePIDIdentityField{fieldPaneID, fieldSessionName, fieldPaneDead, fieldPaneCurrentCommand, fieldPanePID}
 	marker := "panepid-fivefield-marker-60127"
-	err := verifyAndSendOnFieldSubset(t, socket, "s0", before, fiveFields,
+	err := verifyAndSendOnFieldSubset(t, socket, before, fiveFields,
 		"send-keys", "-t", "s0", "-l", "--", "echo "+marker)
 	if err == nil {
 		t.Fatalf("verify with pane_pid added: got nil error after a respawn-pane, want a refusal")

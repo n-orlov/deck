@@ -229,7 +229,7 @@ func TestPasteDropsControlCharacters(t *testing.T) {
 func TestGraphemeClusters(t *testing.T) {
 	// e + combining acute, a ZWJ family emoji, and a wide CJK character.
 	const combining = "é"
-	const zwj = "\U0001F468‍\U0001F469‍\U0001F467"
+	const zwj = "\U0001F468\u200d\U0001F469\u200d\U0001F467"
 	const cjk = "漢"
 	for _, c := range []struct{ name, char string }{
 		{"combining", combining}, {"zwj emoji", zwj}, {"wide cjk", cjk},

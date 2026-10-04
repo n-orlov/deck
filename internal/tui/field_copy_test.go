@@ -30,7 +30,7 @@ func fieldCopyHarness(t *testing.T) (client tmux.Client, selectionBuffer func() 
 	t.Cleanup(func() { oscClipboardWriter = previous })
 
 	socket := selectionTestSocket("fieldcopy")
-	newBareSelectionSession(t, socket, "fieldcopytarget", 80, 24)
+	newBareSelectionSession(t, socket, "fieldcopytarget")
 	client = tmux.Client{Socket: socket}
 	selectionBuffer = func() (string, error) {
 		out, err := exec.Command("tmux", "-L", socket, "show-buffer", "-b", tmux.SelectionBufferName).CombinedOutput()

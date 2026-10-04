@@ -43,13 +43,13 @@ type WindowGeometry struct {
 // readWindowOwnership because the two option kinds fail differently when
 // unset and a helper that conflated them would silently misread whichever
 // kind it was never tested against.
-func (c Client) readBuiltinWindowOption(ctx context.Context, target, name string) (value string, set bool, err error) {
+func (c Client) readBuiltinWindowOption(ctx context.Context, target string) (value string, set bool, err error) {
 	commandCtx, cancel := context.WithTimeout(ctx, c.timeout())
 	defer cancel()
-	output, err := c.command(commandCtx, "show-options", "-wv", "-t", target, name).CombinedOutput()
+	output, err := c.command(commandCtx, "show-options", "-wv", "-t", target, "window-size").CombinedOutput()
 	trimmed := strings.TrimRight(string(output), "\n")
 	if err != nil {
-		return "", false, fmt.Errorf("tmux -L %s show-options -wv -t %s %s: %w: %s", c.Socket, target, name, err, trimmed)
+		return "", false, fmt.Errorf("tmux -L %s show-options -wv -t %s %s: %w: %s", c.Socket, target, "window-size", err, trimmed)
 	}
 	if trimmed == "" {
 		return "", false, nil
@@ -133,7 +133,7 @@ func (c Client) CaptureWindowGeometry(ctx context.Context, target string) (Windo
 	if err != nil {
 		return WindowGeometry{}, err
 	}
-	value, set, err := c.readBuiltinWindowOption(ctx, target, "window-size")
+	value, set, err := c.readBuiltinWindowOption(ctx, target)
 	if err != nil {
 		return WindowGeometry{}, err
 	}

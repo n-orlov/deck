@@ -52,7 +52,7 @@ func settingsFocusFieldByKey(t *testing.T, m Model, fullKey string) Model {
 // named free-text field. cfg.File is what settingsEditsFromSettings seeds
 // the staged copy from (requirement 21), so a caller wanting a pre-existing
 // value sets it there, exactly as a real config.toml load would.
-func settingsOpenOnStringField(t *testing.T, cfg config.Settings, fullKey string) Model {
+func settingsOpenOnStringField(t *testing.T, cfg config.Settings) Model {
 	t.Helper()
 	model := New(nil, cfg, "")
 	updated, _ := model.Update(key(","))
@@ -60,7 +60,7 @@ func settingsOpenOnStringField(t *testing.T, cfg config.Settings, fullKey string
 	if !m.settingsOpen {
 		t.Fatal(", did not open settings")
 	}
-	return settingsFocusFieldByKey(t, m, fullKey)
+	return settingsFocusFieldByKey(t, m, "pre_launch")
 }
 
 // TestSettingsStringEnterOpensEditorPrefilledWithStagedValue is the
@@ -69,7 +69,7 @@ func settingsOpenOnStringField(t *testing.T, cfg config.Settings, fullKey string
 // value (m.settingsEdits, via settingsStringValue) with nothing staged yet
 // -- opening an editor is not an edit.
 func TestSettingsStringEnterOpensEditorPrefilledWithStagedValue(t *testing.T) {
-	model := settingsOpenOnStringField(t, config.Settings{File: config.FileConfig{PreLaunch: "echo staged"}}, "pre_launch")
+	model := settingsOpenOnStringField(t, config.Settings{File: config.FileConfig{PreLaunch: "echo staged"}})
 
 	updated, _ := model.Update(key("enter"))
 	m := updated.(Model)
@@ -102,7 +102,7 @@ func TestSettingsStringEnterOpensEditorPrefilledWithStagedValue(t *testing.T) {
 // space, so it also proves a lone space keystroke is text here rather than
 // §11.5's activate key.
 func TestSettingsStringTypingAndEnterStagesTheValue(t *testing.T) {
-	model := settingsOpenOnStringField(t, config.Settings{}, "pre_launch")
+	model := settingsOpenOnStringField(t, config.Settings{})
 
 	updated, _ := model.Update(key("enter"))
 	m := updated.(Model)
@@ -140,7 +140,7 @@ func TestSettingsStringTypingAndEnterStagesTheValue(t *testing.T) {
 // moved the selection or opened search in a mode that did not take the
 // keymap over.
 func TestSettingsStringEditingSwallowsNavigationRunes(t *testing.T) {
-	model := settingsOpenOnStringField(t, config.Settings{}, "pre_launch")
+	model := settingsOpenOnStringField(t, config.Settings{})
 
 	updated, _ := model.Update(key("enter"))
 	m := updated.(Model)
@@ -173,7 +173,7 @@ func TestSettingsStringEditingSwallowsNavigationRunes(t *testing.T) {
 // is exactly what it was, so the takeover is not dirty and esc-on-a-clean-
 // takeover still closes without the discard prompt.
 func TestSettingsStringEscCancelsLeavingStagedValueUntouched(t *testing.T) {
-	model := settingsOpenOnStringField(t, config.Settings{File: config.FileConfig{PreLaunch: "keep me"}}, "pre_launch")
+	model := settingsOpenOnStringField(t, config.Settings{File: config.FileConfig{PreLaunch: "keep me"}})
 
 	updated, _ := model.Update(key("enter"))
 	m := updated.(Model)
@@ -202,7 +202,7 @@ func TestSettingsStringEscCancelsLeavingStagedValueUntouched(t *testing.T) {
 // config.WriteConfigFile would then quote into config.toml as invalid
 // bytes -- hence the utf8.ValidString assertion alongside the equality one.
 func TestSettingsStringBackspaceDeletesOneRune(t *testing.T) {
-	model := settingsOpenOnStringField(t, config.Settings{File: config.FileConfig{PreLaunch: "echo héé"}}, "pre_launch")
+	model := settingsOpenOnStringField(t, config.Settings{File: config.FileConfig{PreLaunch: "echo héé"}})
 
 	updated, _ := model.Update(key("enter"))
 	m := updated.(Model)
@@ -225,7 +225,7 @@ func TestSettingsStringBackspaceDeletesOneRune(t *testing.T) {
 // clear the key (and make the takeover dirty), never be swallowed as a
 // second kind of cancel.
 func TestSettingsStringCommittingEmptyClearsTheKey(t *testing.T) {
-	model := settingsOpenOnStringField(t, config.Settings{File: config.FileConfig{PreLaunch: "abc"}}, "pre_launch")
+	model := settingsOpenOnStringField(t, config.Settings{File: config.FileConfig{PreLaunch: "abc"}})
 
 	updated, _ := model.Update(key("enter"))
 	m := updated.(Model)
@@ -312,7 +312,7 @@ func TestSettingsStringPostDestroyRoundTripsThroughCtrlS(t *testing.T) {
 // unset one. It now borrows KindEnum's own "(default)" idiom as
 // "(not set)", and a configured value replaces it verbatim.
 func TestSettingsStringEmptyValueRendersNotSetPlaceholder(t *testing.T) {
-	model := settingsOpenOnStringField(t, config.Settings{}, "pre_launch")
+	model := settingsOpenOnStringField(t, config.Settings{})
 	model.width, model.height = 120, 40
 
 	label := settingsFieldLabel(config.Field{Key: "pre_launch"})
@@ -336,7 +336,7 @@ func TestSettingsStringEmptyValueRendersNotSetPlaceholder(t *testing.T) {
 // "never binds a key it does not name" rule settingsFooterLine's own
 // comment states for the takeover as a whole.
 func TestSettingsStringEditorRendersTypedTextCursorAndKeys(t *testing.T) {
-	model := settingsOpenOnStringField(t, config.Settings{}, "pre_launch")
+	model := settingsOpenOnStringField(t, config.Settings{})
 	model.width, model.height = 120, 40
 
 	updated, _ := model.Update(key("enter"))
@@ -370,7 +370,7 @@ func TestSettingsStringEditorKeepsLongValuesInsideThePanel(t *testing.T) {
 	value := "echo a" + strings.Repeat("b", 300) + "  two spaces  and tab"
 	// The whole editing frame stays inside deck's supported minimum too,
 	// mirroring TestSettingsViewFitsFrameBudget's own two checks.
-	model := settingsOpenOnStringField(t, config.Settings{}, "pre_launch")
+	model := settingsOpenOnStringField(t, config.Settings{})
 	model.width, model.height = 80, 24
 	updated, _ := model.Update(key("enter"))
 	m := updated.(Model)

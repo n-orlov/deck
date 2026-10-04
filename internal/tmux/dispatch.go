@@ -197,23 +197,22 @@ func (d *Dispatcher) Verifications() int { return d.verifications }
 // verify performed inside Send -- there is only ever one verify
 // implementation (verifyLocked) and both Verify and Send call it.
 func (d *Dispatcher) Verify(ctx context.Context) error {
-	_, err := d.verify(ctx)
-	return err
+	return d.verify(ctx)
 }
 
-func (d *Dispatcher) verify(ctx context.Context) (Identity, error) {
+func (d *Dispatcher) verify(ctx context.Context) error {
 	d.verifications++
 	fresh, dead, err := d.client.resolveIdentity(ctx, d.target)
 	if err != nil {
-		return Identity{}, err
+		return err
 	}
 	if dead {
-		return fresh, ErrPaneDead
+		return ErrPaneDead
 	}
 	if fresh != d.identity {
-		return fresh, ErrIdentityDrifted
+		return ErrIdentityDrifted
 	}
-	return fresh, nil
+	return nil
 }
 
 // Send re-resolves target's identity immediately before running the
@@ -248,7 +247,7 @@ func (d *Dispatcher) Send(ctx context.Context, args ...string) error {
 			return fmt.Errorf("dispatch to %q: args must not include -t; Send always supplies the pane id captured at entry so no caller can dispatch by session name (PRD II-30)", d.target)
 		}
 	}
-	if _, err := d.verify(ctx); err != nil {
+	if err := d.verify(ctx); err != nil {
 		return fmt.Errorf("refuse dispatch to %q: %w", d.target, err)
 	}
 	full := make([]string, 0, len(args)+2)

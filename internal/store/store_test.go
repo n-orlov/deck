@@ -1288,7 +1288,6 @@ func TestCreateSessionResolvesGroupNameOnReturnNotJustOnReread(t *testing.T) {
 // may recreate the pre-existing session row to gain the new table.
 func TestOpenMigratesV1V2V3FixturesToRecentCwdsWithoutRecreatingSessionRow(t *testing.T) {
 	for _, fromVersion := range []int{1, 2, 3} {
-		fromVersion := fromVersion
 		t.Run(fmt.Sprintf("fromV%d", fromVersion), func(t *testing.T) {
 			home := filepath.Join(t.TempDir(), "deck")
 			if err := os.MkdirAll(home, 0o755); err != nil {
@@ -1413,7 +1412,7 @@ func TestPromoteRecentCwdOrdersMostRecentFirstByMonotonicSequence(t *testing.T) 
 	}
 	// used_seq must strictly increase with promotion order (never a repeated
 	// or clock-derived value) even though DECK_CLOCK never advances above.
-	if !(got[0].UsedSeq > got[1].UsedSeq && got[1].UsedSeq > got[2].UsedSeq) {
+	if got[0].UsedSeq <= got[1].UsedSeq || got[1].UsedSeq <= got[2].UsedSeq {
 		t.Fatalf("used_seq did not strictly increase in promotion order: %+v", got)
 	}
 }

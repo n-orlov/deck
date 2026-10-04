@@ -20,11 +20,11 @@ import (
 // and perturbs cursor position or any mode this test just set. The pane
 // is left with that blocking command running; the caller's session
 // cleanup (kill-server) is what ends it.
-func runInPaneBlocking(t *testing.T, socket, target, rawBytesShellLiteral string) {
+func runInPaneBlocking(t *testing.T, socket, rawBytesShellLiteral string) {
 	t.Helper()
 	cmd := "printf \"" + rawBytesShellLiteral + "\"; cat > /dev/null"
-	runTmux(t, socket, "send-keys", "-t", target, "-l", "--", cmd)
-	runTmux(t, socket, "send-keys", "-t", target, "Enter")
+	runTmux(t, socket, "send-keys", "-t", "s0", "-l", "--", cmd)
+	runTmux(t, socket, "send-keys", "-t", "s0", "Enter")
 	time.Sleep(300 * time.Millisecond)
 }
 
@@ -188,7 +188,7 @@ func TestPaneSeedStateReadsEachNonDefaultFieldFromARealPane(t *testing.T) {
 			client := Client{Socket: socket, Timeout: 5 * time.Second}
 			ctx := context.Background()
 
-			runInPaneBlocking(t, socket, "s0", tc.bytes)
+			runInPaneBlocking(t, socket, tc.bytes)
 
 			state, err := client.PaneSeedState(ctx, "s0")
 			if err != nil {
@@ -232,8 +232,7 @@ func TestCapturePaneCarriesNoModeState(t *testing.T) {
 	// Colour text (SGR) deliberately included alongside the dangerous
 	// modes: the point is that SGR DOES survive (it belongs in a
 	// capture) while none of the mode-setting sequences do.
-	runInPaneBlocking(t, socket, "s0",
-		`\033[?1049h\033[3;7r\033[?6h\033[4h\033[?1h\033[?1002h\033[?7l\033[?25l\033[31mRED\033[0m`)
+	runInPaneBlocking(t, socket, `\033[?1049h\033[3;7r\033[?6h\033[4h\033[?1h\033[?1002h\033[?7l\033[?25l\033[31mRED\033[0m`)
 
 	state, err := client.PaneSeedState(ctx, "s0")
 	if err != nil {

@@ -111,7 +111,7 @@ func TestR150LiveGroupedSidebarRowSettleProvesActualStatus(t *testing.T) {
 	// REJECT, burning the full race-widened reconcileIntervalPollDeadline
 	// (task 016) before returning; widen this outer context to accommodate
 	// both, on top of the unchanged 15s normal-build budget.
-	ctx, cancel := context.WithTimeout(context.Background(), r150LiveOuterDeadline(15*time.Second, 2, racebuild.Enabled))
+	ctx, cancel := context.WithTimeout(context.Background(), r150LiveOuterDeadline(15*time.Second, racebuild.Enabled))
 	defer cancel()
 	ctx = context.WithValue(ctx, scenarioHarnessKey{}, h)
 	must := func(err error) {

@@ -38,8 +38,7 @@ func TestAAtomicallyClearsSelectedWaitingEpisodeBeforeAttach(t *testing.T) {
 		func(context.Context, string) (*exec.Cmd, error) { return exec.Command("true"), nil })
 	updated, _ := model.Update(model.loadSessions())
 	model = updated.(Model)
-	updated, command := model.Update(key("a"))
-	model = updated.(Model)
+	_, command := model.Update(key("a"))
 	if command == nil {
 		t.Fatal("a did not schedule attachment")
 	}
@@ -85,8 +84,7 @@ func TestAAcknowledgesErrorWithoutChangingVerdict(t *testing.T) {
 		func(context.Context, string) (*exec.Cmd, error) { return exec.Command("true"), nil })
 	updated, _ := model.Update(model.loadSessions())
 	model = updated.(Model)
-	updated, command := model.Update(key("a"))
-	model = updated.(Model)
+	_, command := model.Update(key("a"))
 	if command == nil {
 		t.Fatal("a on error row did not schedule attachment")
 	}

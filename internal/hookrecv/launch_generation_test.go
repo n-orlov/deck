@@ -146,15 +146,6 @@ func TestSupersededHookRecordsADistinctDeclinedEventKindAndReason(t *testing.T) 
 	}
 }
 
-func containsGeneration(s, substr string) bool {
-	for i := 0; i+len(substr) <= len(s); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
-}
-
 // TestSupersededSessionStartDoesNotMoveTheConversationID keeps requirement
 // 44's identity move on the same side of the R74 rule as the status write: a
 // replaced pane's SessionStart names the conversation that pane was running,

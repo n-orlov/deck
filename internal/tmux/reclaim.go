@@ -96,9 +96,11 @@ func loadInteractiveClaimRecord(dir string) (InteractiveClaimRecord, error) {
 // own call site in cmd/deck/main.go: a failure reclaiming one leaked pipe
 // must never stop deck from starting, and must never block starting on
 // something that cannot converge (a tmux server that is itself gone, a
-// target tmux has already forgotten). The first error encountered, if
-// any, is still returned so the caller can report it -- every entry is
-// still attempted regardless.
+// target tmux has already forgotten). A failed scan of the temp
+// root is still returned so the caller can report it; it is the only error
+// this returns: every per-dir step (the tmux
+// disarm/restore/release calls and the removal) is best-effort and never
+// stops the pass, so every entry is attempted regardless.
 func ReclaimLeakedInteractivePipes(ctx context.Context) ([]string, error) {
 	root := interactivePipeTempRoot
 	if root == "" {
@@ -113,7 +115,6 @@ func ReclaimLeakedInteractivePipes(ctx context.Context) ([]string, error) {
 	}
 
 	var reclaimed []string
-	var firstErr error
 	for _, entry := range entries {
 		if !entry.IsDir() || !strings.HasPrefix(entry.Name(), interactivePipeTempDirPrefix) {
 			continue
@@ -129,15 +130,11 @@ func ReclaimLeakedInteractivePipes(ctx context.Context) ([]string, error) {
 			reclaimed = append(reclaimed, dir)
 			continue
 		}
-		did, err := reclaimOne(ctx, Client{Socket: record.Socket}, dir, record)
-		if err != nil && firstErr == nil {
-			firstErr = err
-		}
-		if did {
+		if reclaimOne(ctx, Client{Socket: record.Socket}, dir, record) {
 			reclaimed = append(reclaimed, dir)
 		}
 	}
-	return reclaimed, firstErr
+	return reclaimed, nil
 }
 
 // reclaimOne reclaims a single leaked interactive pipe, or stands down
@@ -148,7 +145,7 @@ func ReclaimLeakedInteractivePipes(ctx context.Context) ([]string, error) {
 // process's own tmux client has claimed anything, so the only way another
 // claim on the SAME window can be live is a second deck process already
 // running against the same tmux server).
-func reclaimOne(ctx context.Context, client Client, dir string, record InteractiveClaimRecord) (bool, error) {
+func reclaimOne(ctx context.Context, client Client, dir string, record InteractiveClaimRecord) bool {
 	state, err := client.readWindowOwnership(ctx, record.WindowTarget)
 	if err != nil {
 		// The window (or the whole tmux server/socket) is gone entirely --
@@ -157,7 +154,7 @@ func reclaimOne(ctx context.Context, client Client, dir string, record Interacti
 		// Set==false with no error). Nothing is left to disarm or restore
 		// against; only the leaked FIFO/dir remains real.
 		_ = os.RemoveAll(dir)
-		return true, nil
+		return true
 	}
 	if state.Set {
 		_, pid, ok := parseOwnershipClaim(state.Value)
@@ -171,7 +168,7 @@ func reclaimOne(ctx context.Context, client Client, dir string, record Interacti
 			// live owner left them -- R100's original-geometry record must
 			// outlive every steal until the LAST holder lets go legitimately,
 			// and a live owner has not.
-			return false, nil
+			return false
 		}
 	}
 	// Stale (a dead owner's claim, or already unset with the pipe left
@@ -190,5 +187,5 @@ func reclaimOne(ctx context.Context, client Client, dir string, record Interacti
 		_ = client.unsetWindowOwnership(ctx, record.WindowTarget)
 	}
 	_ = os.RemoveAll(dir)
-	return true, nil
+	return true
 }

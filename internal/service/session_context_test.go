@@ -128,7 +128,6 @@ func assertSessionContextEnv(t *testing.T, socket string, session store.Session,
 // pane's own tmux environment table with the row's own value on both.
 func TestSessionContextEnvAcrossAdaptersAndLaunchPaths(t *testing.T) {
 	for _, kind := range []string{"claude", "pi", "shell"} {
-		kind := kind
 		t.Run(kind, func(t *testing.T) {
 			cwd := t.TempDir()
 			if kind != "shell" {
@@ -296,7 +295,6 @@ func TestSessionContextEnvExportsGroupNotLegacyField(t *testing.T) {
 // environment, not just through sessionContextEnv in isolation.
 func TestSessionContextEnvExportsNamedGroupThroughRealPaneLaunch(t *testing.T) {
 	for _, kind := range []string{"shell", "claude", "pi", "codex"} {
-		kind := kind
 		t.Run(kind, func(t *testing.T) {
 			cwd := t.TempDir()
 			if kind != "shell" {

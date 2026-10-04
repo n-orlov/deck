@@ -41,7 +41,6 @@ func TestCodex_NeverEmitsForbiddenFlags(t *testing.T) {
 
 	codex := Codex{}
 	for _, profile := range codexProfiles {
-		profile := profile
 		t.Run(profile, func(t *testing.T) {
 			launchArgv, err := codex.Launch(LaunchInput{CWD: "/tmp/proj", Profile: profile})
 			if err != nil {

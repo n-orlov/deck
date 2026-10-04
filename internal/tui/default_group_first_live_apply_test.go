@@ -47,7 +47,7 @@ func defaultGroupFirstLiveApplyTestSessions() []store.Session {
 // while the selected session's id stays exactly what it was, even though
 // the reorder moves that session's row to a different position.
 func TestSettingsSaveReordersGroupsLivePreservingSelection(t *testing.T) {
-	model, _ := settingsLiveApplyTestModel(t)
+	model := settingsLiveApplyTestModel(t)
 	if model.settings.DefaultGroupFirst {
 		t.Fatal("seed DefaultGroupFirst = true, want false")
 	}
@@ -108,7 +108,7 @@ func TestSettingsSaveReordersGroupsLivePreservingSelection(t *testing.T) {
 // settingsFieldEnvOverride/settingsApplyLiveFields themselves consult --
 // rather than waiting on an env var config.LoadFrom does not yet resolve.
 func TestSettingsSaveDefaultGroupFirstRespectsEnvOverride(t *testing.T) {
-	model, _ := settingsLiveApplyTestModel(t)
+	model := settingsLiveApplyTestModel(t)
 	if model.settings.EnvOverrides == nil {
 		model.settings.EnvOverrides = map[string]string{}
 	}

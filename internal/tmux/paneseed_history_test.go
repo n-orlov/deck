@@ -56,9 +56,9 @@ func fillPaneHistory(t *testing.T, socket, target string, lines int) {
 // paneHistoryAndHeight reads #{history_size} and #{pane_height} in ONE
 // display-message, so the two can never describe different moments of a
 // pane's life.
-func paneHistoryAndHeight(t *testing.T, socket, target string) (history, height int) {
+func paneHistoryAndHeight(t *testing.T, socket string) (history, height int) {
 	t.Helper()
-	out := runTmux(t, socket, "display-message", "-p", "-t", target, "#{history_size}|#{pane_height}")
+	out := runTmux(t, socket, "display-message", "-p", "-t", "s0", "#{history_size}|#{pane_height}")
 	fields := strings.Split(strings.TrimSpace(out), "|")
 	if len(fields) != 2 {
 		t.Fatalf("display-message history/height returned %q, want two |-joined fields", out)
@@ -107,8 +107,8 @@ func TestSeedCaptureOptionsWithHistoryClampsToAvailableHistory(t *testing.T) {
 	ctx := context.Background()
 
 	fillPaneHistory(t, socket, "s0", 50)
-	paneID := resolveSolePaneID(t, socket, "s0")
-	history, height := paneHistoryAndHeight(t, socket, "s0")
+	paneID := resolveSolePaneID(t, socket)
+	history, height := paneHistoryAndHeight(t, socket)
 	if history <= 0 {
 		t.Fatalf("fixture produced history_size %d; the rest of this test is vacuous without real scrollback", history)
 	}
@@ -151,7 +151,7 @@ func TestSeedCaptureOptionsWithHistoryClampsToAvailableHistory(t *testing.T) {
 	runTmux(t, socket, "send-keys", "-t", "s0", "-l", "--", "clear")
 	runTmux(t, socket, "send-keys", "-t", "s0", "Enter")
 	time.Sleep(500 * time.Millisecond)
-	clearedHistory, clearedHeight := paneHistoryAndHeight(t, socket, "s0")
+	clearedHistory, clearedHeight := paneHistoryAndHeight(t, socket)
 	if clearedHistory != 0 {
 		t.Fatalf("after `clear` history_size = %d, want 0; this tmux does not zero history on ESC[3J, so case 3's premise does not hold", clearedHistory)
 	}
@@ -226,8 +226,8 @@ func TestCapturePaneSeedAtomicSuppressesAlternateScreenHistory(t *testing.T) {
 	ctx := context.Background()
 
 	fillPaneHistory(t, socket, "s0", 50)
-	paneID := resolveSolePaneID(t, socket, "s0")
-	history, height := paneHistoryAndHeight(t, socket, "s0")
+	paneID := resolveSolePaneID(t, socket)
+	history, height := paneHistoryAndHeight(t, socket)
 	if history <= 0 {
 		t.Fatalf("fixture produced history_size %d; this test cannot distinguish suppression from an absent history", history)
 	}
@@ -253,7 +253,7 @@ func TestCapturePaneSeedAtomicSuppressesAlternateScreenHistory(t *testing.T) {
 	// full-screen program (an editor, a pager, a TUI agent) leaves a pane
 	// in. The blocking `cat` keeps the shell from redrawing a prompt and
 	// switching straight back.
-	runInPaneBlocking(t, socket, "s0", `\033[?1049h`)
+	runInPaneBlocking(t, socket, `\033[?1049h`)
 
 	altState, altBody, err := client.CapturePaneSeedAtomic(ctx, paneID, SeedCaptureOptionsWithHistory(2000))
 	if err != nil {
@@ -262,7 +262,7 @@ func TestCapturePaneSeedAtomicSuppressesAlternateScreenHistory(t *testing.T) {
 	if !altState.AlternateOn {
 		t.Fatalf("AlternateOn = false after ESC[?1049h; fixture assumption violated (state %+v)", altState)
 	}
-	_, altHeight := paneHistoryAndHeight(t, socket, "s0")
+	_, altHeight := paneHistoryAndHeight(t, socket)
 	if got := captureRowCount(altBody); got != altHeight {
 		t.Errorf("alternate-screen history-inclusive body = %d rows, want exactly pane_height (%d): the pane's stale primary-screen history was not suppressed", got, altHeight)
 	}
@@ -357,8 +357,8 @@ func TestCapturePaneSeedAtomicVisibleOnlyRangeNeedsNoAlternateScreenRecapture(t 
 	ctx := context.Background()
 
 	fillPaneHistory(t, socket, "s0", 50)
-	paneID := resolveSolePaneID(t, socket, "s0")
-	runInPaneBlocking(t, socket, "s0", `\033[?1049h\033[HALT-SCREEN-CONTENT`)
+	paneID := resolveSolePaneID(t, socket)
+	runInPaneBlocking(t, socket, `\033[?1049h\033[HALT-SCREEN-CONTENT`)
 
 	// The shim is installed only now, so the fixture's own tmux calls
 	// (which go through runTmux/runInPaneBlocking, not through Client) are
@@ -469,8 +469,8 @@ func TestCapturePaneSeedAtomicAlternateScreenHistoryRangeIsByteIdenticalToVisibl
 	ctx := context.Background()
 
 	paneWithColouredHistoryAboveAlternateScreen(t, socket, "s0", historyRows, altText)
-	paneID := resolveSolePaneID(t, socket, "s0")
-	history, paneHeight := paneHistoryAndHeight(t, socket, "s0")
+	paneID := resolveSolePaneID(t, socket)
+	history, paneHeight := paneHistoryAndHeight(t, socket)
 	if history <= 0 {
 		t.Fatalf("fixture produced history_size %d; with no history above the alternate screen there is nothing for the suppression to do", history)
 	}
@@ -588,8 +588,8 @@ func TestHistoryInclusiveCaptureRowsNeverExceedTheCurrentPaneWidth(t *testing.T)
 	runTmux(t, socket, "send-keys", "-t", "s0", "Enter")
 	time.Sleep(500 * time.Millisecond)
 
-	paneID := resolveSolePaneID(t, socket, "s0")
-	wideHistory, _ := paneHistoryAndHeight(t, socket, "s0")
+	paneID := resolveSolePaneID(t, socket)
+	wideHistory, _ := paneHistoryAndHeight(t, socket)
 	if wideHistory <= 0 {
 		t.Fatalf("fixture produced history_size %d at %d columns; there is no history to reflow", wideHistory, wideWidth)
 	}
@@ -609,7 +609,7 @@ func TestHistoryInclusiveCaptureRowsNeverExceedTheCurrentPaneWidth(t *testing.T)
 	if strings.TrimSpace(gotWidth) != strconv.Itoa(narrowWidth) {
 		t.Fatalf("pane_width after resize = %q, want %d; the resize did not take", gotWidth, narrowWidth)
 	}
-	narrowHistory, narrowHeight := paneHistoryAndHeight(t, socket, "s0")
+	narrowHistory, narrowHeight := paneHistoryAndHeight(t, socket)
 
 	narrowBody, err := client.CapturePane(ctx, paneID, SeedCaptureOptionsWithHistory(2000))
 	if err != nil {

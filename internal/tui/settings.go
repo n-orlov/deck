@@ -478,9 +478,9 @@ func (m *Model) settingsApplyLiveFields(previous config.FileConfig) tea.Cmd {
 		// program's next message, exactly as WithMouseCellMotion's own
 		// ProgramOption would have if this had been decided at startup.
 		if enable {
-			cmd = func() tea.Msg { return tea.EnableMouseCellMotion() }
+			cmd = tea.EnableMouseCellMotion
 		} else {
-			cmd = func() tea.Msg { return tea.DisableMouse() }
+			cmd = tea.DisableMouse
 		}
 	}
 	if m.settingsEdits.Theme != previous.Theme {
@@ -1429,7 +1429,7 @@ func settingsEditsFromSettings(s config.Settings) config.FileConfig {
 		YoloDefault:          s.File.YoloDefault,
 		StaleAfter:           s.File.StaleAfter,
 		CaptureMinInterval:   s.File.CaptureMinInterval,
-		InteractiveMS:        s.File.InteractiveMS,
+		InteractiveInterval:  s.File.InteractiveInterval,
 		InteractiveTransport: s.File.InteractiveTransport,
 		TmuxMouse:            s.File.TmuxMouse,
 		ASCII:                s.File.ASCII,
@@ -1525,7 +1525,7 @@ func settingsIntegerValue(f config.Field, cfg config.FileConfig) int {
 	case "capture_min_interval":
 		return int(cfg.CaptureMinInterval.Seconds())
 	case "interactive_ms":
-		return int(cfg.InteractiveMS.Milliseconds())
+		return int(cfg.InteractiveInterval.Milliseconds())
 	case "ui.recent_cwd_limit":
 		return cfg.RecentCwdLimit
 	case "event_retention_days":
@@ -1553,7 +1553,7 @@ func settingsSetInteger(cfg *config.FileConfig, f config.Field, v int) {
 	case "capture_min_interval":
 		cfg.CaptureMinInterval = time.Duration(v) * time.Second
 	case "interactive_ms":
-		cfg.InteractiveMS = time.Duration(v) * time.Millisecond
+		cfg.InteractiveInterval = time.Duration(v) * time.Millisecond
 	case "ui.recent_cwd_limit":
 		cfg.RecentCwdLimit = v
 	case "event_retention_days":
@@ -2095,10 +2095,10 @@ func (m Model) settingsBorderColor(focused bool, text string) string {
 // the category panel's (left, sidebar-shaped) border with the focus cue
 // above; geometry matches panel.go's sidebarTopLine/sidebarBottomLine/
 // sidebarContentLine exactly -- only the colour source differs.
-func (m Model) settingsLeftTopLine(width int, title string, focused bool) string {
+func (m Model) settingsLeftTopLine(width int, focused bool) string {
 	bc := m.box()
 	inner := width - 1
-	label, remain := m.borderLabel(title, inner)
+	label, remain := m.borderLabel("Categories", inner)
 	return m.canvasBackground(theme.Background,
 		m.settingsBorderColor(focused, bc.topLeft), label, m.settingsBorderColor(focused, strings.Repeat(bc.horizontal, remain)))
 }
@@ -2276,7 +2276,7 @@ func (m Model) settingsView() string {
 	rightLines = fitLines(rightLines, contentRows)
 
 	lines := make([]string, 0, height)
-	lines = append(lines, m.settingsLeftTopLine(leftWidth, "Categories", leftFocused)+m.settingsRightTopLine(rightWidth, "Fields", rightFocused))
+	lines = append(lines, m.settingsLeftTopLine(leftWidth, leftFocused)+m.settingsRightTopLine(rightWidth, "Fields", rightFocused))
 	for i := 0; i < contentRows; i++ {
 		lines = append(lines, m.settingsLeftContentLine(leftWidth, leftLines[i], leftFocused)+m.settingsRightContentLine(rightWidth, rightLines[i], rightFocused))
 	}
@@ -2312,7 +2312,7 @@ func (m Model) settingsView() string {
 // half-painted seam across the screen.
 func (m Model) settingsFooterLine() string {
 	width, _ := m.frameSize()
-	return m.canvasFillLine(theme.Background, m.settingsFooterLineContent(), width)
+	return m.canvasFillLine(m.settingsFooterLineContent(), width)
 }
 
 // settingsFooterLineContent is settingsFooterLine's own composition,
@@ -2451,7 +2451,7 @@ func (m Model) settingsEnvViewLines(categories []settingsCategory, leftWidth, ri
 	rightLines = fitLines(rightLines, contentRows)
 
 	lines := make([]string, 0, height)
-	lines = append(lines, m.settingsLeftTopLine(leftWidth, "Categories", leftFocused)+m.settingsRightTopLine(rightWidth, title, rightFocused))
+	lines = append(lines, m.settingsLeftTopLine(leftWidth, leftFocused)+m.settingsRightTopLine(rightWidth, title, rightFocused))
 	for i := 0; i < contentRows; i++ {
 		lines = append(lines, m.settingsLeftContentLine(leftWidth, leftLines[i], leftFocused)+m.settingsRightContentLine(rightWidth, rightLines[i], rightFocused))
 	}
@@ -2512,7 +2512,7 @@ func (m Model) settingsStringEditViewLines(categories []settingsCategory, leftWi
 	rightLines = fitLines(rightLines, contentRows)
 
 	lines := make([]string, 0, height)
-	lines = append(lines, m.settingsLeftTopLine(leftWidth, "Categories", leftFocused)+m.settingsRightTopLine(rightWidth, title, rightFocused))
+	lines = append(lines, m.settingsLeftTopLine(leftWidth, leftFocused)+m.settingsRightTopLine(rightWidth, title, rightFocused))
 	for i := 0; i < contentRows; i++ {
 		lines = append(lines, m.settingsLeftContentLine(leftWidth, leftLines[i], leftFocused)+m.settingsRightContentLine(rightWidth, rightLines[i], rightFocused))
 	}
@@ -2753,7 +2753,7 @@ func (m Model) settingsGroupsViewLines(categories []settingsCategory, leftWidth,
 	rightLines = fitLines(rightLines, contentRows)
 
 	lines := make([]string, 0, height)
-	lines = append(lines, m.settingsLeftTopLine(leftWidth, "Categories", leftFocused)+m.settingsRightTopLine(rightWidth, "Groups", rightFocused))
+	lines = append(lines, m.settingsLeftTopLine(leftWidth, leftFocused)+m.settingsRightTopLine(rightWidth, "Groups", rightFocused))
 	for i := 0; i < contentRows; i++ {
 		lines = append(lines, m.settingsLeftContentLine(leftWidth, leftLines[i], leftFocused)+m.settingsRightContentLine(rightWidth, rightLines[i], rightFocused))
 	}
@@ -2813,7 +2813,7 @@ func (m Model) settingsSearchViewLines(categories []settingsCategory, leftWidth,
 	rightLines = fitLines(append(head, rightLines...), contentRows)
 	title := "Search"
 	lines := make([]string, 0, height)
-	lines = append(lines, m.settingsLeftTopLine(leftWidth, "Categories", leftFocused)+m.settingsRightTopLine(rightWidth, title, rightFocused))
+	lines = append(lines, m.settingsLeftTopLine(leftWidth, leftFocused)+m.settingsRightTopLine(rightWidth, title, rightFocused))
 	for i := 0; i < contentRows; i++ {
 		lines = append(lines, m.settingsLeftContentLine(leftWidth, leftLines[i], leftFocused)+m.settingsRightContentLine(rightWidth, rightLines[i], rightFocused))
 	}

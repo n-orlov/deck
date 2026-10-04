@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"path/filepath"
+	"slices"
 	"testing"
 
 	"github.com/n-orlov/deck/internal/config"
@@ -29,10 +30,10 @@ import (
 func TestCure0105DefaultGroupFirstLiveSaveFollowsSelection(t *testing.T) {
 	for _, kind := range []string{"row", "header"} {
 		t.Run(kind, func(t *testing.T) {
-			m, _ := settingsLiveApplyTestModel(t)
+			m := settingsLiveApplyTestModel(t)
 			base := viewportFollowTestModel(30, 24)
 			m.width, m.height = 80, 24
-			m.sessions = append(base.sessions, store.Session{ID: "d", Name: "d", Status: "idle"})
+			m.sessions = slices.Concat(base.sessions, []store.Session{{ID: "d", Name: "d", Status: "idle"}})
 			m.baseSessions = m.sessions
 			if kind == "row" {
 				m.setSelection(rowCursor(30))

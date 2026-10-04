@@ -12,9 +12,9 @@ import (
 // paintModel builds a Model whose ui.preview_paint is the SHIPPED default,
 // taken from the schema rather than written out here, so a change to that
 // default cannot leave these tests asserting a mode deck no longer uses.
-func paintModel(t *testing.T, name string) Model {
+func paintModel(t *testing.T) Model {
 	t.Helper()
-	return paintModelMode(t, name, shippedPreviewPaint(t))
+	return paintModelMode(t, "parchment", shippedPreviewPaint(t))
 }
 
 // paintModelMode builds a Model in one named ui.preview_paint mode, for the
@@ -99,7 +99,7 @@ func TestForeignPaintEmitsNothingWithoutColour(t *testing.T) {
 // again: the text would fall back to the TERMINAL's default foreground,
 // whose contrast against a light theme is undefined.
 func TestForeignPaintOpensTheCanvasPairOnAPlainRow(t *testing.T) {
-	m := paintModel(t, "parchment")
+	m := paintModel(t)
 	th := m.activeTheme()
 	bg, _ := th.Color(theme.Background)
 	text, _ := th.Color(theme.Text)
@@ -120,7 +120,7 @@ func TestForeignPaintOpensTheCanvasPairOnAPlainRow(t *testing.T) {
 // operator's requirement: an explicit agent colour is PRESERVED (its hue)
 // and ADJUSTED (its lightness) against whatever deck now paints under it.
 func TestForeignPaintFitsAnExplicitForegroundOverDecksBackground(t *testing.T) {
-	m := paintModel(t, "parchment")
+	m := paintModel(t)
 	bg, _ := m.activeTheme().Color(theme.Background)
 
 	// SGR 93 is bright yellow (#ffff00): 1.09:1 on parchment, the worst
@@ -173,7 +173,7 @@ func TestForeignPaintNoFitKeepsTheAgentsExactColour(t *testing.T) {
 // contribute nothing -- painting there would destroy a deliberate pairing
 // (a diff hunk, a selected line, a status bar).
 func TestForeignPaintLeavesAnExplicitPairAlone(t *testing.T) {
-	m := paintModel(t, "parchment")
+	m := paintModel(t)
 	bg, _ := m.activeTheme().Color(theme.Background)
 	got := m.repaintForeignDefaults(theme.Background, "\x1b[44;97mstatus\x1b[0m")
 
@@ -200,7 +200,7 @@ func TestForeignPaintLeavesAnExplicitPairAlone(t *testing.T) {
 // parchment's near-black onto the agent's dark blue -- worse than leaving
 // it, so this is deliberately NOT painted.
 func TestForeignPaintLeavesTheForegroundAloneOverAnAgentBackground(t *testing.T) {
-	m := paintModel(t, "parchment")
+	m := paintModel(t)
 	text, _ := m.activeTheme().Color(theme.Text)
 	got := m.repaintForeignDefaults(theme.Background, "\x1b[44mon blue\x1b[0m")
 
@@ -287,7 +287,7 @@ func TestApplySGRTracksState(t *testing.T) {
 // nothing else. A pane's cursor moves, mode changes and hyperlinks are its
 // own business, and a row carrying them must come back with them intact.
 func TestForeignPaintPassesNonSGRSequencesThrough(t *testing.T) {
-	m := paintModel(t, "parchment")
+	m := paintModel(t)
 	for _, seq := range []string{"\x1b[2K", "\x1b[1;5H", "\x1b[?25l", "\x1b[3J"} {
 		row := "a" + seq + "b"
 		got := m.repaintForeignDefaults(theme.Background, row)
@@ -301,7 +301,7 @@ func TestForeignPaintPassesNonSGRSequencesThrough(t *testing.T) {
 // mid-escape by cropRow's own truncation, and a renderer that panics or
 // drops the tail on one is worse than one that leaves it alone.
 func TestForeignPaintSurvivesATruncatedSequence(t *testing.T) {
-	m := paintModel(t, "parchment")
+	m := paintModel(t)
 	for _, row := range []string{"text\x1b", "text\x1b[", "text\x1b[38;2;1", "\x1b[0"} {
 		got := m.repaintForeignDefaults(theme.Background, row)
 		if !strings.HasSuffix(got, row) && !strings.Contains(got, row) {
@@ -315,7 +315,7 @@ func TestForeignPaintSurvivesATruncatedSequence(t *testing.T) {
 // clears BOTH channels, so both have to be re-asserted after it, or the
 // remainder of the row falls back to the terminal's own colours.
 func TestForeignPaintReopensTheCanvasAfterEveryReset(t *testing.T) {
-	m := paintModel(t, "parchment")
+	m := paintModel(t)
 	th := m.activeTheme()
 	bg, _ := th.Color(theme.Background)
 	text, _ := th.Color(theme.Text)
@@ -387,7 +387,7 @@ func TestForeignPaintDefaultsToTheShippedContract(t *testing.T) {
 	if got := shippedPreviewPaint(t); got != "fit" {
 		t.Fatalf("ui.preview_paint default = %q, want \"fit\" (SPEC §11.3)", got)
 	}
-	m := paintModel(t, "parchment")
+	m := paintModel(t)
 	if got := m.foreignPaint(); got != foreignPaintFit {
 		t.Errorf("a Model on the shipped default resolves to mode %v, want fit", got)
 	}

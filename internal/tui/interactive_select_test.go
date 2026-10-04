@@ -35,9 +35,9 @@ func selectionTestSocket(name string) string {
 	return fmt.Sprintf("priv_tui_select_%s_%d_%d", name, time.Now().UnixNano(), time.Now().UnixNano()%997)
 }
 
-func newBareSelectionSession(t *testing.T, socket, session string, width, height int) {
+func newBareSelectionSession(t *testing.T, socket, session string) {
 	t.Helper()
-	args := []string{"-L", socket, "new-session", "-d", "-s", session, "-x", strconv.Itoa(width), "-y", strconv.Itoa(height)}
+	args := []string{"-L", socket, "new-session", "-d", "-s", session, "-x", strconv.Itoa(80), "-y", strconv.Itoa(24)}
 	if out, err := exec.Command("tmux", args...).CombinedOutput(); err != nil {
 		t.Fatalf("start bare tmux session: %v: %s", err, out)
 	}
@@ -210,7 +210,7 @@ func screenRowContaining(rows []string, substrings ...string) (string, bool) {
 // into deck's own selection buffer at all.
 func TestClickOverInteractivePreviewWithoutMotionCommitsNothing(t *testing.T) {
 	socket := selectionTestSocket("click")
-	newBareSelectionSession(t, socket, "clicktarget", 80, 24)
+	newBareSelectionSession(t, socket, "clicktarget")
 	client := tmux.Client{Socket: socket}
 
 	sess, err := interactive.Start(context.Background(), client, "clicktarget", 80, 24, func(context.Context) ([]byte, error) {
@@ -263,7 +263,7 @@ func TestDragOverInteractivePreviewCopiesSelectedTextToTheNamedTmuxBuffer(t *tes
 	defer func() { oscClipboardWriter = previous }()
 
 	socket := selectionTestSocket("drag")
-	newBareSelectionSession(t, socket, "dragtarget", 80, 24)
+	newBareSelectionSession(t, socket, "dragtarget")
 	client := tmux.Client{Socket: socket}
 
 	sess, err := interactive.Start(context.Background(), client, "dragtarget", 80, 24, func(context.Context) ([]byte, error) {
@@ -344,7 +344,7 @@ func TestFailedInteractiveSelectionCopySetsNoConfirmation(t *testing.T) {
 	defer func() { oscClipboardWriter = previous }()
 
 	socket := selectionTestSocket("dragfail")
-	newBareSelectionSession(t, socket, "dragfailtarget", 80, 24)
+	newBareSelectionSession(t, socket, "dragfailtarget")
 
 	sess, err := interactive.Start(context.Background(), tmux.Client{Socket: socket}, "dragfailtarget", 80, 24, func(context.Context) ([]byte, error) {
 		return []byte("HELLO WORLD"), nil

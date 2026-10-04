@@ -90,7 +90,7 @@ func TestSidebarBodyShowsGroupHeadersAndHidesCollapsedRows(t *testing.T) {
 		{ID: "a1", Name: "alpha-session", CWD: "/work/infra", Status: "idle", GroupName: "infra", GroupID: &infraID},
 		{ID: "b1", Name: "bravo-session", CWD: "/work/service-a", Status: "idle", GroupName: "service-a", GroupID: &serviceID},
 	})
-	expanded := strings.Join(m.sidebarBodyLines(60), "\n")
+	expanded := strings.Join(m.sidebarBodyLines(), "\n")
 	if !strings.Contains(expanded, "infra") || !strings.Contains(expanded, "service-a") {
 		t.Fatalf("expanded body missing a group header:\n%s", expanded)
 	}
@@ -99,7 +99,7 @@ func TestSidebarBodyShowsGroupHeadersAndHidesCollapsedRows(t *testing.T) {
 	}
 
 	m.setGroupCollapsed(infraID, true)
-	collapsed := strings.Join(m.sidebarBodyLines(60), "\n")
+	collapsed := strings.Join(m.sidebarBodyLines(), "\n")
 	if strings.Contains(collapsed, "alpha-session") {
 		t.Fatalf("collapsed group still shows its row:\n%s", collapsed)
 	}
@@ -111,7 +111,7 @@ func TestSidebarBodyShowsGroupHeadersAndHidesCollapsedRows(t *testing.T) {
 	}
 
 	m.setGroupCollapsed(infraID, false)
-	reexpanded := strings.Join(m.sidebarBodyLines(60), "\n")
+	reexpanded := strings.Join(m.sidebarBodyLines(), "\n")
 	if !strings.Contains(reexpanded, "alpha-session") {
 		t.Fatalf("re-expanding did not restore the row:\n%s", reexpanded)
 	}

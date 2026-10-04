@@ -46,15 +46,18 @@ const (
 	renderProbeMinCalls = 20
 )
 
+// stalledWriteWidth is the column count every stalled-write fixture grid uses.
+const stalledWriteWidth = 40
+
 // stalledWriteSession returns a Session whose current grid has NO reply
 // drain, plus that grid, plus a func that stalls a write into it for real
 // and a func that unparks it again. The grid deliberately comes from
 // newGrid rather than newDrainedGrid: with no reader on vt's reply pipe,
 // writing a DA1 query is exactly the production stall issue #5 reported,
 // reproduced without tmux and without a race.
-func stalledWriteSession(t *testing.T, width, height int) (s *Session, g *Grid, stall func() (started, returned <-chan struct{}), unpark func()) {
+func stalledWriteSession(t *testing.T, height int) (s *Session, g *Grid, stall func() (started, returned <-chan struct{}), unpark func()) {
 	t.Helper()
-	g = newGrid(width, height)
+	g = newGrid(stalledWriteWidth, height)
 	s = &Session{grid: g, renders: NewRenderCoalescer(renderCoalesceInterval)}
 	t.Cleanup(s.renders.Close)
 
@@ -85,7 +88,7 @@ func stalledWriteSession(t *testing.T, width, height int) (s *Session, g *Grid, 
 // take the read lock at all -- the wedge issue #5 reported.
 func TestStalledGridWriteNeverBlocksRenderRows(t *testing.T) {
 	const width, height = 40, 8
-	s, _, stall, unpark := stalledWriteSession(t, width, height)
+	s, _, stall, unpark := stalledWriteSession(t, height)
 
 	// Content that must still be visible while the next write is stalled,
 	// and one composed frame so there is a last-known frame to serve.
@@ -154,7 +157,7 @@ func TestStalledGridWriteNeverBlocksRenderRows(t *testing.T) {
 // replace the stalled grid.
 func TestStalledGridWriteNeverBlocksAReseed(t *testing.T) {
 	const width, height = 40, 8
-	s, old, stall, unpark := stalledWriteSession(t, width, height)
+	s, old, stall, unpark := stalledWriteSession(t, height)
 	defer unpark()
 
 	started, returned := stall()
@@ -261,7 +264,7 @@ func TestConcurrentWritesAndReadsStayConsistent(t *testing.T) {
 // the request itself is reported back as the scroll intent.
 func TestStalledWriteKeepsCachedFrameOffsetAndScrollIntent(t *testing.T) {
 	const width, height = 40, 5
-	s, _, stall, unpark := stalledWriteSession(t, width, height)
+	s, _, stall, unpark := stalledWriteSession(t, height)
 	for i := 0; i < 15; i++ {
 		s.writeNotice("row" + itoa(i) + "\r\n")
 	}
@@ -295,7 +298,7 @@ func TestStalledWriteKeepsCachedFrameOffsetAndScrollIntent(t *testing.T) {
 // write ends the next fresh frame is composed at the kept offset.
 func TestStalledWriteThatGrowsHistoryKeepsScrollIntent(t *testing.T) {
 	const width, height = 40, 5
-	s, _, _, unpark := stalledWriteSession(t, width, height)
+	s, _, _, unpark := stalledWriteSession(t, height)
 	s.writeNotice("top\r\n")
 	live := s.RenderSnapshot(0, height)
 	if live.UsedOffset != 0 || s.lastFrame.Load().scrollbackLen != 0 {

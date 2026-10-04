@@ -59,7 +59,7 @@ func gitEnv(home string) []string {
 	)
 }
 
-func runGit(t *testing.T, home, dir string, args ...string) string {
+func runGit(t *testing.T, home, dir string, args ...string) {
 	t.Helper()
 	cmd := exec.Command("git", args...)
 	cmd.Dir = dir
@@ -68,7 +68,6 @@ func runGit(t *testing.T, home, dir string, args ...string) string {
 	if err != nil {
 		t.Fatalf("git %v (in %s): %v\n%s", args, dir, err, out)
 	}
-	return string(out)
 }
 
 func writeFile(t *testing.T, path, content string) {

@@ -41,7 +41,7 @@ func TestFilterHelpLineNamesTheEditorKeysAndAltW(t *testing.T) {
 }
 
 func TestLaunchInputsHelpLineNamesTheEditorKeysAndAltW(t *testing.T) {
-	m, _ := launchInputsSeededModel(t, "pre", "post", "")
+	m, _ := launchInputsSeededModel(t, "pre", "post")
 	if !launchInputsFieldIsText(m.launchInputsField) {
 		t.Fatalf("the editor opened on field %d, not a text field", m.launchInputsField)
 	}
@@ -90,7 +90,7 @@ func TestSettingsTextFieldsHelpLinesNameTheEditorKeysAndAltW(t *testing.T) {
 		requireTextFieldHelp(t, "settings env", caretPress(m, "enter", "enter").View())
 	})
 	t.Run("free text value", func(t *testing.T) {
-		m := settingsOpenOnStringField(t, config.Settings{File: config.FileConfig{PreLaunch: "echo staged"}}, "pre_launch")
+		m := settingsOpenOnStringField(t, config.Settings{File: config.FileConfig{PreLaunch: "echo staged"}})
 		m.width, m.height = 100, 30
 		m = caretPress(m, "enter")
 		if !m.settingsStringEditing {

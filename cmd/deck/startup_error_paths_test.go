@@ -24,7 +24,7 @@ import (
 
 // isolateDeckEnv points every variable run() and its helpers read at an
 // empty private world, so a test only sees what it sets afterwards.
-func isolateDeckEnv(t *testing.T) string {
+func isolateDeckEnv(t *testing.T) {
 	t.Helper()
 	for _, kv := range os.Environ() {
 		if key, _, ok := strings.Cut(kv, "="); ok && strings.HasPrefix(key, "DECK_") {
@@ -39,7 +39,6 @@ func isolateDeckEnv(t *testing.T) string {
 	t.Setenv("DECK_HOME", filepath.Join(home, "deckhome"))
 	// An empty PATH means no tmux binary can be found even if one is installed.
 	t.Setenv("PATH", t.TempDir())
-	return home
 }
 
 func runCapture(t *testing.T, stdin string, args ...string) (int, string, string) {

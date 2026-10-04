@@ -23,7 +23,7 @@ type FileConfig struct {
 	YoloDefault          bool
 	StaleAfter           time.Duration
 	CaptureMinInterval   time.Duration
-	InteractiveMS        time.Duration
+	InteractiveInterval  time.Duration
 	InteractiveTransport string
 	TmuxMouse            bool
 	ASCII                bool
@@ -142,7 +142,7 @@ func defaultFileConfig() FileConfig {
 			cfg.CaptureMinInterval = time.Duration(seconds) * time.Second
 		case "interactive_ms":
 			ms, _ := field.Default.(int)
-			cfg.InteractiveMS = time.Duration(ms) * time.Millisecond
+			cfg.InteractiveInterval = time.Duration(ms) * time.Millisecond
 		case "interactive_transport":
 			cfg.InteractiveTransport, _ = field.Default.(string)
 		case "tmux_mouse":
@@ -223,7 +223,7 @@ func setField(cfg *FileConfig, field Field, raw, path string, line int) error {
 		case "capture_min_interval":
 			cfg.CaptureMinInterval = time.Duration(value) * time.Second
 		case "interactive_ms":
-			cfg.InteractiveMS = time.Duration(value) * time.Millisecond
+			cfg.InteractiveInterval = time.Duration(value) * time.Millisecond
 		case "ui.recent_cwd_limit":
 			cfg.RecentCwdLimit = value
 		case "event_retention_days":

@@ -265,8 +265,8 @@ func TestDispatcherSendMultilineDeletesTheBufferWhenPasteBufferFails(t *testing.
 		t.Fatalf("NewDispatcher: %v", err)
 	}
 
-	killPaneProcessUnderRemainOnExitFailed(t, socket, "s0")
-	waitForPaneDeadTest(t, client, "s0", 5*time.Second)
+	killPaneProcessUnderRemainOnExitFailed(t, socket)
+	waitForPaneDeadTest(t, client)
 
 	err = dispatcher.SendMultiline(ctx, "line1\nline2")
 	if err == nil {

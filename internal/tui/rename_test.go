@@ -216,7 +216,7 @@ func TestRenameDialogUnavailableWithoutRenamerWired(t *testing.T) {
 // renameEditModel opens the rename dialog on a session named name through the
 // real `r` key inside detail, and returns the model plus a pointer to what the
 // wired renamer was last asked to store.
-func renameEditModel(t *testing.T, name string) (Model, *string) {
+func renameEditModel(t *testing.T) (Model, *string) {
 	t.Helper()
 	var renamedTo string
 	model := NewWithShellCreatorAttacherKillerResumerProfileSwitcherResumeModerAgentCreatorRegistryPreviewCapturerEnvSetterRestarterInjectorDeleterRestorerReaperPurgerArchiverAndRenamer(
@@ -227,7 +227,7 @@ func renameEditModel(t *testing.T, name string) (Model, *string) {
 		},
 	)
 	model.width, model.height = 80, 24
-	model.sessions = []store.Session{{ID: "s1", Name: name, Agent: "shell", Status: "running", Slug: "alpha"}}
+	model.sessions = []store.Session{{ID: "s1", Name: "alpha", Agent: "shell", Status: "running", Slug: "alpha"}}
 	model.selected = rowCursor(0)
 	model.detail = true
 	got, _ := model.Update(key("r"))
@@ -247,7 +247,7 @@ func renameSend(t *testing.T, m Model, keys ...tea.KeyMsg) Model {
 // accepts the offered name and steps into it, a typed character lands at the
 // caret, and Enter stores the edited name -- not an append and not a retype.
 func TestRenameDialogEditsInTheMiddleOfTheName(t *testing.T) {
-	model, renamedTo := renameEditModel(t, "alpha")
+	model, renamedTo := renameEditModel(t)
 	model = renameSend(t, model, key("left"), key("left"), key("X"))
 	if got := model.renameEdit.Value(); got != "alpXha" {
 		t.Fatalf("value after left, left, X = %q, want alpXha (the name was %q)", got, "alpha")
@@ -270,7 +270,7 @@ func TestRenameDialogEditsInTheMiddleOfTheName(t *testing.T) {
 // wholesale-clear expectation rewritten to §11.11: backspace accepts the
 // offer and deletes the character before the caret, it no longer empties it.
 func TestRenameDialogBackspaceOnTheOfferedNameDeletesOneCharacter(t *testing.T) {
-	model, _ := renameEditModel(t, "alpha")
+	model, _ := renameEditModel(t)
 	model = renameSend(t, model, key("backspace"))
 	if got := model.renameEdit.Value(); got != "alph" {
 		t.Fatalf("backspace on the offered name left %q, want alph", got)
@@ -284,7 +284,7 @@ func TestRenameDialogBackspaceOnTheOfferedNameDeletesOneCharacter(t *testing.T) 
 // TestRenameDialogPasteReplacesTheOfferedName: a bracketed paste is one
 // insertion with control characters dropped, and it replaces an offer.
 func TestRenameDialogPasteReplacesTheOfferedName(t *testing.T) {
-	model, _ := renameEditModel(t, "alpha")
+	model, _ := renameEditModel(t)
 	paste := tea.KeyMsg(tea.Key{Type: tea.KeyRunes, Runes: []rune("pasted name\n"), Paste: true})
 	model = renameSend(t, model, paste)
 	if got := model.renameEdit.Value(); got != "pasted name" {
@@ -295,7 +295,7 @@ func TestRenameDialogPasteReplacesTheOfferedName(t *testing.T) {
 // TestRenameDialogSpaceEditsAndTabIsUnbound: space is typed text, and tab does
 // nothing in a dialog with no path field (§11.4).
 func TestRenameDialogSpaceEditsAndTabIsUnbound(t *testing.T) {
-	model, _ := renameEditModel(t, "alpha")
+	model, _ := renameEditModel(t)
 	model = renameSend(t, model, tea.KeyMsg{Type: tea.KeyEnd}, key("tab"), tea.KeyMsg{Type: tea.KeySpace, Runes: []rune{' '}}, key("b"))
 	if got := model.renameEdit.Value(); got != "alpha b" {
 		t.Fatalf("value = %q, want %q", got, "alpha b")
@@ -305,7 +305,7 @@ func TestRenameDialogSpaceEditsAndTabIsUnbound(t *testing.T) {
 // TestRenameDialogDrawsTheCaretInTheNameAndNowhereElse: the field draws a
 // reverse-video caret over the character the caret is on, and it moves.
 func TestRenameDialogDrawsTheCaretInTheNameAndNowhereElse(t *testing.T) {
-	model, _ := renameEditModel(t, "alpha")
+	model, _ := renameEditModel(t)
 	model = renameSend(t, model, key("left"), key("left"))
 	if body := model.renameBody(); !strings.Contains(body, "alp\x1b[7mh\x1b[27ma") {
 		t.Fatalf("caret is not drawn as a reversed cell on the h of alpha:\n%q", body)
@@ -344,7 +344,7 @@ func TestRenameHandlerHasNoOwnBackspaceOrAppendCase(t *testing.T) {
 // cell (§11.11), the one escape the field draws, and the offered name carries
 // no selection background.
 func TestRenameCaretSurvivesNoColor(t *testing.T) {
-	model, _ := renameEditModel(t, "alpha")
+	model, _ := renameEditModel(t)
 	model.settings.Color = false
 	body := model.styledRenameBody()
 	if !strings.Contains(body, "alpha\x1b[7m \x1b[27m") {

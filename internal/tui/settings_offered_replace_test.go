@@ -34,7 +34,7 @@ func TestSettingsGroupRenamePrintableKeyReplacesOfferedNameWhenCommitted(t *test
 // rule for the free-text editor: enter opens pre_launch on its staged value,
 // one printable key replaces it, and enter stages exactly that key.
 func TestSettingsStringPrintableKeyReplacesOfferedValueWhenCommitted(t *testing.T) {
-	m := settingsOpenOnStringField(t, config.Settings{File: config.FileConfig{PreLaunch: "echo staged"}}, "pre_launch")
+	m := settingsOpenOnStringField(t, config.Settings{File: config.FileConfig{PreLaunch: "echo staged"}})
 	for _, k := range []string{"enter", "x", "enter"} {
 		updated, _ := m.Update(key(k))
 		m = updated.(Model)

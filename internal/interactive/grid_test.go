@@ -24,9 +24,9 @@ func interactiveSocket(name string) string {
 	return fmt.Sprintf("priv_interactive_%s_%d_%d", name, os.Getpid(), time.Now().UnixNano())
 }
 
-func newBareInteractiveSession(t *testing.T, socket, session string, width, height int) (cleanup func()) {
+func newBareInteractiveSession(t *testing.T, socket string, width, height int) (cleanup func()) {
 	t.Helper()
-	args := []string{"-L", socket, "new-session", "-d", "-s", session, "-x", strconv.Itoa(width), "-y", strconv.Itoa(height)}
+	args := []string{"-L", socket, "new-session", "-d", "-s", "s0", "-x", strconv.Itoa(width), "-y", strconv.Itoa(height)}
 	if out, err := exec.Command("tmux", args...).CombinedOutput(); err != nil {
 		t.Fatalf("start bare tmux session: %v: %s", err, out)
 	}
@@ -126,7 +126,7 @@ func waitFor(t *testing.T, timeout time.Duration, cond func() bool) bool {
 // emission), and not in the pipe stream (not armed yet when it happened).
 func TestArmingPipeAfterSeedCaptureLosesInterstitialBytes(t *testing.T) {
 	socket := interactiveSocket("wrong-order")
-	cleanup := newBareInteractiveSession(t, socket, "s0", 40, 10)
+	cleanup := newBareInteractiveSession(t, socket, 40, 10)
 	defer cleanup()
 	client := tmux.Client{Socket: socket, Timeout: 5 * time.Second}
 	ctx := context.Background()
@@ -195,7 +195,7 @@ func TestArmingPipeAfterSeedCaptureLosesInterstitialBytes(t *testing.T) {
 // grid once draining starts, instead of being lost.
 func TestArmingPipeBeforeSeedCaptureDeliversInterstitialBytes(t *testing.T) {
 	socket := interactiveSocket("right-order")
-	cleanup := newBareInteractiveSession(t, socket, "s0", 40, 10)
+	cleanup := newBareInteractiveSession(t, socket, 40, 10)
 	defer cleanup()
 	client := tmux.Client{Socket: socket, Timeout: 5 * time.Second}
 	ctx := context.Background()

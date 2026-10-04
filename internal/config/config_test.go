@@ -266,7 +266,7 @@ func TestSeededUUIDsAreStableAndValid(t *testing.T) {
 	if first != matching || first == second {
 		t.Fatalf("seeded ids first=%q matching=%q second=%q", first, matching, second)
 	}
-	if len(first) != 36 || first[14] != '4' || !strings.Contains("89ab", string(first[19])) {
+	if len(first) != 36 || first[14] != '4' || !strings.ContainsRune("89ab", rune(first[19])) {
 		t.Fatalf("not an RFC4122 v4 UUID: %q", first)
 	}
 }
@@ -416,8 +416,8 @@ func TestInteractiveMSDefaultsFromSchemaAndDeckEnvOverrides(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if settings.InteractiveMS != time.Duration(wantDefault)*time.Millisecond {
-		t.Fatalf("InteractiveMS default = %v, want %dms (Schema's declared default)", settings.InteractiveMS, wantDefault)
+	if settings.InteractiveInterval != time.Duration(wantDefault)*time.Millisecond {
+		t.Fatalf("InteractiveInterval default = %v, want %dms (Schema's declared default)", settings.InteractiveInterval, wantDefault)
 	}
 	if _, overridden := settings.EnvOverrides["interactive_ms"]; overridden {
 		t.Fatalf("interactive_ms should not be recorded as env-overridden when DECK_INTERACTIVE_MS is unset")
@@ -428,16 +428,16 @@ func TestInteractiveMSDefaultsFromSchemaAndDeckEnvOverrides(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if settings.InteractiveMS != 90*time.Millisecond {
-		t.Fatalf("InteractiveMS from config.toml = %v, want 90ms", settings.InteractiveMS)
+	if settings.InteractiveInterval != 90*time.Millisecond {
+		t.Fatalf("InteractiveInterval from config.toml = %v, want 90ms", settings.InteractiveInterval)
 	}
 
 	settings, err = LoadFrom(environment(map[string]string{"DECK_HOME": dir, "DECK_INTERACTIVE_MS": "25"}), fakeHome)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if settings.InteractiveMS != 25*time.Millisecond {
-		t.Fatalf("DECK_INTERACTIVE_MS=25 should override config.toml's 90ms, got %v", settings.InteractiveMS)
+	if settings.InteractiveInterval != 25*time.Millisecond {
+		t.Fatalf("DECK_INTERACTIVE_MS=25 should override config.toml's 90ms, got %v", settings.InteractiveInterval)
 	}
 	if envVar := settings.EnvOverrides["interactive_ms"]; envVar != "DECK_INTERACTIVE_MS" {
 		t.Fatalf("EnvOverrides[interactive_ms] = %q, want DECK_INTERACTIVE_MS", envVar)
