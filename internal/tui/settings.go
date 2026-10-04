@@ -2596,161 +2596,8 @@ func (m Model) settingsGroupsViewLines(categories []settingsCategory, leftWidth,
 	leftFocused := m.settingsFocus == settingsFocusCategories
 	rightFocused := m.settingsFocus == settingsFocusFields
 
-	categorySelTok := m.settingsSelectionToken(settingsFocusCategories)
-	leftLines := make([]settingsListLine, len(categories))
-	for i, cat := range categories {
-		marker := "  "
-		selected := i == m.settingsCategoryIndex
-		if selected {
-			marker = "> "
-		}
-		bg := theme.Token("")
-		if selected {
-			bg = categorySelTok
-		}
-		leftLines[i] = settingsListLine{text: m.settingsRenderRowOpen([]settingsRowSegment{{Text: marker + cat.Name, Tok: theme.Text}}), bg: bg}
-	}
-	leftLines = fitLines(leftLines, contentRows)
-
-	innerWidth := rightWidth - 4
-	var rightLines []settingsListLine
-	addLine := func(text string, tok, bg theme.Token) {
-		rightLines = append(rightLines, settingsListLine{text: m.settingsRenderRowOpen([]settingsRowSegment{{Text: text, Tok: tok}}), bg: bg})
-	}
-	for _, l := range wrapText(settingsGroupsCopy, innerWidth) {
-		addLine(l, theme.Dimmed, "")
-	}
-	addLine("", theme.Text, "")
-	headerRows := len(rightLines)
-
-	fieldSelTok := m.settingsSelectionToken(settingsFocusFields)
-	editing := m.settingsGroupCreating || m.settingsGroupRenaming
-	confirming := m.settingsGroupDeleteConfirming
-	// noteLines is m.settingsGroupNote (task 009's validateGroupName
-	// surfacing, and the create/rename/delete outcome messages)
-	// word-wrapped to the panel's own inner width, computed BEFORE the
-	// group window is sized so its real row cost is known. cure-01-02-2's
-	// first attempt was rejected for exactly the opposite order: the note
-	// was appended once the window had already spent the frame's whole row
-	// budget, so the trailing fitLines call truncated away the one row that
-	// says WHY a typed name was refused (`group name "default" is
-	// reserved`) whenever the selected group sat past the viewport.
-	var noteLines []string
-	if m.settingsGroupNote != "" {
-		noteLines = wrapText(m.settingsGroupNote, innerWidth)
-	}
-
-	// selectedBlock is every row the SELECTED group's block costs beyond
-	// its own one-line row: the create/rename input (blank separator plus
-	// the typed row), or task 019/R131 part 2's two-branch delete confirm
-	// (blank separator, the target/count line, the m/d/esc branch line) --
-	// only ever shown for a non-empty group, since settingsStartGroupDelete
-	// drops an empty one immediately with no prompt at all -- plus, while
-	// either sub-mode is open, the inline note itself, kept attached to the
-	// input it judges instead of parked at the bottom of the panel. At most
-	// one sub-mode is ever open (updateSettingsGroupDeleteConfirm's own
-	// d/r/n gating). Building the block up front, wrapping included, is
-	// what lets settingsGroupsWindow size the window against its REAL row
-	// cost so the trailing fitLines call can only ever trim rows outside
-	// it, however far down a >viewport group list the selection sits.
-	var selectedBlock []settingsListLine
-	pushBlock := func(text string, tok, bg theme.Token) {
-		selectedBlock = append(selectedBlock, settingsListLine{text: m.settingsRenderRowOpen([]settingsRowSegment{{Text: text, Tok: tok}}), bg: bg})
-	}
-	if editing {
-		pushBlock("", theme.Text, "")
-		label := m.settingsGroupLabel()
-		pushBlock(label+m.settingsGroupEdit.View(m.settingsGroupFieldWidth(), m.settingsEditStyle()), theme.Text, theme.Selection)
-		for _, l := range wrapText(textFieldEditKeysLine, innerWidth) {
-			pushBlock(l, theme.Dimmed, "")
-		}
-	}
-	if confirming {
-		pushBlock("", theme.Text, "")
-		count := len(m.settingsGroupDeleteMembers)
-		for _, l := range wrapText(fmt.Sprintf("Delete group %q? It has %d session(s).", m.settingsGroupDeleteName, count), innerWidth) {
-			pushBlock(l, theme.Text, "")
-		}
-		for _, l := range wrapText("m moves them to default, dropping the group · d deletes them (opens the same confirm section 9.2's dd uses) · Esc cancels", innerWidth) {
-			pushBlock(l, theme.Dimmed, "")
-		}
-	}
-	if editing || confirming {
-		for _, l := range noteLines {
-			pushBlock(l, theme.Error, "")
-		}
-	}
-	selectedExtra := len(selectedBlock)
-
-	if len(m.settingsGroups) == 0 {
-		addLine("(no groups yet -- press n to create one)", theme.Dimmed, "")
-		// With no groups there is no row to attach the block to, so the
-		// create editor ("n" on an empty list is how the first group gets
-		// made) and its inline note follow the empty-list line instead.
-		rightLines = append(rightLines, selectedBlock...)
-		if len(noteLines) > 0 && !editing && !confirming {
-			addLine("", theme.Text, "")
-			for _, l := range noteLines {
-				addLine(l, theme.Error, "")
-			}
-		}
-	} else {
-		capacity := contentRows - headerRows
-		// A note that belongs to no open sub-mode (the "created group X" /
-		// "deleted group Y" outcomes) still renders after the list, so its
-		// rows -- blank separator plus every wrapped row -- come out of the
-		// window's budget rather than being truncated behind it.
-		trailingNote := len(noteLines) > 0 && !editing && !confirming
-		if trailingNote {
-			capacity -= 1 + len(noteLines)
-		}
-		// Same reservation for the scroll-position row below: it is how the
-		// windowing announces itself, so it must not be the row the frame
-		// drops either. Whenever the list cannot be shown whole it is
-		// present, and spending one row on it here cannot make the list fit
-		// whole (capacity only shrinks), so the two agree by construction.
-		if len(m.settingsGroups) > capacity-selectedExtra {
-			capacity--
-		}
-		start, end := settingsGroupsWindow(len(m.settingsGroups), m.settingsGroupIndex, selectedExtra, capacity)
-		for i := start; i < end; i++ {
-			g := m.settingsGroups[i]
-			marker := "  "
-			selected := i == m.settingsGroupIndex
-			if selected {
-				marker = "> "
-			}
-			bg := theme.Token("")
-			if selected {
-				bg = fieldSelTok
-			}
-			addLine(marker+g.Name, theme.Text, bg)
-			if !selected {
-				continue
-			}
-			// The editor/confirm/inline-note block stays attached to the
-			// group row it belongs to (cure-01-02-2's own fix), and was
-			// already measured into selectedExtra above.
-			rightLines = append(rightLines, selectedBlock...)
-		}
-		// A window narrower than the full list is this section's own
-		// documented-scrolling contract (cure-01-02-2's success criteria):
-		// up/down (already named in this footer's own "up/down select")
-		// moves the selection, which moves this window, so every group is
-		// reachable this way -- this line just states that a scroll
-		// happened and how far, rather than leaving it undiscoverable.
-		if start > 0 || end < len(m.settingsGroups) {
-			addLine(fmt.Sprintf("groups %d-%d of %d -- up/down scrolls", start+1, end, len(m.settingsGroups)), theme.Dimmed, "")
-		}
-		if trailingNote {
-			addLine("", theme.Text, "")
-			for _, l := range noteLines {
-				addLine(l, theme.Error, "")
-			}
-		}
-	}
-
-	rightLines = fitLines(rightLines, contentRows)
+	leftLines := fitLines(m.settingsGroupsCategoryLines(categories), contentRows)
+	rightLines := fitLines(m.settingsGroupsRightLines(rightWidth-4, contentRows), contentRows)
 
 	lines := make([]string, 0, height)
 	lines = append(lines, m.settingsLeftTopLine(leftWidth, leftFocused)+m.settingsRightTopLine(rightWidth, "Groups", rightFocused))
@@ -2760,6 +2607,185 @@ func (m Model) settingsGroupsViewLines(categories []settingsCategory, leftWidth,
 	lines = append(lines, m.settingsLeftBottomLine(leftWidth, leftFocused)+m.settingsRightBottomLine(rightWidth, rightFocused))
 	lines = append(lines, m.settingsFooterLine())
 	return strings.Join(lines, "\n")
+}
+
+// settingsGroupsRow builds one single-segment settingsListLine for the
+// Groups panel: text in tok on the bg selection token ("" for none).
+func (m Model) settingsGroupsRow(text string, tok, bg theme.Token) settingsListLine {
+	return settingsListLine{text: m.settingsRenderRowOpen([]settingsRowSegment{{Text: text, Tok: tok}}), bg: bg}
+}
+
+// settingsGroupsRows appends one row per wrapped line of text, all in tok
+// on no background.
+func (m Model) settingsGroupsRows(dst []settingsListLine, wrapped []string, tok theme.Token) []settingsListLine {
+	for _, l := range wrapped {
+		dst = append(dst, m.settingsGroupsRow(l, tok, ""))
+	}
+	return dst
+}
+
+// settingsSelectableRow is the "> "/"  " marker plus selection background
+// shared by the Groups panel's left and right lists.
+func settingsSelectableRow(name string, selected bool, selTok theme.Token) (text string, bg theme.Token) {
+	if selected {
+		return "> " + name, selTok
+	}
+	return "  " + name, ""
+}
+
+// settingsGroupsCategoryLines is the left panel: the category list,
+// exactly like the generic path (settingsView) shows it, before fitting.
+func (m Model) settingsGroupsCategoryLines(categories []settingsCategory) []settingsListLine {
+	categorySelTok := m.settingsSelectionToken(settingsFocusCategories)
+	leftLines := make([]settingsListLine, len(categories))
+	for i, cat := range categories {
+		text, bg := settingsSelectableRow(cat.Name, i == m.settingsCategoryIndex, categorySelTok)
+		leftLines[i] = m.settingsGroupsRow(text, theme.Text, bg)
+	}
+	return leftLines
+}
+
+// settingsGroupsNoteLines is m.settingsGroupNote (task 009's
+// validateGroupName surfacing, and the create/rename/delete outcome
+// messages) word-wrapped to the panel's own inner width, computed BEFORE
+// the group window is sized so its real row cost is known. cure-01-02-2's
+// first attempt was rejected for exactly the opposite order: the note was
+// appended once the window had already spent the frame's whole row
+// budget, so the trailing fitLines call truncated away the one row that
+// says WHY a typed name was refused (`group name "default" is reserved`)
+// whenever the selected group sat past the viewport.
+func (m Model) settingsGroupsNoteLines(innerWidth int) []string {
+	if m.settingsGroupNote == "" {
+		return nil
+	}
+	return wrapText(m.settingsGroupNote, innerWidth)
+}
+
+// settingsGroupsSelectedBlock is every row the SELECTED group's block
+// costs beyond its own one-line row: the create/rename input (blank
+// separator plus the typed row), or task 019/R131 part 2's two-branch
+// delete confirm (blank separator, the target/count line, the m/d/esc
+// branch line) -- only ever shown for a non-empty group, since
+// settingsStartGroupDelete drops an empty one immediately with no prompt
+// at all -- plus, while either sub-mode is open, the inline note itself,
+// kept attached to the input it judges instead of parked at the bottom of
+// the panel. At most one sub-mode is ever open (updateSettingsGroupDeleteConfirm's
+// own d/r/n gating). Building the block up front, wrapping included, is
+// what lets settingsGroupsWindow size the window against its REAL row
+// cost so the trailing fitLines call can only ever trim rows outside it,
+// however far down a >viewport group list the selection sits.
+func (m Model) settingsGroupsSelectedBlock(innerWidth int, noteLines []string) []settingsListLine {
+	var block []settingsListLine
+	editing := m.settingsGroupCreating || m.settingsGroupRenaming
+	confirming := m.settingsGroupDeleteConfirming
+	if editing {
+		block = append(block, m.settingsGroupsRow("", theme.Text, ""))
+		label := m.settingsGroupLabel()
+		block = append(block, m.settingsGroupsRow(label+m.settingsGroupEdit.View(m.settingsGroupFieldWidth(), m.settingsEditStyle()), theme.Text, theme.Selection))
+		block = m.settingsGroupsRows(block, wrapText(textFieldEditKeysLine, innerWidth), theme.Dimmed)
+	}
+	if confirming {
+		block = append(block, m.settingsGroupsRow("", theme.Text, ""))
+		count := len(m.settingsGroupDeleteMembers)
+		block = m.settingsGroupsRows(block, wrapText(fmt.Sprintf("Delete group %q? It has %d session(s).", m.settingsGroupDeleteName, count), innerWidth), theme.Text)
+		block = m.settingsGroupsRows(block, wrapText("m moves them to default, dropping the group · d deletes them (opens the same confirm section 9.2's dd uses) · Esc cancels", innerWidth), theme.Dimmed)
+	}
+	if editing || confirming {
+		block = m.settingsGroupsRows(block, noteLines, theme.Error)
+	}
+	return block
+}
+
+// settingsGroupsTrailingNote renders the blank separator plus every
+// wrapped row of a note that belongs to no open sub-mode (the "created
+// group X" / "deleted group Y" outcomes), or nothing for an empty note.
+func (m Model) settingsGroupsTrailingNote(dst []settingsListLine, noteLines []string) []settingsListLine {
+	if len(noteLines) == 0 {
+		return dst
+	}
+	dst = append(dst, m.settingsGroupsRow("", theme.Text, ""))
+	return m.settingsGroupsRows(dst, noteLines, theme.Error)
+}
+
+// settingsGroupsRightLines is the right panel before fitting: the stated-
+// difference copy, one row per m.settingsGroups (marked/highlighted by
+// m.settingsGroupIndex whenever the field list has focus), and -- while
+// "n"/"r"'s typing sub-mode is open -- the name being typed plus the
+// inline note, exactly where settingsEnvViewLines/
+// settingsStringEditViewLines put their own typing row and note.
+func (m Model) settingsGroupsRightLines(innerWidth, contentRows int) []settingsListLine {
+	rightLines := m.settingsGroupsRows(nil, wrapText(settingsGroupsCopy, innerWidth), theme.Dimmed)
+	rightLines = append(rightLines, m.settingsGroupsRow("", theme.Text, ""))
+	headerRows := len(rightLines)
+
+	noteLines := m.settingsGroupsNoteLines(innerWidth)
+	selectedBlock := m.settingsGroupsSelectedBlock(innerWidth, noteLines)
+	selectedExtra := len(selectedBlock)
+	// A note that belongs to no open sub-mode renders after the list (or
+	// the empty-list line), so its rows come out of the window's budget
+	// rather than being truncated behind it.
+	var trailingNote []string
+	if !m.settingsGroupBlockOpen() {
+		trailingNote = noteLines
+	}
+
+	if len(m.settingsGroups) == 0 {
+		rightLines = append(rightLines, m.settingsGroupsRow("(no groups yet -- press n to create one)", theme.Dimmed, ""))
+		// With no groups there is no row to attach the block to, so the
+		// create editor ("n" on an empty list is how the first group gets
+		// made) and its inline note follow the empty-list line instead.
+		rightLines = append(rightLines, selectedBlock...)
+		return m.settingsGroupsTrailingNote(rightLines, trailingNote)
+	}
+
+	capacity := contentRows - headerRows
+	if len(trailingNote) > 0 {
+		capacity -= 1 + len(noteLines)
+	}
+	// Same reservation for the scroll-position row below: it is how the
+	// windowing announces itself, so it must not be the row the frame
+	// drops either. Whenever the list cannot be shown whole it is
+	// present, and spending one row on it here cannot make the list fit
+	// whole (capacity only shrinks), so the two agree by construction.
+	if len(m.settingsGroups) > capacity-selectedExtra {
+		capacity--
+	}
+	start, end := settingsGroupsWindow(len(m.settingsGroups), m.settingsGroupIndex, selectedExtra, capacity)
+	rightLines = m.settingsGroupsWindowRows(rightLines, start, end, selectedBlock)
+	// A window narrower than the full list is this section's own
+	// documented-scrolling contract (cure-01-02-2's success criteria):
+	// up/down (already named in this footer's own "up/down select")
+	// moves the selection, which moves this window, so every group is
+	// reachable this way -- this line just states that a scroll
+	// happened and how far, rather than leaving it undiscoverable.
+	if start > 0 || end < len(m.settingsGroups) {
+		rightLines = append(rightLines, m.settingsGroupsRow(fmt.Sprintf("groups %d-%d of %d -- up/down scrolls", start+1, end, len(m.settingsGroups)), theme.Dimmed, ""))
+	}
+	return m.settingsGroupsTrailingNote(rightLines, trailingNote)
+}
+
+// settingsGroupBlockOpen reports whether the create/rename input
+// or the delete confirm is open, i.e. whether the note is attached to the
+// selected group's block rather than trailing the list.
+func (m Model) settingsGroupBlockOpen() bool {
+	return m.settingsGroupCreating || m.settingsGroupRenaming || m.settingsGroupDeleteConfirming
+}
+
+// settingsGroupsWindowRows appends the group rows of the half-open window
+// [start,end); the editor/confirm/inline-note block stays attached to the
+// selected group row it belongs to (cure-01-02-2's own fix), and was
+// already measured into selectedExtra by the caller.
+func (m Model) settingsGroupsWindowRows(dst []settingsListLine, start, end int, selectedBlock []settingsListLine) []settingsListLine {
+	fieldSelTok := m.settingsSelectionToken(settingsFocusFields)
+	for i := start; i < end; i++ {
+		selected := i == m.settingsGroupIndex
+		text, bg := settingsSelectableRow(m.settingsGroups[i].Name, selected, fieldSelTok)
+		dst = append(dst, m.settingsGroupsRow(text, theme.Text, bg))
+		if selected {
+			dst = append(dst, selectedBlock...)
+		}
+	}
+	return dst
 }
 
 // settingsSearchViewLines renders the takeover while `/`'s search box is
