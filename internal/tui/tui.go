@@ -3341,6 +3341,22 @@ func (m Model) onSessionDeleted(msg sessionDeleted) (tea.Model, tea.Cmd) {
 	// Update call, so this frame already reflects the deletion; the
 	// m.loadSessions reload below still runs to pick up any other
 	// concurrent change and remains the authoritative reconciliation.
+	m.dropDeletedSession(msg.session.ID)
+	cmds := []tea.Cmd{m.loadSessions, tea.Tick(m.settings.DeleteGrace, func(_ time.Time) tea.Msg { return deleteGraceExpired(generation) })}
+	if msg.hookMessage != "" {
+		// task 042 (findings §1): mirrors the sessionArchived branch above
+		// exactly -- the delete itself already committed, so this toast is
+		// purely informational, on its own DECK_UNDO_MS window (never tied
+		// to DeleteGrace, which reaps the tombstone, not this note).
+		cmds = append(cmds, m.raiseTeardownHookNote(msg.hookMessage))
+	}
+	return m, tea.Batch(cmds...)
+}
+
+// dropDeletedSession removes the just-deleted session from baseSessions and
+// the derived view, then keeps the cursor on the row it was on (by id), or
+// clamps it into range when that row was the deleted one.
+func (m *Model) dropDeletedSession(deletedID string) {
 	var selectedID string
 	selectedWasRow := false
 	if idx, ok := m.selected.SessionIndex(); ok {
@@ -3351,31 +3367,29 @@ func (m Model) onSessionDeleted(msg sessionDeleted) (tea.Model, tea.Cmd) {
 	}
 	filtered := m.baseSessions[:0:0]
 	for _, s := range m.baseSessions {
-		if s.ID != msg.session.ID {
+		if s.ID != deletedID {
 			filtered = append(filtered, s)
 		}
 	}
 	m.baseSessions = filtered
 	m.sessions = m.filteredSessions()
-	if selectedWasRow {
-		if idx := indexOfSessionID(m.sessions, selectedID); idx >= 0 {
-			m.selected = rowCursor(idx)
-		} else if idx, _ := m.selected.SessionIndex(); idx >= len(m.sessions) {
-			m.selected = rowCursor(max(0, len(m.sessions)-1))
-		}
+	if !selectedWasRow {
+		return
 	}
-	cmds := []tea.Cmd{m.loadSessions, tea.Tick(m.settings.DeleteGrace, func(_ time.Time) tea.Msg { return deleteGraceExpired(generation) })}
-	if msg.hookMessage != "" {
-		// task 042 (findings §1): mirrors the sessionArchived branch above
-		// exactly -- the delete itself already committed, so this toast is
-		// purely informational, on its own DECK_UNDO_MS window (never tied
-		// to DeleteGrace, which reaps the tombstone, not this note).
-		m.teardownHookNote = msg.hookMessage
-		m.teardownHookNoteGeneration++
-		teardownGeneration := m.teardownHookNoteGeneration
-		cmds = append(cmds, tea.Tick(m.settings.Undo, func(_ time.Time) tea.Msg { return teardownHookNoteExpired(teardownGeneration) }))
+	if idx := indexOfSessionID(m.sessions, selectedID); idx >= 0 {
+		m.selected = rowCursor(idx)
+	} else if idx, _ := m.selected.SessionIndex(); idx >= len(m.sessions) {
+		m.selected = rowCursor(max(0, len(m.sessions)-1))
 	}
-	return m, tea.Batch(cmds...)
+}
+
+// raiseTeardownHookNote shows a delete's post-destroy hook message and
+// returns the tick that expires it on its own DECK_UNDO_MS window.
+func (m *Model) raiseTeardownHookNote(message string) tea.Cmd {
+	m.teardownHookNote = message
+	m.teardownHookNoteGeneration++
+	teardownGeneration := m.teardownHookNoteGeneration
+	return tea.Tick(m.settings.Undo, func(_ time.Time) tea.Msg { return teardownHookNoteExpired(teardownGeneration) })
 }
 
 func (m Model) onDeleteGraceExpired(msg deleteGraceExpired) (tea.Model, tea.Cmd) {
