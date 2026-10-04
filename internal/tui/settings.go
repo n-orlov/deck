@@ -220,116 +220,165 @@ const (
 // user can be in at most one of them at a time (the discard prompt only
 // ever appears from the main takeover view, never from inside search).
 func (m Model) updateSettings(msg tea.KeyMsg) (Model, tea.Cmd) {
-	if m.settingsDiscardConfirm {
-		return m.updateSettingsDiscardConfirm(msg)
-	}
-	// task 003's [env] entry editor (requirement 17) takes over the whole
-	// keymap while active, the same way the discard-confirm prompt and `/`
-	// search already do above/below -- settingsEnvEditing (typing a single
-	// entry's key or value) is checked before settingsEnvOpen (browsing
-	// the entries list) since the former only ever holds while the latter
-	// also does.
-	if m.settingsEnvEditing {
-		return m.updateSettingsEnvEditing(msg)
-	}
-	if m.settingsEnvOpen {
-		return m.updateSettingsEnvList(msg)
-	}
-	// The free-text (KindString/KindPath) editor SPEC.md:532 requires for
-	// pre_launch/post_destroy takes over the whole keymap for exactly the
-	// same reason the [env] entry editor above does: the value being typed
-	// is an arbitrary shell command, so `j`, `k`, `/`, `-` and `+` are text
-	// here, never navigation/adjust/search -- a mode that let them through
-	// would move the selection out from under the value it is about to
-	// commit. It cannot be simultaneously true with either settingsEnv*
-	// mode (each is entered only from the field list, which the other has
-	// already taken over), so the order between them is arbitrary; it sits
-	// with them, above `/` search, rather than inside the main switch.
-	if m.settingsStringEditing {
-		return m.updateSettingsStringEditing(msg)
-	}
-	// The Groups section's own "n"/"r" typing sub-modes (task 018, R131
-	// part 1) take over the whole keymap for the same reason the [env]/
-	// free-text editors above do: a typed group name is text, not
-	// navigation. Checked in the same tier as those, above `/` search.
-	if m.settingsGroupCreating || m.settingsGroupRenaming {
-		return m.updateSettingsGroupEditing(msg)
-	}
-	// task 019/R131 part 2: "d"'s own two-branch prompt on a non-empty
-	// group takes over the whole keymap for the same reason -- it is
-	// itself a confirm dialog, not a navigable field.
-	if m.settingsGroupDeleteConfirming {
-		return m.updateSettingsGroupDeleteConfirm(msg)
-	}
-	if m.settingsSearchActive {
-		return m.updateSettingsSearch(msg)
-	}
-	switch msg.String() {
-	case "esc":
-		if m.settingsDirty() {
-			m.settingsDiscardConfirm = true
-			m.settingsNote = ""
-		} else {
-			m.settingsOpen = false
-		}
-	case "ctrl+s":
-		return m, m.settingsSave()
-	case "tab", "left", "right":
-		if m.settingsFocus == settingsFocusCategories {
-			m.settingsFocus = settingsFocusFields
-		} else {
-			m.settingsFocus = settingsFocusCategories
-		}
-	case "up", "k":
-		if m.settingsFocus == settingsFocusFields && m.settingsOnGroupsCategory() {
-			m.settingsMoveGroupSelection(-1)
-		} else {
-			m.settingsMove(-1)
-		}
-	case "down", "j":
-		if m.settingsFocus == settingsFocusFields && m.settingsOnGroupsCategory() {
-			m.settingsMoveGroupSelection(1)
-		} else {
-			m.settingsMove(1)
-		}
-	case "enter", " ":
-		m.settingsActivateField()
-	case "+", "=":
-		m.settingsAdjustField(1)
-	case "-", "_":
-		m.settingsAdjustField(-1)
-	case "/":
-		m.settingsSearchActive = true
-		m.settingsSearchEdit = lineedit.Editor{}
-		m.settingsSearchIndex = 0
-	case "n":
-		// R131 part 1: "n" creates a group, reachable ONLY from inside the
-		// Groups section's own field panel -- everywhere else in settings
-		// (every schema category, the category list itself) it is
-		// deliberately unbound, exactly like every other key this switch
-		// does not name for a category it does not apply to.
-		if m.settingsFocus == settingsFocusFields && m.settingsOnGroupsCategory() {
-			m.settingsStartGroupCreate()
-		}
-	case "r":
-		// R131 part 1: "r" renames the selected group, same reachability
-		// rule as "n" above, and only when a group is actually selected.
-		if m.settingsFocus == settingsFocusFields && m.settingsOnGroupsCategory() {
-			m.settingsStartGroupRename()
-		}
-	case "d":
-		// R131 part 2: "d" deletes the selected group, same reachability
-		// rule as "n"/"r" above. settingsStartGroupDelete itself decides
-		// between an immediate no-prompt delete (empty group) and opening
-		// the two-branch confirm (non-empty group) -- "default" is never a
-		// row in m.settingsGroups (store.Group's own doc comment) so it can
-		// never be selected here at all, which is what "default offers no
-		// delete" reduces to.
-		if m.settingsFocus == settingsFocusFields && m.settingsOnGroupsCategory() {
-			m.settingsStartGroupDelete()
+	for _, mode := range settingsModalModes {
+		if mode.active(m) {
+			return mode.handle(m, msg)
 		}
 	}
-	return m, nil
+	handler, ok := settingsKeyHandlers[msg.String()]
+	if !ok {
+		return m, nil
+	}
+	cmd := handler(&m)
+	return m, cmd
+}
+
+// settingsModalModes lists the modes that take over the whole settings
+// keymap while active, in precedence order (first active wins): the discard
+// confirm prompt (task 016); task 003's [env] entry editor (requirement 17),
+// settingsEnvEditing (typing a single entry's key or value) before
+// settingsEnvOpen (browsing the entries list) since the former only ever
+// holds while the latter also does; the free-text (KindString/KindPath)
+// editor SPEC.md:532 requires for pre_launch/post_destroy, where `j`, `k`,
+// `/`, `-` and `+` are text, never navigation/adjust/search; the Groups
+// section's "n"/"r" typing sub-modes (task 018, R131 part 1) and "d"'s
+// two-branch confirm (task 019/R131 part 2); and finally `/` search (task
+// 014). All sit above the main key table.
+var settingsModalModes = []struct {
+	active func(Model) bool
+	handle func(Model, tea.KeyMsg) (Model, tea.Cmd)
+}{
+	{func(m Model) bool { return m.settingsDiscardConfirm }, Model.updateSettingsDiscardConfirm},
+	{func(m Model) bool { return m.settingsEnvEditing }, Model.updateSettingsEnvEditing},
+	{func(m Model) bool { return m.settingsEnvOpen }, Model.updateSettingsEnvList},
+	{func(m Model) bool { return m.settingsStringEditing }, Model.updateSettingsStringEditing},
+	{func(m Model) bool { return m.settingsGroupCreating || m.settingsGroupRenaming }, Model.updateSettingsGroupEditing},
+	{func(m Model) bool { return m.settingsGroupDeleteConfirming }, Model.updateSettingsGroupDeleteConfirm},
+	{func(m Model) bool { return m.settingsSearchActive }, Model.updateSettingsSearch},
+}
+
+// settingsKeyHandlers is the main takeover's key table. Keys it does not
+// name are deliberately unbound.
+var settingsKeyHandlers = map[string]func(*Model) tea.Cmd{
+	"esc":    (*Model).settingsKeyEsc,
+	"ctrl+s": (*Model).settingsSave,
+	"tab":    (*Model).settingsKeySwitchFocus,
+	"left":   (*Model).settingsKeySwitchFocus,
+	"right":  (*Model).settingsKeySwitchFocus,
+	"up":     (*Model).settingsKeyUp,
+	"k":      (*Model).settingsKeyUp,
+	"down":   (*Model).settingsKeyDown,
+	"j":      (*Model).settingsKeyDown,
+	"enter":  (*Model).settingsKeyActivate,
+	" ":      (*Model).settingsKeyActivate,
+	"+":      (*Model).settingsKeyIncrease,
+	"=":      (*Model).settingsKeyIncrease,
+	"-":      (*Model).settingsKeyDecrease,
+	"_":      (*Model).settingsKeyDecrease,
+	"/":      (*Model).settingsKeySearch,
+	"n":      (*Model).settingsKeyGroupCreate,
+	"r":      (*Model).settingsKeyGroupRename,
+	"d":      (*Model).settingsKeyGroupDelete,
+}
+
+func (m *Model) settingsKeyEsc() tea.Cmd {
+	if m.settingsDirty() {
+		m.settingsDiscardConfirm = true
+		m.settingsNote = ""
+	} else {
+		m.settingsOpen = false
+	}
+	return nil
+}
+
+// settingsKeySwitchFocus: SPEC §11.5, tab/left/right switch between the
+// category list and the field list.
+func (m *Model) settingsKeySwitchFocus() tea.Cmd {
+	if m.settingsFocus == settingsFocusCategories {
+		m.settingsFocus = settingsFocusFields
+	} else {
+		m.settingsFocus = settingsFocusCategories
+	}
+	return nil
+}
+
+// settingsKeyStep moves the Groups selection when the field list of the
+// Groups category has focus, and the schema selection otherwise.
+func (m *Model) settingsKeyStep(delta int) {
+	if m.settingsFocus == settingsFocusFields && m.settingsOnGroupsCategory() {
+		m.settingsMoveGroupSelection(delta)
+	} else {
+		m.settingsMove(delta)
+	}
+}
+
+func (m *Model) settingsKeyUp() tea.Cmd {
+	m.settingsKeyStep(-1)
+	return nil
+}
+
+func (m *Model) settingsKeyDown() tea.Cmd {
+	m.settingsKeyStep(1)
+	return nil
+}
+
+func (m *Model) settingsKeyActivate() tea.Cmd {
+	m.settingsActivateField()
+	return nil
+}
+
+func (m *Model) settingsKeyIncrease() tea.Cmd {
+	m.settingsAdjustField(1)
+	return nil
+}
+
+func (m *Model) settingsKeyDecrease() tea.Cmd {
+	m.settingsAdjustField(-1)
+	return nil
+}
+
+func (m *Model) settingsKeySearch() tea.Cmd {
+	m.settingsSearchActive = true
+	m.settingsSearchEdit = lineedit.Editor{}
+	m.settingsSearchIndex = 0
+	return nil
+}
+
+// settingsOnGroupsFields reports whether the Groups section's own field
+// panel has focus: "n", "r" and "d" (R131) are reachable ONLY from there --
+// everywhere else in settings they are deliberately unbound.
+func (m *Model) settingsOnGroupsFields() bool {
+	return m.settingsFocus == settingsFocusFields && m.settingsOnGroupsCategory()
+}
+
+// settingsKeyGroupCreate: R131 part 1, "n" creates a group.
+func (m *Model) settingsKeyGroupCreate() tea.Cmd {
+	if m.settingsOnGroupsFields() {
+		m.settingsStartGroupCreate()
+	}
+	return nil
+}
+
+// settingsKeyGroupRename: R131 part 1, "r" renames the selected group (only
+// when a group is actually selected -- settingsStartGroupRename decides).
+func (m *Model) settingsKeyGroupRename() tea.Cmd {
+	if m.settingsOnGroupsFields() {
+		m.settingsStartGroupRename()
+	}
+	return nil
+}
+
+// settingsKeyGroupDelete: R131 part 2, "d" deletes the selected group.
+// settingsStartGroupDelete itself decides between an immediate no-prompt
+// delete (empty group) and opening the two-branch confirm (non-empty group)
+// -- "default" is never a row in m.settingsGroups (store.Group's own doc
+// comment) so it can never be selected here at all, which is what "default
+// offers no delete" reduces to.
+func (m *Model) settingsKeyGroupDelete() tea.Cmd {
+	if m.settingsOnGroupsFields() {
+		m.settingsStartGroupDelete()
+	}
+	return nil
 }
 
 // settingsDirty reports whether the takeover's staged edits (settingsEdits)
