@@ -5558,9 +5558,7 @@ type sidebarEntry struct {
 func (m Model) sidebarEntries(contentWidth int) []sidebarEntry {
 	var entries []sidebarEntry
 	if m.settings.Socket != "" {
-		for _, line := range wrapText(m.sidebarSocketHeaderText(contentWidth), contentWidth) {
-			entries = append(entries, sidebarEntry{text: line})
-		}
+		entries = append(entries, wrappedSidebarEntries(m.sidebarSocketHeaderText(contentWidth), contentWidth)...)
 	}
 	if len(m.sessions) == 0 && m.filterQuery != "" {
 		// Task 123/I-10: a filter query in force with zero matches is a
@@ -5571,10 +5569,7 @@ func (m Model) sidebarEntries(contentWidth int) []sidebarEntry {
 		// defined-but-empty group can never match a query (SPEC §11's
 		// "under an active filter only groups with a match render"), so
 		// groupSessions() deliberately seeds nothing while filtering.
-		for _, line := range wrapText(fmt.Sprintf("No sessions match %q.", m.filterQuery), contentWidth) {
-			entries = append(entries, sidebarEntry{text: line})
-		}
-		return entries
+		return append(entries, wrappedSidebarEntries(fmt.Sprintf("No sessions match %q.", m.filterQuery), contentWidth)...)
 	}
 	if len(m.sessions) == 0 {
 		// cure-01-02: an unfiltered sidebar with no sessions still renders
@@ -5586,9 +5581,7 @@ func (m Model) sidebarEntries(contentWidth int) []sidebarEntry {
 		// inside the sidebar") rather than replacing it, and is emitted
 		// FIRST so it stays legible at the supported 80x24 floor however
 		// many empty groups are defined below it.
-		for _, line := range wrapText("No sessions yet. Press n to create a session.", contentWidth) {
-			entries = append(entries, sidebarEntry{text: line})
-		}
+		entries = append(entries, wrappedSidebarEntries("No sessions yet. Press n to create a session.", contentWidth)...)
 	}
 	// Task 084: sessionPos counts only rendered SESSION rows, continuing
 	// across group boundaries -- a workspace header never advances or
@@ -5608,19 +5601,37 @@ func (m Model) sidebarEntries(contentWidth int) []sidebarEntry {
 	// selected and unselected (there is no gutter width to add or drop).
 	sessionPos := 0
 	for _, group := range m.groupSessions() {
-		headerBg, headerSelected := m.headerSelectionCue(group.GroupID)
-		headerText := m.groupHeaderText(group, contentWidth, headerSelected)
-		entries = append(entries, sidebarEntry{text: headerText, kind: sidebarLineHeader, groupName: group.Name, groupID: group.GroupID, gutter: "", bg: headerBg})
-		if m.isGroupCollapsed(group.GroupID) {
-			continue
+		entries = m.appendGroupEntries(entries, group, contentWidth, &sessionPos)
+	}
+	return entries
+}
+
+// wrappedSidebarEntries is text word-wrapped to the sidebar's content width,
+// one plain (no gutter, no background) entry per physical line.
+func wrappedSidebarEntries(text string, contentWidth int) []sidebarEntry {
+	var entries []sidebarEntry
+	for _, line := range wrapText(text, contentWidth) {
+		entries = append(entries, sidebarEntry{text: line})
+	}
+	return entries
+}
+
+// appendGroupEntries appends one group's header entry and, unless the group
+// is collapsed, its session rows. sessionPos is the running count of rendered
+// session rows, advanced here so the stripe phase continues across groups.
+func (m Model) appendGroupEntries(entries []sidebarEntry, group sidebarGroup, contentWidth int, sessionPos *int) []sidebarEntry {
+	headerBg, headerSelected := m.headerSelectionCue(group.GroupID)
+	headerText := m.groupHeaderText(group, contentWidth, headerSelected)
+	entries = append(entries, sidebarEntry{text: headerText, kind: sidebarLineHeader, groupName: group.Name, groupID: group.GroupID, gutter: "", bg: headerBg})
+	if m.isGroupCollapsed(group.GroupID) {
+		return entries
+	}
+	for _, is := range group.Sessions {
+		lines, gutter, bg := m.sidebarRowLines(is.Index, is.Session, *sessionPos%2 == 1)
+		for i, line := range lines {
+			entries = append(entries, sidebarEntry{text: line, gutter: gutter[i], kind: sidebarLineRow, sessionIndex: is.Index, bg: bg})
 		}
-		for _, is := range group.Sessions {
-			lines, gutter, bg := m.sidebarRowLines(is.Index, is.Session, sessionPos%2 == 1)
-			for i, line := range lines {
-				entries = append(entries, sidebarEntry{text: line, gutter: gutter[i], kind: sidebarLineRow, sessionIndex: is.Index, bg: bg})
-			}
-			sessionPos++
-		}
+		*sessionPos++
 	}
 	return entries
 }
