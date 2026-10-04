@@ -200,18 +200,7 @@ func merge(inputs []*node) *node {
 		}
 	}
 
-	for _, suite := range out.Nodes {
-		if suite.XMLName.Local != "testsuite" {
-			continue
-		}
-		kept := suite.Nodes[:0]
-		for _, c := range suite.Nodes {
-			if !drop[c] {
-				kept = append(kept, c)
-			}
-		}
-		suite.Nodes = kept
-	}
+	dropTestcases(out, drop)
 
 	for _, a := range appendLater {
 		target := findSuite(out, a.suite.attr("name"))
@@ -267,6 +256,22 @@ func failedAttempts(as []attempt) []*node {
 		}
 	}
 	return fails
+}
+
+// dropTestcases removes every testcase in drop from out's testsuites.
+func dropTestcases(out *node, drop map[*node]bool) {
+	for _, suite := range out.Nodes {
+		if suite.XMLName.Local != "testsuite" {
+			continue
+		}
+		kept := suite.Nodes[:0]
+		for _, c := range suite.Nodes {
+			if !drop[c] {
+				kept = append(kept, c)
+			}
+		}
+		suite.Nodes = kept
+	}
 }
 
 func findSuite(root *node, name string) *node {
