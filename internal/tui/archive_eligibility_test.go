@@ -69,39 +69,32 @@ func TestArchiveKeyOnAnArchivedRowRefusesAndNamesU(t *testing.T) {
 	}
 }
 
-// listModeCaseBlock returns the source text of one `case "<key>":` arm of
-// tui.go's top-level list-mode key switch, with its `//` comments stripped,
-// so an assertion about what the arm CALLS cannot be satisfied by a comment
-// that merely mentions the name. It is anchored exactly the way
-// help_keymap_parity_test.go's listModeBoundKeys anchors the same switch
-// (first `switch msg.String() {`, closed by the end of the
-// onKeyMsg function), so the two never disagree about which switch is
-// being read.
+// listModeCaseBlock returns the source text of the handler that
+// list_keys.go's listKeyHandlers table binds to <key> (the Model method
+// named in the table's own entry), with its `//` comments stripped, so an
+// assertion about what the handler CALLS cannot be satisfied by a comment
+// that merely mentions the name. It reads the table through
+// help_keymap_parity_test.go's listModeKeyTable, the same extraction
+// listModeBoundKeys uses, so the two never disagree about the keymap.
 func listModeCaseBlock(t *testing.T, key string) string {
 	t.Helper()
-	data, err := os.ReadFile("tui.go")
+	handler, ok := listModeKeyTable(t)[key]
+	if !ok {
+		t.Fatalf("could not find %q in list_keys.go's listKeyHandlers table -- extraction is broken, not the source", key)
+	}
+	data, err := os.ReadFile("list_keys.go")
 	if err != nil {
-		t.Fatalf("ReadFile(tui.go): %v", err)
+		t.Fatalf("ReadFile(list_keys.go): %v", err)
 	}
 	src := string(data)
 
-	start := strings.Index(src, "switch msg.String() {")
+	start := strings.Index(src, "\nfunc (m Model) "+handler+"(")
 	if start < 0 {
-		t.Fatalf("could not find the list-mode key switch (`switch msg.String() {`) in tui.go -- extraction is broken, not the source")
+		t.Fatalf("could not find `func (m Model) %s(` in list_keys.go -- extraction is broken, not the source", handler)
 	}
-	relEnd := strings.Index(src[start:], "\n}\n")
-	if relEnd < 0 {
-		t.Fatalf("could not find the end of the list-mode key switch (end of onKeyMsg) in tui.go -- extraction is broken, not the source")
-	}
-	block := src[start : start+relEnd]
-
-	caseStart := strings.Index(block, "\n\tcase \""+key+"\":")
-	if caseStart < 0 {
-		t.Fatalf("could not find `case %q:` in tui.go's list-mode key switch -- extraction is broken, not the source", key)
-	}
-	arm := block[caseStart+1:]
-	if relNext := strings.Index(arm[1:], "\n\tcase "); relNext >= 0 {
-		arm = arm[:relNext+1]
+	arm := src[start+1:]
+	if relEnd := strings.Index(arm, "\n}\n"); relEnd >= 0 {
+		arm = arm[:relEnd+2]
 	}
 
 	var code []string
@@ -158,10 +151,10 @@ func TestArchiveKeyHandlerCallsTheFooterPredicateByName(t *testing.T) {
 
 	arm := listModeCaseBlock(t, "A")
 	if !strings.Contains(arm, predicateName+"(") {
-		t.Errorf("case \"A\" in tui.go's list-mode key switch does not call %s(), the predicate footerLegend's own A entry names: the footer and the key handler must consult one definition of A's eligibility (review finding 2/R80, SPEC \u00a711.3), never two that merely agree.\ncase \"A\" arm (comments stripped):\n%s", predicateName, arm)
+		t.Errorf("case \"A\" in list_keys.go's key table does not call %s(), the predicate footerLegend's own A entry names: the footer and the key handler must consult one definition of A's eligibility (review finding 2/R80, SPEC \u00a711.3), never two that merely agree.\ncase \"A\" arm (comments stripped):\n%s", predicateName, arm)
 	}
 	if loc := archivedAtRe.FindString(arm); loc != "" {
-		t.Errorf("case \"A\" in tui.go's list-mode key switch reads ArchivedAt itself: that is a second copy of %s()'s logic, which is exactly the parallel definition review finding 2/R80 rejects -- call %s() instead.\ncase \"A\" arm (comments stripped):\n%s", predicateName, predicateName, arm)
+		t.Errorf("case \"A\" in list_keys.go's key table reads ArchivedAt itself: that is a second copy of %s()'s logic, which is exactly the parallel definition review finding 2/R80 rejects -- call %s() instead.\ncase \"A\" arm (comments stripped):\n%s", predicateName, predicateName, arm)
 	}
 
 	data, err := os.ReadFile("tui.go")

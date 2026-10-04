@@ -28,67 +28,53 @@ import (
 // accident (see TestHelpOverlayKeymapMatchesBoundKeys's discussion of
 // direction 2 below).
 
-// listModeSwitchCaseRe matches a `case "a", "b":` line: every case in the
-// list-mode switch is a plain string literal (or comma-joined list of
-// them) on `msg.String()`, never a type switch or a bare identifier, so
-// this pattern captures every bound key with nothing hand-picked.
-var listModeSwitchCaseRe = regexp.MustCompile(`(?m)^\tcase ((?:"[^"]*"(?:, )?)+):`)
+// listKeyTableEntryRe matches one `"key": Model.keyXxx,` entry (gofmt aligns the colon) of
+// listKeyHandlers in list_keys.go: the key is a plain string literal, the
+// handler a Model method expression. The literal can itself be a comma or
+// a quote, hence the escape-aware body.
+var listKeyTableEntryRe = regexp.MustCompile(`(?m)^\t\t("(?:[^"\\]|\\.)*"):\s+Model\.(\w+),$`)
 
-// caseLiteralRe pulls each individual quoted string literal out of a
-// matched case list, e.g. `"q", "ctrl+c"` -> [`"q"`, `"ctrl+c"`]. It is
-// used instead of strings.Split(list, ",") because one of the bound keys
-// is itself the literal "," (the settings key), which a naive split on
-// every comma would tear in half.
-var caseLiteralRe = regexp.MustCompile(`"[^"]*"`)
-
-// listModeBoundKeys extracts every raw bubbletea key string bound in
-// Update's top-level list-mode key switch: the `switch msg.String() {
-// case "q", "ctrl+c": ... }` block inside the tea.KeyMsg case, reached
-// only once every dialog/overlay's own early-return above it (creating,
-// profileSwitching, pinning, envEditing, restartChoosing,
-// deleteConfirming, settingsOpen, themePicking, renaming, detail,
-// eventLogOpen, filtering, pendingDelete) has declined the message --
-// i.e. the keymap `?` help documents. It is anchored on the exact
-// `switch msg.String() {` this switch opens with (the first occurrence
-// in the file -- the create-dialog cwd-field switches at the same tag
-// text further down are a different, narrower keymap for a single field
-// and are correctly excluded by taking the *first* occurrence) and
-// closed by the end of onKeyMsg (the first "\n}\n" after it), which is what follows this
-// switch's closing brace.
-func listModeBoundKeys(t *testing.T) map[string]bool {
+// listModeKeyTable reads list_keys.go's own listKeyHandlers literal (never a
+// copy of it) and returns each bound raw bubbletea key string with the name
+// of the Model method that handles it.
+func listModeKeyTable(t *testing.T) map[string]string {
 	t.Helper()
-	data, err := os.ReadFile("tui.go")
+	data, err := os.ReadFile("list_keys.go")
 	if err != nil {
-		t.Fatalf("ReadFile(tui.go): %v", err)
+		t.Fatalf("ReadFile(list_keys.go): %v", err)
 	}
 	src := string(data)
-
-	start := strings.Index(src, "switch msg.String() {")
+	start := strings.Index(src, "listKeyHandlers = map[string]keyHandler{")
 	if start < 0 {
-		t.Fatalf("could not find the list-mode key switch (`switch msg.String() {`) in tui.go -- extraction is broken, not the source")
+		t.Fatalf("could not find `listKeyHandlers = map[string]keyHandler{` in list_keys.go -- extraction is broken, not the source")
 	}
-	relEnd := strings.Index(src[start:], "\n}\n")
+	relEnd := strings.Index(src[start:], "\n\t}\n")
 	if relEnd < 0 {
-		t.Fatalf("could not find the end of the list-mode key switch (end of onKeyMsg) in tui.go -- extraction is broken, not the source")
+		t.Fatalf("could not find the end of listKeyHandlers' literal in list_keys.go -- extraction is broken, not the source")
 	}
-	block := src[start : start+relEnd]
-
-	keys := map[string]bool{}
-	for _, m := range listModeSwitchCaseRe.FindAllStringSubmatch(block, -1) {
-		// Split on each quoted literal directly (not on every comma --
-		// one of the bound keys is itself the literal ","), so a case
-		// list like `case "q", "ctrl+c":` yields exactly its two
-		// literals and `case ",":` yields exactly one.
-		for _, lit := range caseLiteralRe.FindAllString(m[1], -1) {
-			key, err := strconv.Unquote(lit)
-			if err != nil {
-				t.Fatalf("could not unquote case literal %q: %v", lit, err)
-			}
-			keys[key] = true
+	table := map[string]string{}
+	for _, m := range listKeyTableEntryRe.FindAllStringSubmatch(src[start:start+relEnd], -1) {
+		key, err := strconv.Unquote(m[1])
+		if err != nil {
+			t.Fatalf("could not unquote table key %s: %v", m[1], err)
 		}
+		table[key] = m[2]
+	}
+	return table
+}
+
+// listModeBoundKeys extracts every raw bubbletea key string bound in the
+// list-mode key table (listKeyHandlers): the keymap `?` help documents,
+// reached only once every dialog/overlay (keyOverlays), the dd chord's
+// second key and the session-scoped guard have declined the message.
+func listModeBoundKeys(t *testing.T) map[string]bool {
+	t.Helper()
+	keys := map[string]bool{}
+	for key := range listModeKeyTable(t) {
+		keys[key] = true
 	}
 	if len(keys) < 20 {
-		t.Fatalf("only found %d bound keys in the list-mode switch, expected 30+ -- extraction is broken, not the source", len(keys))
+		t.Fatalf("only found %d bound keys in the list-mode key table, expected 30+ -- extraction is broken, not the source", len(keys))
 	}
 	return keys
 }
