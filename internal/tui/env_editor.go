@@ -269,6 +269,60 @@ func (m Model) envHintLine() string {
 var envBrowseLegendKeys = map[string]bool{"j/k": true, "Enter": true, "r": true, "Esc": true}
 var envEditLegendKeys = map[string]bool{"Enter": true, "Esc": true}
 
+// dialogBodyColorer accumulates a styled dialog body's finished physical lines. Each
+// method wraps its plain string via wrapDialogLines FIRST and colours the
+// wrapped lines afterwards, so a colour token never straddles a wrap
+// boundary.
+type dialogBodyColorer struct {
+	m   Model
+	out []string
+}
+
+// whole colours every wrapped line of line in the one token tok.
+func (c *dialogBodyColorer) whole(tok theme.Token, line string) {
+	for _, l := range c.m.wrapDialogLines(line) {
+		c.out = append(c.out, c.m.colorToken(tok, l))
+	}
+}
+
+// row paints one label+value row: the label in `hint` and the rest in
+// `text`, with the selection treatment when focused.
+func (c *dialogBodyColorer) row(label, value string, focused bool) {
+	for _, l := range c.m.wrapDialogLines(label + value) {
+		var segs []settingsRowSegment
+		rest := l
+		if strings.HasPrefix(l, label) {
+			segs = append(segs, settingsRowSegment{Text: label, Tok: theme.Hint})
+			rest = strings.TrimPrefix(l, label)
+		}
+		if rest != "" {
+			segs = append(segs, settingsRowSegment{Text: rest, Tok: theme.Text})
+		}
+		if len(segs) == 0 {
+			segs = []settingsRowSegment{{Text: l, Tok: theme.Text}}
+		}
+		c.out = append(c.out, c.m.renderCreateRowSegments(focused, segs))
+	}
+}
+
+// legendLine colours envHintLine's already-wrapped sentence word by word,
+// never before wrap: every key word in keys gets `key`, every other word
+// (punctuation attached and all) gets `hint`.
+func (c *dialogBodyColorer) legendLine(line string, keys map[string]bool) {
+	for _, l := range c.m.wrapDialogLines(line) {
+		fields := strings.Fields(l)
+		for i, f := range fields {
+			trimmed := strings.TrimRight(f, ",;.")
+			if keys[trimmed] {
+				fields[i] = c.m.colorToken(theme.Key, trimmed) + f[len(trimmed):]
+			} else {
+				fields[i] = c.m.colorToken(theme.Hint, f)
+			}
+		}
+		c.out = append(c.out, strings.Join(fields, " "))
+	}
+}
+
 // styledEnvBody re-derives envBody's exact structure -- same title, blank
 // line, row loop, order line, optional note and closing hint, in the same
 // order -- but colours each finished PHYSICAL line rather than the
@@ -286,76 +340,35 @@ var envEditLegendKeys = map[string]bool{"Enter": true, "Esc": true}
 // background," not specific to that dialog).
 func (m Model) styledEnvBody() string {
 	wrap := m.wrapDialogLines
-	var out []string
-
-	colorWhole := func(tok theme.Token, line string) {
-		for _, l := range wrap(line) {
-			out = append(out, m.colorToken(tok, l))
-		}
-	}
-	colorRow := func(label, value string, focused bool) {
-		for _, l := range wrap(label + value) {
-			var segs []settingsRowSegment
-			rest := l
-			if strings.HasPrefix(l, label) {
-				segs = append(segs, settingsRowSegment{Text: label, Tok: theme.Hint})
-				rest = strings.TrimPrefix(l, label)
-			}
-			if rest != "" {
-				segs = append(segs, settingsRowSegment{Text: rest, Tok: theme.Text})
-			}
-			if len(segs) == 0 {
-				segs = []settingsRowSegment{{Text: l, Tok: theme.Text}}
-			}
-			out = append(out, m.renderCreateRowSegments(focused, segs))
-		}
-	}
-	// colorLegendLine colours envHintLine's already-wrapped sentence word
-	// by word, never before wrap: every key word in keys gets `key`, every
-	// other word (punctuation attached and all) gets `hint`.
-	colorLegendLine := func(line string, keys map[string]bool) {
-		for _, l := range wrap(line) {
-			fields := strings.Fields(l)
-			for i, f := range fields {
-				trimmed := strings.TrimRight(f, ",;.")
-				if keys[trimmed] {
-					fields[i] = m.colorToken(theme.Key, trimmed) + f[len(trimmed):]
-				} else {
-					fields[i] = m.colorToken(theme.Hint, f)
-				}
-			}
-			out = append(out, strings.Join(fields, " "))
-		}
-	}
-
+	c := &dialogBodyColorer{m: m}
 	session, _ := m.selectedSession()
 	rows := m.sessionEnvRows(session)
-	colorWhole(theme.Title, fmt.Sprintf("Environment for %s", session.Name))
-	out = append(out, "")
+	c.whole(theme.Title, fmt.Sprintf("Environment for %s", session.Name))
+	c.out = append(c.out, "")
 	if len(rows) == 0 {
-		colorWhole(theme.Dimmed, "(no environment keys resolved for this session)")
+		c.whole(theme.Dimmed, "(no environment keys resolved for this session)")
 	} else {
 		for i, row := range rows {
 			label, value := m.envRowLine(row, i == m.envCursor)
-			colorRow(label, value, i == m.envCursor)
+			c.row(label, value, i == m.envCursor)
 		}
 	}
-	out = append(out, "")
-	colorWhole(theme.Dimmed, "Order, lowest to highest: server env \u2192 captured_path \u2192 config [env] \u2192 session env.")
+	c.out = append(c.out, "")
+	c.whole(theme.Dimmed, "Order, lowest to highest: server env \u2192 captured_path \u2192 config [env] \u2192 session env.")
 	if m.envNote != "" {
-		out = append(out, "")
-		colorWhole(theme.Error, m.envNote)
+		c.out = append(c.out, "")
+		c.whole(theme.Error, m.envNote)
 	}
 	if m.envEditKey != "" {
-		out = append(out, "")
+		c.out = append(c.out, "")
 		label, value := m.envEditPromptLine()
-		colorRow(label, value, true)
-		colorLegendLine(m.envHintLine(), envEditLegendKeys)
-		out = append(out, m.styledTextFieldEditKeys(wrap)...)
+		c.row(label, value, true)
+		c.legendLine(m.envHintLine(), envEditLegendKeys)
+		c.out = append(c.out, m.styledTextFieldEditKeys(wrap)...)
 	} else {
-		colorLegendLine(m.envHintLine(), envBrowseLegendKeys)
+		c.legendLine(m.envHintLine(), envBrowseLegendKeys)
 	}
-	return strings.Join(out, "\n")
+	return strings.Join(c.out, "\n")
 }
 
 // updateEnvDialog handles keys while the `e` env editor is open (task 021).
