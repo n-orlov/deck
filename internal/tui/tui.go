@@ -2719,6 +2719,22 @@ func (m Model) onSessionsLoaded(msg sessionsLoaded) (tea.Model, tea.Cmd) {
 	// never blocks the sessions half of this message from applying.
 	if msg.groupsErr == nil {
 		m.allGroups = msg.groups
+		m.refreshSettingsGroupsAfterReload()
+	}
+	if msg.err != nil {
+		m.sessionsReloadNote = "Cannot read sessions: " + msg.err.Error()
+	} else {
+		m.sessionsReloadNote = ""
+		m.applyReloadedSessions(msg)
+	}
+	return m, nil
+}
+
+// refreshSettingsGroupsAfterReload is onSessionsLoaded's refresh of the settings
+// takeover's Groups panel; the caller has established the groups read succeeded.
+func (m *Model) refreshSettingsGroupsAfterReload() {
+	if !m.settingsOpen || !m.settingsOnGroupsCategory() {
+		return
 	}
 	// B2: the settings takeover's own Groups panel (m.settingsGroups)
 	// is a live per-render store snapshot (computeAvailableGroups'
@@ -2744,238 +2760,260 @@ func (m Model) onSessionsLoaded(msg sessionsLoaded) (tea.Model, tea.Cmd) {
 	// typing sub-mode) or m.settingsEdits (staged scalar edits): the
 	// ordinary reload has never reset either, and this fix keeps it
 	// that way.
-	if msg.groupsErr == nil && m.settingsOpen && m.settingsOnGroupsCategory() {
-		var selectedGroupID int64
-		if g, ok := m.settingsSelectedGroup(); ok {
-			selectedGroupID = g.ID
-		}
-		m.settingsGroups = m.computeAvailableGroups()
-		if selectedGroupID != 0 {
-			m.selectSettingsGroupByID(selectedGroupID)
-		}
-		if m.settingsGroupIndex >= len(m.settingsGroups) && m.settingsGroupIndex > 0 {
-			m.settingsGroupIndex--
+	var selectedGroupID int64
+	if g, ok := m.settingsSelectedGroup(); ok {
+		selectedGroupID = g.ID
+	}
+	m.settingsGroups = m.computeAvailableGroups()
+	if selectedGroupID != 0 {
+		m.selectSettingsGroupByID(selectedGroupID)
+	}
+	if m.settingsGroupIndex >= len(m.settingsGroups) && m.settingsGroupIndex > 0 {
+		m.settingsGroupIndex--
+	}
+}
+
+// applyReloadedSessions is onSessionsLoaded's success path: it installs the
+// freshly loaded session list and re-derives selection, scroll and the entry
+// refusal from it.
+func (m *Model) applyReloadedSessions(msg sessionsLoaded) {
+	// cure-01-01-3 (R143/R148, SPEC §11.9): the pre-reload selected
+	// session identity, captured before m.baseSessions/m.sessions/
+	// m.selected are touched below by ANYTHING this branch does --
+	// the sort/resort, the preserve-by-id-then-clamp dance, the
+	// header promotion, and the newly-created-session intent below
+	// all move m.selected through this same reload, and
+	// clearEntryRefusalIfSelectedSessionChanged (entry_refusal.go)
+	// needs the BEFORE value to tell a genuine identity change
+	// (refused alpha's row now selecting freshly-created beta, or
+	// the selected row disappearing outright) apart from a resort
+	// that lands the SAME session at a new index or cursor.
+	prevSelectedSession, prevSelectedOK := m.selectedSession()
+	// SPEC requirements 28/29/30 (task 023's sort, task 024's
+	// grouping): every load renders in attention order, not
+	// store order, so the sidebar's group order itself follows
+	// each group's most urgent member (see SPEC §11's
+	// illustration: "service-a" leads with two waiting rows,
+	// "infra" follows with only an error) exactly as
+	// groupSessions' own "first appearance in m.sessions"
+	// bucketing already promises once m.sessions is in this
+	// order.
+	var selectedID string
+	selectedWasRow := false
+	if idx, ok := m.selected.SessionIndex(); ok {
+		selectedWasRow = true
+		if idx >= 0 && idx < len(m.sessions) {
+			selectedID = m.sessions[idx].ID
 		}
 	}
-	if msg.err != nil {
-		m.sessionsReloadNote = "Cannot read sessions: " + msg.err.Error()
+	// cure-01-05 follow-up (task 022 sweep): fail-before was
+	// cmd/deck's TestDeckBinaryRefreshesAllConcurrentClients timing
+	// out waiting for "resumable" at 2bb61a8 -- a concurrent client
+	// that starts before any session exists has its zero-value
+	// rowCursor(0) promoted to a header cursor by the header-only-
+	// load fix below (cursorNamesVisibleStop/nearestVisibleSelection),
+	// and that header stays selected forever after, even once a
+	// session appears in its own, still-uncollapsed bucket:
+	// cursorNamesVisibleStop trivially returns true for any header
+	// whose bucket still exists, so the transition was never caught.
+	// selectedGroupHadNoRows (group.go) captures that, from the
+	// PRE-reload session list (m.sessions, not yet overwritten
+	// below), BEFORE selectVisibleStopAfterReload gets a chance to
+	// act on it further down.
+	selectedGroupHadNoRows := m.selectedGroupHadNoRows()
+	// cure-01-01-2 (R136/SPEC §11): selectedGroupHadNoRows alone
+	// cannot tell a deliberate navigation stop on an existing,
+	// still-empty header (other groups already have visible rows)
+	// apart from the ONE case the promotion below actually exists
+	// for -- a brand new client whose zero-value cursor got
+	// auto-promoted to a header because there was NOTHING ELSE to
+	// select yet (TestCure0105FirstSessionUnderHeaderOnlyLoadFollowsSelection,
+	// task 022 sweep). hadNoSessionsAtAll captures that distinction
+	// from the SAME pre-reload m.sessions: true only when the WHOLE
+	// sidebar was header-only, never merely this one bucket among
+	// others. A user who pressed g/Down/etc to land on an existing
+	// empty header while other sessions were already on screen
+	// keeps that header across a background arrival with no local
+	// creation intent (TestReview113ExplicitHeaderSurvivesBackgroundArrival).
+	hadNoSessionsAtAll := len(m.sessions) == 0
+	// sortSessionsByAttentionStable, not the plain
+	// sortSessionsByAttention: a genuine tie on both rank and
+	// StatusAt (task 005/I-1's finding -- two co-created sessions
+	// promoted running in the same reconcile pass round to the
+	// same millisecond) must not silently swap two rows' relative
+	// order out from under an in-flight k/m/j idiom just because
+	// their random UUIDs happen to compare the "wrong" way; see
+	// sortSessionsByAttentionStable's own doc comment
+	// (internal/tui/attention.go) and
+	// docs/reports/phase3d-i1-rootcause.md.
+	//
+	// Task 123/I-10: sorted into baseSessions, never m.sessions
+	// directly, so a filter query in force survives the periodic
+	// reconcile tick's own reload instead of being silently
+	// clobbered by it the moment ListSessions' own (archive-free)
+	// result lands.
+	//
+	// Task 305 (R53), REMOVED by task 011 (R129): this used to
+	// compute attentionOrder unconditionally so a non-attention
+	// render could still borrow it for workspace GROUP order via
+	// reorderPreservingGrouping (deleted this task). R129 makes
+	// group order alphabetical, case-insensitive, default always
+	// last (internal/tui/group.go's groupSortsBefore) --
+	// deliberately not attention-ranked -- so attentionOrder is
+	// only ever needed for the order==SortOrderAttention branch
+	// itself now; grouping (when on) buckets whatever m.baseSessions
+	// ends up as here, with each bucket's OWN row order following
+	// that same resolved order untouched (groupSessions' own
+	// first-appearance-within-a-bucket rule).
+	m.baseSessions = m.sortReloaded(msg.sessions)
+	m.sessions = m.filteredSessions()
+	// A header cursor (task 012/D.1) needs none of this: its own
+	// identity is a durable group id, never an m.sessions index, so
+	// a reload that changes which indices exist never invalidates
+	// it -- this preserve-by-id/clamp dance is a ROW cursor's own
+	// problem exclusively.
+	m.preserveSelectedRow(selectedWasRow, selectedID)
+	// cure-01-05 (R137/F6): the preserve-by-id/clamp dance above only
+	// ever produces a row index that is IN BOUNDS -- it says nothing
+	// about whether that row (or an untouched header cursor) is a
+	// stop this reload's own sidebar still renders as visible. A
+	// persisted fold can land a restart's very first reload on a row
+	// hidden by its own collapsed group; a filter query that costs a
+	// selected header its last match removes that header's bucket
+	// entirely; and a header-only load (every group has zero members)
+	// leaves a fresh model's zero-value row cursor naming no row at
+	// all. cursorNamesVisibleStop catches all three, and
+	// nearestVisibleSelection walks onto whatever visible stop -- a
+	// header included -- sits nearest, never a hidden row or an
+	// absent header (SPEC's own "selection never lands on a hidden
+	// row" for §11.8, extended here to a header whose bucket the
+	// filter itself removed), and selectVisibleStopAfterReload
+	// (group.go) also walks a still-valid header cursor onto its own
+	// bucket's first row when selectedGroupHadNoRows says this reload
+	// is the one that just gave that header something to show (task
+	// 022 sweep follow-up above). cure-01-01-3 (R136/R137, SPEC
+	// §11): this promotion exists ONLY for the automatic
+	// zero-value-cursor case
+	// (TestCure0105FirstSessionUnderHeaderOnlyLoadFollowsSelection) --
+	// gated on !m.selectedByUser so a header the user actually walked
+	// onto (g/Down etc, setSelection's own seam) keeps its identity
+	// across a background arrival even when the WHOLE sidebar was
+	// header-only at the time
+	// (TestReview132ExplicitHeaderOnEmptySidebarSurvivesBackgroundArrival,
+	// fail-before 10c5021).
+	m.selectVisibleStopAfterReload(selectedGroupHadNoRows && hadNoSessionsAtAll && !m.selectedByUser)
+	// Requirement 52: the one-shot new-session intent (see
+	// pendingSelectSessionID's doc comment) overrides the
+	// preserved-selection result above whenever the id it is
+	// waiting for has actually arrived in the FILTERED list --
+	// never m.baseSessions -- so a live filter query that hides
+	// the new session leaves the selection (and the query)
+	// untouched instead of yanking the view to a row the filter
+	// itself is hiding. cure-01-01-2 (R137): the new session's own
+	// group may be folded (a create issued while the sidebar has
+	// that group collapsed) -- selecting a row its own fold hides
+	// satisfies neither "selects the newly created session" nor
+	// "exposes its complete row", so the group is unfolded first,
+	// exactly as if the user had pressed Right/c themselves.
+	m.applyPendingSelectIntent()
+	// cure-01-05 (R136/SPEC §11: "the viewport follows the
+	// selection"): whatever m.selected ended up as above -- the SAME
+	// row/header the preserve-by-id path kept, the stop
+	// cursorNamesVisibleStop's fallback just normalized onto, or
+	// pendingSelectSessionID's own fresh row -- may have moved to a
+	// different rendered position than it held before this reload
+	// (a rename that changes a header's alphabetical slot is the
+	// clearest case), so the scroll offset a PRIOR render computed is
+	// not assumed to still be valid. followSelectionViewport is a
+	// no-op when the selection is already fully in view.
+	//
+	// R142/GH #40: a live wheel drift is the one exception -- while
+	// m.sidebarScrollDrifted, this reload must keep the wheel's own
+	// offset (only re-clamped to the possibly-changed entry count,
+	// clampDriftedSidebarScroll) rather than snapping the viewport
+	// back onto the selection, which m.selected above already keeps
+	// tracking by id off screen.
+	m.followReloadedSelection()
+	// SPEC §11.9 (task 008/R143, GH #38): "clears ... when a later
+	// tick finds the reason gone (... the session started)" for the
+	// entryRefusalStopped kind -- read against the JUST-refreshed
+	// m.sessions above, not the pre-reload snapshot.
+	m.clearEntryRefusalIfSessionStarted(msg.generation)
+	// cure-01-01-3 (R143/R148, SPEC §11.9): every other lifetime edge
+	// this reload can cause -- the preserve-by-id dance landing on a
+	// DIFFERENT session (never possible by id, but the clamp-to-last
+	// fallback and the visible-stop normalization above can both
+	// change WHICH session ends up selected), the selected row
+	// disappearing outright (removed mid-refusal, restored later),
+	// and the newly-created-session intent (pendingSelectSessionID)
+	// landing on its own fresh row -- are all just "the selected
+	// session's identity differs from what it was before this
+	// reload" to clearEntryRefusalIfSelectedSessionChanged, compared
+	// against prevSelectedSession/prevSelectedOK captured at the top
+	// of this branch, before any of the above ran. A resort that
+	// preserves the SAME selected session (TestIndependentSameSession
+	// ResortKeepsRefusal) leaves this a no-op, exactly like
+	// setSelection's own c != m.selected guard.
+	m.clearEntryRefusalIfSelectedSessionChanged(prevSelectedSession.ID, prevSelectedOK)
+}
+
+// sortReloaded is the sort onSessionsLoaded applies to a freshly loaded
+// session list, honouring the resolved [ui] sort_order.
+func (m *Model) sortReloaded(loaded []store.Session) []store.Session {
+	order, _ := m.effectiveSortOrder()
+	switch order {
+	case SortOrderAttention:
+		return sortSessionsByAttentionStable(m.baseSessions, loaded)
+	default:
+		return sortSessionsByOrder(m.baseSessions, loaded, order)
+	}
+}
+
+// preserveSelectedRow keeps a selected ROW on its session across a reload (by
+// id), clamping to the last row when that session is gone.
+func (m *Model) preserveSelectedRow(selectedWasRow bool, selectedID string) {
+	if selectedWasRow {
+		if idx := indexOfSessionID(m.sessions, selectedID); idx >= 0 {
+			m.selected = rowCursor(idx)
+		} else if idx, _ := m.selected.SessionIndex(); idx >= len(m.sessions) {
+			m.selected = rowCursor(max(0, len(m.sessions)-1))
+		}
+	}
+}
+
+// applyPendingSelectIntent fulfils the one-shot new-session selection intent
+// once its session id has arrived in the filtered list.
+func (m *Model) applyPendingSelectIntent() {
+	if m.pendingSelectSessionID != "" {
+		if idx := indexOfSessionID(m.sessions, m.pendingSelectSessionID); idx >= 0 {
+			if gid := sessionGroupID(m.sessions[idx]); m.isGroupCollapsed(gid) {
+				m.setGroupCollapsed(gid, false)
+			}
+			m.selected = rowCursor(idx)
+			m.pendingSelectSessionID = ""
+			// cure-01-03 (R142, SPEC §11): fulfilling this one-shot
+			// new-session selection intent is itself an intentional
+			// selection-follow operation -- SPEC's own "the
+			// newly-created session is selected and visible" rule --
+			// so it ends any wheel drift in force and always brings the
+			// new row into view, rather than deferring to the plain
+			// drift-preserving branch below (which exists for an
+			// ordinary background reload/re-sort that names no new
+			// selection intent at all).
+			m.sidebarScrollDrifted = false
+			m.scrollSessionIntoView(idx)
+		}
+	}
+}
+
+// followReloadedSelection re-clamps a wheel-drifted sidebar or otherwise keeps
+// the viewport on the selection after a reload.
+func (m *Model) followReloadedSelection() {
+	if m.sidebarScrollDrifted {
+		m.clampDriftedSidebarScroll()
 	} else {
-		m.sessionsReloadNote = ""
-		// cure-01-01-3 (R143/R148, SPEC §11.9): the pre-reload selected
-		// session identity, captured before m.baseSessions/m.sessions/
-		// m.selected are touched below by ANYTHING this branch does --
-		// the sort/resort, the preserve-by-id-then-clamp dance, the
-		// header promotion, and the newly-created-session intent below
-		// all move m.selected through this same reload, and
-		// clearEntryRefusalIfSelectedSessionChanged (entry_refusal.go)
-		// needs the BEFORE value to tell a genuine identity change
-		// (refused alpha's row now selecting freshly-created beta, or
-		// the selected row disappearing outright) apart from a resort
-		// that lands the SAME session at a new index or cursor.
-		prevSelectedSession, prevSelectedOK := m.selectedSession()
-		// SPEC requirements 28/29/30 (task 023's sort, task 024's
-		// grouping): every load renders in attention order, not
-		// store order, so the sidebar's group order itself follows
-		// each group's most urgent member (see SPEC §11's
-		// illustration: "service-a" leads with two waiting rows,
-		// "infra" follows with only an error) exactly as
-		// groupSessions' own "first appearance in m.sessions"
-		// bucketing already promises once m.sessions is in this
-		// order.
-		var selectedID string
-		selectedWasRow := false
-		if idx, ok := m.selected.SessionIndex(); ok {
-			selectedWasRow = true
-			if idx >= 0 && idx < len(m.sessions) {
-				selectedID = m.sessions[idx].ID
-			}
-		}
-		// cure-01-05 follow-up (task 022 sweep): fail-before was
-		// cmd/deck's TestDeckBinaryRefreshesAllConcurrentClients timing
-		// out waiting for "resumable" at 2bb61a8 -- a concurrent client
-		// that starts before any session exists has its zero-value
-		// rowCursor(0) promoted to a header cursor by the header-only-
-		// load fix below (cursorNamesVisibleStop/nearestVisibleSelection),
-		// and that header stays selected forever after, even once a
-		// session appears in its own, still-uncollapsed bucket:
-		// cursorNamesVisibleStop trivially returns true for any header
-		// whose bucket still exists, so the transition was never caught.
-		// selectedGroupHadNoRows (group.go) captures that, from the
-		// PRE-reload session list (m.sessions, not yet overwritten
-		// below), BEFORE selectVisibleStopAfterReload gets a chance to
-		// act on it further down.
-		selectedGroupHadNoRows := m.selectedGroupHadNoRows()
-		// cure-01-01-2 (R136/SPEC §11): selectedGroupHadNoRows alone
-		// cannot tell a deliberate navigation stop on an existing,
-		// still-empty header (other groups already have visible rows)
-		// apart from the ONE case the promotion below actually exists
-		// for -- a brand new client whose zero-value cursor got
-		// auto-promoted to a header because there was NOTHING ELSE to
-		// select yet (TestCure0105FirstSessionUnderHeaderOnlyLoadFollowsSelection,
-		// task 022 sweep). hadNoSessionsAtAll captures that distinction
-		// from the SAME pre-reload m.sessions: true only when the WHOLE
-		// sidebar was header-only, never merely this one bucket among
-		// others. A user who pressed g/Down/etc to land on an existing
-		// empty header while other sessions were already on screen
-		// keeps that header across a background arrival with no local
-		// creation intent (TestReview113ExplicitHeaderSurvivesBackgroundArrival).
-		hadNoSessionsAtAll := len(m.sessions) == 0
-		// sortSessionsByAttentionStable, not the plain
-		// sortSessionsByAttention: a genuine tie on both rank and
-		// StatusAt (task 005/I-1's finding -- two co-created sessions
-		// promoted running in the same reconcile pass round to the
-		// same millisecond) must not silently swap two rows' relative
-		// order out from under an in-flight k/m/j idiom just because
-		// their random UUIDs happen to compare the "wrong" way; see
-		// sortSessionsByAttentionStable's own doc comment
-		// (internal/tui/attention.go) and
-		// docs/reports/phase3d-i1-rootcause.md.
-		//
-		// Task 123/I-10: sorted into baseSessions, never m.sessions
-		// directly, so a filter query in force survives the periodic
-		// reconcile tick's own reload instead of being silently
-		// clobbered by it the moment ListSessions' own (archive-free)
-		// result lands.
-		//
-		// Task 305 (R53), REMOVED by task 011 (R129): this used to
-		// compute attentionOrder unconditionally so a non-attention
-		// render could still borrow it for workspace GROUP order via
-		// reorderPreservingGrouping (deleted this task). R129 makes
-		// group order alphabetical, case-insensitive, default always
-		// last (internal/tui/group.go's groupSortsBefore) --
-		// deliberately not attention-ranked -- so attentionOrder is
-		// only ever needed for the order==SortOrderAttention branch
-		// itself now; grouping (when on) buckets whatever m.baseSessions
-		// ends up as here, with each bucket's OWN row order following
-		// that same resolved order untouched (groupSessions' own
-		// first-appearance-within-a-bucket rule).
-		order, _ := m.effectiveSortOrder()
-		switch order {
-		case SortOrderAttention:
-			m.baseSessions = sortSessionsByAttentionStable(m.baseSessions, msg.sessions)
-		default:
-			m.baseSessions = sortSessionsByOrder(m.baseSessions, msg.sessions, order)
-		}
-		m.sessions = m.filteredSessions()
-		// A header cursor (task 012/D.1) needs none of this: its own
-		// identity is a durable group id, never an m.sessions index, so
-		// a reload that changes which indices exist never invalidates
-		// it -- this preserve-by-id/clamp dance is a ROW cursor's own
-		// problem exclusively.
-		if selectedWasRow {
-			if idx := indexOfSessionID(m.sessions, selectedID); idx >= 0 {
-				m.selected = rowCursor(idx)
-			} else if idx, _ := m.selected.SessionIndex(); idx >= len(m.sessions) {
-				m.selected = rowCursor(max(0, len(m.sessions)-1))
-			}
-		}
-		// cure-01-05 (R137/F6): the preserve-by-id/clamp dance above only
-		// ever produces a row index that is IN BOUNDS -- it says nothing
-		// about whether that row (or an untouched header cursor) is a
-		// stop this reload's own sidebar still renders as visible. A
-		// persisted fold can land a restart's very first reload on a row
-		// hidden by its own collapsed group; a filter query that costs a
-		// selected header its last match removes that header's bucket
-		// entirely; and a header-only load (every group has zero members)
-		// leaves a fresh model's zero-value row cursor naming no row at
-		// all. cursorNamesVisibleStop catches all three, and
-		// nearestVisibleSelection walks onto whatever visible stop -- a
-		// header included -- sits nearest, never a hidden row or an
-		// absent header (SPEC's own "selection never lands on a hidden
-		// row" for §11.8, extended here to a header whose bucket the
-		// filter itself removed), and selectVisibleStopAfterReload
-		// (group.go) also walks a still-valid header cursor onto its own
-		// bucket's first row when selectedGroupHadNoRows says this reload
-		// is the one that just gave that header something to show (task
-		// 022 sweep follow-up above). cure-01-01-3 (R136/R137, SPEC
-		// §11): this promotion exists ONLY for the automatic
-		// zero-value-cursor case
-		// (TestCure0105FirstSessionUnderHeaderOnlyLoadFollowsSelection) --
-		// gated on !m.selectedByUser so a header the user actually walked
-		// onto (g/Down etc, setSelection's own seam) keeps its identity
-		// across a background arrival even when the WHOLE sidebar was
-		// header-only at the time
-		// (TestReview132ExplicitHeaderOnEmptySidebarSurvivesBackgroundArrival,
-		// fail-before 10c5021).
-		m.selectVisibleStopAfterReload(selectedGroupHadNoRows && hadNoSessionsAtAll && !m.selectedByUser)
-		// Requirement 52: the one-shot new-session intent (see
-		// pendingSelectSessionID's doc comment) overrides the
-		// preserved-selection result above whenever the id it is
-		// waiting for has actually arrived in the FILTERED list --
-		// never m.baseSessions -- so a live filter query that hides
-		// the new session leaves the selection (and the query)
-		// untouched instead of yanking the view to a row the filter
-		// itself is hiding. cure-01-01-2 (R137): the new session's own
-		// group may be folded (a create issued while the sidebar has
-		// that group collapsed) -- selecting a row its own fold hides
-		// satisfies neither "selects the newly created session" nor
-		// "exposes its complete row", so the group is unfolded first,
-		// exactly as if the user had pressed Right/c themselves.
-		if m.pendingSelectSessionID != "" {
-			if idx := indexOfSessionID(m.sessions, m.pendingSelectSessionID); idx >= 0 {
-				if gid := sessionGroupID(m.sessions[idx]); m.isGroupCollapsed(gid) {
-					m.setGroupCollapsed(gid, false)
-				}
-				m.selected = rowCursor(idx)
-				m.pendingSelectSessionID = ""
-				// cure-01-03 (R142, SPEC §11): fulfilling this one-shot
-				// new-session selection intent is itself an intentional
-				// selection-follow operation -- SPEC's own "the
-				// newly-created session is selected and visible" rule --
-				// so it ends any wheel drift in force and always brings the
-				// new row into view, rather than deferring to the plain
-				// drift-preserving branch below (which exists for an
-				// ordinary background reload/re-sort that names no new
-				// selection intent at all).
-				m.sidebarScrollDrifted = false
-				m.scrollSessionIntoView(idx)
-			}
-		}
-		// cure-01-05 (R136/SPEC §11: "the viewport follows the
-		// selection"): whatever m.selected ended up as above -- the SAME
-		// row/header the preserve-by-id path kept, the stop
-		// cursorNamesVisibleStop's fallback just normalized onto, or
-		// pendingSelectSessionID's own fresh row -- may have moved to a
-		// different rendered position than it held before this reload
-		// (a rename that changes a header's alphabetical slot is the
-		// clearest case), so the scroll offset a PRIOR render computed is
-		// not assumed to still be valid. followSelectionViewport is a
-		// no-op when the selection is already fully in view.
-		//
-		// R142/GH #40: a live wheel drift is the one exception -- while
-		// m.sidebarScrollDrifted, this reload must keep the wheel's own
-		// offset (only re-clamped to the possibly-changed entry count,
-		// clampDriftedSidebarScroll) rather than snapping the viewport
-		// back onto the selection, which m.selected above already keeps
-		// tracking by id off screen.
-		if m.sidebarScrollDrifted {
-			m.clampDriftedSidebarScroll()
-		} else {
-			m.followSelectionViewport()
-		}
-		// SPEC §11.9 (task 008/R143, GH #38): "clears ... when a later
-		// tick finds the reason gone (... the session started)" for the
-		// entryRefusalStopped kind -- read against the JUST-refreshed
-		// m.sessions above, not the pre-reload snapshot.
-		m.clearEntryRefusalIfSessionStarted(msg.generation)
-		// cure-01-01-3 (R143/R148, SPEC §11.9): every other lifetime edge
-		// this reload can cause -- the preserve-by-id dance landing on a
-		// DIFFERENT session (never possible by id, but the clamp-to-last
-		// fallback and the visible-stop normalization above can both
-		// change WHICH session ends up selected), the selected row
-		// disappearing outright (removed mid-refusal, restored later),
-		// and the newly-created-session intent (pendingSelectSessionID)
-		// landing on its own fresh row -- are all just "the selected
-		// session's identity differs from what it was before this
-		// reload" to clearEntryRefusalIfSelectedSessionChanged, compared
-		// against prevSelectedSession/prevSelectedOK captured at the top
-		// of this branch, before any of the above ran. A resort that
-		// preserves the SAME selected session (TestIndependentSameSession
-		// ResortKeepsRefusal) leaves this a no-op, exactly like
-		// setSelection's own c != m.selected guard.
-		m.clearEntryRefusalIfSelectedSessionChanged(prevSelectedSession.ID, prevSelectedOK)
+		m.followSelectionViewport()
 	}
-	return m, nil
 }
 
 func (m Model) onArchivedSessionsLoaded(msg archivedSessionsLoaded) (tea.Model, tea.Cmd) {
