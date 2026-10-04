@@ -130,53 +130,28 @@ func loadConfigFile(path string) (FileConfig, error) {
 func defaultFileConfig() FileConfig {
 	var cfg FileConfig
 	for _, field := range Schema {
-		switch field.FullKey() {
-		case "allow_yolo":
-			cfg.AllowYolo, _ = field.Default.(bool)
-		case "yolo_default":
-			cfg.YoloDefault, _ = field.Default.(bool)
-		case "stale_after":
-			seconds, _ := field.Default.(int)
-			cfg.StaleAfter = time.Duration(seconds) * time.Second
-		case "capture_min_interval":
-			seconds, _ := field.Default.(int)
-			cfg.CaptureMinInterval = time.Duration(seconds) * time.Second
-		case "interactive_ms":
-			ms, _ := field.Default.(int)
-			cfg.InteractiveInterval = time.Duration(ms) * time.Millisecond
-		case "interactive_transport":
-			cfg.InteractiveTransport, _ = field.Default.(string)
-		case "tmux_mouse":
-			cfg.TmuxMouse, _ = field.Default.(bool)
-		case "ui.ascii":
-			cfg.ASCII, _ = field.Default.(bool)
-		case "ui.mouse":
-			cfg.Mouse, _ = field.Default.(bool)
-		case "ui.default_group_first":
-			cfg.DefaultGroupFirst, _ = field.Default.(bool)
-		case "ui.preview_fit":
-			cfg.PreviewFit, _ = field.Default.(bool)
-		case "ui.attach_on_new":
-			cfg.AttachOnNew, _ = field.Default.(bool)
-		case "ui.attach_on_resume":
-			cfg.AttachOnResume, _ = field.Default.(bool)
-		case "ui.preview_paint":
-			cfg.PreviewPaint, _ = field.Default.(string)
-		case "ui.sort_order":
-			cfg.SortOrder, _ = field.Default.(string)
-		case "ui.recent_cwd_limit":
-			cfg.RecentCwdLimit, _ = field.Default.(int)
-		case "event_retention_days":
-			cfg.EventRetentionDays, _ = field.Default.(int)
-		case "ui.theme":
-			cfg.Theme, _ = field.Default.(string)
-		case "pre_launch":
-			cfg.PreLaunch, _ = field.Default.(string)
-		case "post_destroy":
-			cfg.PostDestroy, _ = field.Default.(string)
-		}
+		seedDefault(&cfg, field)
 	}
 	return cfg
+}
+
+// seedDefault writes field's declared Default into cfg through the setter
+// table that owns the field's FullKey. A Default of an unexpected type
+// seeds the zero value; a key no table owns (an [env] field) is ignored.
+func seedDefault(cfg *FileConfig, field Field) {
+	key := field.FullKey()
+	if set := toggleSetters[key]; set != nil {
+		value, _ := field.Default.(bool)
+		set(cfg, value)
+	}
+	if set := integerSetters[key]; set != nil {
+		value, _ := field.Default.(int)
+		set(cfg, value)
+	}
+	if set := stringSetters[key]; set != nil {
+		value, _ := field.Default.(string)
+		set(cfg, value)
+	}
 }
 
 // toggleSetters, integerSetters and stringSetters map a field's FullKey to
