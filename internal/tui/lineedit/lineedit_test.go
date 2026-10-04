@@ -329,3 +329,22 @@ func TestOfferedRule(t *testing.T) {
 		}
 	})
 }
+
+func TestConstructorsDropControlCharacters(t *testing.T) {
+	const raw = "a\x1b[2Jb\x07c\r\nd\te\u009bf\x7f"
+	const want = "a[2Jbcdef"
+	for name, e := range map[string]Editor{"New": New(raw), "NewOffered": NewOffered(raw)} {
+		if e.Value() != want {
+			t.Errorf("%s(%q).Value() = %q, want %q", name, raw, e.Value(), want)
+		}
+		if e.Caret() != len(want) {
+			t.Errorf("%s caret = %d, want the end of the stripped text (%d)", name, e.Caret(), len(want))
+		}
+	}
+	if !NewOffered(raw).Offered() {
+		t.Error("NewOffered of a non-empty value must be offered")
+	}
+	if NewOffered("\x1b\x07").Offered() {
+		t.Error("NewOffered of only control characters holds nothing, so it offers nothing")
+	}
+}
