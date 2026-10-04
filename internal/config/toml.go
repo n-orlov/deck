@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -178,13 +179,42 @@ func defaultFileConfig() FileConfig {
 	return cfg
 }
 
+// toggleSetters, integerSetters and stringSetters map a field's FullKey to
+// the FileConfig member it writes. Go structs cannot be addressed by a
+// string field name without reflection, so these tables carry no parsing
+// logic of their own -- everything that can fail already failed before a
+// setter is looked up. A FullKey absent from a table is ignored.
+var toggleSetters = map[string]func(*FileConfig, bool){
+	"allow_yolo":             func(c *FileConfig, v bool) { c.AllowYolo = v },
+	"yolo_default":           func(c *FileConfig, v bool) { c.YoloDefault = v },
+	"tmux_mouse":             func(c *FileConfig, v bool) { c.TmuxMouse = v },
+	"ui.ascii":               func(c *FileConfig, v bool) { c.ASCII = v },
+	"ui.mouse":               func(c *FileConfig, v bool) { c.Mouse = v },
+	"ui.default_group_first": func(c *FileConfig, v bool) { c.DefaultGroupFirst = v },
+	"ui.preview_fit":         func(c *FileConfig, v bool) { c.PreviewFit = v },
+	"ui.attach_on_new":       func(c *FileConfig, v bool) { c.AttachOnNew = v },
+	"ui.attach_on_resume":    func(c *FileConfig, v bool) { c.AttachOnResume = v },
+}
+
+var integerSetters = map[string]func(*FileConfig, int){
+	"stale_after":          func(c *FileConfig, v int) { c.StaleAfter = time.Duration(v) * time.Second },
+	"capture_min_interval": func(c *FileConfig, v int) { c.CaptureMinInterval = time.Duration(v) * time.Second },
+	"interactive_ms":       func(c *FileConfig, v int) { c.InteractiveInterval = time.Duration(v) * time.Millisecond },
+	"ui.recent_cwd_limit":  func(c *FileConfig, v int) { c.RecentCwdLimit = v },
+	"event_retention_days": func(c *FileConfig, v int) { c.EventRetentionDays = v },
+}
+
+var stringSetters = map[string]func(*FileConfig, string){
+	"ui.theme":              func(c *FileConfig, v string) { c.Theme = v },
+	"ui.sort_order":         func(c *FileConfig, v string) { c.SortOrder = v },
+	"ui.preview_paint":      func(c *FileConfig, v string) { c.PreviewPaint = v },
+	"interactive_transport": func(c *FileConfig, v string) { c.InteractiveTransport = v },
+	"pre_launch":            func(c *FileConfig, v string) { c.PreLaunch = v },
+	"post_destroy":          func(c *FileConfig, v string) { c.PostDestroy = v },
+}
+
 // setField parses raw against field's declared Kind and, once valid,
-// writes it into cfg's matching member. The Kind switch is the one generic
-// parsing rule per kind that replaces the former per-key switch; the
-// FullKey switch beneath it exists only because Go structs cannot be
-// addressed by a string field name without reflection, so it carries no
-// parsing logic of its own -- everything that can fail already failed
-// above it.
+// writes it into cfg's matching member through the per-kind setter table.
 func setField(cfg *FileConfig, field Field, raw, path string, line int) error {
 	switch field.Kind {
 	case KindToggle:
@@ -192,84 +222,46 @@ func setField(cfg *FileConfig, field Field, raw, path string, line int) error {
 		if err != nil {
 			return fmt.Errorf("%s:%d: %s must be true or false, got %q", path, line, field.FullKey(), raw)
 		}
-		switch field.FullKey() {
-		case "allow_yolo":
-			cfg.AllowYolo = value
-		case "yolo_default":
-			cfg.YoloDefault = value
-		case "tmux_mouse":
-			cfg.TmuxMouse = value
-		case "ui.ascii":
-			cfg.ASCII = value
-		case "ui.mouse":
-			cfg.Mouse = value
-		case "ui.default_group_first":
-			cfg.DefaultGroupFirst = value
-		case "ui.preview_fit":
-			cfg.PreviewFit = value
-		case "ui.attach_on_new":
-			cfg.AttachOnNew = value
-		case "ui.attach_on_resume":
-			cfg.AttachOnResume = value
+		if set := toggleSetters[field.FullKey()]; set != nil {
+			set(cfg, value)
 		}
 	case KindInteger:
 		value, err := parseIntegerValue(field, raw)
 		if err != nil {
 			return fmt.Errorf("%s:%d: %w", path, line, err)
 		}
-		switch field.FullKey() {
-		case "stale_after":
-			cfg.StaleAfter = time.Duration(value) * time.Second
-		case "capture_min_interval":
-			cfg.CaptureMinInterval = time.Duration(value) * time.Second
-		case "interactive_ms":
-			cfg.InteractiveInterval = time.Duration(value) * time.Millisecond
-		case "ui.recent_cwd_limit":
-			cfg.RecentCwdLimit = value
-		case "event_retention_days":
-			cfg.EventRetentionDays = value
+		if set := integerSetters[field.FullKey()]; set != nil {
+			set(cfg, value)
 		}
 	case KindEnum, KindString, KindPath:
-		unquoted, err := unquoteString(raw)
+		unquoted, err := parseStringFieldValue(field, raw, path, line)
 		if err != nil {
-			return fmt.Errorf("%s:%d: %s must be a quoted string: %w", path, line, field.FullKey(), err)
+			return err
 		}
-		// A KindEnum field with a statically declared, non-dynamic choice
-		// set (unlike ui.theme's DynamicEnum, whose choices depend on
-		// runtime theme discovery and so are validated by theme.Resolve
-		// instead) is rejected here, at parse time, exactly like an
-		// out-of-bounds integer is -- never silently coerced to the
-		// default.
-		if field.Kind == KindEnum && !field.DynamicEnum && len(field.EnumValues) > 0 {
-			valid := false
-			for _, allowed := range field.EnumValues {
-				if unquoted == allowed {
-					valid = true
-					break
-				}
-			}
-			if !valid {
-				return fmt.Errorf("%s:%d: %s must be one of %v, got %q", path, line, field.FullKey(), field.EnumValues, unquoted)
-			}
-		}
-		switch field.FullKey() {
-		case "ui.theme":
-			cfg.Theme = unquoted
-		case "ui.sort_order":
-			cfg.SortOrder = unquoted
-		case "ui.preview_paint":
-			cfg.PreviewPaint = unquoted
-		case "interactive_transport":
-			cfg.InteractiveTransport = unquoted
-		case "pre_launch":
-			cfg.PreLaunch = unquoted
-		case "post_destroy":
-			cfg.PostDestroy = unquoted
+		if set := stringSetters[field.FullKey()]; set != nil {
+			set(cfg, unquoted)
 		}
 	default:
 		return fmt.Errorf("%s:%d: %s: unsupported field kind %q for a flat key", path, line, field.FullKey(), field.Kind)
 	}
 	return nil
+}
+
+// parseStringFieldValue unquotes raw and, for a KindEnum field with a
+// statically declared, non-dynamic choice set (unlike ui.theme's
+// DynamicEnum, whose choices depend on runtime theme discovery and so are
+// validated by theme.Resolve instead), rejects a value outside that set at
+// parse time, exactly like an out-of-bounds integer is -- never silently
+// coerced to the default.
+func parseStringFieldValue(field Field, raw, path string, line int) (string, error) {
+	unquoted, err := unquoteString(raw)
+	if err != nil {
+		return "", fmt.Errorf("%s:%d: %s must be a quoted string: %w", path, line, field.FullKey(), err)
+	}
+	if field.Kind == KindEnum && !field.DynamicEnum && len(field.EnumValues) > 0 && !slices.Contains(field.EnumValues, unquoted) {
+		return "", fmt.Errorf("%s:%d: %s must be one of %v, got %q", path, line, field.FullKey(), field.EnumValues, unquoted)
+	}
+	return unquoted, nil
 }
 
 // parseIntegerValue parses raw against field's IntBounds. A field whose
