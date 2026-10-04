@@ -7049,25 +7049,9 @@ func (m Model) updateDeleteConfirm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if m.deletePurgeValue == "purge" && m.deletePurgeOK {
 				purgePath = m.deletePurgePath
 			}
-			purgeSvc := m.purgeSvc
-			deleteSvc := m.deleteSvc
-			deleteHookReporter := m.deleteHookReporter
+			runner := m.sessionDeleter()
 			return func() tea.Msg {
-				var err error
-				var hookMessage string
-				if deleteHookReporter != nil {
-					hookMessage, err = deleteHookReporter(context.Background(), session)
-				} else {
-					err = deleteSvc(context.Background(), session)
-				}
-				var purgeErr error
-				if err == nil && purgePath != "" {
-					if purgeSvc == nil {
-						purgeErr = errors.New("purging the transcript is unavailable")
-					} else {
-						purgeErr = purgeSvc(context.Background(), purgePath)
-					}
-				}
+				hookMessage, err, purgeErr := runner.run(session, purgePath)
 				return sessionDeleted{session: session, err: err, purgeErr: purgeErr, hookMessage: hookMessage}
 			}
 		},
@@ -7076,6 +7060,37 @@ func (m Model) updateDeleteConfirm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, cmd
 	}
 	return m, nil
+}
+
+// sessionDeleter bundles the three service seams one delete needs, captured
+// when the confirm is submitted (the returned tea.Cmd must not read the
+// Model afterwards): deleteSvc, the message-carrying deleteHookReporter that
+// is preferred over it, and the optional purgeSvc.
+type sessionDeleter struct {
+	deleteSvc          func(context.Context, store.Session) error
+	deleteHookReporter func(context.Context, store.Session) (string, error)
+	purgeSvc           func(context.Context, string) error
+}
+
+func (m Model) sessionDeleter() sessionDeleter {
+	return sessionDeleter{deleteSvc: m.deleteSvc, deleteHookReporter: m.deleteHookReporter, purgeSvc: m.purgeSvc}
+}
+
+// run deletes one session, then -- only when the delete itself succeeded and
+// purgePath is non-empty -- purges its transcript.
+func (d sessionDeleter) run(session store.Session, purgePath string) (hookMessage string, err, purgeErr error) {
+	if d.deleteHookReporter != nil {
+		hookMessage, err = d.deleteHookReporter(context.Background(), session)
+	} else {
+		err = d.deleteSvc(context.Background(), session)
+	}
+	if err != nil || purgePath == "" {
+		return hookMessage, err, nil
+	}
+	if d.purgeSvc == nil {
+		return hookMessage, nil, errors.New("purging the transcript is unavailable")
+	}
+	return hookMessage, nil, d.purgeSvc(context.Background(), purgePath)
 }
 
 // updateBulkDeleteConfirm is task 112's marked-set second-`d` confirm.
@@ -7114,14 +7129,12 @@ func (m Model) updateBulkDeleteConfirm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.deleteNote = "deleting is unavailable"
 				return nil
 			}
-			deleteSvc := m.deleteSvc
 			// Prefer the message-carrying reporter exactly as the
 			// single-row delete submit does, so a bulk dd's teardown
 			// hook failures reach the toast instead of being dropped
 			// on the floor (task 048). deleteSvc stays the fallback
 			// for every constructor that wires only the plain shape.
-			deleteHookReporter := m.deleteHookReporter
-			purgeSvc := m.purgeSvc
+			runner := m.sessionDeleter()
 			// cure-01-05: purge is resolved per session, at submit time,
 			// through the SAME transcriptPathFor seam the single-session
 			// confirm eagerly resolves once for its one row -- never
@@ -7142,21 +7155,7 @@ func (m Model) updateBulkDeleteConfirm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return func() tea.Msg {
 				result := sessionsBulkDeleted{}
 				for i, s := range sessions {
-					var err error
-					var hookMessage string
-					if deleteHookReporter != nil {
-						hookMessage, err = deleteHookReporter(context.Background(), s)
-					} else {
-						err = deleteSvc(context.Background(), s)
-					}
-					var purgeErr error
-					if err == nil && purge && purgePaths[i] != "" {
-						if purgeSvc == nil {
-							purgeErr = errors.New("purging the transcript is unavailable")
-						} else {
-							purgeErr = purgeSvc(context.Background(), purgePaths[i])
-						}
-					}
+					hookMessage, err, purgeErr := runner.run(s, purgePaths[i])
 					result.sessions = append(result.sessions, s)
 					result.errs = append(result.errs, err)
 					result.hookMessages = append(result.hookMessages, hookMessage)
