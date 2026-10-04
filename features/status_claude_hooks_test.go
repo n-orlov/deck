@@ -471,7 +471,7 @@ func clientKillsNamedSession(ctx context.Context, clientName, sessionName string
 			return nil
 		}
 		if time.Now().After(deadline) {
-			return fmt.Errorf("session %q was not durably killed by client %q: status=%q source=%q killed=%d err=%v", sessionName, clientName, status, source, killed, err)
+			return fmt.Errorf("session %q was not durably killed by client %q: status=%q source=%q killed=%d err=%w", sessionName, clientName, status, source, killed, err)
 		}
 		time.Sleep(20 * time.Millisecond)
 	}

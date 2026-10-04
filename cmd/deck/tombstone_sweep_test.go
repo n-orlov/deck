@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -61,7 +60,7 @@ func TestAbandonedDDIsReapedAtNextStoreOpen(t *testing.T) {
 
 	home, cwd := t.TempDir(), t.TempDir()
 	socket := "priv-sweep-pty-" + strings.ReplaceAll(filepath.Base(home), "_", "")
-	defer exec.Command("tmux", "-L", socket, "kill-server").Run()
+	defer killTmuxServer(socket)
 
 	const sessionName = "abandoned-dd"
 	const firstClock = "2025-06-01T00:00:00Z"
@@ -94,7 +93,7 @@ func TestAbandonedDDIsReapedAtNextStoreOpen(t *testing.T) {
 	}
 	defer terminal1.Close()
 	output1 := newPTYOutput()
-	go io.Copy(output1, terminal1)
+	go pumpTerminal(output1, terminal1)
 	done1 := make(chan error, 1)
 	go func() { done1 <- cmd1.Wait() }()
 
@@ -188,7 +187,7 @@ func TestAbandonedDDIsReapedAtNextStoreOpen(t *testing.T) {
 	}
 	defer terminal2.Close()
 	output2 := newPTYOutput()
-	go io.Copy(output2, terminal2)
+	go pumpTerminal(output2, terminal2)
 	done2 := make(chan error, 1)
 	go func() { done2 <- cmd2.Wait() }()
 
@@ -255,7 +254,7 @@ func TestAbandonedDDIsReapedAtNextStoreOpen(t *testing.T) {
 	}
 	defer terminal3.Close()
 	output3 := newPTYOutput()
-	go io.Copy(output3, terminal3)
+	go pumpTerminal(output3, terminal3)
 	done3 := make(chan error, 1)
 	go func() { done3 <- cmd3.Wait() }()
 

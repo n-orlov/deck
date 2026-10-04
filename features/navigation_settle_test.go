@@ -116,7 +116,7 @@ func sendNavKeySettled(ctx context.Context, client *ScreenDriver, key string) er
 		}
 		select {
 		case <-client.done:
-			return fmt.Errorf("deck exited while waiting for the sidebar selection to settle after %q: %v\nframe:\n%s", key, client.processError(), client.Frame(false))
+			return fmt.Errorf("deck exited while waiting for the sidebar selection to settle after %q: %w\nframe:\n%s", key, client.processError(), client.Frame(false))
 		case <-client.updated:
 		case <-waitCtx.Done():
 			// The keystroke did not move the selection at all -- a

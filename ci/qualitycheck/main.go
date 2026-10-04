@@ -19,6 +19,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -207,7 +208,8 @@ func goRunTool(pkg string, args ...string) (text string, exitCode int, err error
 	if runErr == nil {
 		return text, 0, nil
 	}
-	if _, isExit := runErr.(*exec.ExitError); !isExit {
+	var exitErr *exec.ExitError
+	if !errors.As(runErr, &exitErr) {
 		return text, 0, fmt.Errorf("running %s: %w", pkg, runErr)
 	}
 	exitCode = 1

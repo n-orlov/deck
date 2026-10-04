@@ -62,7 +62,7 @@ func loadConfigFile(path string) (FileConfig, error) {
 		}
 		return FileConfig{}, fmt.Errorf("open %s: %w", path, err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }() // read-only handle: Close cannot lose data
 
 	section := ""
 	scanner := bufio.NewScanner(file)

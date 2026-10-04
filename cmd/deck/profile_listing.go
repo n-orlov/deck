@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"io"
 	"time"
 
@@ -29,7 +28,7 @@ func isProfilesRequest(args []string) bool {
 func runProfilesListing(getenv func(string) string, userHome func() (string, error), stdout io.Writer) int {
 	listings, err := config.ListProfiles(getenv, userHome)
 	if err != nil {
-		fmt.Fprintln(stdout, "deck profiles:", err)
+		sayln(stdout, "deck profiles:", err)
 		return 0
 	}
 	for _, listing := range listings {
@@ -41,7 +40,7 @@ func runProfilesListing(getenv func(string) string, userHome func() (string, err
 		if !listing.LastUsed.IsZero() {
 			lastUsed = listing.LastUsed.Format(time.RFC3339)
 		}
-		fmt.Fprintf(stdout, "%s\tsocket: %s\tconfig: %s\tdata: %s\tlast used: %s\n",
+		sayf(stdout, "%s\tsocket: %s\tconfig: %s\tdata: %s\tlast used: %s\n",
 			name, listing.Socket, listing.ConfigFile, listing.DataDir, lastUsed)
 	}
 	return 0

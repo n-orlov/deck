@@ -152,9 +152,11 @@ func (l *Logger) write(value any) error {
 	if err != nil {
 		return fmt.Errorf("open audit log: %w", err)
 	}
-	defer file.Close()
 	if _, err := file.Write(append(line, '\n')); err != nil {
-		return fmt.Errorf("append audit record: %w", err)
+		return fmt.Errorf("append audit record: %w", errors.Join(err, file.Close()))
+	}
+	if err := file.Close(); err != nil {
+		return fmt.Errorf("close audit log: %w", err)
 	}
 	return nil
 }

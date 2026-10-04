@@ -126,7 +126,9 @@ func TouchLastUsed(paths Paths) error {
 	if err != nil {
 		return fmt.Errorf("touch last_used marker: %w", err)
 	}
-	file.Close()
+	if err := file.Close(); err != nil {
+		return fmt.Errorf("touch last_used marker: %w", err)
+	}
 	now := time.Now()
 	if err := os.Chtimes(path, now, now); err != nil {
 		return fmt.Errorf("touch last_used marker: %w", err)

@@ -36,7 +36,7 @@ func parseProfile(path string) (*profile, error) {
 	if err != nil {
 		return nil, fmt.Errorf("coverprofile %q: %w", path, err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }() // read-only handle: Close cannot lose data
 
 	p := &profile{blocks: make(map[blockKey]blockStat)}
 	scanner := bufio.NewScanner(f)

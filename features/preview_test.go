@@ -365,7 +365,7 @@ func privateTMuxPaneForSessionPrintsRedColouredText(ctx context.Context, name, m
 			return nil
 		}
 		if time.Now().After(deadline) {
-			return fmt.Errorf("private pane %q never showed red-coloured marker %q (err=%v):\n%s", target, marker, err, output)
+			return fmt.Errorf("private pane %q never showed red-coloured marker %q (err=%w):\n%s", target, marker, err, output)
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
@@ -386,7 +386,7 @@ func printIntoPrivatePane(ctx context.Context, h *ScenarioHarness, slug, text, w
 			return nil
 		}
 		if time.Now().After(deadline) {
-			return fmt.Errorf("private pane %q never showed printed text %q (err=%v):\n%s", target, waitFor, err, output)
+			return fmt.Errorf("private pane %q never showed printed text %q (err=%w):\n%s", target, waitFor, err, output)
 		}
 		time.Sleep(20 * time.Millisecond)
 	}

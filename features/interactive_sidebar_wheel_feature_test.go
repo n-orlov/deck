@@ -133,7 +133,7 @@ func privateTMuxPaneForSessionReceivedByteExact(ctx context.Context, name, key s
 			}
 		}
 		if time.Now().After(deadline) {
-			return fmt.Errorf("private tmux pane %q never ended in byte-exact %q within the deadline (err=%v); last capture:\n%s", target, key, capErr, last)
+			return fmt.Errorf("private tmux pane %q never ended in byte-exact %q within the deadline (err=%w); last capture:\n%s", target, key, capErr, last)
 		}
 		time.Sleep(20 * time.Millisecond)
 	}

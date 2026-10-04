@@ -116,7 +116,7 @@ func run(args []string, stdout io.Writer, getenv func(string) string, getwd func
 
 func runWithIO(args []string, stdin io.Reader, stdout, stderr io.Writer, getenv func(string) string, getwd func() (string, error)) (int, error) {
 	if len(args) == 1 && (args[0] == "--help" || args[0] == "-h") {
-		fmt.Fprint(stdout, helpText)
+		say(stdout, helpText)
 		return 0, nil
 	}
 
@@ -145,16 +145,16 @@ func runWithIO(args []string, stdin io.Reader, stdout, stderr io.Writer, getenv 
 
 	// Keep this output deliberately small and deterministic so a real terminal/pane
 	// assertion can prove both that the fixture started and which argv reached it.
-	fmt.Fprintln(stdout, "Fake Claude Code")
-	fmt.Fprintf(stdout, "fake-claude argv: %s\n", encoded)
+	sayln(stdout, "Fake Claude Code")
+	sayf(stdout, "fake-claude argv: %s\n", encoded)
 	if options.sessionID != "" {
-		fmt.Fprintf(stdout, "fake-claude session-id: %s\n", options.sessionID)
+		sayf(stdout, "fake-claude session-id: %s\n", options.sessionID)
 	}
 	if options.resume != "" {
-		fmt.Fprintf(stdout, "fake-claude resume: %s\n", options.resume)
+		sayf(stdout, "fake-claude resume: %s\n", options.resume)
 	}
 	if options.permissionMode != "" {
-		fmt.Fprintf(stdout, "fake-claude permission-mode: %s\n", options.permissionMode)
+		sayf(stdout, "fake-claude permission-mode: %s\n", options.permissionMode)
 	}
 
 	if getenv(commandsEnvironment) == "1" {
@@ -203,7 +203,7 @@ func replayAndRecord(options options, getenv func(string) string, getwd func() (
 			return err
 		}
 		if last != "" {
-			fmt.Fprintf(stdout, "fake-claude replay: %s\n", last)
+			sayf(stdout, "fake-claude replay: %s\n", last)
 		}
 	}
 
@@ -241,7 +241,7 @@ type transcriptEntry struct {
 	Message string `json:"message"`
 }
 
-func appendMessage(path, message string) error {
+func appendMessage(path, message string) (err error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return fmt.Errorf("create transcript directory: %w", err)
 	}
@@ -249,7 +249,11 @@ func appendMessage(path, message string) error {
 	if err != nil {
 		return fmt.Errorf("open transcript: %w", err)
 	}
-	defer file.Close()
+	defer func() {
+		if closeErr := file.Close(); closeErr != nil && err == nil {
+			err = fmt.Errorf("close transcript: %w", closeErr)
+		}
+	}()
 
 	encoded, err := json.Marshal(transcriptEntry{Message: message})
 	if err != nil {
@@ -269,7 +273,7 @@ func lastMessage(path string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("open transcript: %w", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }() // read-only handle: Close cannot lose data
 
 	var last string
 	scanner := bufio.NewScanner(file)
@@ -465,7 +469,7 @@ func fireResumePair(stdout, stderr io.Writer, commands map[string]string, reques
 	if err := fireHook(stdout, stderr, commands, "SessionStart", map[string]any{"session_id": newID, "reason": "resume"}); err != nil {
 		return err
 	}
-	fmt.Fprintf(stdout, "fake-claude resume: %s -> %s\n", request.OldConversationID, newID)
+	sayf(stdout, "fake-claude resume: %s -> %s\n", request.OldConversationID, newID)
 	return nil
 }
 
@@ -500,7 +504,7 @@ func fireHook(stdout, stderr io.Writer, commands map[string]string, event string
 	if err := process.Run(); err != nil {
 		return fmt.Errorf("fire %s hook: %w", event, err)
 	}
-	fmt.Fprintf(stdout, "fake-claude hook fired: %s\n", event)
+	sayf(stdout, "fake-claude hook fired: %s\n", event)
 	return nil
 }
 
@@ -595,7 +599,7 @@ func watchAndRepaint(mode string, stdin io.Reader, stdout io.Writer, signals <-c
 		counter++
 		n := counter
 		mu.Unlock()
-		fmt.Fprintf(stdout, "repaint #%d\n", n)
+		sayf(stdout, "repaint #%d\n", n)
 	}
 
 	done := make(chan struct{})
@@ -753,11 +757,11 @@ func recordSigwinchCount(path string, total int64) {
 	_, writeErr := fmt.Fprint(tmp, strconv.FormatInt(total, 10))
 	closeErr := tmp.Close()
 	if writeErr != nil || closeErr != nil {
-		os.Remove(name)
+		_ = os.Remove(name) // best-effort cleanup of the scratch file
 		return
 	}
 	if err := os.Rename(name, path); err != nil {
-		os.Remove(name)
+		_ = os.Remove(name) // best-effort cleanup of the scratch file
 	}
 }
 
@@ -778,8 +782,8 @@ func recordSize(path string) {
 	if err != nil {
 		return
 	}
-	defer file.Close()
-	fmt.Fprintf(file, "%dx%d\n", cols, rows)
+	defer func() { _ = file.Close() }() // recording is scaffolding; see the doc comment
+	sayf(file, "%dx%d\n", cols, rows)
 }
 
 func configuredExitCode(value string) (int, error) {

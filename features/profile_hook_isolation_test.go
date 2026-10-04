@@ -281,7 +281,7 @@ func noDefaultProfileStateDatabase(ctx context.Context) error {
 	}
 	path := filepath.Join(h.Home, "state.db")
 	if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
-		return fmt.Errorf("default-profile state database %s exists (stat err %v), want none", path, err)
+		return fmt.Errorf("default-profile state database %s exists (stat err %w), want none", path, err)
 	}
 	return nil
 }

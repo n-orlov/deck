@@ -8,6 +8,7 @@ package main
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -94,7 +95,7 @@ func checkTrivyIgnore(path string, now time.Time) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }() // read-only handle: Close cannot lose data
 
 	today := now.UTC().Format("2006-01-02")
 	var problems []string
@@ -208,7 +209,8 @@ func runTrivyGate(o trivyOptions) (ok bool, output string, err error) {
 	if runErr == nil {
 		return true, text + "what to do: nothing -- no unfixed-excluded HIGH/CRITICAL vulnerability, secret or misconfiguration.\n", nil
 	}
-	if ee, isExit := runErr.(*exec.ExitError); isExit && ee.ExitCode() == 1 {
+	var ee *exec.ExitError
+	if errors.As(runErr, &ee) && ee.ExitCode() == 1 {
 		return false, text + "what to do: bump the named module to its fixed version (go get <module>@<fixed> && go mod tidy), " +
 			"remove the secret or misconfiguration, or -- only if neither is possible -- add a dated, reasoned .trivyignore entry.\n", nil
 	}

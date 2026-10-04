@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -157,7 +156,7 @@ func TestDeckBinaryShellCreateAndSlugCollisionThroughPTY(t *testing.T) {
 		t.Fatal(err)
 	}
 	socket := "priv-create-pty-" + strings.ReplaceAll(filepath.Base(home), "_", "")
-	defer exec.Command("tmux", "-L", socket, "kill-server").Run()
+	defer killTmuxServer(socket)
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, binary)
@@ -170,7 +169,7 @@ func TestDeckBinaryShellCreateAndSlugCollisionThroughPTY(t *testing.T) {
 	}
 	defer terminal.Close()
 	output := newPTYOutput()
-	go io.Copy(output, terminal)
+	go pumpTerminal(output, terminal)
 	done := make(chan error, 1)
 	go func() { done <- cmd.Wait() }()
 
@@ -283,7 +282,7 @@ func startDeckPTYClient(t *testing.T, binary, home, socket string, reconcile tim
 		t.Fatal(err)
 	}
 	output := newPTYOutput()
-	go io.Copy(output, terminal)
+	go pumpTerminal(output, terminal)
 	done := make(chan error, 1)
 	go func() {
 		done <- cmd.Wait()
@@ -333,7 +332,7 @@ func TestDeckBinaryRefreshesAllConcurrentClients(t *testing.T) {
 
 	home, cwd := t.TempDir(), t.TempDir()
 	socket := "priv-multiclient-" + strings.ReplaceAll(filepath.Base(home), "_", "")
-	defer exec.Command("tmux", "-L", socket, "kill-server").Run()
+	defer killTmuxServer(socket)
 	// A full second is the configured reconciliation cadence. The assertion
 	// below adds only bounded scheduler/render grace; every client must still
 	// observe the mutation on its next tick, never on a second interval.
@@ -425,7 +424,7 @@ func TestDeckBinaryEmptyHelpAndQuitThroughPTY(t *testing.T) {
 	}
 	defer terminal.Close()
 	output := newPTYOutput()
-	go io.Copy(output, terminal)
+	go pumpTerminal(output, terminal)
 	done := make(chan error, 1)
 	go func() { done <- cmd.Wait() }()
 

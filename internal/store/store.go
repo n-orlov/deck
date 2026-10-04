@@ -143,18 +143,15 @@ func OpenPath(home, path string) (*Store, error) {
 	store := &Store{db: db, path: path}
 	version, err := store.version()
 	if err != nil {
-		db.Close()
-		return nil, err
+		return nil, closeAfter(db, err)
 	}
 	// Check this before setting journal mode or running a migration. A future
 	// database is read only from this binary's point of view.
 	if version > SchemaVersion {
-		db.Close()
-		return nil, fmt.Errorf("state database schema version %d is newer than supported version %d; upgrade deck", version, SchemaVersion)
+		return nil, closeAfter(db, fmt.Errorf("state database schema version %d is newer than supported version %d; upgrade deck", version, SchemaVersion))
 	}
 	if err := os.Chmod(home, 0o700); err != nil {
-		db.Close()
-		return nil, fmt.Errorf("secure store directory: %w", err)
+		return nil, closeAfter(db, fmt.Errorf("secure store directory: %w", err))
 	}
 	// Tighten state.db before journal_mode=WAL: SQLite creates -wal and -shm
 	// with the main file's mode, and the WAL now persists across closes, so a
@@ -163,8 +160,7 @@ func OpenPath(home, path string) (*Store, error) {
 	// here too; SQLite never changes an existing file's mode.
 	for _, p := range []string{path, path + "-wal", path + "-shm"} {
 		if err := os.Chmod(p, 0o600); err != nil && !errors.Is(err, os.ErrNotExist) {
-			db.Close()
-			return nil, fmt.Errorf("secure state database: %w", err)
+			return nil, closeAfter(db, fmt.Errorf("secure state database: %w", err))
 		}
 	}
 	// secure_delete=ON (R197/#61) zeroes freed pages and stale WAL frames
@@ -175,12 +171,10 @@ func OpenPath(home, path string) (*Store, error) {
 	// persistWAL above exists to avoid (SPEC section 3.1's 20ms hook write
 	// budget).
 	if _, err := db.Exec(`PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL; PRAGMA busy_timeout=5000; PRAGMA foreign_keys=ON; PRAGMA secure_delete=ON`); err != nil {
-		db.Close()
-		return nil, fmt.Errorf("configure state database: %w", err)
+		return nil, closeAfter(db, fmt.Errorf("configure state database: %w", err))
 	}
 	if err := store.migrate(version); err != nil {
-		db.Close()
-		return nil, err
+		return nil, closeAfter(db, err)
 	}
 	return store, nil
 }
@@ -508,7 +502,7 @@ func (s *Store) CreateSession(ctx context.Context, input CreateSessionInput) (Se
 	if err != nil {
 		return Session{}, fmt.Errorf("begin create session: %w", err)
 	}
-	defer tx.Rollback()
+	defer rollbackTx(tx)
 	// A row whose name is exactly input.Name always computes the same slug
 	// (Slug is a pure function of the name), so an identical-name insert
 	// violates BOTH the name and slug UNIQUE constraints at once; which one
@@ -979,7 +973,7 @@ func (s *Store) UpdateSessionStatus(ctx context.Context, input StatusUpdateInput
 	if err != nil {
 		return fmt.Errorf("begin session status update: %w", err)
 	}
-	defer tx.Rollback()
+	defer rollbackTx(tx)
 
 	cur, err := readStatusRow(ctx, tx, input.SessionID)
 	if err != nil {
@@ -1025,7 +1019,7 @@ func (s *Store) RecordAttachment(ctx context.Context, sessionID string, at int64
 	if err != nil {
 		return fmt.Errorf("begin attachment: %w", err)
 	}
-	defer tx.Rollback()
+	defer rollbackTx(tx)
 
 	var status string
 	if err := tx.QueryRowContext(ctx, `SELECT status FROM sessions WHERE id = ?`, sessionID).Scan(&status); err != nil {
@@ -1238,7 +1232,7 @@ func (s *Store) SetSessionEnvValue(ctx context.Context, sessionID, key, value, s
 	if err != nil {
 		return fmt.Errorf("begin set session env: %w", err)
 	}
-	defer tx.Rollback()
+	defer rollbackTx(tx)
 	var envJSON string
 	if err := tx.QueryRowContext(ctx, `SELECT env FROM sessions WHERE id = ?`, sessionID).Scan(&envJSON); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -1308,7 +1302,7 @@ func (s *Store) clearEnvDirtyWithReason(ctx context.Context, sessionID, reason s
 	if err != nil {
 		return fmt.Errorf("begin clear env_dirty: %w", err)
 	}
-	defer tx.Rollback()
+	defer rollbackTx(tx)
 	result, err := tx.ExecContext(ctx, `UPDATE sessions SET env_dirty = 0 WHERE id = ?`, sessionID)
 	if err != nil {
 		return fmt.Errorf("clear env_dirty for session %q: %w", sessionID, err)
@@ -1348,7 +1342,7 @@ func (s *Store) DirtyEnvKeys(ctx context.Context, sessionID string) ([]string, e
 	if err != nil {
 		return nil, fmt.Errorf("list changed env keys for session %q: %w", sessionID, err)
 	}
-	defer rows.Close()
+	defer closeRows(rows)
 	var keys []string
 	for rows.Next() {
 		var key string
@@ -1442,7 +1436,7 @@ func (s *Store) SetSessionGroup(ctx context.Context, sessionID string, groupID i
 // SPEC §11.3's sidebar pin `p`, phase 4f) in ONE transaction: one
 // `UPDATE sessions SET pinned_at = ? WHERE id = ?` per id in `ids`, all
 // committed together or, on any single id's failure, none of them applied
-// at all (defer tx.Rollback() below undoes every earlier iteration's
+// at all (defer rollbackTx(tx) below undoes every earlier iteration's
 // UPDATE in the same call the moment any later one errors). `at` (the
 // store clock, exactly like every other mutator here) is written verbatim
 // when pinned is true; unpinning always writes 0, never `at`, so pinned_at
@@ -1468,7 +1462,7 @@ func (s *Store) SetSessionsPinned(ctx context.Context, ids []string, pinned bool
 	if err != nil {
 		return fmt.Errorf("begin set sessions pinned: %w", err)
 	}
-	defer tx.Rollback()
+	defer rollbackTx(tx)
 	for _, id := range ids {
 		if _, err := tx.ExecContext(ctx, `UPDATE sessions SET pinned_at = ? WHERE id = ?`, value, id); err != nil {
 			return fmt.Errorf("set pinned for session %q: %w", id, err)
@@ -1542,7 +1536,7 @@ func (s *Store) ConsumeFreshOnce(ctx context.Context, sessionID, source string, 
 	if err != nil {
 		return fmt.Errorf("begin consume fresh-once: %w", err)
 	}
-	defer tx.Rollback()
+	defer rollbackTx(tx)
 	result, err := tx.ExecContext(ctx, `UPDATE sessions SET resume_state = 'auto'
 		WHERE id = ? AND resume_state = 'fresh-once'`, sessionID)
 	if err != nil {
@@ -1596,7 +1590,7 @@ func (s *Store) RenameSession(ctx context.Context, sessionID, newName, source st
 	if err != nil {
 		return fmt.Errorf("begin rename session: %w", err)
 	}
-	defer tx.Rollback()
+	defer rollbackTx(tx)
 	// Mirrors CreateSession's own name-then-slug pre-check order and
 	// reasoning (see the comment there): checking name equality first,
 	// inside this same transaction, makes "already exists" deterministic
@@ -1664,7 +1658,7 @@ func (s *Store) mutateSessionWithEvent(ctx context.Context, sessionID, fieldName
 	if err != nil {
 		return fmt.Errorf("begin set %s: %w", fieldName, err)
 	}
-	defer tx.Rollback()
+	defer rollbackTx(tx)
 	execArgs := append(append([]any{}, args...), sessionID)
 	result, err := tx.ExecContext(ctx, query, execArgs...)
 	if err != nil {
@@ -1704,7 +1698,7 @@ func (s *Store) ListSessions(ctx context.Context) ([]Session, error) {
 	if err != nil {
 		return nil, fmt.Errorf("list sessions: %w", err)
 	}
-	defer rows.Close()
+	defer closeRows(rows)
 	var sessions []Session
 	for rows.Next() {
 		session, err := scanSession(rows)
@@ -1731,7 +1725,7 @@ func (s *Store) ListDeletedSessions(ctx context.Context) ([]Session, error) {
 	if err != nil {
 		return nil, fmt.Errorf("list deleted sessions: %w", err)
 	}
-	defer rows.Close()
+	defer closeRows(rows)
 	var sessions []Session
 	for rows.Next() {
 		session, err := scanSession(rows)
@@ -1763,7 +1757,7 @@ func (s *Store) ListArchivedSessions(ctx context.Context) ([]Session, error) {
 	if err != nil {
 		return nil, fmt.Errorf("list archived sessions: %w", err)
 	}
-	defer rows.Close()
+	defer closeRows(rows)
 	var sessions []Session
 	for rows.Next() {
 		session, err := scanSession(rows)
@@ -1799,7 +1793,7 @@ func (s *Store) ListSessionsIncludingArchived(ctx context.Context) ([]Session, e
 	if err != nil {
 		return nil, fmt.Errorf("list sessions including archived: %w", err)
 	}
-	defer rows.Close()
+	defer closeRows(rows)
 	var sessions []Session
 	for rows.Next() {
 		session, err := scanSession(rows)
@@ -1858,7 +1852,7 @@ func (s *Store) RestoreSession(ctx context.Context, sessionID string, at int64) 
 	}
 	var reaped int
 	if checkErr := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM events WHERE session_id IS NULL AND kind = 'reaped' AND payload = ?`, sessionID).Scan(&reaped); checkErr != nil {
-		return fmt.Errorf("%w (also failed to check reap history: %v)", err, checkErr)
+		return fmt.Errorf("%w (also failed to check reap history: %w)", err, checkErr)
 	}
 	if reaped > 0 {
 		return fmt.Errorf("session %q was reaped because its name was reused", sessionID)
@@ -1945,7 +1939,7 @@ func (s *Store) ListEvents(ctx context.Context, limit int) ([]Event, error) {
 	if err != nil {
 		return nil, fmt.Errorf("list events: %w", err)
 	}
-	defer rows.Close()
+	defer closeRows(rows)
 	var events []Event
 	for rows.Next() {
 		var event Event
@@ -2229,7 +2223,7 @@ func (s *Store) tombstonesOlderThan(ctx context.Context, cutoff int64, limit int
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer closeRows(rows)
 	var ids []string
 	for rows.Next() {
 		var id string
@@ -2250,7 +2244,7 @@ func (s *Store) reapTombstoneBatch(ctx context.Context, ids []string, at int64) 
 	if err != nil {
 		return fmt.Errorf("begin tombstone sweep batch: %w", err)
 	}
-	defer tx.Rollback()
+	defer rollbackTx(tx)
 	for _, id := range ids {
 		if err := reapSessionTx(ctx, tx, id, at); err != nil {
 			return err
@@ -2346,7 +2340,7 @@ func (s *Store) TombstonedNameHolders(ctx context.Context, name string) ([]strin
 	if err != nil {
 		return nil, fmt.Errorf("list tombstoned holders of name %q: %w", name, err)
 	}
-	defer rows.Close()
+	defer closeRows(rows)
 	var ids []string
 	for rows.Next() {
 		var id string
@@ -2396,7 +2390,7 @@ func (s *Store) ReapSession(ctx context.Context, sessionID string, at int64) err
 	if err != nil {
 		return fmt.Errorf("begin reap session: %w", err)
 	}
-	defer tx.Rollback()
+	defer rollbackTx(tx)
 	var deletedAt int64
 	if err := tx.QueryRowContext(ctx, `SELECT deleted_at FROM sessions WHERE id = ?`, sessionID).Scan(&deletedAt); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -2453,7 +2447,7 @@ func (s *Store) migrate(version int) error {
 	if err != nil {
 		return fmt.Errorf("begin state database migration: %w", err)
 	}
-	defer tx.Rollback()
+	defer rollbackTx(tx)
 	switch version {
 	case 0:
 		for _, statement := range schemaV1 {
@@ -2898,7 +2892,7 @@ func (s *Store) PromoteRecentCwd(ctx context.Context, path string, limit int) er
 	if err != nil {
 		return fmt.Errorf("begin promote recent cwd: %w", err)
 	}
-	defer tx.Rollback()
+	defer rollbackTx(tx)
 	var maxSeq sql.NullInt64
 	if err := tx.QueryRowContext(ctx, `SELECT MAX(used_seq) FROM recent_cwds`).Scan(&maxSeq); err != nil {
 		return fmt.Errorf("read recent cwd sequence: %w", err)
@@ -2931,7 +2925,7 @@ func (s *Store) RecentCwds(ctx context.Context) ([]RecentCwd, error) {
 	if err != nil {
 		return nil, fmt.Errorf("list recent cwds: %w", err)
 	}
-	defer rows.Close()
+	defer closeRows(rows)
 	var out []RecentCwd
 	for rows.Next() {
 		var rc RecentCwd

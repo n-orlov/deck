@@ -310,10 +310,10 @@ func (s Service) launchFailed(ctx context.Context, session store.Session, cause 
 	if err := s.Store.UpdateSessionStatus(ctx, store.StatusUpdateInput{
 		SessionID: session.ID, Status: "error", Reason: cause.Error(), Source: "tmux", At: s.Clock.Now().UnixMilli(), EventKind: "launch.failed",
 	}); err != nil {
-		return session, fmt.Errorf("%w (also record launch failure: %v)", cause, err)
+		return session, fmt.Errorf("%w (also record launch failure: %w)", cause, err)
 	}
 	if err := s.Audit.Transition(session.ID, "launch.failed"); err != nil {
-		return session, fmt.Errorf("%w (also audit launch failure: %v)", cause, err)
+		return session, fmt.Errorf("%w (also audit launch failure: %w)", cause, err)
 	}
 	return session, cause
 }

@@ -287,7 +287,7 @@ func capturesDirAndHistoryFileForReapedSessionAreGone(ctx context.Context, sessi
 			return nil
 		}
 		if time.Now().After(deadline) {
-			return fmt.Errorf("captures dir stat = %v, history file stat = %v, want both IsNotExist", capturesErr, historyErr)
+			return fmt.Errorf("captures dir stat = %w, history file stat = %w, want both IsNotExist", capturesErr, historyErr)
 		}
 		time.Sleep(25 * time.Millisecond)
 	}

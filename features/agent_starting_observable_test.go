@@ -186,7 +186,7 @@ func auditRecordsSessionEnteringStartingNTimes(ctx context.Context, name string,
 		lastErr = err
 		select {
 		case <-ctx.Done():
-			return fmt.Errorf("audit log records session %q entering starting %d times (launch.ready %d), want %d (last read error: %v): %w", name, starting, ready, want, lastErr, ctx.Err())
+			return fmt.Errorf("audit log records session %q entering starting %d times (launch.ready %d), want %d (last read error: %w): %w", name, starting, ready, want, lastErr, ctx.Err())
 		case <-time.After(20 * time.Millisecond):
 		}
 	}

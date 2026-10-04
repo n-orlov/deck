@@ -257,7 +257,7 @@ func (d *ScreenDriver) ResizeAndAwaitRender(ctx context.Context, cols, rows uint
 		}
 		select {
 		case <-d.done:
-			return fmt.Errorf("deck exited before re-rendering after resize to %dx%d: %v\nframe:\n%s\nraw: %q", cols, rows, d.processError(), d.Frame(false), d.Raw())
+			return fmt.Errorf("deck exited before re-rendering after resize to %dx%d: %w\nframe:\n%s\nraw: %q", cols, rows, d.processError(), d.Frame(false), d.Raw())
 		case <-d.updated:
 		case <-waitCtx.Done():
 			return fmt.Errorf("timed out waiting for deck to re-render after resize to %dx%d: %w\nframe:\n%s\nraw: %q", cols, rows, waitCtx.Err(), d.Frame(false), d.Raw())
@@ -648,7 +648,7 @@ func (d *ScreenDriver) WaitForFrame(ctx context.Context, clockFrozen bool, want 
 		}
 		select {
 		case <-d.done:
-			return fmt.Errorf("deck exited before frame %q: %v\nframe:\n%s\nraw: %q", want, d.processError(), d.Frame(clockFrozen), d.Raw())
+			return fmt.Errorf("deck exited before frame %q: %w\nframe:\n%s\nraw: %q", want, d.processError(), d.Frame(clockFrozen), d.Raw())
 		case <-d.updated:
 		case <-ctx.Done():
 			return fmt.Errorf("timed out waiting for frame %q: %w\nframe:\n%s\nraw: %q", want, ctx.Err(), d.Frame(clockFrozen), d.Raw())
@@ -674,7 +674,7 @@ func (d *ScreenDriver) WaitForFrameFunc(ctx context.Context, clockFrozen bool, p
 		}
 		select {
 		case <-d.done:
-			return frame, fmt.Errorf("deck exited before frame predicate matched: %v\nraw: %q", d.processError(), d.Raw())
+			return frame, fmt.Errorf("deck exited before frame predicate matched: %w\nraw: %q", d.processError(), d.Raw())
 		case <-d.updated:
 		case <-ctx.Done():
 			return frame, fmt.Errorf("timed out waiting for frame predicate: %w", ctx.Err())
@@ -697,7 +697,7 @@ func (d *ScreenDriver) WaitForFrameGone(ctx context.Context, clockFrozen bool, u
 		}
 		select {
 		case <-d.done:
-			return fmt.Errorf("deck exited while frame still showed %q: %v\nframe:\n%s\nraw: %q", unwanted, d.processError(), d.Frame(clockFrozen), d.Raw())
+			return fmt.Errorf("deck exited while frame still showed %q: %w\nframe:\n%s\nraw: %q", unwanted, d.processError(), d.Frame(clockFrozen), d.Raw())
 		case <-d.updated:
 		case <-ctx.Done():
 			return fmt.Errorf("timed out waiting for frame to stop showing %q: %w\nframe:\n%s\nraw: %q", unwanted, ctx.Err(), d.Frame(clockFrozen), d.Raw())
@@ -734,7 +734,7 @@ func (d *ScreenDriver) WaitForQuiescence(ctx context.Context, clockFrozen bool, 
 	for {
 		select {
 		case <-d.done:
-			return frame, fmt.Errorf("deck exited while waiting for a quiet frame: %v\nframe:\n%s\nraw: %q", d.processError(), d.Frame(clockFrozen), d.Raw())
+			return frame, fmt.Errorf("deck exited while waiting for a quiet frame: %w\nframe:\n%s\nraw: %q", d.processError(), d.Frame(clockFrozen), d.Raw())
 		case <-d.updated:
 			frame = d.Frame(clockFrozen)
 			if !timer.Stop() {

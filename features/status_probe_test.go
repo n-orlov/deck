@@ -139,7 +139,7 @@ func renderGoldenFixture(ctx context.Context, session, fixture string) error {
 			return nil
 		}
 		if time.Now().After(deadline) {
-			return fmt.Errorf("pane %q did not render exact golden bytes for %s; capture error=%v\npane:\n%s", target, fixture, captureErr, captured)
+			return fmt.Errorf("pane %q did not render exact golden bytes for %s; capture error=%w\npane:\n%s", target, fixture, captureErr, captured)
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
@@ -210,7 +210,7 @@ func waitForDatabaseVerdict(ctx context.Context, name, wantStatus, wantSource, w
 			return nil
 		}
 		if time.Now().After(deadline) {
-			return fmt.Errorf("session %q verdict = %q/%q reason %q, want %q/%q reason %q (err=%v)", name, status, source, reason, wantStatus, wantSource, wantReason, err)
+			return fmt.Errorf("session %q verdict = %q/%q reason %q, want %q/%q reason %q (err=%w)", name, status, source, reason, wantStatus, wantSource, wantReason, err)
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
@@ -589,7 +589,7 @@ func waitForClientSessionRow(ctx context.Context, clientName, rowName, want stri
 			return nil
 		}
 		if time.Now().After(deadline) {
-			return fmt.Errorf("client %q row %q did not contain %q %s (session names err=%v)\nframe:\n%s", clientName, rowName, want, within, nameErr, client.Frame(false))
+			return fmt.Errorf("client %q row %q did not contain %q %s (session names err=%w)\nframe:\n%s", clientName, rowName, want, within, nameErr, client.Frame(false))
 		}
 		time.Sleep(10 * time.Millisecond)
 	}

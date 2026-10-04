@@ -222,7 +222,7 @@ func convert(path string, w *writer) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }() // read-only handle: Close cannot lose data
 	raw, err := io.ReadAll(f)
 	if err != nil {
 		return err
@@ -270,7 +270,9 @@ func run(args []string, stderr io.Writer) error {
 	if w.count == 0 {
 		return errors.New("no <testcase> in any input: nothing to write")
 	}
-	fmt.Fprintf(stderr, "junit2allure: wrote %d results (group %s) to %s\n", w.count, *group, *out)
+	if _, err := fmt.Fprintf(stderr, "junit2allure: wrote %d results (group %s) to %s\n", w.count, *group, *out); err != nil {
+		return fmt.Errorf("report result count: %w", err)
+	}
 	return nil
 }
 

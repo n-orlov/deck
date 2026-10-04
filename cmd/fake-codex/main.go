@@ -94,7 +94,7 @@ func run(args []string, stdout io.Writer, getenv func(string) string) (int, erro
 
 func runWithIO(args []string, stdin io.Reader, stdout, stderr io.Writer, getenv func(string) string) (int, error) {
 	if len(args) == 1 && (args[0] == "--help" || args[0] == "-h") {
-		fmt.Fprint(stdout, helpText)
+		say(stdout, helpText)
 		return 0, nil
 	}
 
@@ -111,16 +111,16 @@ func runWithIO(args []string, stdin io.Reader, stdout, stderr io.Writer, getenv 
 	// Keep this output deliberately small and deterministic, exactly like
 	// fake-claude's own banner/argv record: proof that the fixture started
 	// and which argv reached it.
-	fmt.Fprintln(stdout, "Fake Codex")
-	fmt.Fprintf(stdout, "fake-codex argv: %s\n", encoded)
+	sayln(stdout, "Fake Codex")
+	sayf(stdout, "fake-codex argv: %s\n", encoded)
 	if parsed.resume != "" {
-		fmt.Fprintf(stdout, "fake-codex resume: %s\n", parsed.resume)
+		sayf(stdout, "fake-codex resume: %s\n", parsed.resume)
 	}
 	if parsed.askForApproval != "" {
-		fmt.Fprintf(stdout, "fake-codex ask-for-approval: %s\n", parsed.askForApproval)
+		sayf(stdout, "fake-codex ask-for-approval: %s\n", parsed.askForApproval)
 	}
 	if parsed.sandbox != "" {
-		fmt.Fprintf(stdout, "fake-codex sandbox: %s\n", parsed.sandbox)
+		sayf(stdout, "fake-codex sandbox: %s\n", parsed.sandbox)
 	}
 
 	hooks := hookCommandsFromOverrides(parsed.configOverrides)
@@ -297,7 +297,7 @@ func fireHook(stdout, stderr io.Writer, hooks map[string]string, trusted bool, e
 	if err := process.Run(); err != nil {
 		return fmt.Errorf("fire %s hook: %w", event, err)
 	}
-	fmt.Fprintf(stdout, "fake-codex hook fired: %s\n", event)
+	sayf(stdout, "fake-codex hook fired: %s\n", event)
 	return nil
 }
 
@@ -321,7 +321,7 @@ func runCommands(input io.Reader, stdout, stderr io.Writer, hooks map[string]str
 	// distinguish from a hung pane. codexPaneStates["starting"] is the
 	// same literal the "state" pane command renders, so this is one
 	// template, not a duplicated rule.
-	fmt.Fprint(stdout, codexPaneStates["starting"])
+	say(stdout, codexPaneStates["starting"])
 	var session *codexSession
 	scanner := bufio.NewScanner(input)
 	for scanner.Scan() {
@@ -503,7 +503,7 @@ func submitPrompt(stdout, stderr io.Writer, hooks map[string]string, trusted boo
 		// that only invoked the pane, never argv, can still learn the id
 		// this fixture minted -- exactly the id a real deck would adopt off
 		// the SessionStart hook it fires next (SPEC §8.2, task 018).
-		fmt.Fprintf(stdout, "fake-codex session-id: %s\n", id)
+		sayf(stdout, "fake-codex session-id: %s\n", id)
 		// Announced alongside the id so a black-box scenario can also learn
 		// this invocation's own rollout transcript path independently of
 		// anything a caller's store might later persist -- the SAME path
@@ -513,7 +513,7 @@ func submitPrompt(stdout, stderr io.Writer, hooks map[string]string, trusted boo
 		// there is nothing to announce, matching SessionStart's own payload
 		// which likewise omits transcript_path in that case.
 		if rolloutPath != "" {
-			fmt.Fprintf(stdout, "fake-codex transcript-path: %s\n", rolloutPath)
+			sayf(stdout, "fake-codex transcript-path: %s\n", rolloutPath)
 		}
 		if err := fireHook(stdout, stderr, hooks, trusted, "SessionStart", session.payload(map[string]any{"source": source})); err != nil {
 			return session, err
@@ -522,8 +522,8 @@ func submitPrompt(stdout, stderr io.Writer, hooks map[string]string, trusted boo
 	if err := fireHook(stdout, stderr, hooks, trusted, "UserPromptSubmit", session.payload(map[string]any{"prompt": text})); err != nil {
 		return session, err
 	}
-	fmt.Fprintln(stdout, "• Working (5s • esc to interrupt)")
-	fmt.Fprintln(stdout, "› Ask Codex to do anything")
+	sayln(stdout, "• Working (5s • esc to interrupt)")
+	sayln(stdout, "› Ask Codex to do anything")
 	return session, nil
 }
 
@@ -542,7 +542,7 @@ func requestPermission(stdout, stderr io.Writer, hooks map[string]string, truste
 	if err := fireHook(stdout, stderr, hooks, trusted, "PermissionRequest", session.payload(map[string]any{"tool_name": toolName})); err != nil {
 		return err
 	}
-	fmt.Fprintln(stdout, "  Press enter to confirm or esc to cancel")
+	sayln(stdout, "  Press enter to confirm or esc to cancel")
 	return nil
 }
 
@@ -557,8 +557,8 @@ func stopTurn(stdout, stderr io.Writer, hooks map[string]string, trusted bool, s
 	if err := fireHook(stdout, stderr, hooks, trusted, "Stop", session.payload(map[string]any{"last_assistant_message": message})); err != nil {
 		return err
 	}
-	fmt.Fprintf(stdout, "• %s\n", message)
-	fmt.Fprintln(stdout, "› Ask Codex to do anything")
+	sayf(stdout, "• %s\n", message)
+	sayln(stdout, "› Ask Codex to do anything")
 	return nil
 }
 
@@ -590,7 +590,7 @@ func renderPaneState(stdout io.Writer, name string) error {
 	if !ok {
 		return fmt.Errorf("unknown pane state %q", name)
 	}
-	fmt.Fprint(stdout, block)
+	say(stdout, block)
 	return nil
 }
 

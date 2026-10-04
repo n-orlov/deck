@@ -160,7 +160,7 @@ func doGitHubRequest(method, url, token string, payload []byte) ([]byte, string,
 	if err != nil {
 		return nil, "", err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }() // body fully read below; Close cannot lose data
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {

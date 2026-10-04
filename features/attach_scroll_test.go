@@ -335,7 +335,7 @@ func clientExitsCopyModeOnAttachedPane(ctx context.Context, name string) error {
 	}
 	if err := client.WaitForFrameGone(ctx, false, attachScrollTopMarker); err != nil {
 		stillInMode, checkErr := paneStillInCopyMode(ctx, h.Socket)
-		return fmt.Errorf("%w\nDIAGNOSTIC real tmux pane_in_mode after cancel: stillInMode=%v checkErr=%v", err, stillInMode, checkErr)
+		return fmt.Errorf("%w\nDIAGNOSTIC real tmux pane_in_mode after cancel: stillInMode=%v checkErr=%w", err, stillInMode, checkErr)
 	}
 	// Cancelling copy-mode is itself an automatic-rename trigger, but
 	// tmux's window_name is a CACHED field (see waitForAutomaticRenameToRender

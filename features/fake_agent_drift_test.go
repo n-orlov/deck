@@ -54,7 +54,7 @@ func (s *fakeAgentDriftScenario) readInstalledHelp() error {
 	return nil
 }
 
-func (s *fakeAgentDriftScenario) readBuiltFakeHelp() error {
+func (s *fakeAgentDriftScenario) readBuiltFakeHelp() (err error) {
 	root, err := repositoryRoot()
 	if err != nil {
 		return err
@@ -63,7 +63,7 @@ func (s *fakeAgentDriftScenario) readBuiltFakeHelp() error {
 	if err != nil {
 		return fmt.Errorf("create temporary fake Claude build directory: %w", err)
 	}
-	defer os.RemoveAll(temporaryDirectory)
+	defer func() { err = errors.Join(err, os.RemoveAll(temporaryDirectory)) }()
 
 	binary := filepath.Join(temporaryDirectory, "fake-claude")
 	build := exec.Command("go", "build", "-o", binary, "./cmd/fake-claude")
@@ -205,7 +205,7 @@ func (s *fakeAgentDriftScenario) readInstalledCodexHelp() error {
 
 // readBuiltFakeCodexHelp is readBuiltFakeHelp's codex counterpart: same
 // temp-dir build-then-run, from ./cmd/fake-codex instead of ./cmd/fake-claude.
-func (s *fakeAgentDriftScenario) readBuiltFakeCodexHelp() error {
+func (s *fakeAgentDriftScenario) readBuiltFakeCodexHelp() (err error) {
 	root, err := repositoryRoot()
 	if err != nil {
 		return err
@@ -214,7 +214,7 @@ func (s *fakeAgentDriftScenario) readBuiltFakeCodexHelp() error {
 	if err != nil {
 		return fmt.Errorf("create temporary fake Codex build directory: %w", err)
 	}
-	defer os.RemoveAll(temporaryDirectory)
+	defer func() { err = errors.Join(err, os.RemoveAll(temporaryDirectory)) }()
 
 	binary := filepath.Join(temporaryDirectory, "fake-codex")
 	build := exec.Command("go", "build", "-o", binary, "./cmd/fake-codex")

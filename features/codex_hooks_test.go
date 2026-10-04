@@ -175,7 +175,7 @@ func fakeCodexIsPromptedWith(ctx context.Context, name, text string) error {
 			}
 		}
 		if time.Now().After(deadline) {
-			return fmt.Errorf("fake Codex pane %q never announced a minted session id; last capture (err=%v):\n%s", target, err, string(output))
+			return fmt.Errorf("fake Codex pane %q never announced a minted session id; last capture (err=%w):\n%s", target, err, string(output))
 		}
 		time.Sleep(20 * time.Millisecond)
 	}

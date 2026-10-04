@@ -77,7 +77,7 @@ func run(args []string, stdout io.Writer, getenv func(string) string, getwd func
 
 func runWithIO(args []string, stdin io.Reader, stdout io.Writer, getenv func(string) string, getwd func() (string, error)) (int, error) {
 	if len(args) == 1 && (args[0] == "--help" || args[0] == "-h") {
-		fmt.Fprint(stdout, helpText)
+		say(stdout, helpText)
 		return 0, nil
 	}
 
@@ -108,16 +108,16 @@ func runWithIO(args []string, stdin io.Reader, stdout io.Writer, getenv func(str
 	// Keep this output deliberately small and deterministic so a real
 	// terminal/pane assertion can prove both that the fixture started and
 	// which argv reached it.
-	fmt.Fprintln(stdout, "Fake pi")
-	fmt.Fprintf(stdout, "fake-pi argv: %s\n", encoded)
+	sayln(stdout, "Fake pi")
+	sayf(stdout, "fake-pi argv: %s\n", encoded)
 	if opts.sessionID != "" {
 		// pi uses the same --session-id flag for both launch and resume: the
 		// id is caller-assigned, and pi creates the conversation if it does
 		// not already exist.
-		fmt.Fprintf(stdout, "fake-pi session-id: %s\n", opts.sessionID)
+		sayf(stdout, "fake-pi session-id: %s\n", opts.sessionID)
 	}
 	if opts.approve {
-		fmt.Fprintln(stdout, "fake-pi approve: true")
+		sayln(stdout, "fake-pi approve: true")
 	}
 
 	if getenv(commandsEnvironment) == "1" {
@@ -171,7 +171,7 @@ func replayAndRecord(opts options, getenv func(string) string, getwd func() (str
 			return err
 		}
 		if last != "" {
-			fmt.Fprintf(stdout, "fake-pi replay: %s\n", last)
+			sayf(stdout, "fake-pi replay: %s\n", last)
 		}
 	} else {
 		cwd, err := getwd()
@@ -289,12 +289,16 @@ type transcriptEntry struct {
 	Message string `json:"message"`
 }
 
-func appendMessage(path, message string) error {
+func appendMessage(path, message string) (err error) {
 	file, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
 	if err != nil {
 		return fmt.Errorf("open transcript: %w", err)
 	}
-	defer file.Close()
+	defer func() {
+		if closeErr := file.Close(); closeErr != nil && err == nil {
+			err = fmt.Errorf("close transcript: %w", closeErr)
+		}
+	}()
 
 	encoded, err := json.Marshal(transcriptEntry{Message: message})
 	if err != nil {
@@ -314,7 +318,7 @@ func lastMessage(path string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("open transcript: %w", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }() // read-only handle: Close cannot lose data
 
 	var last string
 	scanner := bufio.NewScanner(file)
@@ -436,7 +440,7 @@ func watchAndRepaint(mode string, stdin io.Reader, stdout io.Writer, signals <-c
 		counter++
 		n := counter
 		mu.Unlock()
-		fmt.Fprintf(stdout, "repaint #%d\n", n)
+		sayf(stdout, "repaint #%d\n", n)
 	}
 
 	done := make(chan struct{})
@@ -599,11 +603,11 @@ func recordSigwinchCount(path string, total int64) {
 	_, writeErr := fmt.Fprint(tmp, strconv.FormatInt(total, 10))
 	closeErr := tmp.Close()
 	if writeErr != nil || closeErr != nil {
-		os.Remove(name)
+		_ = os.Remove(name) // best-effort cleanup of the scratch file
 		return
 	}
 	if err := os.Rename(name, path); err != nil {
-		os.Remove(name)
+		_ = os.Remove(name) // best-effort cleanup of the scratch file
 	}
 }
 
@@ -624,8 +628,8 @@ func recordSize(path string) {
 	if err != nil {
 		return
 	}
-	defer file.Close()
-	fmt.Fprintf(file, "%dx%d\n", cols, rows)
+	defer func() { _ = file.Close() }() // recording is scaffolding; see the doc comment
+	sayf(file, "%dx%d\n", cols, rows)
 }
 
 func configuredExitCode(value string) (int, error) {

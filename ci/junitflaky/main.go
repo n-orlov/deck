@@ -369,8 +369,7 @@ func run(args []string, stderr io.Writer) error {
 		return err
 	}
 	if err := write(f, merged); err != nil {
-		f.Close()
-		return err
+		return errors.Join(err, f.Close())
 	}
 	return f.Close()
 }

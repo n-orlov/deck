@@ -117,7 +117,11 @@ func task016GhostModel(t *testing.T) (Model, string) {
 	if err != nil {
 		t.Fatalf("MkdirTemp: %v", err)
 	}
-	t.Cleanup(func() { os.RemoveAll(parent) })
+	t.Cleanup(func() {
+		if err := os.RemoveAll(parent); err != nil {
+			t.Logf("remove %s: %v", parent, err)
+		}
+	})
 	if err := os.Mkdir(parent+"/unique-directory", 0o755); err != nil {
 		t.Fatalf("Mkdir: %v", err)
 	}
@@ -359,7 +363,11 @@ func task016SpacedGhostModel(t *testing.T) (Model, string) {
 	if err != nil {
 		t.Fatalf("MkdirTemp: %v", err)
 	}
-	t.Cleanup(func() { os.RemoveAll(parent) })
+	t.Cleanup(func() {
+		if err := os.RemoveAll(parent); err != nil {
+			t.Logf("remove %s: %v", parent, err)
+		}
+	})
 	// Pad so the first word of the value nearly fills the dialog's inner
 	// width and the ghost's second word is pushed onto the next line.
 	inner := m.dialogWidth() - 4

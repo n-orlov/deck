@@ -225,5 +225,5 @@ func waitForFeatureSessionAttachedCount(ctx context.Context, client tmux.Client,
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
-	return fmt.Errorf("session_attached on %q did not reach %d within the deadline (last=%d err=%v)", target, want, last, lastErr)
+	return fmt.Errorf("session_attached on %q did not reach %d within the deadline (last=%d err=%w)", target, want, last, lastErr)
 }

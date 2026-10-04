@@ -108,7 +108,7 @@ func waitForFrameGone(ctx context.Context, d *ScreenDriver, unwanted string) err
 		}
 		select {
 		case <-d.done:
-			return fmt.Errorf("deck exited before %q left the frame: %v\nframe:\n%s", unwanted, d.processError(), d.Frame(false))
+			return fmt.Errorf("deck exited before %q left the frame: %w\nframe:\n%s", unwanted, d.processError(), d.Frame(false))
 		case <-d.updated:
 		case <-ctx.Done():
 			return fmt.Errorf("timed out waiting for %q to leave the frame: %w\nframe:\n%s", unwanted, ctx.Err(), d.Frame(false))

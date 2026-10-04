@@ -10,6 +10,7 @@
 package tmuxguard
 
 import (
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -53,8 +54,8 @@ func runGuard(t *testing.T, env []string, args ...string) (int, []string) {
 	out, err := cmd.CombinedOutput()
 	code := 0
 	if err != nil {
-		exitErr, ok := err.(*exec.ExitError)
-		if !ok {
+		var exitErr *exec.ExitError
+		if !errors.As(err, &exitErr) {
 			t.Fatalf("run guard %q: %v", args, err)
 		}
 		code = exitErr.ExitCode()

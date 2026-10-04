@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -291,17 +292,17 @@ func atomicWrite(path string, data []byte) error {
 	succeeded := false
 	defer func() {
 		if !succeeded {
-			os.Remove(tmpPath)
+			// Best effort: the write already failed and that error is the
+			// one returned; a leftover temp file is harmless.
+			_ = os.Remove(tmpPath)
 		}
 	}()
 
 	if _, err := tmp.Write(data); err != nil {
-		tmp.Close()
-		return fmt.Errorf("write %s: %w", tmpPath, err)
+		return fmt.Errorf("write %s: %w", tmpPath, errors.Join(err, tmp.Close()))
 	}
 	if err := tmp.Sync(); err != nil {
-		tmp.Close()
-		return fmt.Errorf("sync %s: %w", tmpPath, err)
+		return fmt.Errorf("sync %s: %w", tmpPath, errors.Join(err, tmp.Close()))
 	}
 	if err := tmp.Close(); err != nil {
 		return fmt.Errorf("close %s: %w", tmpPath, err)

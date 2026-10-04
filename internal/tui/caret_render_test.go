@@ -356,7 +356,11 @@ func TestOfferedValueCarriesTheSelectionBackground(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			t.Cleanup(func() { os.RemoveAll(dir) })
+			t.Cleanup(func() {
+				if err := os.RemoveAll(dir); err != nil {
+					t.Logf("remove %s: %v", dir, err)
+				}
+			})
 			m := caretCreateModel(t, dir)
 			m.settings.Color = color
 			return m, dir
