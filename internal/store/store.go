@@ -724,28 +724,255 @@ func (s *Store) GetSession(ctx context.Context, id string) (Session, error) {
 	return session, nil
 }
 
+// statusUpdateChecks is UpdateSessionStatus's argument validation, in the
+// order the errors are reported: the first rule whose invalid predicate
+// holds names the error. It runs after the source default is applied, so the
+// probe and killed_by_user rules see the effective source.
+var statusUpdateChecks = []struct {
+	invalid func(StatusUpdateInput) bool
+	message string
+}{
+	{func(in StatusUpdateInput) bool { return in.SessionID == "" || in.Status == "" }, "session id and status are required"},
+	{func(in StatusUpdateInput) bool { return in.At == 0 }, "session status timestamp is required"},
+	{func(in StatusUpdateInput) bool { return in.Source == "probe" && in.StaleAfter <= 0 }, "probe stale_after is required"},
+	{func(in StatusUpdateInput) bool {
+		return in.KilledByUser && (in.Source != "user" || in.Status != "stopped")
+	}, "killed_by_user requires a user-sourced stopped transition"},
+}
+
+// normalizeStatusUpdate fills the defaults an update may leave blank: the
+// source is the user, and the event kind is the status itself.
+func normalizeStatusUpdate(input StatusUpdateInput) StatusUpdateInput {
+	if input.Source == "" {
+		input.Source = "user"
+	}
+	if input.EventKind == "" {
+		input.EventKind = input.Status
+	}
+	return input
+}
+
+// validateStatusUpdate returns the first failed rule of statusUpdateChecks.
+func validateStatusUpdate(input StatusUpdateInput) error {
+	for _, check := range statusUpdateChecks {
+		if check.invalid(input) {
+			return errors.New(check.message)
+		}
+	}
+	return nil
+}
+
+// statusRow is the slice of a session row UpdateSessionStatus reads before
+// deciding whether a verdict wins.
+type statusRow struct {
+	status, source, agent      string
+	at, notifyEpoch            int64
+	killedByUser, acknowledged int
+	paneExitStatus             sql.NullInt64
+}
+
+// readStatusRow loads the row a status update is judged against.
+func readStatusRow(ctx context.Context, tx *sql.Tx, sessionID string) (statusRow, error) {
+	var row statusRow
+	if err := tx.QueryRowContext(ctx, `SELECT status, status_source, status_at, agent,
+		killed_by_user, acknowledged, notify_epoch, pane_exit_status
+		FROM sessions WHERE id = ?`, sessionID).Scan(
+		&row.status, &row.source, &row.at, &row.agent, &row.killedByUser,
+		&row.acknowledged, &row.notifyEpoch, &row.paneExitStatus); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return statusRow{}, fmt.Errorf("session %q not found", sessionID)
+		}
+		return statusRow{}, fmt.Errorf("read session status: %w", err)
+	}
+	return row, nil
+}
+
+// statusVetoes are the precedence rules of a status update, each a pure
+// predicate that is true when the incoming verdict must lose to the stored
+// row. The event is recorded either way; any single veto leaves the row
+// untouched, so the order is immaterial.
+var statusVetoes = []func(in StatusUpdateInput, cur statusRow) bool{
+	vetoKilledByUser,
+	vetoDisallowedCurrentStatus,
+	vetoHookOnStopped,
+	vetoTmuxStopOverStopped,
+	vetoHookRunningAfterCrash,
+	vetoFreshHookOverProbe,
+	vetoTmuxInventedState,
+	vetoSecondCrashCollection,
+}
+
+// vetoKilledByUser: an explicit kill is a terminal verdict only a caller that
+// says so (ClearKilledByUser, or the kill itself) may replace.
+func vetoKilledByUser(in StatusUpdateInput, cur statusRow) bool {
+	return cur.killedByUser != 0 && !in.ClearKilledByUser && !in.KilledByUser
+}
+
+// vetoDisallowedCurrentStatus: a transition limited to certain current
+// statuses does not apply to any other.
+func vetoDisallowedCurrentStatus(in StatusUpdateInput, cur statusRow) bool {
+	return len(in.AllowedCurrentStatuses) > 0 && !containsString(in.AllowedCurrentStatuses, cur.status)
+}
+
+// vetoHookOnStopped: §7's transition table gives "stopped" no return edge except the explicit
+// `r` resume (starting), which flips the row outside this function
+// (AcquireLaunchLease). A stopped row means tmux verified the session is
+// gone -- there is no live pane left for a hook to have truthfully come
+// from, so a hook arriving for one anyway is stale/out-of-order and must
+// not resurrect it. This is the hook-layer analogue of killed_by_user: a
+// terminal state a later hook cannot undo.
+//
+// The one hook write that resurrects nothing is a hook "stopped" onto a
+// tmux-sourced "stopped": the status does not change, and SPEC §7's
+// precedence (hook > tmux; tmux "only ever supplies liveness") makes the
+// agent's own end-of-session verdict -- its reason included -- the one
+// to keep over the bare "tmux session disappeared" liveness fact. A
+// SessionEnd hook subprocess is fire-and-forget and can land after the
+// pane is gone and a reconcile pass has already recorded that fact;
+// refusing it there made the stored verdict depend only on which writer
+// won the race (status_claude_hooks.feature's clean-exit SessionEnd,
+// task 026). A user-sourced stop still outranks every hook.
+func vetoHookOnStopped(in StatusUpdateInput, cur statusRow) bool {
+	hookRefinesTmuxStop := in.Status == "stopped" && cur.source == "tmux"
+	return in.Source == "hook" && cur.status == "stopped" && !hookRefinesTmuxStop
+}
+
+// vetoTmuxStopOverStopped is the same precedence, read from the other side: a reconcile pass that
+// read the row before that hook landed, then saw the session gone,
+// writes tmux "stopped" onto a row a hook (or the user) already stopped.
+// Liveness has nothing to add to a row that already says stopped, so it
+// must not replace the higher-precedence verdict either.
+func vetoTmuxStopOverStopped(in StatusUpdateInput, cur statusRow) bool {
+	return in.Source == "tmux" && in.Status == "stopped" && cur.status == "stopped" && cur.source != "tmux"
+}
+
+// vetoHookRunningAfterCrash: an error carrying a pane exit status is a terminal process-crash verdict,
+// not the recoverable turn/API failure represented by error -> running.
+func vetoHookRunningAfterCrash(in StatusUpdateInput, cur statusRow) bool {
+	return in.Source == "hook" && in.Status == "running" && cur.paneExitStatus.Valid
+}
+
+// vetoFreshHookOverProbe: a probe never replaces a hook verdict that is still fresh.
+func vetoFreshHookOverProbe(in StatusUpdateInput, cur statusRow) bool {
+	return in.Source == "probe" && cur.source == "hook" && in.At-cur.at < in.StaleAfter
+}
+
+// vetoTmuxInventedState: tmux supplies terminal liveness, plus the one explicit shell promotion;
+// it cannot invent an agent's working state.
+func vetoTmuxInventedState(in StatusUpdateInput, cur statusRow) bool {
+	if in.Source != "tmux" || in.Status == "stopped" || in.Status == "error" {
+		return false
+	}
+	return !tmuxShellPromotion(in, cur) && !tmuxLaunchObservation(in, cur) && !tmuxTerminalRepair(in, cur)
+}
+
+func tmuxLaunchObservation(in StatusUpdateInput, cur statusRow) bool {
+	return in.Status == "starting" && cur.status == "starting" && cur.source == "user"
+}
+
+func tmuxShellPromotion(in StatusUpdateInput, cur statusRow) bool {
+	return in.Status == "running" && cur.agent == "shell" && cur.status == "starting"
+}
+
+// tmuxTerminalRepair is SPEC §7's one self-healing rule, as this gate sees it. Which rows are
+// eligible is not decided here: reconcile.go's terminal-row branch repairs
+// a stopped row always, but an error row only when it carries a pane-exit
+// or tmux/user-sourced verdict. A bare hook- or probe-sourced error row is
+// deliberately never repaired -- §7's running --turn or API failure--> error
+// transition needs no pane death at all, so that row is the agent's own
+// considered verdict (finding F40, task 901) -- and no repair write for one
+// ever reaches this predicate. What the predicate does is admit the repair
+// write that does arrive: it is from tmux liveness alone, so a shell
+// promotes straight to running (its only rule) and everything else resets
+// to the neutral starting a fresh pane always begins at, since tmux still
+// cannot fabricate an agent's working state even while repairing this
+// violation.
+//
+// The repair is also the one tmux write allowed past the two terminal
+// verdicts, and only because tmux has observed the pane they describe to be
+// alive: killed_by_user exists so an in-flight hook cannot undo an explicit
+// kill, and a crash verdict describes a pane that died. Neither claim
+// survives a live pane, and leaving either one set would repair the status
+// into a row that still outranks every later hook forever (SPEC §9.1's
+// "spent verdict" hazard), i.e. exactly the frozen row §7 sends the repair
+// to fix. The reconciler therefore passes ClearKilledByUser and
+// ClearCrashVerdict with it, which is what makes this branch reachable
+// through the killed_by_user precedence above.
+func tmuxTerminalRepair(in StatusUpdateInput, cur statusRow) bool {
+	if cur.status != "stopped" && cur.status != "error" {
+		return false
+	}
+	if cur.agent == "shell" {
+		return in.Status == "running"
+	}
+	return in.Status == "starting"
+}
+
+// vetoSecondCrashCollection: crash collection is first-writer-only. A racing observer still records
+// what it saw, but does not replace the stored verdict or tail.
+func vetoSecondCrashCollection(in StatusUpdateInput, cur statusRow) bool {
+	return in.PaneExitStatus != nil && cur.paneExitStatus.Valid
+}
+
+// statusWins reports whether the update replaces the stored verdict.
+func statusWins(in StatusUpdateInput, cur statusRow) bool {
+	for _, veto := range statusVetoes {
+		if veto(in, cur) {
+			return false
+		}
+	}
+	return true
+}
+
+// writeStatusUpdate stores the winning verdict on the session row.
+func writeStatusUpdate(ctx context.Context, tx *sql.Tx, input StatusUpdateInput, cur statusRow) error {
+	notifyEpoch := cur.notifyEpoch
+	if isAttentionStatus(cur.status) && !isAttentionStatus(input.Status) {
+		notifyEpoch++
+	}
+	acknowledged := cur.acknowledged
+	if isAttentionStatus(input.Status) {
+		acknowledged = 0
+	} else if input.Acknowledged != nil {
+		acknowledged = boolInt(*input.Acknowledged)
+	}
+	newKilled := cur.killedByUser
+	if input.ClearKilledByUser {
+		newKilled = 0
+	}
+	if input.KilledByUser {
+		newKilled = 1
+	}
+	lastMessage := truncateUTF8(input.LastMessage, 2*1024)
+	// clearCrash drops both crash columns; otherwise they keep their existing
+	// pre-clear behaviour, where a tail is written only alongside the exit
+	// status that explains it (the crash_tail CASE is gated on
+	// input.PaneExitStatus, never on the tail string itself, which is empty
+	// on every unrelated write).
+	clearCrash := boolInt(input.ClearCrashVerdict)
+	_, err := tx.ExecContext(ctx, `UPDATE sessions SET
+		status = ?, status_reason = ?, status_source = ?, status_at = ?,
+		killed_by_user = ?, acknowledged = ?, notify_epoch = ?,
+		pane_exit_status = CASE WHEN ? = 1 THEN NULL ELSE COALESCE(?, pane_exit_status) END,
+		crash_tail = CASE WHEN ? = 1 THEN NULL WHEN ? IS NULL THEN crash_tail ELSE ? END,
+		last_message = CASE WHEN ? = '' THEN last_message ELSE ? END
+		WHERE id = ?`, input.Status, input.Reason, input.Source, input.At,
+		newKilled, acknowledged, notifyEpoch, clearCrash, input.PaneExitStatus,
+		clearCrash, input.PaneExitStatus, input.CrashTail, lastMessage, lastMessage, input.SessionID)
+	if err != nil {
+		return fmt.Errorf("update session status: %w", err)
+	}
+	return nil
+}
+
 // UpdateSessionStatus applies one verdict and records its source event in the
 // same transaction. Losing verdicts are still events (important evidence that
 // a probe ran), but cannot change the row. The immediate transaction configured
 // by OpenPath makes the read/precedence/write sequence atomic across clients.
 func (s *Store) UpdateSessionStatus(ctx context.Context, input StatusUpdateInput) error {
-	if input.SessionID == "" || input.Status == "" {
-		return errors.New("session id and status are required")
-	}
-	if input.Source == "" {
-		input.Source = "user"
-	}
-	if input.At == 0 {
-		return errors.New("session status timestamp is required")
-	}
-	if input.Source == "probe" && input.StaleAfter <= 0 {
-		return errors.New("probe stale_after is required")
-	}
-	if input.KilledByUser && (input.Source != "user" || input.Status != "stopped") {
-		return errors.New("killed_by_user requires a user-sourced stopped transition")
-	}
-	if input.EventKind == "" {
-		input.EventKind = input.Status
+	input = normalizeStatusUpdate(input)
+	if err := validateStatusUpdate(input); err != nil {
+		return err
 	}
 
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -754,142 +981,20 @@ func (s *Store) UpdateSessionStatus(ctx context.Context, input StatusUpdateInput
 	}
 	defer tx.Rollback()
 
-	var currentStatus, currentSource, agent string
-	var currentAt, notifyEpoch int64
-	var killedByUser, acknowledged int
-	var paneExitStatus sql.NullInt64
-	if err := tx.QueryRowContext(ctx, `SELECT status, status_source, status_at, agent,
-		killed_by_user, acknowledged, notify_epoch, pane_exit_status
-		FROM sessions WHERE id = ?`, input.SessionID).Scan(
-		&currentStatus, &currentSource, &currentAt, &agent, &killedByUser,
-		&acknowledged, &notifyEpoch, &paneExitStatus); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return fmt.Errorf("session %q not found", input.SessionID)
-		}
-		return fmt.Errorf("read session status: %w", err)
+	cur, err := readStatusRow(ctx, tx, input.SessionID)
+	if err != nil {
+		return err
 	}
 
 	// A conditional transition that lost its race is a complete no-op: it must
 	// not append an event claiming an action against a different current state.
-	if input.ExpectedStatus != "" && currentStatus != input.ExpectedStatus {
+	if input.ExpectedStatus != "" && cur.status != input.ExpectedStatus {
 		return nil
 	}
 
-	apply := killedByUser == 0 || input.ClearKilledByUser || input.KilledByUser
-	if apply && len(input.AllowedCurrentStatuses) > 0 && !containsString(input.AllowedCurrentStatuses, currentStatus) {
-		apply = false
-	}
-	// §7's transition table gives "stopped" no return edge except the explicit
-	// `r` resume (starting), which flips the row outside this function
-	// (AcquireLaunchLease). A stopped row means tmux verified the session is
-	// gone -- there is no live pane left for a hook to have truthfully come
-	// from, so a hook arriving for one anyway is stale/out-of-order and must
-	// not resurrect it. This is the hook-layer analogue of killed_by_user: a
-	// terminal state a later hook cannot undo.
-	//
-	// The one hook write that resurrects nothing is a hook "stopped" onto a
-	// tmux-sourced "stopped": the status does not change, and SPEC §7's
-	// precedence (hook > tmux; tmux "only ever supplies liveness") makes the
-	// agent's own end-of-session verdict -- its reason included -- the one
-	// to keep over the bare "tmux session disappeared" liveness fact. A
-	// SessionEnd hook subprocess is fire-and-forget and can land after the
-	// pane is gone and a reconcile pass has already recorded that fact;
-	// refusing it there made the stored verdict depend only on which writer
-	// won the race (status_claude_hooks.feature's clean-exit SessionEnd,
-	// task 026). A user-sourced stop still outranks every hook.
-	hookRefinesTmuxStop := input.Status == "stopped" && currentSource == "tmux"
-	if apply && input.Source == "hook" && currentStatus == "stopped" && !hookRefinesTmuxStop {
-		apply = false
-	}
-	// The same precedence, read from the other side: a reconcile pass that
-	// read the row before that hook landed, then saw the session gone,
-	// writes tmux "stopped" onto a row a hook (or the user) already stopped.
-	// Liveness has nothing to add to a row that already says stopped, so it
-	// must not replace the higher-precedence verdict either.
-	if apply && input.Source == "tmux" && input.Status == "stopped" && currentStatus == "stopped" && currentSource != "tmux" {
-		apply = false
-	}
-	// An error carrying a pane exit status is a terminal process-crash verdict,
-	// not the recoverable turn/API failure represented by error -> running.
-	if apply && input.Source == "hook" && input.Status == "running" && paneExitStatus.Valid {
-		apply = false
-	}
-	if apply && input.Source == "probe" && currentSource == "hook" && input.At-currentAt < input.StaleAfter {
-		apply = false
-	}
-	// tmux supplies terminal liveness, plus the one explicit shell promotion;
-	// it cannot invent an agent's working state.
-	tmuxLaunchObservation := input.Status == "starting" && currentStatus == "starting" && currentSource == "user"
-	tmuxShellPromotion := input.Status == "running" && agent == "shell" && currentStatus == "starting"
-	// SPEC §7's one self-healing rule, as this gate sees it. Which rows are
-	// eligible is not decided here: reconcile.go's terminal-row branch repairs
-	// a stopped row always, but an error row only when it carries a pane-exit
-	// or tmux/user-sourced verdict. A bare hook- or probe-sourced error row is
-	// deliberately never repaired -- §7's running --turn or API failure--> error
-	// transition needs no pane death at all, so that row is the agent's own
-	// considered verdict (finding F40, task 901) -- and no repair write for one
-	// ever reaches this predicate. What the predicate does is admit the repair
-	// write that does arrive: it is from tmux liveness alone, so a shell
-	// promotes straight to running (its only rule) and everything else resets
-	// to the neutral starting a fresh pane always begins at, since tmux still
-	// cannot fabricate an agent's working state even while repairing this
-	// violation.
-	tmuxTerminalRepair := (currentStatus == "stopped" || currentStatus == "error") &&
-		((agent == "shell" && input.Status == "running") || (agent != "shell" && input.Status == "starting"))
-	// The repair is also the one tmux write allowed past the two terminal
-	// verdicts, and only because tmux has observed the pane they describe to be
-	// alive: killed_by_user exists so an in-flight hook cannot undo an explicit
-	// kill, and a crash verdict describes a pane that died. Neither claim
-	// survives a live pane, and leaving either one set would repair the status
-	// into a row that still outranks every later hook forever (SPEC §9.1's
-	// "spent verdict" hazard), i.e. exactly the frozen row §7 sends the repair
-	// to fix. The reconciler therefore passes ClearKilledByUser and
-	// ClearCrashVerdict with it, which is what makes this branch reachable
-	// through the killed_by_user precedence above.
-	if apply && input.Source == "tmux" && input.Status != "stopped" && input.Status != "error" && !tmuxShellPromotion && !tmuxLaunchObservation && !tmuxTerminalRepair {
-		apply = false
-	}
-	// Crash collection is first-writer-only. A racing observer still records
-	// what it saw, but does not replace the stored verdict or tail.
-	if apply && input.PaneExitStatus != nil && paneExitStatus.Valid {
-		apply = false
-	}
-
-	if apply {
-		leavingAttention := isAttentionStatus(currentStatus) && !isAttentionStatus(input.Status)
-		if leavingAttention {
-			notifyEpoch++
-		}
-		if isAttentionStatus(input.Status) {
-			acknowledged = 0
-		} else if input.Acknowledged != nil {
-			acknowledged = boolInt(*input.Acknowledged)
-		}
-		newKilled := killedByUser
-		if input.ClearKilledByUser {
-			newKilled = 0
-		}
-		if input.KilledByUser {
-			newKilled = 1
-		}
-		lastMessage := truncateUTF8(input.LastMessage, 2*1024)
-		// clearCrash drops both crash columns; otherwise they keep their existing
-		// pre-clear behaviour, where a tail is written only alongside the exit
-		// status that explains it (the crash_tail CASE is gated on
-		// input.PaneExitStatus, never on the tail string itself, which is empty
-		// on every unrelated write).
-		clearCrash := boolInt(input.ClearCrashVerdict)
-		_, err = tx.ExecContext(ctx, `UPDATE sessions SET
-			status = ?, status_reason = ?, status_source = ?, status_at = ?,
-			killed_by_user = ?, acknowledged = ?, notify_epoch = ?,
-			pane_exit_status = CASE WHEN ? = 1 THEN NULL ELSE COALESCE(?, pane_exit_status) END,
-			crash_tail = CASE WHEN ? = 1 THEN NULL WHEN ? IS NULL THEN crash_tail ELSE ? END,
-			last_message = CASE WHEN ? = '' THEN last_message ELSE ? END
-			WHERE id = ?`, input.Status, input.Reason, input.Source, input.At,
-			newKilled, acknowledged, notifyEpoch, clearCrash, input.PaneExitStatus,
-			clearCrash, input.PaneExitStatus, input.CrashTail, lastMessage, lastMessage, input.SessionID)
-		if err != nil {
-			return fmt.Errorf("update session status: %w", err)
+	if statusWins(input, cur) {
+		if err := writeStatusUpdate(ctx, tx, input, cur); err != nil {
+			return err
 		}
 	}
 
