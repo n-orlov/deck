@@ -323,6 +323,22 @@ func (c *dialogBodyColorer) legendLine(line string, keys map[string]bool) {
 	}
 }
 
+// footerLine colours one already-wrapped footer sentence word by word: a
+// word in keyTokens gets `key`, every other word gets `hint`.
+func (c *dialogBodyColorer) footerLine(line string, keyTokens map[string]bool) {
+	for _, l := range c.m.wrapDialogLines(line) {
+		fields := strings.Fields(l)
+		for i, f := range fields {
+			if keyTokens[f] {
+				fields[i] = c.m.colorToken(theme.Key, f)
+			} else {
+				fields[i] = c.m.colorToken(theme.Hint, f)
+			}
+		}
+		c.out = append(c.out, strings.Join(fields, " "))
+	}
+}
+
 // styledEnvBody re-derives envBody's exact structure -- same title, blank
 // line, row loop, order line, optional note and closing hint, in the same
 // order -- but colours each finished PHYSICAL line rather than the

@@ -598,53 +598,16 @@ func (m Model) styledMoveGroupBody() string {
 	for _, g := range options {
 		names = append(names, g.Name)
 	}
-	wrap := m.wrapDialogLines
-	var out []string
-	colorWhole := func(tok theme.Token, line string) {
-		for _, l := range wrap(line) {
-			out = append(out, m.colorToken(tok, l))
-		}
-	}
-	colorField := func(label, value string, focused bool) {
-		for _, l := range wrap(label + value) {
-			var segs []settingsRowSegment
-			rest := l
-			if strings.HasPrefix(l, label) {
-				segs = append(segs, settingsRowSegment{Text: label, Tok: theme.Hint})
-				rest = strings.TrimPrefix(l, label)
-			}
-			if rest != "" {
-				segs = append(segs, settingsRowSegment{Text: rest, Tok: theme.Text})
-			}
-			if len(segs) == 0 {
-				segs = []settingsRowSegment{{Text: l, Tok: theme.Text}}
-			}
-			out = append(out, m.renderCreateRowSegments(focused, segs))
-		}
-	}
-	colorFooterLine := func(line string) {
-		for _, l := range wrap(line) {
-			fields := strings.Fields(l)
-			for i, f := range fields {
-				if cycleConfirmFooterKeyTokens[f] {
-					fields[i] = m.colorToken(theme.Key, f)
-				} else {
-					fields[i] = m.colorToken(theme.Hint, f)
-				}
-			}
-			out = append(out, strings.Join(fields, " "))
-		}
-	}
-
-	colorWhole(theme.Title, fmt.Sprintf("Move %s to a different group", session.Name))
-	out = append(out, "")
-	colorField("Current group: ", sessionGroupLabel(session), false)
-	colorField("New group:     ", fmt.Sprintf("%s (left/right cycles: %s)", m.moveGroupName(m.moveGroupValue), strings.Join(names, ", ")), true)
-	out = append(out, "")
-	colorFooterLine("Left/Right cycles · Enter confirms · Esc cancels")
+	c := &dialogBodyColorer{m: m}
+	c.whole(theme.Title, fmt.Sprintf("Move %s to a different group", session.Name))
+	c.out = append(c.out, "")
+	c.row("Current group: ", sessionGroupLabel(session), false)
+	c.row("New group:     ", fmt.Sprintf("%s (left/right cycles: %s)", m.moveGroupName(m.moveGroupValue), strings.Join(names, ", ")), true)
+	c.out = append(c.out, "")
+	c.footerLine("Left/Right cycles · Enter confirms · Esc cancels", cycleConfirmFooterKeyTokens)
 	if m.moveGroupNote != "" {
-		out = append(out, "")
-		colorWhole(theme.Error, m.moveGroupNote)
+		c.out = append(c.out, "")
+		c.whole(theme.Error, m.moveGroupNote)
 	}
-	return strings.Join(out, "\n")
+	return strings.Join(c.out, "\n")
 }
