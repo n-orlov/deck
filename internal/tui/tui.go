@@ -9127,11 +9127,7 @@ func (m Model) createFieldMarker(field int) string {
 // order, so the two can never drift into a different physical line count.
 func (m Model) createBody() string {
 	var b strings.Builder
-	title := "Create session"
-	if m.createAgent == "shell" {
-		title = "Create shell session"
-	}
-	b.WriteString(title + "\n")
+	b.WriteString(m.createTitle() + "\n")
 	for field, row := range m.createFieldRows() {
 		fmt.Fprintf(&b, "%s%s\n    %s\n", m.createFieldLabel(field), row.value, row.help)
 		if field == 0 {
@@ -9158,30 +9154,50 @@ func (m Model) createBody() string {
 			}
 		}
 	}
-	if len(m.createCWDCandidates) > 0 {
-		// task 012's tab-completion listing branch: rendered directly under
-		// the field set (not buried in the one-line help text, unlike
-		// "N matches" -- an actually navigable list needs its own lines) so
-		// a scenario can assert both the candidate set and which one is
-		// highlighted.
-		b.WriteString("  candidates (up/down selects, enter or tab accepts, esc closes):\n")
-		for i, name := range m.createCWDCandidates {
-			marker := "    "
-			if i == m.createCWDCandidateIndex {
-				marker = "  > "
-			}
-			fmt.Fprintf(&b, "%s%s/\n", marker, name)
-		}
-	}
+	m.writeCreateCandidates(&b)
 	b.WriteString(m.createFooterLine() + "\n")
-	if m.createError != "" {
-		if strings.Contains(m.createError, "collides with existing slug") {
-			b.WriteString("Cannot create session: name collides with existing slug.\n")
-		} else {
-			fmt.Fprintf(&b, "Cannot create session: %s\n", m.createError)
-		}
-	}
+	m.writeCreateError(&b)
 	return b.String()
+}
+
+func (m Model) createTitle() string {
+	if m.createAgent == "shell" {
+		return "Create shell session"
+	}
+	return "Create session"
+}
+
+// writeCreateCandidates lists the cwd field's tab-completion candidates, if
+// any are open.
+func (m Model) writeCreateCandidates(b *strings.Builder) {
+	if len(m.createCWDCandidates) == 0 {
+		return
+	}
+	// task 012's tab-completion listing branch: rendered directly under
+	// the field set (not buried in the one-line help text, unlike
+	// "N matches" -- an actually navigable list needs its own lines) so
+	// a scenario can assert both the candidate set and which one is
+	// highlighted.
+	b.WriteString("  candidates (up/down selects, enter or tab accepts, esc closes):\n")
+	for i, name := range m.createCWDCandidates {
+		marker := "    "
+		if i == m.createCWDCandidateIndex {
+			marker = "  > "
+		}
+		fmt.Fprintf(b, "%s%s/\n", marker, name)
+	}
+}
+
+// writeCreateError appends the create modal's failure line, if there is one.
+func (m Model) writeCreateError(b *strings.Builder) {
+	if m.createError == "" {
+		return
+	}
+	if strings.Contains(m.createError, "collides with existing slug") {
+		b.WriteString("Cannot create session: name collides with existing slug.\n")
+		return
+	}
+	fmt.Fprintf(b, "Cannot create session: %s\n", m.createError)
 }
 
 // createFooterKeyTokens is the create modal's footer legend vocabulary
