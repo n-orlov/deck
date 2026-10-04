@@ -8563,41 +8563,43 @@ func (m *Model) updateCreateCWDKey(msg tea.KeyMsg) bool {
 			return true
 		}
 		return true
+	case "esc", "enter", "up", "down":
+		return m.updateCreateCWDCandidateKey(msg.String())
+	}
+	return false
+}
+
+// updateCreateCWDCandidateKey handles esc/enter/up/down while the cwd
+// field's candidate list is open, and reports false (leaving the key to
+// applyDialogContract) when it is not.
+func (m *Model) updateCreateCWDCandidateKey(key string) bool {
+	if len(m.createCWDCandidates) == 0 {
+		return false
+	}
+	switch key {
 	case "esc":
 		// esc closes an open candidate list without changing the field
 		// or the value, one step short of applyDialogContract's own esc
 		// (cancel the whole modal) -- consumed here first so a user
 		// backing out of the list is not also thrown out of the create
 		// modal in the same keystroke.
-		if len(m.createCWDCandidates) > 0 {
-			m.closeCreateCWDCandidates()
-			return true
-		}
+		m.closeCreateCWDCandidates()
 	case "enter":
 		// enter selects the highlighted candidate into the field rather
 		// than submitting the whole modal, one step short of
 		// applyDialogContract's own enter -- exactly like esc above.
-		if len(m.createCWDCandidates) > 0 {
-			m.acceptCWDCandidate(m.createCWDCandidates[m.createCWDCandidateIndex])
-			return true
-		}
+		m.acceptCWDCandidate(m.createCWDCandidates[m.createCWDCandidateIndex])
 	case "up":
 		// While the list is open, up/down move the highlighted entry
 		// rather than moving the dialog's focused field or cycling
 		// recent_cwds (Ctrl+P/Ctrl+N, below): the three per-field key sets
 		// are mutually exclusive, same as the ghost/ambiguous-count/recent
 		// labels already are.
-		if len(m.createCWDCandidates) > 0 {
-			m.createCWDCandidateIndex = (m.createCWDCandidateIndex - 1 + len(m.createCWDCandidates)) % len(m.createCWDCandidates)
-			return true
-		}
+		m.createCWDCandidateIndex = (m.createCWDCandidateIndex - 1 + len(m.createCWDCandidates)) % len(m.createCWDCandidates)
 	case "down":
-		if len(m.createCWDCandidates) > 0 {
-			m.createCWDCandidateIndex = (m.createCWDCandidateIndex + 1) % len(m.createCWDCandidates)
-			return true
-		}
+		m.createCWDCandidateIndex = (m.createCWDCandidateIndex + 1) % len(m.createCWDCandidates)
 	}
-	return false
+	return true
 }
 
 // updateCreateExtraKey is updateCreate's pass over the keys applyDialogContract
