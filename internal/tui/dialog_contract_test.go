@@ -329,3 +329,30 @@ func TestCreateModalCandidateListOwnsUpDownWhileOpen(t *testing.T) {
 		t.Fatalf("\"up\" with the candidate list open moved createCWDCandidateIndex to %d, want back to 0", got.createCWDCandidateIndex)
 	}
 }
+
+// TestCreateModalEscClosesAnOpenCandidateListBeforeCancellingTheModal
+// proves the layered esc of the cwd field (SPEC §11.7): while the
+// candidate list is open the first esc only closes the list -- the modal
+// stays open on the same field -- and only a second esc cancels the modal.
+func TestCreateModalEscClosesAnOpenCandidateListBeforeCancellingTheModal(t *testing.T) {
+	m := New(nil, config.Settings{Socket: "test-socket"}, "")
+	m.creating = true
+	m.createField = 1
+	m.createCWDCandidates = []string{"alpha", "beta"}
+	m.createCWDCandidateIndex = 1
+
+	updated, _ := m.Update(key("esc"))
+	got := updated.(Model)
+	if len(got.createCWDCandidates) != 0 || got.createCWDCandidateIndex != 0 {
+		t.Fatalf("first esc left the candidate list open: %v (index %d)", got.createCWDCandidates, got.createCWDCandidateIndex)
+	}
+	if !got.creating || got.createField != 1 {
+		t.Fatalf("first esc closed the whole modal or moved focus (creating=%v field=%d), want it to stay on the cwd field", got.creating, got.createField)
+	}
+
+	updated, _ = got.Update(key("esc"))
+	got = updated.(Model)
+	if got.creating {
+		t.Fatal("second esc did not cancel the create modal")
+	}
+}
