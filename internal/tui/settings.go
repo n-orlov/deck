@@ -2463,6 +2463,41 @@ func (m Model) settingsFooterLine() string {
 	return m.canvasFillLine(m.settingsFooterLineContent(), width)
 }
 
+// settingsGroupsFooter is the footer for the Groups section's own modes (the
+// create/rename/delete-confirm sub-modes and the Groups category itself);
+// ok is false when none applies and the generic footer is drawn instead.
+func (m Model) settingsGroupsFooter(width int) (footer string, ok bool) {
+	// The Groups section's own typing sub-mode (task 018): esc really does
+	// cancel outright here, never "stage" -- unlike the string editor
+	// (settingsFooterLineContent), nothing this footer names is later gated by ctrl+s, since
+	// creating/renaming a group commits straight to state.db on enter.
+	if m.settingsGroupCreating {
+		return truncateToWidth("type a group name - enter creates it now - esc cancels", width), true
+	}
+	if m.settingsGroupRenaming {
+		return truncateToWidth("type a new name - enter renames it now - esc cancels", width), true
+	}
+	// task 019/R131 part 2's own two-branch confirm sub-mode, same tier as
+	// the create/rename typing sub-modes just above.
+	if m.settingsGroupDeleteConfirming {
+		return truncateToWidth("m moves members to default and drops the group - d deletes them too (same confirm section 9.2's dd uses) - esc cancels", width), true
+	}
+	if m.settingsOnGroupsCategory() {
+		// R131 part 1/2: "n"/"r"/"d" are named here instead of in the
+		// generic footer (settingsFooterLineContent), since they are reachable only from this one
+		// category (settingsOnGroupsCategory's own doc comment) -- naming
+		// them in every other category's footer would be the "advertises a
+		// key it doesn't grant" defect this package already avoids for
+		// every other sub-mode-only binding.
+		footer = "tab/left/right switch - up/down select - n new group - r rename - d delete - esc close"
+		if m.settingsGroupNote != "" {
+			footer = m.settingsGroupNote + " - " + footer
+		}
+		return truncateToWidth(footer, width), true
+	}
+	return "", false
+}
+
 // settingsFooterLineContent is settingsFooterLine's own composition,
 // before the canvas paint wrapping above.
 func (m Model) settingsFooterLineContent() string {
@@ -2493,33 +2528,8 @@ func (m Model) settingsFooterLineContent() string {
 		// not name" defect in reverse.
 		return truncateToWidth("type to edit - enter stages the value - esc cancels - ctrl+s saves after enter", width)
 	}
-	// The Groups section's own typing sub-mode (task 018): esc really does
-	// cancel outright here, never "stage" -- unlike the string editor
-	// above, nothing this footer names is later gated by ctrl+s, since
-	// creating/renaming a group commits straight to state.db on enter.
-	if m.settingsGroupCreating {
-		return truncateToWidth("type a group name - enter creates it now - esc cancels", width)
-	}
-	if m.settingsGroupRenaming {
-		return truncateToWidth("type a new name - enter renames it now - esc cancels", width)
-	}
-	// task 019/R131 part 2's own two-branch confirm sub-mode, same tier as
-	// the create/rename typing sub-modes just above.
-	if m.settingsGroupDeleteConfirming {
-		return truncateToWidth("m moves members to default and drops the group - d deletes them too (same confirm section 9.2's dd uses) - esc cancels", width)
-	}
-	if m.settingsOnGroupsCategory() {
-		// R131 part 1/2: "n"/"r"/"d" are named here instead of in the
-		// generic footer below, since they are reachable only from this one
-		// category (settingsOnGroupsCategory's own doc comment) -- naming
-		// them in every other category's footer would be the "advertises a
-		// key it doesn't grant" defect this package already avoids for
-		// every other sub-mode-only binding.
-		footer := "tab/left/right switch - up/down select - n new group - r rename - d delete - esc close"
-		if m.settingsGroupNote != "" {
-			footer = m.settingsGroupNote + " - " + footer
-		}
-		return truncateToWidth(footer, width)
+	if footer, ok := m.settingsGroupsFooter(width); ok {
+		return footer
 	}
 	footer := "tab/left/right switch - up/down move - enter/+/- edit - / search - ctrl+s save - esc close"
 	if m.settingsNote != "" {
