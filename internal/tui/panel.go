@@ -178,32 +178,45 @@ func ansiEscapeLen(s string, i int) int {
 	}
 	switch s[i+1] {
 	case '[':
-		j := i + 2
-		for j < len(s) && s[j] >= 0x30 && s[j] <= 0x3f {
-			j++
-		}
-		if j < len(s) {
-			j++ // final byte, e.g. 'm' for SGR
-		}
-		return j - i
+		return csiEscapeLen(s, i)
 	case ']':
-		j := i + 2
-		for j < len(s) {
-			if s[j] == 0x07 {
-				j++
-				break
-			}
-			if s[j] == 0x1b && j+1 < len(s) && s[j+1] == '\\' {
-				j += 2
-				break
-			}
-			j++
-		}
-		return j - i
+		return oscEscapeLen(s, i)
 	default:
 		_, size := utf8.DecodeRuneInString(s[i+1:])
 		return 1 + size
 	}
+}
+
+// csiEscapeLen is the byte length of the CSI sequence (ESC '[' parameter
+// bytes... one final byte) starting at s[i].
+func csiEscapeLen(s string, i int) int {
+	j := i + 2
+	for j < len(s) && s[j] >= 0x30 && s[j] <= 0x3f {
+		j++
+	}
+	if j < len(s) {
+		j++ // final byte, e.g. 'm' for SGR
+	}
+	return j - i
+}
+
+// oscEscapeLen is the byte length of the OSC sequence (ESC ']' ...
+// terminated by BEL or ESC '\') starting at s[i], or everything up to the
+// end of s when it is never terminated.
+func oscEscapeLen(s string, i int) int {
+	j := i + 2
+	for j < len(s) {
+		if s[j] == 0x07 {
+			j++
+			break
+		}
+		if s[j] == 0x1b && j+1 < len(s) && s[j+1] == '\\' {
+			j += 2
+			break
+		}
+		j++
+	}
+	return j - i
 }
 
 // stringWidth is s's total terminal display width in cells, treating any
