@@ -221,21 +221,9 @@ func Receive(ctx context.Context, db Store, raw []byte, injectedSessionID, injec
 		allowedFrom = noCurrentStatusMatches
 	}
 	result := Result{Status: mapping.Status, Kind: mapping.Kind, Reason: reason}
-	session, found, err := resolve(ctx, db, p.ConversationID, injectedSessionID)
+	session, err := resolveHookTarget(ctx, db, p, mapping, raw, injectedSessionID, at, &result)
 	if err != nil {
 		return result, err
-	}
-	if !found {
-		result.Orphan = true
-		if err := db.RecordOrphanEvent(ctx, store.EventInput{
-			At: at, Kind: mapping.Kind, Reason: reason, Payload: string(raw),
-		}); err != nil {
-			return result, fmt.Errorf("preserve unresolved hook: %w", err)
-		}
-		return result, fmt.Errorf("%w (conversation_id=%q injected_session_id=%q)", ErrUnresolved, p.ConversationID, injectedSessionID)
-	}
-	if session.Agent == "shell" {
-		return result, fmt.Errorf("hook target %q is a shell session", session.ID)
 	}
 
 	result.SessionID = session.ID
@@ -250,15 +238,9 @@ func Receive(ctx context.Context, db Store, raw []byte, injectedSessionID, injec
 		eventKind = supersededEventKind(mapping.Kind)
 		reason = supersededReason(session.LaunchGeneration, injectedLaunchGeneration)
 	}
-	if !result.Superseded && p.EventName == "SessionStart" && p.ConversationID != "" && p.ConversationID != session.ConversationID {
-		// Requirement 44: the row deck already owns follows the live
-		// conversation, independent of whether the status transition below
-		// is itself allowed from the row's current state. A superseded launch
-		// is the exception: its conversation belongs to the replaced pane, so
-		// moving the row's identity onto it would hand the row the id of a
-		// conversation that is already over.
-		if err := db.SetConversationID(ctx, session.ID, p.ConversationID, "hook", at); err != nil {
-			return result, fmt.Errorf("update conversation id: %w", err)
+	if !result.Superseded {
+		if err := followConversation(ctx, db, p, session, at); err != nil {
+			return result, err
 		}
 	}
 	if err := db.UpdateSessionStatus(ctx, store.StatusUpdateInput{
@@ -275,6 +257,47 @@ func Receive(ctx context.Context, db Store, raw []byte, injectedSessionID, injec
 		return result, fmt.Errorf("apply %s hook: %w", p.EventName, err)
 	}
 	return result, nil
+}
+
+// resolveHookTarget finds the row a hook addresses. An unresolved hook is
+// preserved as an orphan event (result.Orphan set) and answered with
+// ErrUnresolved; a shell row is rejected.
+func resolveHookTarget(ctx context.Context, db Store, p payload, mapping Mapping, raw []byte, injectedSessionID string, at int64, result *Result) (store.Session, error) {
+	session, found, err := resolve(ctx, db, p.ConversationID, injectedSessionID)
+	if err != nil {
+		return session, err
+	}
+	if !found {
+		result.Orphan = true
+		if err := db.RecordOrphanEvent(ctx, store.EventInput{
+			At: at, Kind: mapping.Kind, Reason: result.Reason, Payload: string(raw),
+		}); err != nil {
+			return session, fmt.Errorf("preserve unresolved hook: %w", err)
+		}
+		return session, fmt.Errorf("%w (conversation_id=%q injected_session_id=%q)", ErrUnresolved, p.ConversationID, injectedSessionID)
+	}
+	if session.Agent == "shell" {
+		return session, fmt.Errorf("hook target %q is a shell session", session.ID)
+	}
+	return session, nil
+}
+
+// followConversation moves the row onto the live conversation of a
+// SessionStart hook.
+func followConversation(ctx context.Context, db Store, p payload, session store.Session, at int64) error {
+	if p.EventName != "SessionStart" || p.ConversationID == "" || p.ConversationID == session.ConversationID {
+		return nil
+	}
+	// Requirement 44: the row deck already owns follows the live
+	// conversation, independent of whether the status transition is itself
+	// allowed from the row's current state. A superseded launch is the
+	// exception (the caller skips this): its conversation belongs to the
+	// replaced pane, so moving the row's identity onto it would hand the row
+	// the id of a conversation that is already over.
+	if err := db.SetConversationID(ctx, session.ID, p.ConversationID, "hook", at); err != nil {
+		return fmt.Errorf("update conversation id: %w", err)
+	}
+	return nil
 }
 
 func payloadField(p payload, name string) string {
