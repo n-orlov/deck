@@ -5788,38 +5788,11 @@ func (m *Model) followSelectionViewport() {
 		return
 	}
 	entries := m.sidebarEntries(contentWidth)
-	start, end := -1, -1
-	for i, e := range entries {
-		if !m.entryMatchesCursor(e, m.selected) {
-			continue
-		}
-		if start == -1 {
-			start = i
-		}
-		end = i
-	}
+	start, end := m.selectedEntrySpan(entries)
 	if start == -1 {
 		return
 	}
-	const selectionViewportMargin = 2 // one whole session row: two sidebarLineRow entries
-	// topTarget/bottomTarget are the outermost entry indices the margin asks
-	// for: walk outward from the selection's span until selectionViewport-
-	// Margin *row* entries have been consumed, so headers passed on the way
-	// are included on top of that whole row instead of counting against it.
-	topTarget := start
-	for i, want := start-1, selectionViewportMargin; i >= 0 && want > 0; i-- {
-		if entries[i].kind == sidebarLineRow {
-			want--
-		}
-		topTarget = i
-	}
-	bottomTarget := end
-	for i, want := end+1, selectionViewportMargin; i < len(entries) && want > 0; i++ {
-		if entries[i].kind == sidebarLineRow {
-			want--
-		}
-		bottomTarget = i
-	}
+	topTarget, bottomTarget := selectionMarginTargets(entries, start, end)
 	offset := m.sidebarScroll
 	if topTarget < offset {
 		offset = topTarget
@@ -5836,6 +5809,46 @@ func (m *Model) followSelectionViewport() {
 		offset = start
 	}
 	m.sidebarScroll = clampSidebarScroll(offset, len(entries), contentHeight)
+}
+
+// selectedEntrySpan returns the first and last index in entries that belong
+// to the selected cursor, or -1, -1 when none of them do.
+func (m *Model) selectedEntrySpan(entries []sidebarEntry) (start, end int) {
+	start, end = -1, -1
+	for i, e := range entries {
+		if !m.entryMatchesCursor(e, m.selected) {
+			continue
+		}
+		if start == -1 {
+			start = i
+		}
+		end = i
+	}
+	return start, end
+}
+
+// selectionMarginTargets returns topTarget/bottomTarget, the outermost entry
+// indices the context margin asks for: walk outward from the selection's
+// span until selectionViewportMargin *row* entries have been consumed, so
+// headers passed on the way are included on top of that whole row instead of
+// counting against it.
+func selectionMarginTargets(entries []sidebarEntry, start, end int) (topTarget, bottomTarget int) {
+	const selectionViewportMargin = 2 // one whole session row: two sidebarLineRow entries
+	topTarget = start
+	for i, want := start-1, selectionViewportMargin; i >= 0 && want > 0; i-- {
+		if entries[i].kind == sidebarLineRow {
+			want--
+		}
+		topTarget = i
+	}
+	bottomTarget = end
+	for i, want := end+1, selectionViewportMargin; i < len(entries) && want > 0; i++ {
+		if entries[i].kind == sidebarLineRow {
+			want--
+		}
+		bottomTarget = i
+	}
+	return topTarget, bottomTarget
 }
 
 // scrollSessionIntoView adjusts m.sidebarScroll (SPEC requirement 52) so
