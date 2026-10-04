@@ -29,22 +29,32 @@ var (
 )
 
 func i1Trace(label string, message tea.Msg, selectedBefore sidebarCursor) {
-	path := os.Getenv(i1TraceFileEnvironment)
-	if path == "" {
-		return
-	}
-	i1TraceOnce.Do(func() {
-		f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
-		if err == nil {
-			i1TraceFile = f
-		}
-	})
-	if i1TraceFile == nil {
+	f := i1TraceOpen()
+	if f == nil {
 		return
 	}
 	i1TraceMu.Lock()
 	defer i1TraceMu.Unlock()
-	fmt.Fprintf(i1TraceFile, "%d %s %s selBefore=%+v\n", time.Now().UnixNano(), label, describeMsg(message), selectedBefore)
+	fmt.Fprintf(f, "%d %s %s selBefore=%+v\n", time.Now().UnixNano(), label, describeMsg(message), selectedBefore)
+}
+
+// i1TraceOpen returns the trace log, opening it on first use, or nil when
+// DECK_I1_TRACE_FILE is unset or the file could not be opened.
+func i1TraceOpen() *os.File {
+	path := os.Getenv(i1TraceFileEnvironment)
+	if path == "" {
+		return nil
+	}
+	i1TraceOnce.Do(func() { i1TraceFile = openI1TraceFile(path) })
+	return i1TraceFile
+}
+
+func openI1TraceFile(path string) *os.File {
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	if err != nil {
+		return nil
+	}
+	return f
 }
 
 func describeMsg(message tea.Msg) string {
@@ -53,11 +63,16 @@ func describeMsg(message tea.Msg) string {
 		return fmt.Sprintf("KeyMsg(%q)", msg.String())
 	case debugMsg:
 		return string(msg)
-	case sessionsLoaded:
-		return describeSessionsLoaded(msg)
 	default:
-		return fmt.Sprintf("%T", message)
+		return describeOtherMsg(message)
 	}
+}
+
+func describeOtherMsg(message tea.Msg) string {
+	if msg, ok := message.(sessionsLoaded); ok {
+		return describeSessionsLoaded(msg)
+	}
+	return fmt.Sprintf("%T", message)
 }
 
 func describeSessionsLoaded(msg sessionsLoaded) string {
