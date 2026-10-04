@@ -62,165 +62,17 @@ func (m Model) updateDetailView(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "i":
 		m.detail = false
 	case "r":
-		// task cure-01-01 (F1, R137, SPEC §11): this used to check only
-		// `len(m.sessions) > 0`, which says nothing about whether the
-		// CURSOR currently names one of those sessions -- with the cursor
-		// on a group header this opened rename with no session behind it.
-		// Routed through the same shared guardSessionScopedKey every
-		// top-level session-scoped binding uses, under the literal "r" key
-		// (already in sessionScopedKeys for the unrelated top-level resume
-		// binding -- both share the one question this guard answers: does
-		// the cursor name a session).
-		if m.guardSessionScopedKey("r") {
-			return m, nil
-		}
-		session, _ := m.selectedSession()
-		m.renaming = true
-		m.renameEdit = lineedit.NewOffered(session.Name)
-		m.renameNote = ""
+		m.detailOpenRename()
 	case "l":
-		// Task 023 (SPEC §6.2/§11.4, PRD R108): the launch-inputs editor,
-		// reachable ONLY from inside `i` detail, exactly like "r" above.
-		//
-		// task cure-01-01 (F1, R137): same fix as "r" above -- guarded by
-		// the shared rule instead of a bare `len(m.sessions) > 0` that
-		// ignored the cursor.
-		if m.guardSessionScopedKey("l") {
-			return m, nil
-		}
-		session, _ := m.selectedSession()
-		m.launchInputsEditing = true
-		m.launchInputsField = 0
-		// Each text field opens on its stored value as an offered value
-		// (§11.11): a printable key or a paste replaces it, a caret or
-		// editing key accepts it and edits it in place.
-		m.launchInputsEdits = [launchInputsTextFieldCount]lineedit.Editor{
-			launchInputsFieldPreLaunch:   lineedit.NewOffered(session.PreLaunch),
-			launchInputsFieldPostDestroy: lineedit.NewOffered(session.PostDestroy),
-			launchInputsFieldLaunchArgs:  lineedit.NewOffered(launchArgsToText(session.LaunchArgs)),
-		}
-		m.launchInputsLoginShell = session.LoginShell
-		m.launchInputsNote = ""
-		m.launchInputsScroll = 0
+		m.detailOpenLaunchInputs()
 	case "g":
-		// R130 part 2 (SPEC §11): the group-move picker, reachable ONLY
-		// from inside `i` detail, exactly like "r"/"l" above. Collision
-		// checked against list-level g/G (top/bottom, tui.go's own
-		// visibleSessionIndices navigation): both are guarded by
-		// !m.detail, so there is no dispatch conflict with this case.
-		//
-		// task 013/D.2: this used to mutate unconditionally with no check
-		// at all -- the one site the guard's own doc comment calls out by
-		// name as the defect it exists to close. Routed through the same
-		// shared guardSessionScopedKey (session_scoped_guard.go) every
-		// top-level session-scoped binding now uses, under the synthetic
-		// "detail:g" key so it can never collide with the unrelated
-		// top-level `g` (jump to first stop).
-		if m.guardSessionScopedKey("detail:g") {
-			return m, nil
-		}
-		session, _ := m.selectedSession()
-		m.movingGroup = true
-		m.moveGroupOptions = m.computeAvailableGroups()
-		m.moveGroupValue = sessionGroupID(session)
-		m.moveGroupNote = ""
+		m.detailOpenGroupMove()
 	case "P":
-		// Task 007 (SPEC §5/§8): the permission-profile picker, reachable
-		// ONLY from inside `i` detail as of this task -- there is no
-		// top-level "P" case anymore (it used to sit alongside "r"/"R"/"p"
-		// in Model.Update's main switch). Unlike "r"/"l"/"detail:g" above,
-		// this reaches no guardSessionScopedKey at all: "P" was removed
-		// from sessionScopedKeys outright (session_scoped_guard.go) rather
-		// than given a synthetic "detail:P" entry, because updateDetailView
-		// is only ever reached with a session already selected -- the
-		// top-level "i" case that sets m.detail true only does so after its
-		// own guardSessionScopedKey("i") has already refused a header
-		// cursor, and m.selected cannot change while m.detail is true
-		// (every key routes through this function first). The explicit ok
-		// check below is a defensive belt only, mirroring submitRename's
-		// own len(m.sessions)==0 guard, never a reachable refusal path in
-		// practice.
-		session, ok := m.selectedSession()
-		if !ok {
-			return m, nil
-		}
-		if m.profileSwitch == nil {
-			return m, nil
-		}
-		if !m.canSwitchProfile(session) {
-			m.attachError = "Cannot change permission profile: " + session.Agent + " has no permission profile"
-			// cure-01-01-2 (R161): the refusal must be visible in THIS same
-			// frame even when the detail dialog was already scrolled away
-			// from wherever detailBody appends m.attachError (just above the
-			// footer legend, tui.go's detailBody) -- jumping to the body's
-			// own last page (dialogMaxScroll, the same clamp
-			// framedDialogScrollable applies) always lands on that trailing
-			// segment, whether or not the content ever overflowed at all.
-			m.detailScroll = m.dialogMaxScroll(m.detailBody())
-			return m, nil
-		}
-		m.profileSwitching = true
-		m.profileSwitchValue = session.PermissionProfile
-		m.profileSwitchNote = ""
+		m.detailOpenProfileSwitch()
 	case "c":
-		// Task 008 (SPEC §8/§9.3): the conversation lock chooser (formerly
-		// the top-level `p` pin/start-fresh dialog), reachable ONLY from
-		// inside `i` detail as of this task, exactly like "P" above --
-		// there is no top-level "c" case for this anymore either (the
-		// top-level `c` in Model.Update's main switch is the unrelated
-		// group-header collapse toggle, task 119/014; the two never
-		// collide because m.detail's own dispatch in Update returns
-		// through updateDetailView -- this case -- before that switch is
-		// ever reached, exactly the same guarantee "g"/"detail:g" already
-		// rely on above). Same defensive belt-and-ok-check reasoning as
-		// "P": updateDetailView is only ever reached with a session
-		// already selected, so this ok check is never actually refused in
-		// practice.
-		session, ok := m.selectedSession()
-		if !ok {
-			return m, nil
-		}
-		if m.resumeMode == nil {
-			return m, nil
-		}
-		if !m.canPinResume(session) {
-			m.attachError = "Cannot change resume mode: " + session.Agent + " has no conversation id to lock or restart fresh"
-			// cure-01-01-2 (R161): same reasoning as canSwitchProfile's
-			// refusal above -- jump to the body's own last page so the
-			// refusal (appended just above the footer legend) is visible
-			// immediately, whatever detailScroll the dialog carried in.
-			m.detailScroll = m.dialogMaxScroll(m.detailBody())
-			return m, nil
-		}
-		m.pinning = true
-		m.pinValue = session.ResumeState
-		if m.pinValue == "" {
-			m.pinValue = "auto"
-		}
-		m.pinNote = ""
+		m.detailOpenPinChooser()
 	case "p":
-		// Task 011 (SPEC §11's pin rule, R159's own detail-dialog leg):
-		// the sidebar pin toggle, reachable from inside `i` detail exactly
-		// like "P"/"c" above, in addition to (never instead of) the
-		// top-level `p` binding (tui.go's own case "p", task 010) -- the two
-		// never collide for the same reason "c" and the top-level group
-		// collapse toggle do not: m.detail's own dispatch in Update returns
-		// through updateDetailView before the top-level switch is ever
-		// reached. detailBody's own "Pinned:" field (tui.go) reads
-		// session.PinnedAt straight from m.sessions, so the still-open dialog
-		// reflects the new value the instant the reload this schedules
-		// lands (sessionsPinned's own case in Update, tui.go, never touches
-		// m.detail). Same defensive belt-and-ok-check reasoning as "P"/"c":
-		// updateDetailView is only ever reached with a session already
-		// selected, so this ok check is never actually refused in practice.
-		// Unlike the top-level `p`, there is no marked-set batch here --
-		// detail is single-session scoped, m.marked has nothing to do
-		// with it.
-		session, ok := m.selectedSession()
-		if !ok {
-			return m, nil
-		}
-		return m, m.setSessionsPinnedCmd([]string{session.ID}, session.PinnedAt == 0)
+		return m, m.detailTogglePin()
 	case "pgup":
 		// Task 078 (requirement 39 residual): the whole dialog scrolls
 		// uniformly via detailBody's own content, never a per-field bound.
@@ -235,6 +87,187 @@ func (m Model) updateDetailView(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.detailScroll = m.dialogScrollByLines(m.detailScroll, m.detailBody(), 1)
 	}
 	return m, nil
+}
+
+// detailOpenRename is detail's "r": it opens the rename sub-dialog on the
+// selected session.
+func (m *Model) detailOpenRename() {
+	// task cure-01-01 (F1, R137, SPEC §11): this used to check only
+	// `len(m.sessions) > 0`, which says nothing about whether the
+	// CURSOR currently names one of those sessions -- with the cursor
+	// on a group header this opened rename with no session behind it.
+	// Routed through the same shared guardSessionScopedKey every
+	// top-level session-scoped binding uses, under the literal "r" key
+	// (already in sessionScopedKeys for the unrelated top-level resume
+	// binding -- both share the one question this guard answers: does
+	// the cursor name a session).
+	if m.guardSessionScopedKey("r") {
+		return
+	}
+	session, _ := m.selectedSession()
+	m.renaming = true
+	m.renameEdit = lineedit.NewOffered(session.Name)
+	m.renameNote = ""
+}
+
+// detailOpenLaunchInputs is detail's "l": it opens the launch-inputs editor.
+func (m *Model) detailOpenLaunchInputs() {
+	// Task 023 (SPEC §6.2/§11.4, PRD R108): the launch-inputs editor,
+	// reachable ONLY from inside `i` detail, exactly like "r" above.
+	//
+	// task cure-01-01 (F1, R137): same fix as "r" above -- guarded by
+	// the shared rule instead of a bare `len(m.sessions) > 0` that
+	// ignored the cursor.
+	if m.guardSessionScopedKey("l") {
+		return
+	}
+	session, _ := m.selectedSession()
+	m.launchInputsEditing = true
+	m.launchInputsField = 0
+	// Each text field opens on its stored value as an offered value
+	// (§11.11): a printable key or a paste replaces it, a caret or
+	// editing key accepts it and edits it in place.
+	m.launchInputsEdits = [launchInputsTextFieldCount]lineedit.Editor{
+		launchInputsFieldPreLaunch:   lineedit.NewOffered(session.PreLaunch),
+		launchInputsFieldPostDestroy: lineedit.NewOffered(session.PostDestroy),
+		launchInputsFieldLaunchArgs:  lineedit.NewOffered(launchArgsToText(session.LaunchArgs)),
+	}
+	m.launchInputsLoginShell = session.LoginShell
+	m.launchInputsNote = ""
+	m.launchInputsScroll = 0
+}
+
+// detailOpenGroupMove is detail's "g": it opens the group-move picker.
+func (m *Model) detailOpenGroupMove() {
+	// R130 part 2 (SPEC §11): the group-move picker, reachable ONLY
+	// from inside `i` detail, exactly like "r"/"l" above. Collision
+	// checked against list-level g/G (top/bottom, tui.go's own
+	// visibleSessionIndices navigation): both are guarded by
+	// !m.detail, so there is no dispatch conflict with this case.
+	//
+	// task 013/D.2: this used to mutate unconditionally with no check
+	// at all -- the one site the guard's own doc comment calls out by
+	// name as the defect it exists to close. Routed through the same
+	// shared guardSessionScopedKey (session_scoped_guard.go) every
+	// top-level session-scoped binding now uses, under the synthetic
+	// "detail:g" key so it can never collide with the unrelated
+	// top-level `g` (jump to first stop).
+	if m.guardSessionScopedKey("detail:g") {
+		return
+	}
+	session, _ := m.selectedSession()
+	m.movingGroup = true
+	m.moveGroupOptions = m.computeAvailableGroups()
+	m.moveGroupValue = sessionGroupID(session)
+	m.moveGroupNote = ""
+}
+
+// detailOpenProfileSwitch is detail's "P": it opens the permission-profile
+// picker, or reports why it cannot.
+func (m *Model) detailOpenProfileSwitch() {
+	// Task 007 (SPEC §5/§8): the permission-profile picker, reachable
+	// ONLY from inside `i` detail as of this task -- there is no
+	// top-level "P" case anymore (it used to sit alongside "r"/"R"/"p"
+	// in Model.Update's main switch). Unlike "r"/"l"/"detail:g" above,
+	// this reaches no guardSessionScopedKey at all: "P" was removed
+	// from sessionScopedKeys outright (session_scoped_guard.go) rather
+	// than given a synthetic "detail:P" entry, because updateDetailView
+	// is only ever reached with a session already selected -- the
+	// top-level "i" case that sets m.detail true only does so after its
+	// own guardSessionScopedKey("i") has already refused a header
+	// cursor, and m.selected cannot change while m.detail is true
+	// (every key routes through this function first). The explicit ok
+	// check below is a defensive belt only, mirroring submitRename's
+	// own len(m.sessions)==0 guard, never a reachable refusal path in
+	// practice.
+	session, ok := m.selectedSession()
+	if !ok {
+		return
+	}
+	if m.profileSwitch == nil {
+		return
+	}
+	if !m.canSwitchProfile(session) {
+		m.attachError = "Cannot change permission profile: " + session.Agent + " has no permission profile"
+		// cure-01-01-2 (R161): the refusal must be visible in THIS same
+		// frame even when the detail dialog was already scrolled away
+		// from wherever detailBody appends m.attachError (just above the
+		// footer legend, tui.go's detailBody) -- jumping to the body's
+		// own last page (dialogMaxScroll, the same clamp
+		// framedDialogScrollable applies) always lands on that trailing
+		// segment, whether or not the content ever overflowed at all.
+		m.detailScroll = m.dialogMaxScroll(m.detailBody())
+		return
+	}
+	m.profileSwitching = true
+	m.profileSwitchValue = session.PermissionProfile
+	m.profileSwitchNote = ""
+}
+
+// detailOpenPinChooser is detail's "c": it opens the conversation lock
+// chooser, or reports why it cannot.
+func (m *Model) detailOpenPinChooser() {
+	// Task 008 (SPEC §8/§9.3): the conversation lock chooser (formerly
+	// the top-level `p` pin/start-fresh dialog), reachable ONLY from
+	// inside `i` detail as of this task, exactly like "P" above --
+	// there is no top-level "c" case for this anymore either (the
+	// top-level `c` in Model.Update's main switch is the unrelated
+	// group-header collapse toggle, task 119/014; the two never
+	// collide because m.detail's own dispatch in Update returns
+	// through updateDetailView -- this case -- before that switch is
+	// ever reached, exactly the same guarantee "g"/"detail:g" already
+	// rely on above). Same defensive belt-and-ok-check reasoning as
+	// "P": updateDetailView is only ever reached with a session
+	// already selected, so this ok check is never actually refused in
+	// practice.
+	session, ok := m.selectedSession()
+	if !ok {
+		return
+	}
+	if m.resumeMode == nil {
+		return
+	}
+	if !m.canPinResume(session) {
+		m.attachError = "Cannot change resume mode: " + session.Agent + " has no conversation id to lock or restart fresh"
+		// cure-01-01-2 (R161): same reasoning as canSwitchProfile's
+		// refusal above -- jump to the body's own last page so the
+		// refusal (appended just above the footer legend) is visible
+		// immediately, whatever detailScroll the dialog carried in.
+		m.detailScroll = m.dialogMaxScroll(m.detailBody())
+		return
+	}
+	m.pinning = true
+	m.pinValue = session.ResumeState
+	if m.pinValue == "" {
+		m.pinValue = "auto"
+	}
+	m.pinNote = ""
+}
+
+// detailTogglePin is detail's "p": it schedules the sidebar pin toggle.
+func (m *Model) detailTogglePin() tea.Cmd {
+	// Task 011 (SPEC §11's pin rule, R159's own detail-dialog leg):
+	// the sidebar pin toggle, reachable from inside `i` detail exactly
+	// like "P"/"c" above, in addition to (never instead of) the
+	// top-level `p` binding (tui.go's own case "p", task 010) -- the two
+	// never collide for the same reason "c" and the top-level group
+	// collapse toggle do not: m.detail's own dispatch in Update returns
+	// through updateDetailView before the top-level switch is ever
+	// reached. detailBody's own "Pinned:" field (tui.go) reads
+	// session.PinnedAt straight from m.sessions, so the still-open dialog
+	// reflects the new value the instant the reload this schedules
+	// lands (sessionsPinned's own case in Update, tui.go, never touches
+	// m.detail). Same defensive belt-and-ok-check reasoning as "P"/"c":
+	// updateDetailView is only ever reached with a session already
+	// selected, so this ok check is never actually refused in practice.
+	// Unlike the top-level `p`, there is no marked-set batch here --
+	// detail is single-session scoped, m.marked has nothing to do
+	// with it.
+	session, ok := m.selectedSession()
+	if !ok {
+		return nil
+	}
+	return m.setSessionsPinnedCmd([]string{session.ID}, session.PinnedAt == 0)
 }
 
 // updateRenameDialog handles every key while the rename sub-dialog (task
