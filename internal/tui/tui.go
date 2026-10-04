@@ -651,6 +651,11 @@ type Model struct {
 	// "r" while browsing (not mid-edit) flips it back off, never sticking
 	// across a close/reopen of the dialog.
 	envReveal bool
+
+	// createEnvReveal is the create modal's own per-view reveal toggle for
+	// its Env field (SPEC §6.4; Ctrl+R on that field). It is false whenever
+	// the modal opens.
+	createEnvReveal bool
 	// envScroll is task 017's own instance of the same createScroll/
 	// helpScroll pattern: framedDialogScrollable's viewport offset once
 	// the resolved-key list (task 014's height probe: from 16 resolved
@@ -4105,6 +4110,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			if !m.help {
 				m.creating, m.createError, m.createField = true, "", 0
 				m.createScroll = 0
+				m.createEnvReveal = false
 				m.createEdits = [createFieldCount]lineedit.Editor{}
 				prefill, lastUsed := m.prefillCreateCWD()
 				m.createEdits[createFieldCWD], m.createCWDLastUsed = lineedit.NewOffered(prefill), lastUsed
@@ -9297,6 +9303,13 @@ func (m Model) updateCreate(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, cmd
 	}
 	switch msg.String() {
+	case "ctrl+r":
+		// §6.4's explicit per-view reveal toggle for the Env field's
+		// secret-shaped values (masked by default, back to masked on reopen).
+		if m.createField == createFieldEnv {
+			m.createEnvReveal = !m.createEnvReveal
+			return m, nil
+		}
 	case "ctrl+p":
 		// §11.7's second declared per-field key set on the cwd field (task
 		// 009, moved off up/down onto Ctrl+P/Ctrl+N by task 025 once ↑/↓
@@ -9345,7 +9358,7 @@ func (m Model) updateCreate(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if field := m.createField; createFieldIsText(field) {
 		before := m.createEdits[field]
 		if isFieldCopyKey(msg) {
-			return m.copyFieldText(before.Value(), false), nil
+			return m.copyFieldText(before.Value(), field == createFieldEnv && m.createEnvMasked()), nil
 		}
 		if edited, ok := before.Update(msg); ok {
 			m.createEdits[field] = edited.Fit(m.createFieldWidth(field), m.createEditStyle(field))
@@ -9766,7 +9779,7 @@ func (m Model) createFieldRows() []struct{ label, value, help string } {
 		{"Agent", m.createAgent + " (left/right cycles: " + strings.Join(m.createAvailableAgentKinds, ", ") + ")", m.createAgentHelp()},
 		{"Permission profile", profileValue, profileHelp},
 		{createFieldLabels[createFieldLaunchArgs], m.createFieldText(createFieldLaunchArgs), "extra arguments appended verbatim after the adapter's own argv"},
-		{createFieldLabels[createFieldEnv], m.createFieldText(createFieldEnv), "session-level environment variables, highest priority in PATH resolution"},
+		{createFieldLabels[createFieldEnv], m.createFieldText(createFieldEnv), m.createEnvHelp()},
 		{createFieldLabels[createFieldPreLaunch], m.createFieldText(createFieldPreLaunch), "a command run in the pane before the agent starts, e.g. to load secrets"},
 		{createFieldLabels[createFieldPostDestroy], m.createFieldText(createFieldPostDestroy), "a command run after this session's own Archive or Delete durably succeeds; a non-zero exit or timeout never blocks teardown (fail-open)"},
 		{"Login shell", loginShell + " (space toggles)", "makes captured_path advisory only (not applied): runs via $SHELL -lc instead of the agent argv, so the login shell sets PATH"},
@@ -10212,7 +10225,9 @@ Keys
     session's pane is live, deck enters interactive mode on it exactly
     as ↵ would, refusals included -- [ui] attach_on_new, on by
     default; any key or click before then cancels it, and
-    attach_on_new = false only selects the new session
+    attach_on_new = false only selects the new session; in the modal's
+    Env field secret-shaped values are masked (SPEC §6.4) and Ctrl+R
+    reveals them, back to masked each time the modal opens
   x kill the selected running session; a toast naming undo stays visible
     for DECK_UNDO_MS afterward
   u undo the most recent x within its DECK_UNDO_MS window: resumes that
