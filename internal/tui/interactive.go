@@ -77,6 +77,80 @@ func (m Model) enterInteractiveBody(force bool) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
+	width, height, ref := m.interactiveFloorRefusal()
+	if ref != nil {
+		m.setEntryRefusal(session.ID, ref.kind, ref.reason)
+		return m, nil
+	}
+	if ref := interactiveAttachedRefusal(ctx, client, windowTarget, force); ref != nil {
+		m.setEntryRefusal(session.ID, ref.kind, ref.reason)
+		return m, nil
+	}
+	claim, ref := acquireInteractiveClaim(ctx, client, session.Slug, windowTarget, force)
+	if ref != nil {
+		m.setEntryRefusal(session.ID, ref.kind, ref.reason)
+		return m, nil
+	}
+	dispatcher, grid, ref := m.armInteractiveClaim(ctx, client, claim, windowTarget, width, height)
+	if ref != nil {
+		m.setEntryRefusal(session.ID, ref.kind, ref.reason)
+		return m, nil
+	}
+
+	// SPEC §7: entering the interactive preview is a deck-mediated
+	// attachment in exactly `a`'s sense -- the keyboard is about to reach
+	// the pane -- so the same durable transaction (store.RecordAttachment,
+	// via the same m.prepareAttach attachSelected consults) answers a
+	// waiting row and acknowledges an error row, against the durable row
+	// rather than the possibly-stale list frame. It runs only after every
+	// refusal and every fallible tmux step above: a refused or failed
+	// entry must not claim the user answered anything. A store failure
+	// here refuses the entry like attachSelected refuses the attach, and
+	// unwinds the claim already made -- grid first, then geometry, then
+	// ownership, the same order exitInteractive's teardown uses (and
+	// through the same still-mine-gated helper, so an unwind that races a
+	// steal disarms nothing of the winner's; task 112).
+	if m.prepareAttach != nil {
+		if err := m.prepareAttach(ctx, session.ID); err != nil {
+			teardownInteractiveClaim(ctx, client, claim.ownership, windowTarget, claim.geometry, grid)
+			m.setEntryRefusal(session.ID, entryRefusalOther, err.Error())
+			return m, nil
+		}
+	}
+
+	m.interactive = true
+	m.interactiveWindowTarget = windowTarget
+	m.interactiveGeometry = claim.geometry
+	m.interactiveOwnership = claim.ownership
+	m.interactiveGrid = grid
+	m.interactiveDispatcher = dispatcher
+	m.setInteractiveScrollOffset(0)
+	m.clearEntryRefusal()
+	return m, nil
+}
+
+// entryRefusalSpec is one refusal enterInteractiveBody's steps report to it:
+// the kind and reason it hands to setEntryRefusal for the selected session.
+type entryRefusalSpec struct {
+	kind   entryRefusalKind
+	reason string
+}
+
+func refuse(kind entryRefusalKind, reason string) *entryRefusalSpec {
+	return &entryRefusalSpec{kind: kind, reason: reason}
+}
+
+// interactiveEntryClaim is what a successful claim step hands the rest of
+// the entry: the pane, the window ownership and the pre-entry geometry.
+type interactiveEntryClaim struct {
+	pane      tmux.Pane
+	ownership *tmux.WindowOwnership
+	geometry  tmux.WindowGeometry
+}
+
+// interactiveFloorRefusal is enterInteractiveBody's first refusal: the
+// preview box size check, pure arithmetic over m's own fields.
+func (m Model) interactiveFloorRefusal() (width, height int, ref *entryRefusalSpec) {
 	// Refusal case 1 (PRD II-47/48): the preview box has fewer than the
 	// measured 7-inner-row floor (interactiveMinInnerRows;
 	// docs/reports/phase3b.md records the measurement). This is checked
@@ -90,10 +164,9 @@ func (m Model) enterInteractiveBody(force bool) (tea.Model, tea.Cmd) {
 	// exercisable by a deterministic unit test with no tmux server present
 	// at all (task 203/PRD F3 backstop): every check below this one calls
 	// into client, which requires a live tmux to answer meaningfully.
-	width, height := m.previewContentSize()
+	width, height = m.previewContentSize()
 	if width <= 0 {
-		m.setEntryRefusal(session.ID, entryRefusalOther, "preview panel is too small")
-		return m, nil
+		return width, height, refuse(entryRefusalOther, "preview panel is too small")
 	}
 	if height < interactiveMinInnerRows {
 		// This wording spells the floor out literally rather than %d'ing
@@ -108,10 +181,14 @@ func (m Model) enterInteractiveBody(force bool) (tea.Model, tea.Cmd) {
 		// to survive centerTruncate's ellipsis without losing the "7-row
 		// floor" phrase both features/interactive_refusals.feature and this
 		// package's own tests assert on.
-		m.setEntryRefusal(session.ID, entryRefusalRowFloor, fmt.Sprintf("%d inner rows, below the 7-row floor", height))
-		return m, nil
+		return width, height, refuse(entryRefusalRowFloor, fmt.Sprintf("%d inner rows, below the 7-row floor", height))
 	}
+	return width, height, nil
+}
 
+// interactiveAttachedRefusal is enterInteractiveBody's attached-client
+// refusal; force skips it outright.
+func interactiveAttachedRefusal(ctx context.Context, client tmux.Client, windowTarget string, force bool) *entryRefusalSpec {
 	// Refusal case 2 (PRD II-47): some other client is already attached to
 	// this session. The squeeze is unavoidable -- one tmux window has one size
 	// -- so this is checked, and refused, before anything else touches the
@@ -125,32 +202,34 @@ func (m Model) enterInteractiveBody(force bool) (tea.Model, tea.Cmd) {
 	// the sole check force bypasses. Every other refusal in this ladder
 	// (floor, stopped session, no live pane, a LIVE claim holder below)
 	// still applies unchanged under force.
-	if !force {
-		attached, err := client.SessionAttachedCount(ctx, windowTarget)
-		if err != nil {
-			m.setEntryRefusal(session.ID, entryRefusalOther, err.Error())
-			return m, nil
-		}
-		if attached > 0 {
-			m.setEntryRefusal(session.ID, entryRefusalAttachedElsewhere, "another client is attached to this session")
-			return m, nil
-		}
+	if force {
+		return nil
 	}
-
-	pane, ok, err := client.PreviewPane(ctx, session.Slug)
+	attached, err := client.SessionAttachedCount(ctx, windowTarget)
 	if err != nil {
-		m.setEntryRefusal(session.ID, entryRefusalOther, err.Error())
-		return m, nil
+		return refuse(entryRefusalOther, err.Error())
+	}
+	if attached > 0 {
+		return refuse(entryRefusalAttachedElsewhere, "another client is attached to this session")
+	}
+	return nil
+}
+
+// acquireInteractiveClaim runs the fallible tmux steps that take the
+// window: the live pane, its geometry, the (force) claim and the recorded
+// pre-entry geometry. A refusal after the claim releases it first.
+func acquireInteractiveClaim(ctx context.Context, client tmux.Client, slug, windowTarget string, force bool) (interactiveEntryClaim, *entryRefusalSpec) {
+	pane, ok, err := client.PreviewPane(ctx, slug)
+	if err != nil {
+		return interactiveEntryClaim{}, refuse(entryRefusalOther, err.Error())
 	}
 	if !ok {
-		m.setEntryRefusal(session.ID, entryRefusalNoLivePane, "no live pane")
-		return m, nil
+		return interactiveEntryClaim{}, refuse(entryRefusalNoLivePane, "no live pane")
 	}
 
 	geometry, err := client.CaptureWindowGeometry(ctx, windowTarget)
 	if err != nil {
-		m.setEntryRefusal(session.ID, entryRefusalOther, err.Error())
-		return m, nil
+		return interactiveEntryClaim{}, refuse(entryRefusalOther, err.Error())
 	}
 	var ownership *tmux.WindowOwnership
 	var acquired bool
@@ -160,16 +239,14 @@ func (m Model) enterInteractiveBody(force bool) (tea.Model, tea.Cmd) {
 		ownership, acquired, err = client.ClaimWindowOwnership(ctx, windowTarget)
 	}
 	if err != nil {
-		m.setEntryRefusal(session.ID, entryRefusalOther, err.Error())
-		return m, nil
+		return interactiveEntryClaim{}, refuse(entryRefusalOther, err.Error())
 	}
 	if !acquired {
 		// Refusal case 3 (PRD II-47): a LIVE process (another deck, or a
 		// hand-crafted claim -- ClaimWindowOwnership's own liveness check via
 		// kill(pid, 0) is what decides this, not merely "the option is set")
 		// already holds ownership of this window.
-		m.setEntryRefusal(session.ID, entryRefusalOwnedElsewhere, "a live process holds ownership of this window")
-		return m, nil
+		return interactiveEntryClaim{}, refuse(entryRefusalOwnedElsewhere, "a live process holds ownership of this window")
 	}
 	// R100 (SPEC section 11.9): the geometry to restore is recorded beside
 	// the claim, written by whoever finds none there and read -- never
@@ -196,9 +273,15 @@ func (m Model) enterInteractiveBody(force bool) (tea.Model, tea.Cmd) {
 		// definition set nothing. err also leaves geometry zero-valued,
 		// so restoring it would resize the window to 0x0.
 		releaseIfStillMine(ctx, ownership)
-		m.setEntryRefusal(session.ID, entryRefusalOther, err.Error())
-		return m, nil
+		return interactiveEntryClaim{}, refuse(entryRefusalOther, err.Error())
 	}
+	return interactiveEntryClaim{pane: pane, ownership: ownership, geometry: geometry}, nil
+}
+
+// armInteractiveClaim fits the window, starts the dispatcher and the grid
+// and records the claim; every failure unwinds the claim as before.
+func (m Model) armInteractiveClaim(ctx context.Context, client tmux.Client, claim interactiveEntryClaim, windowTarget string, width, height int) (*tmux.Dispatcher, *interactive.Session, *entryRefusalSpec) {
+	pane, ownership, geometry := claim.pane, claim.ownership, claim.geometry
 	if _, err := client.FitWindowToPane(ctx, windowTarget, pane.ID, width, height); err != nil {
 		// The first bail with real state behind it, so it unwinds through
 		// the full still-mine-gated teardown rather than merely releasing
@@ -211,8 +294,7 @@ func (m Model) enterInteractiveBody(force bool) (tea.Model, tea.Cmd) {
 		// failed entry's own halfway size as the window's original
 		// geometry. There is no transport yet (nil grid).
 		teardownInteractiveClaim(ctx, client, ownership, windowTarget, geometry, nil)
-		m.setEntryRefusal(session.ID, entryRefusalOther, err.Error())
-		return m, nil
+		return nil, nil, refuse(entryRefusalOther, err.Error())
 	}
 	// SPEC §11.9's held size, stated rather than inherited. The fit above
 	// only writes `window-size manual` when it actually issues a
@@ -229,8 +311,7 @@ func (m Model) enterInteractiveBody(force bool) (tea.Model, tea.Cmd) {
 	dispatcher, err := tmux.NewDispatcher(ctx, client, pane.ID)
 	if err != nil {
 		teardownInteractiveClaim(ctx, client, ownership, windowTarget, geometry, nil)
-		m.setEntryRefusal(session.ID, entryRefusalOther, err.Error())
-		return m, nil
+		return nil, nil, refuse(entryRefusalOther, err.Error())
 	}
 	// PRD II-5 (task 089): DECK_INTERACTIVE_TRANSPORT/interactive_transport
 	// selects between the two implementations of the same §11.9 contract
@@ -266,8 +347,7 @@ func (m Model) enterInteractiveBody(force bool) (tea.Model, tea.Cmd) {
 	}, transport)
 	if err != nil {
 		teardownInteractiveClaim(ctx, client, ownership, windowTarget, geometry, nil)
-		m.setEntryRefusal(session.ID, entryRefusalOther, err.Error())
-		return m, nil
+		return nil, nil, refuse(entryRefusalOther, err.Error())
 	}
 	// PRD R89/task 030: persist enough to reclaim this claim from a LATER
 	// process's start if this one never gets to exitInteractive itself --
@@ -284,37 +364,7 @@ func (m Model) enterInteractiveBody(force bool) (tea.Model, tea.Cmd) {
 			Geometry:     geometry,
 		})
 	}
-
-	// SPEC §7: entering the interactive preview is a deck-mediated
-	// attachment in exactly `a`'s sense -- the keyboard is about to reach
-	// the pane -- so the same durable transaction (store.RecordAttachment,
-	// via the same m.prepareAttach attachSelected consults) answers a
-	// waiting row and acknowledges an error row, against the durable row
-	// rather than the possibly-stale list frame. It runs only after every
-	// refusal and every fallible tmux step above: a refused or failed
-	// entry must not claim the user answered anything. A store failure
-	// here refuses the entry like attachSelected refuses the attach, and
-	// unwinds the claim already made -- grid first, then geometry, then
-	// ownership, the same order exitInteractive's teardown uses (and
-	// through the same still-mine-gated helper, so an unwind that races a
-	// steal disarms nothing of the winner's; task 112).
-	if m.prepareAttach != nil {
-		if err := m.prepareAttach(ctx, session.ID); err != nil {
-			teardownInteractiveClaim(ctx, client, ownership, windowTarget, geometry, grid)
-			m.setEntryRefusal(session.ID, entryRefusalOther, err.Error())
-			return m, nil
-		}
-	}
-
-	m.interactive = true
-	m.interactiveWindowTarget = windowTarget
-	m.interactiveGeometry = geometry
-	m.interactiveOwnership = ownership
-	m.interactiveGrid = grid
-	m.interactiveDispatcher = dispatcher
-	m.setInteractiveScrollOffset(0)
-	m.clearEntryRefusal()
-	return m, nil
+	return dispatcher, grid, nil
 }
 
 // teardownInteractive is exitInteractive's own disarm/restore/release
