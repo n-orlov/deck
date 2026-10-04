@@ -324,40 +324,44 @@ func (b *backgroundSpanTracker) observe(esc string) {
 		if err != nil {
 			continue
 		}
-		switch {
-		case n == 49:
-			b.open = false
-		case n >= 40 && n <= 47:
-			b.open = true
-		case n >= 100 && n <= 107:
-			b.open = true
-		case n == 48:
-			b.open = true
-			// Extended colour: "48;5;N" (one more param) or
-			// "48;2;R;G;B" (three more) -- skip them so they are never
-			// mistaken for their own top-level SGR codes.
-			if i+1 < len(fields) {
-				switch fields[i+1] {
-				case "5":
-					i += 2
-				case "2":
-					i += 4
-				}
-			}
-		case n == 38:
-			// Extended foreground colour, same shape as 48 above; skip
-			// its params too so an accompanying 48 later in the same
-			// escape is not misaligned.
-			if i+1 < len(fields) {
-				switch fields[i+1] {
-				case "5":
-					i += 2
-				case "2":
-					i += 4
-				}
-			}
-		}
+		i += b.observeCode(n, fields[i+1:])
 	}
+}
+
+// observeCode applies one parsed SGR parameter n to the tracker and returns
+// how many of the following fields (rest) belong to it and must be skipped.
+func (b *backgroundSpanTracker) observeCode(n int, rest []string) int {
+	switch {
+	case n == 49:
+		b.open = false
+	case n >= 40 && n <= 47:
+		b.open = true
+	case n >= 100 && n <= 107:
+		b.open = true
+	case n == 48:
+		b.open = true
+		return extendedColourSkip(rest)
+	case n == 38:
+		return extendedColourSkip(rest)
+	}
+	return 0
+}
+
+// extendedColourSkip is the number of fields after a 48/38 selector that
+// make up its extended colour: "5;N" (two) or "2;R;G;B" (four). They are
+// skipped so they are never mistaken for their own top-level SGR codes (and
+// an accompanying 48 later in the same escape is not misaligned).
+func extendedColourSkip(rest []string) int {
+	if len(rest) == 0 {
+		return 0
+	}
+	switch rest[0] {
+	case "5":
+		return 2
+	case "2":
+		return 4
+	}
+	return 0
 }
 
 // parseSGRCode parses one semicolon-separated SGR parameter as a decimal
