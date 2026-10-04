@@ -31,8 +31,9 @@ linters:
   exclusions:
     # No presets, no generated-code or path-wide skips: the only exclusions are
     # the two explicit rules below, both scoped to _test.go files. Production
-    # code has none.
-    generated: strict
+    # code has none. `disable` turns off golangci's default skip of files that
+    # carry a "generated" header, so such a file is linted like any other.
+    generated: disable
     presets: []
     rules:
       # Test fixtures run subprocesses (G204), read and write temp files
