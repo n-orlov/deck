@@ -201,20 +201,7 @@ func merge(inputs []*node) *node {
 	}
 
 	dropTestcases(out, drop)
-
-	for _, a := range appendLater {
-		target := findSuite(out, a.suite.attr("name"))
-		if target == nil {
-			target = &node{XMLName: a.suite.XMLName, Attrs: append([]xml.Attr(nil), a.suite.Attrs...)}
-			for _, c := range a.suite.Nodes {
-				if c.XMLName.Local == "properties" {
-					target.Nodes = append(target.Nodes, c)
-				}
-			}
-			out.Nodes = append(out.Nodes, target)
-		}
-		target.Nodes = append(target.Nodes, a.tc)
-	}
+	appendAttempts(out, appendLater)
 
 	recount(out)
 	return out
@@ -271,6 +258,25 @@ func dropTestcases(out *node, drop map[*node]bool) {
 			}
 		}
 		suite.Nodes = kept
+	}
+}
+
+// appendAttempts adds each attempt's testcase to out's same-named
+// testsuite, creating one (with the source suite's attributes and
+// properties) when out has none.
+func appendAttempts(out *node, appendLater []attempt) {
+	for _, a := range appendLater {
+		target := findSuite(out, a.suite.attr("name"))
+		if target == nil {
+			target = &node{XMLName: a.suite.XMLName, Attrs: append([]xml.Attr(nil), a.suite.Attrs...)}
+			for _, c := range a.suite.Nodes {
+				if c.XMLName.Local == "properties" {
+					target.Nodes = append(target.Nodes, c)
+				}
+			}
+			out.Nodes = append(out.Nodes, target)
+		}
+		target.Nodes = append(target.Nodes, a.tc)
 	}
 }
 
