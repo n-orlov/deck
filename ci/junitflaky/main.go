@@ -177,12 +177,7 @@ func merge(inputs []*node) *node {
 	for _, k := range order {
 		as := attempts[k]
 		last := as[len(as)-1]
-		var earlierFails []*node
-		for _, a := range as[:len(as)-1] {
-			if o := outcomeOf(a.tc); o == failed || o == errored {
-				earlierFails = append(earlierFails, a.tc)
-			}
-		}
+		earlierFails := failedAttempts(as[:len(as)-1])
 		if outcomeOf(last.tc) == passed && len(earlierFails) > 0 {
 			folded := fold(last.tc, earlierFails)
 			first := as[0]
@@ -260,6 +255,18 @@ func collectAttempts(inputs []*node) ([]key, map[key][]attempt) {
 		}
 	}
 	return order, attempts
+}
+
+// failedAttempts returns the testcases of as whose outcome is failed or
+// errored, in attempt order.
+func failedAttempts(as []attempt) []*node {
+	var fails []*node
+	for _, a := range as {
+		if o := outcomeOf(a.tc); o == failed || o == errored {
+			fails = append(fails, a.tc)
+		}
+	}
+	return fails
 }
 
 func findSuite(root *node, name string) *node {
