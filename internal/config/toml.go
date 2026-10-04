@@ -87,40 +87,48 @@ func loadConfigFile(path string) (FileConfig, error) {
 		if err != nil {
 			return FileConfig{}, fmt.Errorf("%s:%d: %w", path, line, err)
 		}
-		switch section {
-		case "", "ui":
-			fullKey := key
-			if section != "" {
-				fullKey = section + "." + key
-			}
-			field, ok := FieldByFullKey(fullKey)
-			if !ok {
-				// A key with no matching schema entry is ignored so future
-				// phases can add keys without breaking this parser, and so
-				// a typo does not silently masquerade as a known key.
-				continue
-			}
-			if err := setField(&cfg, field, value, path, line); err != nil {
-				return FileConfig{}, err
-			}
-		case "env":
-			unquoted, err := unquoteString(value)
-			if err != nil {
-				return FileConfig{}, fmt.Errorf("%s:%d: [env] value for %q must be a quoted string: %w", path, line, key, err)
-			}
-			if cfg.Env == nil {
-				cfg.Env = make(map[string]string)
-			}
-			cfg.Env[key] = unquoted
-		default:
-			// A recognised-but-out-of-scope section (e.g. [notify]): its
-			// body is intentionally not interpreted.
+		if err := applyConfigKey(&cfg, section, key, value, path, line); err != nil {
+			return FileConfig{}, err
 		}
 	}
 	if err := scanner.Err(); err != nil {
 		return FileConfig{}, fmt.Errorf("read %s: %w", path, err)
 	}
 	return cfg, nil
+}
+
+// applyConfigKey applies one parsed key/value pair to cfg according to the
+// section it appeared in: top level and [ui] keys go through Schema, [env]
+// keys land in cfg.Env, and any other section's body is not interpreted.
+func applyConfigKey(cfg *FileConfig, section, key, value, path string, line int) error {
+	switch section {
+	case "", "ui":
+		fullKey := key
+		if section != "" {
+			fullKey = section + "." + key
+		}
+		field, ok := FieldByFullKey(fullKey)
+		if !ok {
+			// A key with no matching schema entry is ignored so future
+			// phases can add keys without breaking this parser, and so
+			// a typo does not silently masquerade as a known key.
+			return nil
+		}
+		return setField(cfg, field, value, path, line)
+	case "env":
+		unquoted, err := unquoteString(value)
+		if err != nil {
+			return fmt.Errorf("%s:%d: [env] value for %q must be a quoted string: %w", path, line, key, err)
+		}
+		if cfg.Env == nil {
+			cfg.Env = make(map[string]string)
+		}
+		cfg.Env[key] = unquoted
+	default:
+		// A recognised-but-out-of-scope section (e.g. [notify]): its
+		// body is intentionally not interpreted.
+	}
+	return nil
 }
 
 // defaultFileConfig seeds every field from Schema's declared Default,
