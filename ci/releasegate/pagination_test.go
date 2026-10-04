@@ -52,7 +52,7 @@ func newPageServer(t *testing.T, checkRunsPages, actionsRunsPages []string) *pag
 			w.Header().Set("Link", next)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, s.checkRunsPages[pageNum-1])
+		_, _ = fmt.Fprint(w, s.checkRunsPages[pageNum-1])
 	})
 	mux.HandleFunc("/repos/o/r/actions/runs", func(w http.ResponseWriter, r *http.Request) {
 		s.record(r)
@@ -66,7 +66,7 @@ func newPageServer(t *testing.T, checkRunsPages, actionsRunsPages []string) *pag
 			w.Header().Set("Link", next)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, s.actionsRunsPages[pageNum-1])
+		_, _ = fmt.Fprint(w, s.actionsRunsPages[pageNum-1])
 	})
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
