@@ -260,44 +260,50 @@ func (m Model) entryRefusalHolderCheck() tea.Cmd {
 	if r.kind != entryRefusalAttachedElsewhere && r.kind != entryRefusalOwnedElsewhere {
 		return nil
 	}
-	var slug string
-	found := false
-	for _, s := range m.sessions {
-		if s.ID == r.sessionID {
-			slug, found = s.Slug, true
-			break
-		}
-	}
+	slug, found := m.sessionSlugByID(r.sessionID)
 	if !found {
 		return nil
 	}
-	client := m.tmuxClient
-	sessionID := r.sessionID
-	kind := r.kind
 	// generation (review B1, task 001, R143/R148, SPEC §11.9) is the
 	// generation of THIS refusal instance, stamped at issue time -- see
 	// entryRefusalHolderRecheckDone's own doc comment (tui.go) for why
 	// sessionID+kind alone cannot tell an old, superseded probe reply
 	// apart from one about the refusal currently active.
-	generation := r.generation
+	client := m.tmuxClient
+	done := entryRefusalHolderRecheckDone{sessionID: r.sessionID, kind: r.kind, generation: r.generation}
 	return func() tea.Msg {
-		ctx := context.Background()
-		windowTarget, err := tmux.SessionName(slug)
-		if err != nil {
-			return entryRefusalHolderRecheckDone{sessionID: sessionID, kind: kind, generation: generation}
-		}
-		switch kind {
-		case entryRefusalAttachedElsewhere:
-			if attached, aerr := client.SessionAttachedCount(ctx, windowTarget); aerr == nil && attached == 0 {
-				return entryRefusalHolderRecheckDone{sessionID: sessionID, kind: kind, reasonGone: true, generation: generation}
-			}
-		case entryRefusalOwnedElsewhere:
-			if state, perr := client.ProbeWindowOwnership(ctx, windowTarget); perr == nil && state != tmux.ClaimForeignLive {
-				return entryRefusalHolderRecheckDone{sessionID: sessionID, kind: kind, reasonGone: true, generation: generation}
-			}
-		}
-		return entryRefusalHolderRecheckDone{sessionID: sessionID, kind: kind, generation: generation}
+		done.reasonGone = holderGone(context.Background(), client, slug, done.kind)
+		return done
 	}
+}
+
+// sessionSlugByID returns the slug of the listed session with this id.
+func (m Model) sessionSlugByID(id string) (slug string, found bool) {
+	for _, s := range m.sessions {
+		if s.ID == id {
+			return s.Slug, true
+		}
+	}
+	return "", false
+}
+
+// holderGone runs the one read-only tmux probe for an attached-elsewhere or
+// owned-elsewhere refusal and reports whether the contending holder has let
+// go; an unresolvable window name or a failed probe is "not gone".
+func holderGone(ctx context.Context, client tmux.Client, slug string, kind entryRefusalKind) bool {
+	windowTarget, err := tmux.SessionName(slug)
+	if err != nil {
+		return false
+	}
+	switch kind {
+	case entryRefusalAttachedElsewhere:
+		attached, aerr := client.SessionAttachedCount(ctx, windowTarget)
+		return aerr == nil && attached == 0
+	case entryRefusalOwnedElsewhere:
+		state, perr := client.ProbeWindowOwnership(ctx, windowTarget)
+		return perr == nil && state != tmux.ClaimForeignLive
+	}
+	return false
 }
 
 // activeEntryRefusalForSelection reports the current refusal, but only
