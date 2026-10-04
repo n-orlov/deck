@@ -185,6 +185,26 @@ func effectiveLayoutMode(requested string, width int) string {
 	}
 }
 
+// stackedRects is the stacked mode's geometry: the list box above the
+// preview box, and whether the preview is shown at all.
+func stackedRects(width, rows int) (sidebar, preview Rect, previewShown bool) {
+	listHeight := min(stackedListHeight(rows), rows)
+	previewHeight := max(rows-listHeight, 0)
+	if previewHeight < StackedPreviewFloor {
+		// Requirement 25/27: below the preview's own floor, the list
+		// takes the freed rows instead of rendering a preview panel
+		// too short to carry any meaning, and PreviewShown tells
+		// callers (task 017's capture tick) to stop capturing.
+		listHeight = rows
+		previewHeight = 0
+	} else {
+		previewShown = true
+	}
+	sidebar = Rect{X: 0, Y: 0, Width: width, Height: listHeight}
+	preview = Rect{X: 0, Y: listHeight, Width: width, Height: previewHeight}
+	return sidebar, preview, previewShown
+}
+
 // ComputeLayout is the single §11.2 geometry function. width and rows are
 // the full terminal size; pinned is "" (meaning auto), "side-by-side",
 // "stacked" or "collapsed"; sidebarWidth is the persisted sidebar_width
@@ -232,26 +252,7 @@ func ComputeLayout(width, rows int, pinned string, sidebarWidth int) LayoutResul
 		result.Preview = Rect{X: CollapsedStripWidth, Y: 0, Width: width - CollapsedStripWidth, Height: rows}
 	default: // LayoutStacked
 		result.SidebarWidth = ClampSidebarWidth(width, sidebarWidth)
-		listHeight := stackedListHeight(rows)
-		if listHeight > rows {
-			listHeight = rows
-		}
-		previewHeight := rows - listHeight
-		if previewHeight < 0 {
-			previewHeight = 0
-		}
-		if previewHeight < StackedPreviewFloor {
-			// Requirement 25/27: below the preview's own floor, the list
-			// takes the freed rows instead of rendering a preview panel
-			// too short to carry any meaning, and PreviewShown tells
-			// callers (task 017's capture tick) to stop capturing.
-			listHeight = rows
-			previewHeight = 0
-		} else {
-			result.PreviewShown = true
-		}
-		result.Sidebar = Rect{X: 0, Y: 0, Width: width, Height: listHeight}
-		result.Preview = Rect{X: 0, Y: listHeight, Width: width, Height: previewHeight}
+		result.Sidebar, result.Preview, result.PreviewShown = stackedRects(width, rows)
 	}
 
 	return result
