@@ -288,7 +288,9 @@ jobs:
           set -eu
           rm -rf allure-smoke
           mkdir -p allure-smoke/fixture/allure-results
-          DECK_ALLURE_FIXTURE_OUT=allure-smoke/fixture/allure-results \
+          # go test runs in features/, so the path is /w-absolute (ci/run.sh
+          # mounts this checkout at /w), not relative to the checkout.
+          DECK_ALLURE_FIXTURE_OUT=/w/allure-smoke/fixture/allure-results \
             ci/run.sh go test -count=1 -run '^TestAllureFormatterWritesResultsForAFixtureRun$' ./features/
 
       - name: Allure smoke -- allure generate over the fixture, check steps and the @gh-NN link
