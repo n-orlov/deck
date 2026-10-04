@@ -2312,6 +2312,22 @@ func (m Model) settingsView() string {
 		return m.settingsGroupsViewLines(categories, leftWidth, rightWidth, contentRows, height)
 	}
 
+	leftLines := m.settingsCategoryLines(categories, contentRows)
+	rightLines := m.settingsFieldLines(categories, rightWidth, contentRows)
+
+	lines := make([]string, 0, height)
+	lines = append(lines, m.settingsLeftTopLine(leftWidth, leftFocused)+m.settingsRightTopLine(rightWidth, "Fields", rightFocused))
+	for i := 0; i < contentRows; i++ {
+		lines = append(lines, m.settingsLeftContentLine(leftWidth, leftLines[i], leftFocused)+m.settingsRightContentLine(rightWidth, rightLines[i], rightFocused))
+	}
+	lines = append(lines, m.settingsLeftBottomLine(leftWidth, leftFocused)+m.settingsRightBottomLine(rightWidth, rightFocused))
+	lines = append(lines, m.settingsFooterLine())
+	return strings.Join(lines, "\n")
+}
+
+// settingsCategoryLines renders the left (category) list's rows for
+// settingsView, fitted to contentRows.
+func (m Model) settingsCategoryLines(categories []settingsCategory, contentRows int) []settingsListLine {
 	categorySelTok := m.settingsSelectionToken(settingsFocusCategories)
 	leftLines := make([]settingsListLine, len(categories))
 	for i, cat := range categories {
@@ -2326,48 +2342,22 @@ func (m Model) settingsView() string {
 		}
 		leftLines[i] = settingsListLine{text: m.settingsRenderRowOpen([]settingsRowSegment{{Text: marker + cat.Name, Tok: theme.Text}}), bg: bg}
 	}
-	leftLines = fitLines(leftLines, contentRows)
+	return fitLines(leftLines, contentRows)
+}
 
+// settingsFieldLines renders the right (field) list's rows for
+// settingsView -- one row per field of the selected category plus the
+// selected field's detail lines -- fitted to contentRows.
+func (m Model) settingsFieldLines(categories []settingsCategory, rightWidth, contentRows int) []settingsListLine {
 	fieldSelTok := m.settingsSelectionToken(settingsFocusFields)
 	var rightLines []settingsListLine
 	if m.settingsCategoryIndex >= 0 && m.settingsCategoryIndex < len(categories) {
 		fields := categories[m.settingsCategoryIndex].Fields
 		innerWidth := rightWidth - 4
 		for i, f := range fields {
-			marker := "  "
 			selected := i == m.settingsFieldIndex
-			if selected {
-				marker = "> "
-			}
 			fileValue := settingsFieldValueDisplay(f, m.settingsEdits)
-			valueText := fileValue
-			if envVar, ok := settingsFieldEnvOverride(f, m.settings); ok {
-				runningValue := settingsFieldRunningValueDisplay(f, m.settings, fileValue)
-				// Kept short ("overridden by ENVVAR, running: VALUE", not the
-				// longer detail-line phrasing) so it never exceeds the field
-				// panel's own row budget (66 visible cells at the harness's
-				// 100-column default) and gets silently truncated away by
-				// padTrunc -- the fuller statement lives in the detail lines
-				// below, which have wrapText's whole multi-line budget. Appended
-				// onto valueText (one segment, one Tok) rather than a second
-				// settingsRowSegment: settingsRenderRow opens a fresh SGR escape
-				// per segment even when consecutive segments share the same
-				// theme.Token, which would otherwise split "Off (file value..."
-				// across an escape boundary invisible to a human but fatal to a
-				// plain substring assertion against the coloured view.
-				valueText += " (file value; overridden by " + envVar + ", running: " + runningValue + ")"
-			}
-			segs := []settingsRowSegment{
-				{Text: marker, Tok: theme.Text},
-				{Text: settingsFieldLabel(f), Tok: theme.Hint},
-				{Text: ": ", Tok: theme.Text},
-				{Text: valueText, Tok: theme.Text},
-			}
-			fieldBg := theme.Token("")
-			if selected {
-				fieldBg = fieldSelTok
-			}
-			rightLines = append(rightLines, settingsListLine{text: m.settingsRenderRowOpen(segs), bg: fieldBg})
+			rightLines = append(rightLines, m.settingsFieldRowLine(f, fileValue, selected, fieldSelTok))
 			if selected {
 				envVar, _ := settingsFieldEnvOverride(f, m.settings)
 				runningValue := settingsFieldRunningValueDisplay(f, m.settings, fileValue)
@@ -2377,16 +2367,44 @@ func (m Model) settingsView() string {
 			}
 		}
 	}
-	rightLines = fitLines(rightLines, contentRows)
+	return fitLines(rightLines, contentRows)
+}
 
-	lines := make([]string, 0, height)
-	lines = append(lines, m.settingsLeftTopLine(leftWidth, leftFocused)+m.settingsRightTopLine(rightWidth, "Fields", rightFocused))
-	for i := 0; i < contentRows; i++ {
-		lines = append(lines, m.settingsLeftContentLine(leftWidth, leftLines[i], leftFocused)+m.settingsRightContentLine(rightWidth, rightLines[i], rightFocused))
+// settingsFieldRowLine renders one field's label/value row for
+// settingsFieldLines.
+func (m Model) settingsFieldRowLine(f config.Field, fileValue string, selected bool, fieldSelTok theme.Token) settingsListLine {
+	marker := "  "
+	if selected {
+		marker = "> "
 	}
-	lines = append(lines, m.settingsLeftBottomLine(leftWidth, leftFocused)+m.settingsRightBottomLine(rightWidth, rightFocused))
-	lines = append(lines, m.settingsFooterLine())
-	return strings.Join(lines, "\n")
+	valueText := fileValue
+	if envVar, ok := settingsFieldEnvOverride(f, m.settings); ok {
+		runningValue := settingsFieldRunningValueDisplay(f, m.settings, fileValue)
+		// Kept short ("overridden by ENVVAR, running: VALUE", not the
+		// longer detail-line phrasing) so it never exceeds the field
+		// panel's own row budget (66 visible cells at the harness's
+		// 100-column default) and gets silently truncated away by
+		// padTrunc -- the fuller statement lives in the detail lines
+		// below, which have wrapText's whole multi-line budget. Appended
+		// onto valueText (one segment, one Tok) rather than a second
+		// settingsRowSegment: settingsRenderRow opens a fresh SGR escape
+		// per segment even when consecutive segments share the same
+		// theme.Token, which would otherwise split "Off (file value..."
+		// across an escape boundary invisible to a human but fatal to a
+		// plain substring assertion against the coloured view.
+		valueText += " (file value; overridden by " + envVar + ", running: " + runningValue + ")"
+	}
+	segs := []settingsRowSegment{
+		{Text: marker, Tok: theme.Text},
+		{Text: settingsFieldLabel(f), Tok: theme.Hint},
+		{Text: ": ", Tok: theme.Text},
+		{Text: valueText, Tok: theme.Text},
+	}
+	fieldBg := theme.Token("")
+	if selected {
+		fieldBg = fieldSelTok
+	}
+	return settingsListLine{text: m.settingsRenderRowOpen(segs), bg: fieldBg}
 }
 
 // settingsFooterLine names every key the takeover currently binds:
