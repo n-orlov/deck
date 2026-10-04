@@ -1298,6 +1298,13 @@ func (m Model) updateSettingsEnvEditing(msg tea.KeyMsg) (Model, tea.Cmd) {
 		m.settingsEnvEditing = false
 		return m, nil
 	}
+	return m.updateSettingsEnvTyping(msg)
+}
+
+// updateSettingsEnvTyping hands a non-navigation key to whichever of the
+// entry editor's two fields has focus: alt+w copies its text (masked for a
+// secret-shaped key's value until revealed), every other editing key edits it.
+func (m Model) updateSettingsEnvTyping(msg tea.KeyMsg) (Model, tea.Cmd) {
 	keyPart := m.settingsEnvEditingKeyPart
 	ed := &m.settingsEnvValueEdit
 	if keyPart {
