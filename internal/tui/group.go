@@ -614,32 +614,11 @@ func (m Model) pageSelection(delta int) sidebarCursor {
 	if len(visible) == 0 {
 		return rowCursor(0)
 	}
-	pos := -1
-	for i, c := range visible {
-		if c == m.selected {
-			pos = i
-			break
-		}
-	}
+	pos := cursorPosition(visible, m.selected)
 	if pos == -1 {
-		near := m.nearestVisibleSelection(m.selected)
-		for i, c := range visible {
-			if c == near {
-				pos = i
-				break
-			}
-		}
-		if pos == -1 {
-			pos = 0
-		}
+		pos = max(cursorPosition(visible, m.nearestVisibleSelection(m.selected)), 0)
 	}
-	pos += delta
-	if pos < 0 {
-		pos = 0
-	}
-	if pos > len(visible)-1 {
-		pos = len(visible) - 1
-	}
+	pos = min(max(pos+delta, 0), len(visible)-1)
 	return visible[pos]
 }
 
