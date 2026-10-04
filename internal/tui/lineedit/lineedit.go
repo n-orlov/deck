@@ -33,7 +33,7 @@ func New(text string) Editor {
 // user has not chosen (§11.11): whole text selected, caret at its end.
 func NewOffered(text string) Editor {
 	e := New(text)
-	e.offered = text != ""
+	e.offered = e.text != ""
 	return e
 }
 

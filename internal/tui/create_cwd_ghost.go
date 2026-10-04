@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/n-orlov/deck/internal/tui/lineedit"
 )
 
 // createCWDGhostCompletion computes §11.7's directory-only ghost completion
@@ -90,7 +92,13 @@ func createCWDMatches(raw string) (names []string, ok bool) {
 		if !strings.HasPrefix(name, segment) {
 			continue
 		}
-		names = append(names, name)
+		// A directory name is bytes the user does not control, and every
+		// consumer draws it or puts it in the field, which drops control
+		// characters anyway: strip here, once, so the ghost, the completion
+		// and the candidate list can never carry an escape sequence to the
+		// terminal and what is drawn is what ends up typed. The segment has
+		// none, so the stripped name still starts with it.
+		names = append(names, lineedit.StripControl(name))
 	}
 	return names, true
 }
