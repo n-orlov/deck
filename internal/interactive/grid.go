@@ -1227,33 +1227,8 @@ func (s *Session) SelectedText(fromCol, fromRow, toCol, toRow int) string {
 	if total <= 0 || width <= 0 {
 		return ""
 	}
-	clampRow := func(r int) int {
-		if r < 0 {
-			return 0
-		}
-		if r >= total {
-			return total - 1
-		}
-		return r
-	}
-	clampCol := func(c int) int {
-		if c < 0 {
-			return 0
-		}
-		if c >= width {
-			return width - 1
-		}
-		return c
-	}
-	fromRow, toRow = clampRow(fromRow), clampRow(toRow)
-	fromCol, toCol = clampCol(fromCol), clampCol(toCol)
-
-	cellAt := func(x, i int) *uv.Cell {
-		if i < sbLen {
-			return g.ScrollbackCellAt(x, i)
-		}
-		return g.CellAt(x, i-sbLen)
-	}
+	fromRow, toRow = clampIndex(fromRow, total), clampIndex(toRow, total)
+	fromCol, toCol = clampIndex(fromCol, width), clampIndex(toCol, width)
 
 	lines := make([]string, 0, toRow-fromRow+1)
 	for i := fromRow; i <= toRow; i++ {
@@ -1264,15 +1239,39 @@ func (s *Session) SelectedText(fromCol, fromRow, toCol, toRow int) string {
 		if i == toRow {
 			endCol = toCol
 		}
-		var b strings.Builder
-		for x := startCol; x <= endCol; x++ {
-			if c := cellAt(x, i); c != nil {
-				b.WriteString(c.Content)
-			}
-		}
-		lines = append(lines, strings.TrimRight(b.String(), " "))
+		lines = append(lines, selectedRowText(g, sbLen, i, startCol, endCol))
 	}
 	return strings.Join(lines, "\n")
+}
+
+// clampIndex pins v into [0, n-1] (n > 0).
+func clampIndex(v, n int) int {
+	if v < 0 {
+		return 0
+	}
+	if v >= n {
+		return n - 1
+	}
+	return v
+}
+
+// selectedRowText is one selected row's text: the cells startCol..endCol of
+// absolute row i (scrollback rows first, then the live screen, sbLen of the
+// former), trailing spaces trimmed.
+func selectedRowText(g *Grid, sbLen, i, startCol, endCol int) string {
+	var b strings.Builder
+	for x := startCol; x <= endCol; x++ {
+		var c *uv.Cell
+		if i < sbLen {
+			c = g.ScrollbackCellAt(x, i)
+		} else {
+			c = g.CellAt(x, i-sbLen)
+		}
+		if c != nil {
+			b.WriteString(c.Content)
+		}
+	}
+	return strings.TrimRight(b.String(), " ")
 }
 
 // Renders delivers one notification per coalesced render (PRD II-27), at
