@@ -6141,6 +6141,14 @@ func (m Model) sidebarRowLines(index int, session store.Session, stripe bool) ([
 	}
 	line1 := m.settingsRenderRowOpen(segs)
 
+	line2 := m.settingsRenderRowOpen(m.sidebarRowLine2Segments(session))
+	return []string{line1, line2}, []string{gutter1, gutter2}, bg
+}
+
+// sidebarRowLine2Segments composes a session row's second line (dirty
+// badges, age, then the non-safe permission badge) as the segments
+// sidebarRowLines renders.
+func (m Model) sidebarRowLine2Segments(session store.Session) []settingsRowSegment {
 	// Both the default (steer 006) and the starting-row override (SPEC
 	// requirement 35 / task 021) resolve to theme.Dimmed now, so there is
 	// nothing left for a starting row to override on line 2 -- unlike
@@ -6178,8 +6186,7 @@ func (m Model) sidebarRowLines(index int, session store.Session, stripe bool) ([
 	if text, tok, ok := m.profileBadgeSegment(session); ok && session.PermissionProfile != "safe" {
 		line2Segs = append(line2Segs, settingsRowSegment{Text: " ", Tok: theme.Text}, settingsRowSegment{Text: text, Tok: tok})
 	}
-	line2 := m.settingsRenderRowOpen(line2Segs)
-	return []string{line1, line2}, []string{gutter1, gutter2}, bg
+	return line2Segs
 }
 
 // sidebarStatusGlyph is SPEC §11's one-column status glyph for a row's
