@@ -58,6 +58,15 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return 0
 	}
 
+	return runTUI(settings, stderr)
+}
+
+// runTUI is run()'s normal launch path once the profile is resolved and its
+// settings loaded: touch last-used, open the store, run the startup sweeps,
+// wire the service and the TUI model, and run the Bubble Tea program until it
+// exits. The returned code is always 0, as every failure here is reported on
+// stderr and never turns into a non-zero exit.
+func runTUI(settings config.Settings, stderr io.Writer) int {
 	// SPEC §3.4: "last used" (deck --profiles' own listing) is the mtime
 	// of a last_used marker the TUI touches in the profile's data root at
 	// launch, default included. Best-effort, like the tombstone sweep
