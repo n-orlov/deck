@@ -1,1 +1,1 @@
-[{"values":["go1.25.14"],"name":"go.version"},{"values":["tmux 3.5a"],"name":"tmux.version"},{"values":["e60cd980db7def80b577ec67de8fb4612a3657f7"],"name":"git.sha"},{"values":["no"],"name":"race"}]
+[{"values":["go1.25.14"],"name":"go.version"},{"values":["tmux 3.5a"],"name":"tmux.version"},{"values":["c0626cf24202ff278df799d534440bb5a39d1208"],"name":"git.sha"},{"values":["no"],"name":"race"}]
