@@ -222,53 +222,38 @@ func blockIndexForSection(blocks []tomlBlock, section string) int {
 // serializeFieldValue renders field's current value out of cfg as a bare
 // TOML right-hand side (no trailing newline).
 func serializeFieldValue(field Field, cfg FileConfig) string {
-	switch field.FullKey() {
-	case "allow_yolo":
-		return strconv.FormatBool(cfg.AllowYolo)
-	case "yolo_default":
-		return strconv.FormatBool(cfg.YoloDefault)
-	case "tmux_mouse":
-		return strconv.FormatBool(cfg.TmuxMouse)
-	case "stale_after":
-		return strconv.Itoa(int(cfg.StaleAfter.Seconds()))
-	case "capture_min_interval":
-		return strconv.Itoa(int(cfg.CaptureMinInterval.Seconds()))
-	case "interactive_ms":
-		return strconv.Itoa(int(cfg.InteractiveInterval.Milliseconds()))
-	case "interactive_transport":
-		return strconv.Quote(cfg.InteractiveTransport)
-	case "ui.ascii":
-		return strconv.FormatBool(cfg.ASCII)
-	case "ui.mouse":
-		return strconv.FormatBool(cfg.Mouse)
-	case "ui.default_group_first":
-		return strconv.FormatBool(cfg.DefaultGroupFirst)
-	case "ui.preview_fit":
-		return strconv.FormatBool(cfg.PreviewFit)
-	case "ui.attach_on_new":
-		return strconv.FormatBool(cfg.AttachOnNew)
-	case "ui.attach_on_resume":
-		return strconv.FormatBool(cfg.AttachOnResume)
-	case "ui.sort_order":
-		return strconv.Quote(cfg.SortOrder)
-	case "ui.preview_paint":
-		return strconv.Quote(cfg.PreviewPaint)
-	case "ui.recent_cwd_limit":
-		return strconv.Itoa(cfg.RecentCwdLimit)
-	case "event_retention_days":
-		return strconv.Itoa(cfg.EventRetentionDays)
-	case "ui.theme":
-		return strconv.Quote(cfg.Theme)
-	case "pre_launch":
-		return strconv.Quote(cfg.PreLaunch)
-	case "post_destroy":
-		return strconv.Quote(cfg.PostDestroy)
-	default:
-		// Unreachable for a well-formed Schema: every flat (non-[env])
-		// field is one of the cases above. Fall back to the field's
-		// declared default rather than panic.
-		return fmt.Sprintf("%v", field.Default)
+	if render := fieldRenderers[field.FullKey()]; render != nil {
+		return render(cfg)
 	}
+	// Unreachable for a well-formed Schema: every flat (non-[env])
+	// field has a renderer. Fall back to the field's declared default
+	// rather than panic.
+	return fmt.Sprintf("%v", field.Default)
+}
+
+// fieldRenderers maps a field's FullKey to the function rendering that
+// member of a FileConfig as a bare TOML right-hand side.
+var fieldRenderers = map[string]func(FileConfig) string{
+	"allow_yolo":             func(c FileConfig) string { return strconv.FormatBool(c.AllowYolo) },
+	"yolo_default":           func(c FileConfig) string { return strconv.FormatBool(c.YoloDefault) },
+	"tmux_mouse":             func(c FileConfig) string { return strconv.FormatBool(c.TmuxMouse) },
+	"stale_after":            func(c FileConfig) string { return strconv.Itoa(int(c.StaleAfter.Seconds())) },
+	"capture_min_interval":   func(c FileConfig) string { return strconv.Itoa(int(c.CaptureMinInterval.Seconds())) },
+	"interactive_ms":         func(c FileConfig) string { return strconv.Itoa(int(c.InteractiveInterval.Milliseconds())) },
+	"interactive_transport":  func(c FileConfig) string { return strconv.Quote(c.InteractiveTransport) },
+	"ui.ascii":               func(c FileConfig) string { return strconv.FormatBool(c.ASCII) },
+	"ui.mouse":               func(c FileConfig) string { return strconv.FormatBool(c.Mouse) },
+	"ui.default_group_first": func(c FileConfig) string { return strconv.FormatBool(c.DefaultGroupFirst) },
+	"ui.preview_fit":         func(c FileConfig) string { return strconv.FormatBool(c.PreviewFit) },
+	"ui.attach_on_new":       func(c FileConfig) string { return strconv.FormatBool(c.AttachOnNew) },
+	"ui.attach_on_resume":    func(c FileConfig) string { return strconv.FormatBool(c.AttachOnResume) },
+	"ui.sort_order":          func(c FileConfig) string { return strconv.Quote(c.SortOrder) },
+	"ui.preview_paint":       func(c FileConfig) string { return strconv.Quote(c.PreviewPaint) },
+	"ui.recent_cwd_limit":    func(c FileConfig) string { return strconv.Itoa(c.RecentCwdLimit) },
+	"event_retention_days":   func(c FileConfig) string { return strconv.Itoa(c.EventRetentionDays) },
+	"ui.theme":               func(c FileConfig) string { return strconv.Quote(c.Theme) },
+	"pre_launch":             func(c FileConfig) string { return strconv.Quote(c.PreLaunch) },
+	"post_destroy":           func(c FileConfig) string { return strconv.Quote(c.PostDestroy) },
 }
 
 // atomicWrite writes data to a temp file created alongside path, then
