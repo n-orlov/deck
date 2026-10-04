@@ -515,23 +515,9 @@ func (m *Model) selectVisibleStopAfterReload(selectedGroupHadNoRows bool) {
 // below then falls through to whatever header IS visible, exactly as it
 // already does for a row cursor stranded by a collapsed group.
 func (m Model) nearestVisibleSelection(from sidebarCursor) sidebarCursor {
-	if idx, ok := from.SessionIndex(); ok && len(m.sessions) > 0 {
-		if idx < 0 {
-			idx = 0
-		}
-		if idx > len(m.sessions)-1 {
-			idx = len(m.sessions) - 1
-		}
-		from = rowCursor(idx)
-	}
+	from = m.clampRowCursor(from)
 	order := m.visualOrder()
-	pos := 0
-	for i, c := range order {
-		if c == from {
-			pos = i
-			break
-		}
-	}
+	pos := max(cursorPosition(order, from), 0)
 	for i := pos; i < len(order); i++ {
 		if m.isStopVisible(order[i]) {
 			return order[i]
@@ -590,6 +576,30 @@ func (m Model) prevVisibleSelection(from sidebarCursor) (sidebarCursor, bool) {
 		}
 	}
 	return from, false
+}
+
+// cursorPosition answers c's index in order, or -1 when c is not a stop in
+// it. First match wins, exactly the loops pageSelection and
+// nearestVisibleSelection each used to carry inline.
+func cursorPosition(order []sidebarCursor, c sidebarCursor) int {
+	for i, o := range order {
+		if o == c {
+			return i
+		}
+	}
+	return -1
+}
+
+// clampRowCursor pulls a row cursor whose index has drifted outside
+// m.sessions back into [0, len-1]; a header cursor, or any cursor while
+// m.sessions is empty, is returned untouched (nearestVisibleSelection's
+// original leading block).
+func (m Model) clampRowCursor(from sidebarCursor) sidebarCursor {
+	idx, ok := from.SessionIndex()
+	if !ok || len(m.sessions) == 0 {
+		return from
+	}
+	return rowCursor(min(max(idx, 0), len(m.sessions)-1))
 }
 
 // pageSelection is PgUp/PgDn's own step (SPEC requirement 19): moves delta
