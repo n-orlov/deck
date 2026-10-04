@@ -3945,21 +3945,28 @@ func (m Model) onPreviewTick(_ previewTick) (tea.Model, tea.Cmd) {
 	// Status(), so a hit is handled inline, in this very Update call,
 	// rather than round-tripping through another message.
 	if m.interactive {
-		if m.interactiveDisplacementFastPath() {
-			name := ""
-			if session, ok := m.selectedSession(); ok {
-				name = session.Name
-			}
-			next, cmd := m.raiseLostAttach(name)
-			m = next
-			if cmd != nil {
-				cmds = append(cmds, cmd)
-			}
-		} else if cmd := m.checkInteractiveDisplacementBackstop(); cmd != nil {
+		var cmd tea.Cmd
+		m, cmd = m.tickInteractiveDisplacement()
+		if cmd != nil {
 			cmds = append(cmds, cmd)
 		}
 	}
 	return m, tea.Batch(cmds...)
+}
+
+// tickInteractiveDisplacement is onPreviewTick's displacement check while
+// interactive: the transport-status fast path is handled inline (raising
+// the lost-attach notice), otherwise the backstop probe, if it needs a
+// command, is returned.
+func (m Model) tickInteractiveDisplacement() (Model, tea.Cmd) {
+	if !m.interactiveDisplacementFastPath() {
+		return m, m.checkInteractiveDisplacementBackstop()
+	}
+	name := ""
+	if session, ok := m.selectedSession(); ok {
+		name = session.Name
+	}
+	return m.raiseLostAttach(name)
 }
 
 func (m Model) onInteractiveDisplacementChecked(msg interactiveDisplacementChecked) (tea.Model, tea.Cmd) {
