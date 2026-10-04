@@ -361,7 +361,15 @@ test that fails twice in a row fails the check.
   the next attempt's `if:`; the final attempt omits it, so a persistent
   failure still fails the job. `environment.url` falls back through
   whichever attempt actually produced a `page_url` output
-  (`deployment4 || deployment3 || deployment2 || deployment1`). The back-off
+  (`deployment4 || deployment3 || deployment2 || deployment1`). Every
+  attempt sets `actions/deploy-pages`' own `timeout` input to `120000`
+  (2 min; a healthy deploy takes seconds) instead of the action's
+  10-minute default, and both jobs' `timeout-minutes` is 15: the worst
+  case (four 2-minute attempts plus 210s of back-off, 11.5 min) fits
+  inside the job cap. With the default, one stalled Pages deployment ran
+  the job's whole cap out while attempt 1 was still polling, so no retry
+  ever ran and the run ended `cancelled`. `ci/workflowcheck`'s
+  `deploypagestimeout_test.go` pins this arithmetic. The back-off
   was widened from three attempts/45s to cover GitHub's Pages API "one
   concurrent build per repository" limit specifically: since `ci.yml`'s own
   concurrency groups now let push/schedule/dispatch run side by side (see
