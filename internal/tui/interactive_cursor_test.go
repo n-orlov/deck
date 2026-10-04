@@ -80,7 +80,7 @@ func cellReverseStates(row string) (cells string, reversed []bool) {
 	return sb.String(), reversed
 }
 
-func reverseMask(cells string, reversed []bool) string {
+func reverseMask(_ string, reversed []bool) string {
 	var sb strings.Builder
 	for i := range reversed {
 		if reversed[i] {

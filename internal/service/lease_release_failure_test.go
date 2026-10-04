@@ -14,7 +14,7 @@ import (
 // disk-full write, a lock timeout, ...).
 type failingLeaseReleaser struct{}
 
-func (failingLeaseReleaser) ReleaseLaunchLease(ctx context.Context, sessionID, heldOwner string) (bool, error) {
+func (failingLeaseReleaser) ReleaseLaunchLease(_ context.Context, _, _ string) (bool, error) {
 	return false, errors.New("simulated release failure")
 }
 

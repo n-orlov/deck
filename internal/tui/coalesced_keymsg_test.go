@@ -25,7 +25,7 @@ import (
 // moved the selection, not against a stale snapshot.
 func TestCoalescedKeyMsgDispatchesNavigationalThenDestructiveRune(t *testing.T) {
 	model := NewWithShellCreator(nil, config.Settings{}, "", nil)
-	model.kill = func(_ context.Context, s store.Session) error {
+	model.kill = func(_ context.Context, _ store.Session) error {
 		return nil
 	}
 	model.sessions = []store.Session{

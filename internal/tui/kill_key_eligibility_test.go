@@ -31,7 +31,7 @@ func TestKillKeyHandlerConsultsCanKillForTheSingleSelectedRow(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			called := false
 			model := NewWithShellCreator(nil, config.Settings{}, "", nil)
-			model.kill = func(_ context.Context, s store.Session) error {
+			model.kill = func(_ context.Context, _ store.Session) error {
 				called = true
 				return nil
 			}

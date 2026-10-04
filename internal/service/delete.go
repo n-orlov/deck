@@ -187,7 +187,7 @@ func (s Service) reapedHolderFiles(ctx context.Context, candidateIDs []string) e
 // caller never calls Purge at all unless that lookup already succeeded,
 // but treating "" as a no-op here rather than a panic keeps the two
 // contracts consistent instead of trusting the caller never to slip.
-func (s Service) Purge(ctx context.Context, path string) error {
+func (s Service) Purge(_ context.Context, path string) error {
 	if path == "" {
 		return nil
 	}

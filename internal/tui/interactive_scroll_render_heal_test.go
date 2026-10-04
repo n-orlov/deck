@@ -86,8 +86,8 @@ func TestInteractiveScrollOffsetHealsFromTheRenderAfterVisibleOnlyReseed(t *test
 	}); err != nil {
 		t.Fatalf("resize: %v", err)
 	}
-	if real := m.interactiveGrid.Grid().ScrollbackLen(); real != 0 {
-		t.Fatalf("test assumption violated: resize left %d lines of real scrollback, want 0", real)
+	if realLen := m.interactiveGrid.Grid().ScrollbackLen(); realLen != 0 {
+		t.Fatalf("test assumption violated: resize left %d lines of real scrollback, want 0", realLen)
 	}
 
 	// Render, and nothing else: no scroll command, no Update, no second

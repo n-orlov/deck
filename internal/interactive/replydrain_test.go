@@ -93,7 +93,7 @@ func TestTerminalQueryInPaneOutputNeverStallsSession(t *testing.T) {
 			defer cleanup()
 			client := tmux.Client{Socket: socket, Timeout: 5 * time.Second}
 
-			session, err := Start(context.Background(), client, "s0", width, height, func(ctx context.Context) ([]byte, error) {
+			session, err := Start(context.Background(), client, "s0", width, height, func(_ context.Context) ([]byte, error) {
 				return rawCapturePane(t, socket, "s0"), nil
 			})
 			if err != nil {

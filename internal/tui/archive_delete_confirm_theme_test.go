@@ -57,7 +57,7 @@ func TestArchiveConfirmStyledBodyMatchesPlainBodyOnceStripped(t *testing.T) {
 		name string
 		mut  func(m *Model)
 	}{
-		{"live row", func(m *Model) {}},
+		{"live row", func(_ *Model) {}},
 		{"stopped row", func(m *Model) { m.sessions[0].Status = "stopped" }},
 		{"with a failure note", func(m *Model) { m.archiveNote = "Cannot archive alpha: boom" }},
 	} {
@@ -85,7 +85,7 @@ func TestDeleteConfirmStyledBodyMatchesPlainBodyOnceStripped(t *testing.T) {
 		name string
 		mut  func(m *Model)
 	}{
-		{"keep chosen", func(m *Model) {}},
+		{"keep chosen", func(_ *Model) {}},
 		{"archived row", func(m *Model) { m.sessions[0].ArchivedAt = 1 }},
 		{"purge chosen, no transcript", func(m *Model) { m.deletePurgeValue = "purge" }},
 		{"purge chosen, path resolved", func(m *Model) {

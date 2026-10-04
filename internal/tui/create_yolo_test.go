@@ -83,7 +83,7 @@ func TestCreateModalNoYoloOfferedWithAllowYoloFalse(t *testing.T) {
 func TestCreateModalYoloTakesEffectImmediatelyWithNoConfirm(t *testing.T) {
 	m := newCreatingModelWithSettings(t, config.Settings{AllowYolo: true})
 	var called bool
-	m.create = func(ctx context.Context, in service.ShellCreateInput) (store.Session, error) {
+	m.create = func(_ context.Context, in service.ShellCreateInput) (store.Session, error) {
 		called = true
 		return store.Session{Name: in.Name}, nil
 	}

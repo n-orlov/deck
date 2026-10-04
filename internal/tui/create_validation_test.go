@@ -134,7 +134,7 @@ func TestCreateModalUnsupportedProfileMessage(t *testing.T) {
 func TestCreateModalShellIgnoresProfileValidation(t *testing.T) {
 	before := newCreatingModel(t)
 	var called bool
-	before.create = func(ctx context.Context, in service.ShellCreateInput) (store.Session, error) {
+	before.create = func(_ context.Context, in service.ShellCreateInput) (store.Session, error) {
 		called = true
 		return store.Session{Name: in.Name}, nil
 	}
@@ -185,7 +185,7 @@ func TestCreateModalSlugCollisionMessage(t *testing.T) {
 func TestCreateModalEscapeCreatesNothing(t *testing.T) {
 	before := newCreatingModel(t)
 	var called bool
-	before.create = func(ctx context.Context, in service.ShellCreateInput) (store.Session, error) {
+	before.create = func(_ context.Context, _ service.ShellCreateInput) (store.Session, error) {
 		called = true
 		return store.Session{}, nil
 	}

@@ -1995,8 +1995,7 @@ func NewWithShellCreatorAttacherKillerResumerProfileSwitcherAndResumeModer(db *s
 	return NewWithShellCreatorAttacherKillerResumerProfileSwitcherResumeModerAndAgentCreator(db, settings, tmuxNote, creator, attacher, killer, reconciler, resumer, profileSwitcher, resumeModer, nil)
 }
 
-// NewWithShellCreatorAttacherKillerResumerProfileSwitcherResumeModerAndAgentCreator
-// adds real coding-agent creation (task 022) to the create modal's Enter
+// NewWithShellCreatorAttacherKillerResumerProfileSwitcherResumeModerAndAgentCreator adds real coding-agent creation (task 022) to the create modal's Enter
 // handler. Until agentCreator is wired, choosing claude/pi in the create
 // modal keeps the pre-task-022 "not available yet" refusal (agentCreator ==
 // nil); once wired, Enter on a non-shell Agent field calls
@@ -2008,10 +2007,8 @@ func NewWithShellCreatorAttacherKillerResumerProfileSwitcherResumeModerAndAgentC
 	return m
 }
 
-// NewWithShellCreatorAttacherKillerResumerProfileSwitcherResumeModerAgentCreatorAndRegistry
-// is identical to
-// NewWithShellCreatorAttacherKillerResumerProfileSwitcherResumeModerAndAgentCreator
-// but additionally accepts the agent registry that drives the create
+// NewWithShellCreatorAttacherKillerResumerProfileSwitcherResumeModerAgentCreatorAndRegistry is identical to
+// NewWithShellCreatorAttacherKillerResumerProfileSwitcherResumeModerAndAgentCreator but additionally accepts the agent registry that drives the create
 // modal's Agent field and capability lookups (SPEC requirement: adding an
 // adapter must not require touching internal/tui). When registry is nil the
 // model falls back to defaultAgentRegistry() (shell/claude/pi), so this is a
@@ -2022,8 +2019,7 @@ func NewWithShellCreatorAttacherKillerResumerProfileSwitcherResumeModerAgentCrea
 	return m
 }
 
-// NewWithShellCreatorAttacherKillerResumerProfileSwitcherResumeModerAgentCreatorRegistryAndPreviewCapturer
-// additionally wires the read-only preview capture engine (SPEC
+// NewWithShellCreatorAttacherKillerResumerProfileSwitcherResumeModerAgentCreatorRegistryAndPreviewCapturer additionally wires the read-only preview capture engine (SPEC
 // requirements 21, 22, task 017). previewCapturer is called with the
 // selected row's slug once per DECK_PREVIEW_MS tick; tmux.Client.CapturePreview
 // is the released implementation — a single capture-pane per tick, no
@@ -2036,8 +2032,7 @@ func NewWithShellCreatorAttacherKillerResumerProfileSwitcherResumeModerAgentCrea
 	return m
 }
 
-// NewWithShellCreatorAttacherKillerResumerProfileSwitcherResumeModerAgentCreatorRegistryPreviewCapturerAndEnvSetter
-// adds the `e` env editor's write path (task 021, SPEC §6.1/§6.3):
+// NewWithShellCreatorAttacherKillerResumerProfileSwitcherResumeModerAgentCreatorRegistryPreviewCapturerAndEnvSetter adds the `e` env editor's write path (task 021, SPEC §6.1/§6.3):
 // envSetter persists one session-env key/value edit (env_dirty) and
 // mirrors it into the live tmux pane's environment table for future panes
 // only, never the pane's already-running process. Until envSetter is
@@ -2049,8 +2044,7 @@ func NewWithShellCreatorAttacherKillerResumerProfileSwitcherResumeModerAgentCrea
 	return m
 }
 
-// NewWithShellCreatorAttacherKillerResumerProfileSwitcherResumeModerAgentCreatorRegistryPreviewCapturerEnvSetterAndRestarter
-// adds the `R` restart action (task 022, SPEC §6.2/§6.3): restarter kills
+// NewWithShellCreatorAttacherKillerResumerProfileSwitcherResumeModerAgentCreatorRegistryPreviewCapturerEnvSetterAndRestarter adds the `R` restart action (task 022, SPEC §6.2/§6.3): restarter kills
 // the selected session's live pane if one exists and relaunches it with
 // the adapter's resume argv (the SAME conversation id -- never a fresh
 // one), carrying whatever environment is currently persisted on the row,
@@ -2065,8 +2059,7 @@ func NewWithShellCreatorAttacherKillerResumerProfileSwitcherResumeModerAgentCrea
 	return m
 }
 
-// NewWithShellCreatorAttacherKillerResumerProfileSwitcherResumeModerAgentCreatorRegistryPreviewCapturerEnvSetterRestarterAndInjector
-// adds task 023's `R` inject-instead alternative for shell sessions:
+// NewWithShellCreatorAttacherKillerResumerProfileSwitcherResumeModerAgentCreatorRegistryPreviewCapturerEnvSetterRestarterAndInjector adds task 023's `R` inject-instead alternative for shell sessions:
 // injector exports the env keys changed since env_dirty was last cleared
 // directly into the selected session's live, already-running shell pane
 // (never killing or relaunching it), then clears env_dirty exactly as a
@@ -2080,8 +2073,7 @@ func NewWithShellCreatorAttacherKillerResumerProfileSwitcherResumeModerAgentCrea
 	return m
 }
 
-// NewWithShellCreatorAttacherKillerResumerProfileSwitcherResumeModerAgentCreatorRegistryPreviewCapturerEnvSetterRestarterInjectorAndDeleter
-// adds task 105's `dd` delete action (SPEC §9/§11.4): deleter kills the
+// NewWithShellCreatorAttacherKillerResumerProfileSwitcherResumeModerAgentCreatorRegistryPreviewCapturerEnvSetterRestarterInjectorAndDeleter adds task 105's `dd` delete action (SPEC §9/§11.4): deleter kills the
 // selected session's live pane if one exists and tombstones the row
 // (store.SoftDeleteSession) so it disappears from ListSessions
 // immediately, restorable within task 106's grace window. It never
@@ -2094,8 +2086,7 @@ func NewWithShellCreatorAttacherKillerResumerProfileSwitcherResumeModerAgentCrea
 	return m
 }
 
-// NewWithShellCreatorAttacherKillerResumerProfileSwitcherResumeModerAgentCreatorRegistryPreviewCapturerEnvSetterRestarterInjectorDeleterRestorerAndReaper
-// adds task 106's grace-window half of `dd` (SPEC §9.2, requirements 2/23):
+// NewWithShellCreatorAttacherKillerResumerProfileSwitcherResumeModerAgentCreatorRegistryPreviewCapturerEnvSetterRestarterInjectorDeleterRestorerAndReaper adds task 106's grace-window half of `dd` (SPEC §9.2, requirements 2/23):
 // restorer clears a tombstone (store.RestoreSession) so u can undo a
 // completed delete within DECK_DELETE_GRACE_MS, and reaper permanently
 // removes a tombstoned row (store.ReapSession) once that window's own
@@ -2112,8 +2103,7 @@ func NewWithShellCreatorAttacherKillerResumerProfileSwitcherResumeModerAgentCrea
 	return m
 }
 
-// NewWithShellCreatorAttacherKillerResumerProfileSwitcherResumeModerAgentCreatorRegistryPreviewCapturerEnvSetterRestarterInjectorDeleterRestorerReaperAndPurger
-// adds task 110's non-default "purge conversation" choice inside the dd
+// NewWithShellCreatorAttacherKillerResumerProfileSwitcherResumeModerAgentCreatorRegistryPreviewCapturerEnvSetterRestarterInjectorDeleterRestorerReaperAndPurger adds task 110's non-default "purge conversation" choice inside the dd
 // confirm dialog (SPEC.md:684-691, requirement 26): purger deletes exactly
 // the path the dialog itself already resolved via the session's own
 // adapter's declared TranscriptPaths (task 109) -- it is never called with
@@ -2127,8 +2117,7 @@ func NewWithShellCreatorAttacherKillerResumerProfileSwitcherResumeModerAgentCrea
 	return m
 }
 
-// NewWithShellCreatorAttacherKillerResumerProfileSwitcherResumeModerAgentCreatorRegistryPreviewCapturerEnvSetterRestarterInjectorDeleterRestorerReaperPurgerAndArchiver
-// adds task 111's `A` (SPEC requirement 27): archiver kills the selected
+// NewWithShellCreatorAttacherKillerResumerProfileSwitcherResumeModerAgentCreatorRegistryPreviewCapturerEnvSetterRestarterInjectorDeleterRestorerReaperPurgerAndArchiver adds task 111's `A` (SPEC requirement 27): archiver kills the selected
 // session's live pane first if one exists (offering "kill and archive" as
 // one action rather than refusing) and then sets archived_at
 // (store.ArchiveSession) -- a flag, never a status. Until archiver is
@@ -2140,8 +2129,7 @@ func NewWithShellCreatorAttacherKillerResumerProfileSwitcherResumeModerAgentCrea
 	return m
 }
 
-// NewWithShellCreatorAttacherKillerResumerProfileSwitcherResumeModerAgentCreatorRegistryPreviewCapturerEnvSetterRestarterInjectorDeleterRestorerReaperPurgerArchiverAndRenamer
-// adds task 013's rename action (SPEC §11.4, PRD requirement 31, I-8),
+// NewWithShellCreatorAttacherKillerResumerProfileSwitcherResumeModerAgentCreatorRegistryPreviewCapturerEnvSetterRestarterInjectorDeleterRestorerReaperPurgerArchiverAndRenamer adds task 013's rename action (SPEC §11.4, PRD requirement 31, I-8),
 // reachable ONLY from inside the `i` detail dialog, never as a top-level
 // key: renamer persists a new display name (service.Rename/
 // store.RenameSession) and never touches the session's live tmux session
@@ -2155,8 +2143,7 @@ func NewWithShellCreatorAttacherKillerResumerProfileSwitcherResumeModerAgentCrea
 	return m
 }
 
-// NewWithShellCreatorAttacherKillerResumerProfileSwitcherResumeModerAgentCreatorRegistryPreviewCapturerEnvSetterRestarterInjectorDeleterRestorerReaperPurgerArchiverRenamerAndUnarchiver
-// adds R71's `U` (SPEC.md:323-332, issue #8): unarchiver clears archived_at
+// NewWithShellCreatorAttacherKillerResumerProfileSwitcherResumeModerAgentCreatorRegistryPreviewCapturerEnvSetterRestarterInjectorDeleterRestorerReaperPurgerArchiverRenamerAndUnarchiver adds R71's `U` (SPEC.md:323-332, issue #8): unarchiver clears archived_at
 // (service.Unarchive/store.UnarchiveSession) so a row hidden by `A`
 // returns to the default list. It is the promised way out that resume's
 // own archived-row refusal names, and it is reached through requirement
@@ -2169,6 +2156,7 @@ func NewWithShellCreatorAttacherKillerResumerProfileSwitcherResumeModerAgentCrea
 	return m
 }
 
+// Init implements tea.Model: it returns the startup command batch.
 func (m Model) Init() tea.Cmd {
 	commands := []tea.Cmd{
 		m.loadSessions,
@@ -2515,7 +2503,7 @@ func canRestart(session store.Session) bool {
 // canDelete reports whether dd may act on session. Deleting accepts any
 // row, live or archived (the live pane is killed first, in the same
 // action), so this is always true.
-func canDelete(session store.Session) bool {
+func canDelete(_ store.Session) bool {
 	return true
 }
 
@@ -2538,7 +2526,7 @@ func canReachPane(session store.Session) bool {
 // describes any row there is, live, stopped or archived, so its handler's
 // only refusal is an empty list -- which footerRowEligible answers before
 // this is ever consulted.
-func canShowDetail(session store.Session) bool {
+func canShowDetail(_ store.Session) bool {
 	return true
 }
 
@@ -2577,6 +2565,8 @@ func (m Model) resumableWithNoConversationIDYet(session store.Session) bool {
 	return applicable && caps.Resumable && !caps.AssignsConversationID && session.ConversationID == ""
 }
 
+// Update implements tea.Model: it routes one message to its handler and
+// returns the next model and command.
 func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	i1Trace("enter", message, m.selected)
 	i1TraceSessions(m)
@@ -2644,7 +2634,7 @@ func init() {
 		reflect.TypeFor[batchDeleteGraceExpired]():         handlerFor(Model.onBatchDeleteGraceExpired),
 		reflect.TypeFor[sessionsBulkReaped]():              handlerFor(Model.onSessionsBulkReaped),
 		reflect.TypeFor[sessionsBulkRestored]():            handlerFor(Model.onSessionsBulkRestored),
-		reflect.TypeFor[uiStatePersisted]():                handlerFor(Model.onUiStatePersisted),
+		reflect.TypeFor[uiStatePersisted]():                handlerFor(Model.onUIStatePersisted),
 		reflect.TypeFor[sessionResumed]():                  handlerFor(Model.onSessionResumed),
 		reflect.TypeFor[sessionRestarted]():                handlerFor(Model.onSessionRestarted),
 		reflect.TypeFor[envInjected]():                     handlerFor(Model.onEnvInjected),
@@ -3170,7 +3160,7 @@ func (m Model) onSessionKilled(msg sessionKilled) (tea.Model, tea.Cmd) {
 	m.undoSessionName = msg.session.Name
 	m.undoGeneration++
 	generation := m.undoGeneration
-	return m, tea.Batch(m.loadSessions, tea.Tick(m.settings.Undo, func(t time.Time) tea.Msg { return undoExpired(generation) }))
+	return m, tea.Batch(m.loadSessions, tea.Tick(m.settings.Undo, func(_ time.Time) tea.Msg { return undoExpired(generation) }))
 }
 
 func (m Model) onUndoExpired(msg undoExpired) (tea.Model, tea.Cmd) {
@@ -3232,7 +3222,7 @@ func (m Model) onSessionArchived(msg sessionArchived) (tea.Model, tea.Cmd) {
 	m.archiveUndoHookRan = msg.session.PostDestroy != "" || m.settings.PostDestroy != ""
 	m.archiveUndoGeneration++
 	archiveGeneration := m.archiveUndoGeneration
-	cmds := []tea.Cmd{m.loadSessions, tea.Tick(m.settings.Undo, func(t time.Time) tea.Msg { return archiveUndoExpired(archiveGeneration) })}
+	cmds := []tea.Cmd{m.loadSessions, tea.Tick(m.settings.Undo, func(_ time.Time) tea.Msg { return archiveUndoExpired(archiveGeneration) })}
 	if msg.hookMessage != "" {
 		// task 042 (findings §1): the archive itself already committed --
 		// runPostDestroy's own hook failure never blocks or reverses it --
@@ -3241,7 +3231,7 @@ func (m Model) onSessionArchived(msg sessionArchived) (tea.Model, tea.Cmd) {
 		m.teardownHookNote = msg.hookMessage
 		m.teardownHookNoteGeneration++
 		teardownGeneration := m.teardownHookNoteGeneration
-		cmds = append(cmds, tea.Tick(m.settings.Undo, func(t time.Time) tea.Msg { return teardownHookNoteExpired(teardownGeneration) }))
+		cmds = append(cmds, tea.Tick(m.settings.Undo, func(_ time.Time) tea.Msg { return teardownHookNoteExpired(teardownGeneration) }))
 	}
 	return m, tea.Batch(cmds...)
 }
@@ -3325,7 +3315,7 @@ func (m Model) onSessionDeleted(msg sessionDeleted) (tea.Model, tea.Cmd) {
 			m.selected = rowCursor(max(0, len(m.sessions)-1))
 		}
 	}
-	cmds := []tea.Cmd{m.loadSessions, tea.Tick(m.settings.DeleteGrace, func(t time.Time) tea.Msg { return deleteGraceExpired(generation) })}
+	cmds := []tea.Cmd{m.loadSessions, tea.Tick(m.settings.DeleteGrace, func(_ time.Time) tea.Msg { return deleteGraceExpired(generation) })}
 	if msg.hookMessage != "" {
 		// task 042 (findings §1): mirrors the sessionArchived branch above
 		// exactly -- the delete itself already committed, so this toast is
@@ -3334,7 +3324,7 @@ func (m Model) onSessionDeleted(msg sessionDeleted) (tea.Model, tea.Cmd) {
 		m.teardownHookNote = msg.hookMessage
 		m.teardownHookNoteGeneration++
 		teardownGeneration := m.teardownHookNoteGeneration
-		cmds = append(cmds, tea.Tick(m.settings.Undo, func(t time.Time) tea.Msg { return teardownHookNoteExpired(teardownGeneration) }))
+		cmds = append(cmds, tea.Tick(m.settings.Undo, func(_ time.Time) tea.Msg { return teardownHookNoteExpired(teardownGeneration) }))
 	}
 	return m, tea.Batch(cmds...)
 }
@@ -3375,7 +3365,7 @@ func (m Model) onSessionUnarchived(msg sessionUnarchived) (tea.Model, tea.Cmd) {
 		m.archiveUndoneRebuildNote = true
 		m.archiveUndoneRebuildGeneration++
 		rebuildGeneration := m.archiveUndoneRebuildGeneration
-		return m, tea.Batch(m.loadSessions, m.loadArchivedSessions, tea.Tick(m.settings.Undo, func(t time.Time) tea.Msg {
+		return m, tea.Batch(m.loadSessions, m.loadArchivedSessions, tea.Tick(m.settings.Undo, func(_ time.Time) tea.Msg {
 			return archiveUndoneRebuildNoteExpired(rebuildGeneration)
 		}))
 	}
@@ -3418,7 +3408,7 @@ func (m Model) onSessionsBulkKilled(msg sessionsBulkKilled) (tea.Model, tea.Cmd)
 	m.batchUndoSessionIDs = succeeded
 	m.batchUndoGeneration++
 	generation := m.batchUndoGeneration
-	return m, tea.Batch(m.loadSessions, tea.Tick(m.settings.Undo, func(t time.Time) tea.Msg { return batchUndoExpired(generation) }))
+	return m, tea.Batch(m.loadSessions, tea.Tick(m.settings.Undo, func(_ time.Time) tea.Msg { return batchUndoExpired(generation) }))
 }
 
 func (m Model) onBatchUndoExpired(msg batchUndoExpired) (tea.Model, tea.Cmd) {
@@ -3508,7 +3498,7 @@ func (m Model) onSessionsBulkDeleted(msg sessionsBulkDeleted) (tea.Model, tea.Cm
 		m.teardownHookNote = strings.Join(hookNotes, "; ")
 		m.teardownHookNoteGeneration++
 		teardownGeneration := m.teardownHookNoteGeneration
-		cmds = append(cmds, tea.Tick(m.settings.Undo, func(t time.Time) tea.Msg { return teardownHookNoteExpired(teardownGeneration) }))
+		cmds = append(cmds, tea.Tick(m.settings.Undo, func(_ time.Time) tea.Msg { return teardownHookNoteExpired(teardownGeneration) }))
 	}
 	// R131's destructive branch: the batch has now committed, so the
 	// group row settings routed here goes too -- only when every member's
@@ -3537,7 +3527,7 @@ func (m Model) onSessionsBulkDeleted(msg sessionsBulkDeleted) (tea.Model, tea.Cm
 	m.batchDeleteUndoSessionIDs = succeeded
 	m.batchDeleteUndoGeneration++
 	generation := m.batchDeleteUndoGeneration
-	cmds = append(cmds, tea.Tick(m.settings.DeleteGrace, func(t time.Time) tea.Msg { return batchDeleteGraceExpired(generation) }))
+	cmds = append(cmds, tea.Tick(m.settings.DeleteGrace, func(_ time.Time) tea.Msg { return batchDeleteGraceExpired(generation) }))
 	return m, tea.Batch(cmds...)
 }
 
@@ -3581,7 +3571,7 @@ func (m Model) onSessionsBulkRestored(msg sessionsBulkRestored) (tea.Model, tea.
 	return m, m.loadSessions
 }
 
-func (m Model) onUiStatePersisted(msg uiStatePersisted) (tea.Model, tea.Cmd) {
+func (m Model) onUIStatePersisted(msg uiStatePersisted) (tea.Model, tea.Cmd) {
 	// A failed write to ui_state is not load-bearing (SPEC §11.2): the
 	// pin/width already changed in memory and keeps rendering; only the
 	// error note surfaces so a persistent failure is still visible.
@@ -3814,7 +3804,7 @@ func (m Model) onEnvEdited(msg envEdited) (tea.Model, tea.Cmd) {
 	return m, m.loadSessions
 }
 
-func (m Model) onReconcileTick(msg reconcileTick) (tea.Model, tea.Cmd) {
+func (m Model) onReconcileTick(_ reconcileTick) (tea.Model, tea.Cmd) {
 	loadAfterReconcile := m.loadSessions
 	if m.reconcile != nil {
 		loadAfterReconcile = func() tea.Msg {
@@ -3827,7 +3817,7 @@ func (m Model) onReconcileTick(msg reconcileTick) (tea.Model, tea.Cmd) {
 	return m, tea.Batch(loadAfterReconcile, tea.Tick(m.settings.Reconcile, func(t time.Time) tea.Msg { return reconcileTick(t) }))
 }
 
-func (m Model) onPreviewTick(msg previewTick) (tea.Model, tea.Cmd) {
+func (m Model) onPreviewTick(_ previewTick) (tea.Model, tea.Cmd) {
 	// The capture engine (task 017, SPEC requirements 21, 22) samples the
 	// selected row's live pane once per tick; rendering it (crop, geometry
 	// line, placeholders) is tasks 018-021, so DECK_PREVIEW_MS's cadence is
@@ -3967,7 +3957,7 @@ func (m Model) onPreviewCaptured(msg previewCaptured) (tea.Model, tea.Cmd) {
 	return m.captureAutoEnter(msg)
 }
 
-func (m Model) onAnimationTick(msg animationTick) (tea.Model, tea.Cmd) {
+func (m Model) onAnimationTick(_ animationTick) (tea.Model, tea.Cmd) {
 	if !m.settings.Animation {
 		return m, nil
 	}
@@ -4244,6 +4234,7 @@ func (m Model) loadDetailDroppedHook(sessionID string) tea.Cmd {
 	}
 }
 
+// View implements tea.Model: it renders the current screen.
 func (m Model) View() string {
 	if m.lostAttach {
 		return m.lostAttachView()
@@ -7518,8 +7509,8 @@ func (m Model) bulkDeleteScrollByPage(current, dir int) int {
 	if next < 0 {
 		next = 0
 	}
-	if max := m.bulkDeleteMaxScroll(); next > max {
-		next = max
+	if maxScroll := m.bulkDeleteMaxScroll(); next > maxScroll {
+		next = maxScroll
 	}
 	return next
 }
@@ -7644,8 +7635,8 @@ func (m Model) bulkDeleteConfirmView() string {
 		if scroll < 0 {
 			scroll = 0
 		}
-		if max := len(list) - budget; scroll > max {
-			scroll = max
+		if maxScroll := len(list) - budget; scroll > maxScroll {
+			scroll = maxScroll
 		}
 		visible = list[scroll : scroll+budget]
 	}

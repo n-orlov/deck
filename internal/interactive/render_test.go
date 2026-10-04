@@ -168,7 +168,7 @@ func TestSessionRendersAreCoalescedAgainstAKnownByteArrivalPattern(t *testing.T)
 		renderCoalesceInterval = interval
 		defer func() { renderCoalesceInterval = original }()
 
-		session, err := Start(ctx, client, "s0", 40, 10, func(ctx context.Context) ([]byte, error) {
+		session, err := Start(ctx, client, "s0", 40, 10, func(_ context.Context) ([]byte, error) {
 			return rawCapturePane(t, socket, "s0"), nil
 		})
 		if err != nil {

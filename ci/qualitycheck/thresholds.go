@@ -30,26 +30,25 @@ import (
 func resolveBaseRef(repoRoot string) (string, error) {
 	mergeBaseCmd := exec.Command("git", "merge-base", "HEAD", "origin/main")
 	mergeBaseCmd.Dir = repoRoot
-	if out, err := mergeBaseCmd.Output(); err == nil {
+	out, mergeBaseErr := mergeBaseCmd.Output()
+	if mergeBaseErr == nil {
 		return strings.TrimSpace(string(out)), nil
-	} else {
-		mergeBaseErr := err
-
-		// Shallow clone (or no origin/main reachable): R187's named
-		// fallback.
-		fallbackCmd := exec.Command("git", "rev-parse", "HEAD~1")
-		fallbackCmd.Dir = repoRoot
-		out, fallbackErr := fallbackCmd.Output()
-		if fallbackErr == nil {
-			return strings.TrimSpace(string(out)), nil
-		}
-
-		return "", fmt.Errorf(
-			"thresholds loosening test: could not resolve a base ref: "+
-				"git merge-base HEAD origin/main failed (%v), and the "+
-				"shallow-clone fallback git rev-parse HEAD~1 also failed (%v)",
-			mergeBaseErr, fallbackErr)
 	}
+
+	// Shallow clone (or no origin/main reachable): R187's named
+	// fallback.
+	fallbackCmd := exec.Command("git", "rev-parse", "HEAD~1")
+	fallbackCmd.Dir = repoRoot
+	out, fallbackErr := fallbackCmd.Output()
+	if fallbackErr == nil {
+		return strings.TrimSpace(string(out)), nil
+	}
+
+	return "", fmt.Errorf(
+		"thresholds loosening test: could not resolve a base ref: "+
+			"git merge-base HEAD origin/main failed (%v), and the "+
+			"shallow-clone fallback git rev-parse HEAD~1 also failed (%v)",
+		mergeBaseErr, fallbackErr)
 }
 
 // loadBaseConfig resolves the base ref (resolveBaseRef) and reads

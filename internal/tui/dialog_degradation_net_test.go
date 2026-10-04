@@ -67,7 +67,7 @@ func dialogDegradationCases() []dialogDegradationCase {
 			plain:  func(m Model) string { return m.createBody() },
 			styled: func(m Model) string { return m.styledCreateBody() },
 			mutations: []dialogDegradationMutation{
-				{"initial state", func(m *Model) {}},
+				{"initial state", func(_ *Model) {}},
 				{"with a validation error", func(m *Model) { m.createError = "working directory is required" }},
 			},
 		},
@@ -77,7 +77,7 @@ func dialogDegradationCases() []dialogDegradationCase {
 			plain:  func(m Model) string { return m.envBody() },
 			styled: func(m Model) string { return m.styledEnvBody() },
 			mutations: []dialogDegradationMutation{
-				{"initial state", func(m *Model) {}},
+				{"initial state", func(_ *Model) {}},
 				{"with a failure note", func(m *Model) { m.envNote = "Cannot edit environment: boom" }},
 			},
 		},
@@ -87,7 +87,7 @@ func dialogDegradationCases() []dialogDegradationCase {
 			plain:  func(m Model) string { return m.bulkDeleteConfirmBody() },
 			styled: func(m Model) string { return m.styledBulkDeleteConfirmBody() },
 			mutations: []dialogDegradationMutation{
-				{"initial state", func(m *Model) {}},
+				{"initial state", func(_ *Model) {}},
 				{"with a failure note", func(m *Model) { m.deleteNote = "Cannot delete marked-01: boom" }},
 			},
 		},
@@ -97,7 +97,7 @@ func dialogDegradationCases() []dialogDegradationCase {
 			plain:  func(m Model) string { return m.deleteConfirmBody() },
 			styled: func(m Model) string { return m.styledDeleteConfirmBody() },
 			mutations: []dialogDegradationMutation{
-				{"keep chosen", func(m *Model) {}},
+				{"keep chosen", func(_ *Model) {}},
 				{"purge chosen, path resolved", func(m *Model) {
 					m.deletePurgeValue = "purge"
 					m.deletePurgeOK = true
@@ -112,7 +112,7 @@ func dialogDegradationCases() []dialogDegradationCase {
 			plain:  func(m Model) string { return m.archiveConfirmBody() },
 			styled: func(m Model) string { return m.styledArchiveConfirmBody() },
 			mutations: []dialogDegradationMutation{
-				{"live row", func(m *Model) {}},
+				{"live row", func(_ *Model) {}},
 				{"with a failure note", func(m *Model) { m.archiveNote = "Cannot archive alpha: boom" }},
 			},
 		},
@@ -122,7 +122,7 @@ func dialogDegradationCases() []dialogDegradationCase {
 			plain:  func(m Model) string { return m.profileSwitchBody() },
 			styled: func(m Model) string { return m.styledProfileSwitchBody() },
 			mutations: []dialogDegradationMutation{
-				{"initial candidate", func(m *Model) {}},
+				{"initial candidate", func(_ *Model) {}},
 				{"with a failure note", func(m *Model) { m.profileSwitchNote = "Cannot change permission profile: boom" }},
 			},
 		},
@@ -132,7 +132,7 @@ func dialogDegradationCases() []dialogDegradationCase {
 			plain:  func(m Model) string { return m.pinBody() },
 			styled: func(m Model) string { return m.styledPinBody() },
 			mutations: []dialogDegradationMutation{
-				{"initial candidate", func(m *Model) {}},
+				{"initial candidate", func(_ *Model) {}},
 				{"with a failure note", func(m *Model) { m.pinNote = "Cannot change resume mode: boom" }},
 			},
 		},
@@ -142,7 +142,7 @@ func dialogDegradationCases() []dialogDegradationCase {
 			plain:  func(m Model) string { return m.restartChoiceBody() },
 			styled: func(m Model) string { return m.styledRestartChoiceBody() },
 			mutations: []dialogDegradationMutation{
-				{"initial candidate", func(m *Model) {}},
+				{"initial candidate", func(_ *Model) {}},
 				{"with a failure note", func(m *Model) { m.restartChoiceNote = "injecting the environment is unavailable" }},
 			},
 		},
@@ -152,7 +152,7 @@ func dialogDegradationCases() []dialogDegradationCase {
 			plain:  func(m Model) string { return m.renameBody() },
 			styled: func(m Model) string { return m.styledRenameBody() },
 			mutations: []dialogDegradationMutation{
-				{"prefilled value", func(m *Model) {}},
+				{"prefilled value", func(_ *Model) {}},
 				{"with a failure note", func(m *Model) { m.renameNote = `session name "b" already exists` }},
 			},
 		},
@@ -162,7 +162,7 @@ func dialogDegradationCases() []dialogDegradationCase {
 			plain:  func(m Model) string { return m.eventLogBody() },
 			styled: func(m Model) string { return m.styledEventLogBody() },
 			mutations: []dialogDegradationMutation{
-				{"populated", func(m *Model) {}},
+				{"populated", func(_ *Model) {}},
 				{"read error", func(m *Model) { m.eventLogErr = errRenameCollisionForTest }},
 			},
 		},

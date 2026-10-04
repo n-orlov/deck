@@ -106,7 +106,7 @@ func canvasForegroundFrames() []canvasForegroundFrame {
 			// The empty state: "No sessions yet. Press n to create a
 			// session." is composed by sidebarEntries as plain text too.
 			name: "empty store",
-			build: func(t *testing.T, bt *theme.Theme) Model {
+			build: func(_ *testing.T, bt *theme.Theme) Model {
 				m := New(nil, config.Settings{Color: true, Theme: bt, Socket: "deck"}, "")
 				m.width, m.height = 100, 30
 				return m
@@ -134,7 +134,7 @@ func canvasForegroundFrames() []canvasForegroundFrame {
 			// canvasWrapText, a third composition path (unpadded banner
 			// lines outside any bordered panel).
 			name: "filter in force",
-			build: func(t *testing.T, bt *theme.Theme) Model {
+			build: func(_ *testing.T, bt *theme.Theme) Model {
 				m := New(nil, config.Settings{Color: true, Theme: bt, Socket: "deck"}, "")
 				m.width, m.height = 110, 32
 				m.sessions = canvasForegroundSessions()[:2]
@@ -147,7 +147,7 @@ func canvasForegroundFrames() []canvasForegroundFrame {
 			// The settings takeover: the six settingsLeft*/settingsRight*
 			// builders plus its own footer line.
 			name: "settings takeover",
-			build: func(t *testing.T, bt *theme.Theme) Model {
+			build: func(_ *testing.T, bt *theme.Theme) Model {
 				m := New(nil, config.Settings{Color: true, Theme: bt, Socket: "deck"}, "")
 				m.width, m.height = 140, 32
 				m.settingsOpen = true
@@ -161,7 +161,7 @@ func canvasForegroundFrames() []canvasForegroundFrame {
 			// help_style.go's per-entry keycap styling, and (the reason it is
 			// here) every body line it does NOT style.
 			name: "help overlay",
-			build: func(t *testing.T, bt *theme.Theme) Model {
+			build: func(_ *testing.T, bt *theme.Theme) Model {
 				m := New(nil, config.Settings{Color: true, Theme: bt, Socket: "deck"}, "")
 				m.width, m.height = 110, 40
 				m.help = true
@@ -173,7 +173,7 @@ func canvasForegroundFrames() []canvasForegroundFrame {
 			// focused row over theme.Selection via bgColorToken, a path that
 			// does not go through canvasBackground at all.
 			name: "create dialog",
-			build: func(t *testing.T, bt *theme.Theme) Model {
+			build: func(_ *testing.T, bt *theme.Theme) Model {
 				m := New(nil, config.Settings{Color: true, Theme: bt, Socket: "deck"}, "")
 				m.width, m.height = 110, 40
 				m.creating = true
@@ -183,7 +183,7 @@ func canvasForegroundFrames() []canvasForegroundFrame {
 		{
 			// The `i` detail dialog.
 			name: "detail dialog",
-			build: func(t *testing.T, bt *theme.Theme) Model {
+			build: func(_ *testing.T, bt *theme.Theme) Model {
 				m := New(nil, config.Settings{Color: true, Theme: bt, Socket: "deck"}, "")
 				m.width, m.height = 110, 40
 				m.sessions = canvasForegroundSessions()
@@ -196,7 +196,7 @@ func canvasForegroundFrames() []canvasForegroundFrame {
 			// The `t` theme picker, which renders live OVER the real sidebar
 			// and preview (theme_picker.go) through canvasWrapText.
 			name: "theme picker over the live list",
-			build: func(t *testing.T, bt *theme.Theme) Model {
+			build: func(_ *testing.T, bt *theme.Theme) Model {
 				m := New(nil, config.Settings{Color: true, Theme: bt, Socket: "deck"}, "")
 				m.width, m.height = 110, 32
 				m.sessions = canvasForegroundSessions()
@@ -208,7 +208,7 @@ func canvasForegroundFrames() []canvasForegroundFrame {
 			// SPEC requirement 14's below-minimum frame: a different footer
 			// line (belowMinimumNotice) and a truncateToWidth path of its own.
 			name: "below deck's supported minimum",
-			build: func(t *testing.T, bt *theme.Theme) Model {
+			build: func(_ *testing.T, bt *theme.Theme) Model {
 				m := New(nil, config.Settings{Color: true, Theme: bt, Socket: "deck"}, "")
 				m.width, m.height = 60, 18
 				m.sessions = canvasForegroundSessions()
@@ -221,7 +221,7 @@ func canvasForegroundFrames() []canvasForegroundFrame {
 			// go through collapsedStripContentLine -- the one content-line
 			// builder with no trailing pad column.
 			name: "collapsed sidebar strip",
-			build: func(t *testing.T, bt *theme.Theme) Model {
+			build: func(_ *testing.T, bt *theme.Theme) Model {
 				m := New(nil, config.Settings{Color: true, Theme: bt, Socket: "deck"}, "")
 				m.width, m.height = 110, 30
 				m.sessions = canvasForegroundSessions()
@@ -234,7 +234,7 @@ func canvasForegroundFrames() []canvasForegroundFrame {
 			// mainView's startup banner (the tmux-unavailable note), another
 			// canvasWrapText caller drawn outside both bordered panels.
 			name: "startup banner",
-			build: func(t *testing.T, bt *theme.Theme) Model {
+			build: func(_ *testing.T, bt *theme.Theme) Model {
 				m := New(nil, config.Settings{Color: true, Theme: bt, Socket: "deck"}, "tmux 2.9 is older than deck's supported minimum")
 				m.width, m.height = 110, 30
 				return m

@@ -106,7 +106,7 @@ func TestSessionResizeIntoFreshGridDoesNotCorrupt(t *testing.T) {
 	client := tmux.Client{Socket: socket, Timeout: 5 * time.Second}
 	ctx := context.Background()
 
-	session, err := Start(ctx, client, "s0", 40, 10, func(ctx context.Context) ([]byte, error) {
+	session, err := Start(ctx, client, "s0", 40, 10, func(_ context.Context) ([]byte, error) {
 		return rawCapturePane(t, socket, "s0"), nil
 	})
 	if err != nil {
@@ -123,7 +123,7 @@ func TestSessionResizeIntoFreshGridDoesNotCorrupt(t *testing.T) {
 		t.Fatalf("write truncated control sequence into session grid: %v", err)
 	}
 
-	if err := session.Resize(ctx, 40, 10, func(ctx context.Context) ([]byte, error) {
+	if err := session.Resize(ctx, 40, 10, func(_ context.Context) ([]byte, error) {
 		return []byte("HELLO"), nil
 	}); err != nil {
 		t.Fatalf("Resize: %v", err)
@@ -144,7 +144,7 @@ func TestSessionResizeReplacesGridInstance(t *testing.T) {
 	client := tmux.Client{Socket: socket, Timeout: 5 * time.Second}
 	ctx := context.Background()
 
-	session, err := Start(ctx, client, "s0", 40, 10, func(ctx context.Context) ([]byte, error) {
+	session, err := Start(ctx, client, "s0", 40, 10, func(_ context.Context) ([]byte, error) {
 		return rawCapturePane(t, socket, "s0"), nil
 	})
 	if err != nil {
@@ -153,7 +153,7 @@ func TestSessionResizeReplacesGridInstance(t *testing.T) {
 	defer session.Close()
 
 	before := session.Grid()
-	if err := session.Resize(ctx, 50, 12, func(ctx context.Context) ([]byte, error) {
+	if err := session.Resize(ctx, 50, 12, func(_ context.Context) ([]byte, error) {
 		return []byte("RESIZED"), nil
 	}); err != nil {
 		t.Fatalf("Resize: %v", err)
@@ -204,7 +204,7 @@ func TestSessionResizeDuringLiveDrainIsRaceFree(t *testing.T) {
 	client := tmux.Client{Socket: socket, Timeout: 5 * time.Second}
 	ctx := context.Background()
 
-	session, err := Start(ctx, client, "s0", 40, 10, func(ctx context.Context) ([]byte, error) {
+	session, err := Start(ctx, client, "s0", 40, 10, func(_ context.Context) ([]byte, error) {
 		return rawCapturePane(t, socket, "s0"), nil
 	})
 	if err != nil {
@@ -242,7 +242,7 @@ func TestSessionResizeDuringLiveDrainIsRaceFree(t *testing.T) {
 	}()
 
 	for i := 0; i < 20; i++ {
-		if err := session.Resize(ctx, 40, 10, func(ctx context.Context) ([]byte, error) {
+		if err := session.Resize(ctx, 40, 10, func(_ context.Context) ([]byte, error) {
 			return rawCapturePane(t, socket, "s0"), nil
 		}); err != nil {
 			t.Fatalf("Resize #%d: %v", i, err)

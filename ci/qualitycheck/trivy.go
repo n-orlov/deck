@@ -138,7 +138,7 @@ func scanTargetHasFiles(dir string) error {
 		return fmt.Errorf("scan target %q is not a directory", dir)
 	}
 	files := 0
-	_ = filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
+	_ = filepath.WalkDir(dir, func(_ string, d fs.DirEntry, err error) error {
 		if err == nil && d.Type().IsRegular() {
 			files++
 		}

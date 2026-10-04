@@ -44,7 +44,7 @@ func TestStatusRecoveryStoppedFromHookSurvivesForcedSelfHeal(t *testing.T) {
 	suite := godog.TestSuite{
 		ScenarioInitializer: func(sc *godog.ScenarioContext) {
 			initializeScenario(sc)
-			sc.StepContext().After(func(ctx context.Context, step *godog.Step, status godog.StepResultStatus, err error) (context.Context, error) {
+			sc.StepContext().After(func(ctx context.Context, step *godog.Step, _ godog.StepResultStatus, err error) (context.Context, error) {
 				if strings.Contains(step.Text, sessionEndFireStepText) {
 					// Deliberate: this is the forcing mechanism itself, not a
 					// retry or a widened deadline on a product assertion --

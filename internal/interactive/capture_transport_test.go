@@ -43,7 +43,7 @@ func capturePaneID(t *testing.T, socket, target string) string {
 func startCaptureSession(t *testing.T, client tmux.Client, socket, target string, width, height int) *Session {
 	t.Helper()
 	ctx := context.Background()
-	session, err := StartWithTransport(ctx, client, target, width, height, func(ctx context.Context) ([]byte, error) {
+	session, err := StartWithTransport(ctx, client, target, width, height, func(_ context.Context) ([]byte, error) {
 		return rawCapturePane(t, socket, target), nil
 	}, TransportCapture)
 	if err != nil {
@@ -190,7 +190,7 @@ func TestStartStillDefaultsToTransportPipe(t *testing.T) {
 	client := tmux.Client{Socket: socket, Timeout: 5 * time.Second}
 	ctx := context.Background()
 
-	session, err := Start(ctx, client, "s0", 40, 10, func(ctx context.Context) ([]byte, error) {
+	session, err := Start(ctx, client, "s0", 40, 10, func(_ context.Context) ([]byte, error) {
 		return rawCapturePane(t, socket, "s0"), nil
 	})
 	if err != nil {

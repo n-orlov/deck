@@ -19,6 +19,8 @@ import (
 	"github.com/n-orlov/deck/internal/theme"
 )
 
+// Defaults for the tmux socket and the reconcile, preview, stale, undo and
+// delete-grace timings used when config.toml and the environment say nothing.
 const (
 	DefaultSocket        = "deck"
 	DefaultReconcileMS   = 500
@@ -732,6 +734,9 @@ type Clock struct {
 	ticks      uint64
 }
 
+// NewClock builds the process clock from DECK_CLOCK (wall, RFC3339; empty
+// means the real clock) and DECK_CLOCK_STEP (step, a positive Go duration;
+// empty means no per-call advance).
 func NewClock(wall, step string) (*Clock, error) {
 	clock := &Clock{start: time.Now()}
 	if step != "" {
@@ -752,6 +757,9 @@ func NewClock(wall, step string) (*Clock, error) {
 	return clock, nil
 }
 
+// Now returns the current time: the real time for an unfrozen clock,
+// otherwise the frozen time (the shared clock file when one is configured,
+// else the base plus the recorded ticks times the step).
 func (c *Clock) Now() time.Time {
 	if !c.frozen {
 		return time.Now()
@@ -840,10 +848,14 @@ type IDGenerator struct {
 	counter uint64
 }
 
+// NewIDGenerator returns a UUID generator: random when seed is empty,
+// deterministic from seed otherwise.
 func NewIDGenerator(seed string) *IDGenerator {
 	return &IDGenerator{seed: seed, reader: rand.Reader}
 }
 
+// UUID returns the next identifier; with a seed the sequence is
+// reproducible, without one each call reads crypto/rand.
 func (g *IDGenerator) UUID() (string, error) {
 	g.mu.Lock()
 	defer g.mu.Unlock()

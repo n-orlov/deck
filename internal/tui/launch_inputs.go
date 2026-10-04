@@ -339,7 +339,7 @@ func (m Model) updateLaunchInputsDialog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 // flip. It is only ever reached while the login_shell selection is focused:
 // on a text field left, right and space are the shared line editor's
 // (dialogFields.TextFocused), so Cycle applies to selection fields only.
-func (m *Model) cycleLaunchInputsField(delta int) {
+func (m *Model) cycleLaunchInputsField(_ int) {
 	if m.launchInputsField == launchInputsFieldLoginShell {
 		m.launchInputsLoginShell = !m.launchInputsLoginShell
 	}

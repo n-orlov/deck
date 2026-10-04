@@ -112,10 +112,10 @@ func scoreFunctions(fns []scannedFunc, modulePath, moduleRoot string, p *profile
 // naming each by file:line, cc, coverage and CRAP (PRD R187's "the
 // report names the offender"), and reports the exit code the caller
 // should use: 0 if nothing is over max, 1 otherwise.
-func formatReport(scores []funcScore, max float64) (report string, exitCode int) {
+func formatReport(scores []funcScore, ceiling float64) (report string, exitCode int) {
 	var offenders []funcScore
 	for _, s := range scores {
-		if s.CRAP > max {
+		if s.CRAP > ceiling {
 			offenders = append(offenders, s)
 		}
 	}
@@ -127,7 +127,7 @@ func formatReport(scores []funcScore, max float64) (report string, exitCode int)
 	})
 
 	var b strings.Builder
-	fmt.Fprintf(&b, "crapgate: %d function(s) scanned, ceiling %.2f\n", len(scores), max)
+	fmt.Fprintf(&b, "crapgate: %d function(s) scanned, ceiling %.2f\n", len(scores), ceiling)
 	if len(offenders) == 0 {
 		fmt.Fprintf(&b, "crapgate: all functions at or under the CRAP ceiling\n")
 		return b.String(), 0

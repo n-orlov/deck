@@ -48,7 +48,7 @@ func TestEventLogStyledBodyMatchesPlainBodyOnceStripped(t *testing.T) {
 		name string
 		m    func(t *testing.T) Model
 	}{
-		{"no store", func(t *testing.T) Model {
+		{"no store", func(_ *testing.T) Model {
 			m := New(nil, config.Settings{Color: true}, "")
 			m.width, m.height = 100, 40
 			m.eventLogOpen = true

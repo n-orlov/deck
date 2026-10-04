@@ -88,7 +88,7 @@ func TestCreateModalTildeCWDValidatesAndSubmitsResolvedPath(t *testing.T) {
 	}
 
 	var gotCWD string
-	before.create = func(ctx context.Context, in service.ShellCreateInput) (store.Session, error) {
+	before.create = func(_ context.Context, in service.ShellCreateInput) (store.Session, error) {
 		gotCWD = in.CWD
 		return store.Session{}, nil
 	}

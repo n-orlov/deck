@@ -308,7 +308,7 @@ func (m Model) resolveSidebarPress(hit hitResult, onRow func(Model, hitResult) (
 // reachable only via the key or the footer's own "a attach" hint, never
 // via a mouse gesture -- unlike interactive entry, full attach hands over
 // the WHOLE terminal and Ctrl+Q cannot undo it.
-func (m Model) clickSidebarRow(index int, e tea.MouseMsg) (tea.Model, tea.Cmd) {
+func (m Model) clickSidebarRow(index int, _ tea.MouseMsg) (tea.Model, tea.Cmd) {
 	m.selected = rowCursor(index)
 	return m.enterInteractive()
 }

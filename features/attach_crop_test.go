@@ -117,7 +117,7 @@ func privateWindowIsAsWideAsClientTerminal(ctx context.Context, name, clientName
 
 // privateWindowTarget resolves a session's name to the tmux window target
 // deck gives it, the same "deck_" + slug shape privateWindowGeometry uses.
-func privateWindowTarget(ctx context.Context, h *ScenarioHarness, name string) (string, error) {
+func privateWindowTarget(_ context.Context, h *ScenarioHarness, name string) (string, error) {
 	slug, err := sessionSlugByName(h, name)
 	if err != nil {
 		return "", err

@@ -40,7 +40,7 @@ func TestRenameStyledBodyMatchesPlainBodyOnceStripped(t *testing.T) {
 		name string
 		mut  func(m *Model)
 	}{
-		{"prefilled value", func(m *Model) {}},
+		{"prefilled value", func(_ *Model) {}},
 		{"typed value", func(m *Model) { m.renameEdit = lineedit.New("beta") }},
 		{"with a failure note", func(m *Model) { m.renameNote = `session name "b" already exists` }},
 	} {

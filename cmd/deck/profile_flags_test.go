@@ -46,7 +46,7 @@ func assertEmptyDirs(t *testing.T, env []string) {
 		}
 		root := parts[1]
 		var found []string
-		err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+		err := filepath.WalkDir(root, func(path string, _ os.DirEntry, err error) error {
 			if err != nil {
 				return err
 			}

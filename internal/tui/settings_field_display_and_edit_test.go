@@ -239,8 +239,8 @@ func TestSettingsPlusMinusAdjustsBoundedInteger(t *testing.T) {
 // shapes: a documented upper bound renders "min-max", an unbounded-above
 // field renders "min N".
 func TestSettingsIntegerBoundsTextFormats(t *testing.T) {
-	max := 50
-	bounded := config.Field{Kind: config.KindInteger, IntBounds: config.Bounds{Min: 0, Max: &max}}
+	limit := 50
+	bounded := config.Field{Kind: config.KindInteger, IntBounds: config.Bounds{Min: 0, Max: &limit}}
 	if got := settingsIntegerBoundsText(bounded); got != "0-50" {
 		t.Errorf("settingsIntegerBoundsText(bounded) = %q, want %q", got, "0-50")
 	}

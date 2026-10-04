@@ -33,11 +33,11 @@ import (
 
 func main() {
 	profile := flag.String("profile", "", "path to a go coverprofile (required)")
-	max := flag.Float64("max", 0, "CRAP ceiling; any function scoring over this fails (required)")
+	ceiling := flag.Float64("max", 0, "CRAP ceiling; any function scoring over this fails (required)")
 	filter := flag.String("filter", "", "optional <pkg-dir> or <pkg-dir>:<file,...> to restrict scanning")
 	flag.Parse()
 
-	report, exitCode, err := run(*profile, *max, *filter)
+	report, exitCode, err := run(*profile, *ceiling, *filter)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "crapgate:", err)
 		os.Exit(exitCode)
@@ -49,7 +49,7 @@ func main() {
 // run is main's testable core: it never touches flag/os.Exit directly, so
 // every exit-code path below is exercised by ordinary table tests instead
 // of a subprocess.
-func run(profilePath string, max float64, filter string) (report string, exitCode int, err error) {
+func run(profilePath string, ceiling float64, filter string) (report string, exitCode int, err error) {
 	if profilePath == "" {
 		return "", 2, fmt.Errorf("-profile is required")
 	}
@@ -78,6 +78,6 @@ func run(profilePath string, max float64, filter string) (report string, exitCod
 	}
 
 	scores := scoreFunctions(fns, modulePath, moduleRoot, profile)
-	report, exitCode = formatReport(scores, max)
+	report, exitCode = formatReport(scores, ceiling)
 	return report, exitCode, nil
 }

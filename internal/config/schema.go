@@ -11,6 +11,7 @@ package config
 // (cycled), list-of-strings, and link (opens the owning dialog)."
 type FieldKind string
 
+// The FieldKind values, one per kind §11.5 enumerates.
 const (
 	KindToggle        FieldKind = "toggle"
 	KindInteger       FieldKind = "integer"
@@ -40,15 +41,15 @@ const (
 type Scope string
 
 const (
-	// ScopeGlobal: the value lives only in config.toml; there is no
+	// ScopeGlobal marks a field whose value lives only in config.toml; there is no
 	// per-session override, and nothing about applying it depends on a
 	// session's lifecycle. A save takes effect in the running client
 	// (see the per-field comment for the exact consumer).
 	ScopeGlobal Scope = "global"
-	// ScopeSessionOverride: config.toml supplies a default that an
+	// ScopeSessionOverride marks a field whose config.toml value supplies a default that an
 	// individual session's own state can override (§6.1).
 	ScopeSessionOverride Scope = "per-session override"
-	// ScopeRestartToApply: the edit is written immediately, but the
+	// ScopeRestartToApply marks a field whose edit is written immediately, but the
 	// consumer that would need to see it either only reads it once at
 	// process start (a captured closure, a tea.ProgramOption applied
 	// before Run) or does not exist yet in this phase, so it has no
@@ -112,7 +113,7 @@ func (f Field) FullKey() string {
 
 // intBound is a small helper for building a Bounds with an upper limit,
 // since Go has no literal syntax for "pointer to this int constant".
-func intBound(max int) *int { return &max }
+func intBound(upper int) *int { return &upper }
 
 // Schema is the ordered, canonical declaration of every flat config.toml
 // key deck supports, per SPEC.md §6.5's table. [notify] is deliberately

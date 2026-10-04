@@ -43,9 +43,9 @@ func TestStoredScrollOffsetHealedAcrossViewAndNextScroll(t *testing.T) {
 	}
 	defer m.exitInteractive()
 
-	real := m.interactiveGrid.Grid().ScrollbackLen()
-	if real <= 1 || real >= interactive.ScrollbackMaxLines {
-		t.Fatalf("bad fixture history %d", real)
+	realLen := m.interactiveGrid.Grid().ScrollbackLen()
+	if realLen <= 1 || realLen >= interactive.ScrollbackMaxLines {
+		t.Fatalf("bad fixture history %d", realLen)
 	}
 
 	// Scroll far past the real scrollback length -- the bound
@@ -57,12 +57,12 @@ func TestStoredScrollOffsetHealedAcrossViewAndNextScroll(t *testing.T) {
 	// The model scrollInteractiveByLines just handed back -- the one the
 	// NEXT input event actually starts from -- must already carry the
 	// clamped, real offset, not the raw arithmetic bound value.
-	if m.interactiveScrollOffset() != real {
-		t.Fatalf("after scrollInteractiveByLines, stored offset=%d, want the clamped used offset %d (the grid's own real scrollback length) -- the heal must land on the model returned for the next input event, not merely a render-local copy", m.interactiveScrollOffset(), real)
+	if m.interactiveScrollOffset() != realLen {
+		t.Fatalf("after scrollInteractiveByLines, stored offset=%d, want the clamped used offset %d (the grid's own real scrollback length) -- the heal must land on the model returned for the next input event, not merely a render-local copy", m.interactiveScrollOffset(), realLen)
 	}
 
 	footer := footerLineOf(m.View())
-	if !strings.Contains(footer, fmt.Sprint(real)) {
+	if !strings.Contains(footer, fmt.Sprint(realLen)) {
 		t.Fatalf("cue itself wrong: %s", footer)
 	}
 
@@ -72,8 +72,8 @@ func TestStoredScrollOffsetHealedAcrossViewAndNextScroll(t *testing.T) {
 	next, _ = m.scrollInteractiveByLines(-1)
 	m = next.(Model)
 	footer = footerLineOf(m.View())
-	if strings.Contains(footer, "Top of scrollback") || !strings.Contains(footer, fmt.Sprintf("Scrolled back %d lines", real-1)) {
-		t.Fatalf("one line towards live did not leave top: stored=%d footer=%q; want %d", m.interactiveScrollOffset(), footer, real-1)
+	if strings.Contains(footer, "Top of scrollback") || !strings.Contains(footer, fmt.Sprintf("Scrolled back %d lines", realLen-1)) {
+		t.Fatalf("one line towards live did not leave top: stored=%d footer=%q; want %d", m.interactiveScrollOffset(), footer, realLen-1)
 	}
 }
 

@@ -1283,8 +1283,8 @@ func (m Model) dialogScrollBy(current int, body string, dir, step int) int {
 	if next < 0 {
 		next = 0
 	}
-	if max := m.dialogMaxScroll(body); next > max {
-		next = max
+	if maxScroll := m.dialogMaxScroll(body); next > maxScroll {
+		next = maxScroll
 	}
 	return next
 }
@@ -1418,12 +1418,12 @@ func (m Model) framedDialogScrollable(body string, scroll int) string {
 	}
 	visible := lines
 	if len(lines) > budget {
-		max := len(lines) - budget
+		overflow := len(lines) - budget
 		if scroll < 0 {
 			scroll = 0
 		}
-		if scroll > max {
-			scroll = max
+		if scroll > overflow {
+			scroll = overflow
 		}
 		visible = lines[scroll : scroll+budget]
 	}

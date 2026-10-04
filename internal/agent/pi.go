@@ -29,8 +29,10 @@ type Pi struct{}
 // NewPi returns the Pi adapter.
 func NewPi() Pi { return Pi{} }
 
+// Kind returns the registry name of the Pi adapter.
 func (Pi) Kind() string { return "pi" }
 
+// Capabilities declares Pi's profiles and conversation-id behaviour.
 func (Pi) Capabilities() Caps {
 	return Caps{
 		Profiles:              piProfiles,
@@ -41,6 +43,8 @@ func (Pi) Capabilities() Caps {
 	}
 }
 
+// Launch returns the argv that starts Pi under in.Profile, followed by
+// in.ExtraArgs.
 func (p Pi) Launch(in LaunchInput) ([]string, error) {
 	if in.ConversationID == "" {
 		return nil, fmt.Errorf("pi: launch requires a caller-assigned conversation id")
@@ -54,6 +58,8 @@ func (p Pi) Launch(in LaunchInput) ([]string, error) {
 	return append(argv, in.ExtraArgs...), nil
 }
 
+// Resume returns the argv that resumes the Pi session named by
+// in.ConversationID under in.Profile, followed by in.ExtraArgs.
 func (p Pi) Resume(in ResumeInput) ([]string, error) {
 	if in.ConversationID == "" {
 		return nil, fmt.Errorf("pi: resume requires a conversation id")

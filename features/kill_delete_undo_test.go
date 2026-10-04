@@ -227,7 +227,7 @@ func transcriptCapturedNoLongerExists(ctx context.Context, label string) error {
 // deliverable). It also remembers the session's durable store id under its
 // display name (h.capturedSessionIDs), because once dd's reap removes the
 // sessions row entirely a later step can no longer look the id up by name.
-func clientSeedsCapturesAndHistoryFileForSession(ctx context.Context, clientName, sessionName string) error {
+func clientSeedsCapturesAndHistoryFileForSession(ctx context.Context, _, sessionName string) error {
 	h, err := assertionHarness(ctx)
 	if err != nil {
 		return err

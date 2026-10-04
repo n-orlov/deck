@@ -24,7 +24,7 @@ func TestPreviewTickCapturesOnlyTheSelectedRow(t *testing.T) {
 		{ID: "s2", Slug: "two", Name: "two", Status: "running"},
 	}
 	model.selected = rowCursor(1)
-	model.previewCapture = func(ctx context.Context, slug string) (tmux.PreviewCapture, error) {
+	model.previewCapture = func(_ context.Context, slug string) (tmux.PreviewCapture, error) {
 		gotSlugs = append(gotSlugs, slug)
 		return tmux.PreviewCapture{Live: true, Bytes: []byte("frame-for-" + slug)}, nil
 	}

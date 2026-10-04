@@ -28,7 +28,7 @@ func TestProfileSwitchPersistsAndStatesRestartToApply(t *testing.T) {
 	updated := store.Session{ID: "s1", Name: "alpha", Agent: "claude", Status: "running", PermissionProfile: "edits"}
 	model := NewWithShellCreatorAttacherKillerResumerAndProfileSwitcher(
 		nil, config.Settings{}, "", nil, nil, nil, nil, nil,
-		func(ctx context.Context, id, profile string) (store.Session, error) {
+		func(_ context.Context, id, profile string) (store.Session, error) {
 			persistedID, persistedProfile = id, profile
 			return updated, nil
 		},
@@ -89,7 +89,7 @@ func TestProfileSwitchEscCancelsWithoutPersisting(t *testing.T) {
 	called := false
 	model := NewWithShellCreatorAttacherKillerResumerAndProfileSwitcher(
 		nil, config.Settings{}, "", nil, nil, nil, nil, nil,
-		func(ctx context.Context, id, profile string) (store.Session, error) {
+		func(_ context.Context, _, _ string) (store.Session, error) {
 			called = true
 			return store.Session{}, nil
 		},
@@ -123,7 +123,7 @@ func TestProfileSwitchToYoloTakesEffectWithNoConfirm(t *testing.T) {
 	called := false
 	model := NewWithShellCreatorAttacherKillerResumerAndProfileSwitcher(
 		nil, config.Settings{AllowYolo: true}, "", nil, nil, nil, nil, nil,
-		func(ctx context.Context, id, profile string) (store.Session, error) {
+		func(_ context.Context, id, profile string) (store.Session, error) {
 			called = true
 			return store.Session{ID: id, PermissionProfile: profile}, nil
 		},
@@ -169,7 +169,7 @@ func TestProfileSwitchAwayFromYoloNeedsNoConfirm(t *testing.T) {
 	called := false
 	model := NewWithShellCreatorAttacherKillerResumerAndProfileSwitcher(
 		nil, config.Settings{AllowYolo: true}, "", nil, nil, nil, nil, nil,
-		func(ctx context.Context, id, profile string) (store.Session, error) {
+		func(_ context.Context, id, profile string) (store.Session, error) {
 			called = true
 			return store.Session{ID: id, PermissionProfile: profile}, nil
 		},
@@ -207,7 +207,7 @@ func TestProfileSwitchAwayFromYoloNeedsNoConfirm(t *testing.T) {
 func TestProfileSwitchYoloAbsentWhenNotAllowed(t *testing.T) {
 	model := NewWithShellCreatorAttacherKillerResumerAndProfileSwitcher(
 		nil, config.Settings{AllowYolo: false}, "", nil, nil, nil, nil, nil,
-		func(ctx context.Context, id, profile string) (store.Session, error) {
+		func(_ context.Context, _, _ string) (store.Session, error) {
 			return store.Session{}, nil
 		},
 	)
@@ -238,7 +238,7 @@ func TestProfileSwitchYoloAbsentWhenNotAllowed(t *testing.T) {
 func TestProfileSwitchNotOfferedForShell(t *testing.T) {
 	model := NewWithShellCreatorAttacherKillerResumerAndProfileSwitcher(
 		nil, config.Settings{}, "", nil, nil, nil, nil, nil,
-		func(ctx context.Context, id, profile string) (store.Session, error) {
+		func(_ context.Context, _, _ string) (store.Session, error) {
 			return store.Session{}, nil
 		},
 	)

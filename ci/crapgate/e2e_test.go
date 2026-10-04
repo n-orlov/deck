@@ -118,10 +118,10 @@ func goEnvWithoutGOFLAGS() []string {
 // runInDir runs crapgate's run() with the process's working directory
 // set to dir for the duration of the call (findModule discovers the
 // module root by walking up from os.Getwd()).
-func runInDir(t *testing.T, dir, profile string, max float64, filter string) (report string, exitCode int, err error) {
+func runInDir(t *testing.T, dir, profile string, ceiling float64, filter string) (report string, exitCode int, err error) {
 	t.Helper()
 	t.Chdir(dir)
-	return run(profile, max, filter)
+	return run(profile, ceiling, filter)
 }
 
 // TestRun_SeededHighCRAPFunctionFailsAndIsNamed proves the central

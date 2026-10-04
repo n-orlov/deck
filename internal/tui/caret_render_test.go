@@ -161,7 +161,7 @@ func caretCases() []caretCase {
 			m.settings.Color = color
 			return left(m, 2)
 		}, "New name:  alp", "h"},
-		{"filter", func(t *testing.T, color bool) Model {
+		{"filter", func(_ *testing.T, color bool) Model {
 			m := caretFilterModel()
 			m.settings.Color = color
 			return left(caretType(m, "alpha"), 2)
@@ -173,7 +173,7 @@ func caretCases() []caretCase {
 			m.width, m.height = 100, 40
 			return left(caretType(m, "abc"), 2)
 		}, "Pre-launch command: a", "b"},
-		{"env editor", func(t *testing.T, color bool) Model {
+		{"env editor", func(_ *testing.T, color bool) Model {
 			m := caretEnvModel()
 			m.settings.Color = color
 			return caretEnvPress(m, "x", "y", "z", "left", "left")
@@ -202,7 +202,7 @@ func caretCases() []caretCase {
 			got, _ := m.Update(key("echo hi"))
 			return left(got.(Model), 2)
 		}, "> echo ", "h"},
-		{"settings search", func(t *testing.T, color bool) Model {
+		{"settings search", func(_ *testing.T, color bool) Model {
 			m := New(nil, config.Settings{}, "")
 			m.settings.Color = color
 			m.width, m.height = 100, 30
@@ -343,7 +343,7 @@ func TestOfferedValueCarriesTheSelectionBackground(t *testing.T) {
 			m.settings.Color = color
 			return m, "alpha"
 		}, "New name:  "},
-		{"env editor", func(t *testing.T, color bool) (Model, string) {
+		{"env editor", func(_ *testing.T, color bool) (Model, string) {
 			m := caretEnvModel()
 			m.settings.Color = color
 			m.width, m.height = 100, 30

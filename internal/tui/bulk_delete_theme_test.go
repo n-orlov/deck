@@ -118,7 +118,7 @@ func TestStyledBulkDeleteConfirmBodyMatchesPlainBodyLineForLine(t *testing.T) {
 // dialog wide, never a short line the terminal would leave ragged.
 func TestBulkDeleteConfirmStaysWithinFrameBudgetAt80x24(t *testing.T) {
 	m := task018BulkDeleteModel(t, 20)
-	if max := m.dialogMaxScroll(m.bulkDeleteConfirmBody()); max == 0 {
+	if maxScroll := m.dialogMaxScroll(m.bulkDeleteConfirmBody()); maxScroll == 0 {
 		t.Fatal("a 20-mark confirm body already fits the frame (maxScroll 0) -- this test needs an overflowing body to be non-vacuous")
 	}
 	view := m.deleteConfirmView()

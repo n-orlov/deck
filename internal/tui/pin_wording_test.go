@@ -32,7 +32,7 @@ func TestLockChooserWording(t *testing.T) {
 	t.Run("title", func(t *testing.T) {
 		model := NewWithShellCreatorAttacherKillerResumerProfileSwitcherAndResumeModer(
 			nil, config.Settings{}, "", nil, nil, nil, nil, nil, nil,
-			func(ctx context.Context, id, mode string) (store.Session, error) {
+			func(_ context.Context, _, _ string) (store.Session, error) {
 				return store.Session{}, nil
 			},
 		)
@@ -56,7 +56,7 @@ func TestLockChooserWording(t *testing.T) {
 			for _, candidate := range resumeModeOptions {
 				model := NewWithShellCreatorAttacherKillerResumerProfileSwitcherAndResumeModer(
 					nil, config.Settings{}, "", nil, nil, nil, nil, nil, nil,
-					func(ctx context.Context, id, mode string) (store.Session, error) {
+					func(_ context.Context, _, _ string) (store.Session, error) {
 						return store.Session{}, nil
 					},
 				)
@@ -90,7 +90,7 @@ func TestLockChooserWording(t *testing.T) {
 	t.Run("canPinResume refusal message", func(t *testing.T) {
 		model := NewWithShellCreatorAttacherKillerResumerProfileSwitcherAndResumeModer(
 			nil, config.Settings{}, "", nil, nil, nil, nil, nil, nil,
-			func(ctx context.Context, id, mode string) (store.Session, error) {
+			func(_ context.Context, _, _ string) (store.Session, error) {
 				return store.Session{}, nil
 			},
 		)

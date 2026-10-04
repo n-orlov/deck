@@ -41,8 +41,11 @@ type Codex struct{}
 // NewCodex returns the Codex adapter.
 func NewCodex() Codex { return Codex{} }
 
+// Kind returns the registry name of the Codex adapter.
 func (Codex) Kind() string { return "codex" }
 
+// Capabilities declares what Codex can honestly do: it mints its own
+// conversation id, so deck never assigns one.
 func (Codex) Capabilities() Caps {
 	return Caps{
 		Profiles:              codexProfiles,

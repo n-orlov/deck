@@ -79,7 +79,7 @@ func TestPathsOracle(t *testing.T) {
 		wantShared string
 	}
 
-	fixedHome := func(t *testing.T) func() (string, error) {
+	fixedHome := func(_ *testing.T) func() (string, error) {
 		return func() (string, error) { return injectedHome, nil }
 	}
 

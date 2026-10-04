@@ -24,7 +24,7 @@ func openTombstoneTestStore(t *testing.T) *Store {
 	return st
 }
 
-func createTombstoneTestSession(t *testing.T, st *Store, ctx context.Context, id string) Session {
+func createTombstoneTestSession(ctx context.Context, t *testing.T, st *Store, id string) Session {
 	t.Helper()
 	session, err := st.CreateSession(ctx, CreateSessionInput{
 		ID: id, Name: id, CWD: "/work/" + id,
@@ -45,8 +45,8 @@ func createTombstoneTestSession(t *testing.T, st *Store, ctx context.Context, id
 func TestSoftDeleteSessionTombstonesAndHidesFromListSessions(t *testing.T) {
 	st := openTombstoneTestStore(t)
 	ctx := context.Background()
-	kept := createTombstoneTestSession(t, st, ctx, "kept")
-	doomed := createTombstoneTestSession(t, st, ctx, "doomed")
+	kept := createTombstoneTestSession(ctx, t, st, "kept")
+	doomed := createTombstoneTestSession(ctx, t, st, "doomed")
 
 	if err := st.SoftDeleteSession(ctx, doomed.ID, 200); err != nil {
 		t.Fatalf("soft delete: %v", err)
@@ -90,7 +90,7 @@ func TestSoftDeleteSessionTombstonesAndHidesFromListSessions(t *testing.T) {
 func TestRestoreSessionClearsTombstoneAndReturnsToListSessions(t *testing.T) {
 	st := openTombstoneTestStore(t)
 	ctx := context.Background()
-	session := createTombstoneTestSession(t, st, ctx, "restorable")
+	session := createTombstoneTestSession(ctx, t, st, "restorable")
 
 	if err := st.SoftDeleteSession(ctx, session.ID, 200); err != nil {
 		t.Fatalf("soft delete: %v", err)
@@ -141,7 +141,7 @@ func TestRestoreSessionClearsTombstoneAndReturnsToListSessions(t *testing.T) {
 func TestReapSessionRequiresTombstoneAndCascadesEvents(t *testing.T) {
 	st := openTombstoneTestStore(t)
 	ctx := context.Background()
-	session := createTombstoneTestSession(t, st, ctx, "reapable")
+	session := createTombstoneTestSession(ctx, t, st, "reapable")
 
 	if err := st.ReapSession(ctx, session.ID, 999); err == nil {
 		t.Fatal("ReapSession on a live (never tombstoned) row must be refused, got nil error")
@@ -229,7 +229,7 @@ func TestSoftDeleteAndRestoreRejectMissingSession(t *testing.T) {
 func TestRestoreSessionAfterReuseReapReportsHonestly(t *testing.T) {
 	st := openTombstoneTestStore(t)
 	ctx := context.Background()
-	old := createTombstoneTestSession(t, st, ctx, "reused-old-holder")
+	old := createTombstoneTestSession(ctx, t, st, "reused-old-holder")
 	if err := st.SoftDeleteSession(ctx, old.ID, 200); err != nil {
 		t.Fatalf("soft delete %q: %v", old.ID, err)
 	}
@@ -271,7 +271,7 @@ func TestRestoreSessionAfterReuseReapReportsHonestly(t *testing.T) {
 func TestCreateSessionReapsTombstonedNameHolder(t *testing.T) {
 	st := openTombstoneTestStore(t)
 	ctx := context.Background()
-	old := createTombstoneTestSession(t, st, ctx, "old-holder")
+	old := createTombstoneTestSession(ctx, t, st, "old-holder")
 	if err := st.SoftDeleteSession(ctx, old.ID, 200); err != nil {
 		t.Fatalf("soft delete %q: %v", old.ID, err)
 	}
@@ -352,7 +352,7 @@ func TestCreateSessionReapsTombstonedSlugHolder(t *testing.T) {
 func TestCreateSessionRefusesLiveNameHolder(t *testing.T) {
 	st := openTombstoneTestStore(t)
 	ctx := context.Background()
-	live := createTombstoneTestSession(t, st, ctx, "live-holder")
+	live := createTombstoneTestSession(ctx, t, st, "live-holder")
 	_, err := st.CreateSession(ctx, CreateSessionInput{
 		ID: "live-holder-2", Name: live.Name, CWD: "/work/live-holder-2",
 		Agent: "shell", CapturedPath: "/bin", StatusAt: 300, CreatedAt: 300,
@@ -379,7 +379,7 @@ func TestCreateSessionRefusesLiveNameHolder(t *testing.T) {
 func TestCreateSessionRefusesArchivedNameHolder(t *testing.T) {
 	st := openTombstoneTestStore(t)
 	ctx := context.Background()
-	archived := createTombstoneTestSession(t, st, ctx, "archived-holder")
+	archived := createTombstoneTestSession(ctx, t, st, "archived-holder")
 	if err := st.ArchiveSession(ctx, archived.ID, 200); err != nil {
 		t.Fatalf("archive %q: %v", archived.ID, err)
 	}
@@ -416,8 +416,8 @@ func TestCreateSessionRefusesArchivedNameHolder(t *testing.T) {
 func TestRenameSessionReapsTombstonedNameHolder(t *testing.T) {
 	st := openTombstoneTestStore(t)
 	ctx := context.Background()
-	subject := createTombstoneTestSession(t, st, ctx, "rename-subject")
-	old := createTombstoneTestSession(t, st, ctx, "rename-old-holder")
+	subject := createTombstoneTestSession(ctx, t, st, "rename-subject")
+	old := createTombstoneTestSession(ctx, t, st, "rename-old-holder")
 	if err := st.SoftDeleteSession(ctx, old.ID, 200); err != nil {
 		t.Fatalf("soft delete %q: %v", old.ID, err)
 	}
@@ -451,7 +451,7 @@ func TestRenameSessionReapsTombstonedNameHolder(t *testing.T) {
 func TestRenameSessionReapsTombstonedSlugHolder(t *testing.T) {
 	st := openTombstoneTestStore(t)
 	ctx := context.Background()
-	subject := createTombstoneTestSession(t, st, ctx, "rename-slug-subject")
+	subject := createTombstoneTestSession(ctx, t, st, "rename-slug-subject")
 	old, err := st.CreateSession(ctx, CreateSessionInput{
 		ID: "rename-slug-old", Name: "Slug Holder", CWD: "/work/rename-slug-old",
 		Agent: "shell", CapturedPath: "/bin", StatusAt: 100, CreatedAt: 100,
@@ -485,9 +485,9 @@ func TestRenameSessionReapsTombstonedSlugHolder(t *testing.T) {
 func TestRenameSessionRefusesLiveAndArchivedHolders(t *testing.T) {
 	st := openTombstoneTestStore(t)
 	ctx := context.Background()
-	subject := createTombstoneTestSession(t, st, ctx, "rename-refuse-subject")
-	live := createTombstoneTestSession(t, st, ctx, "rename-refuse-live")
-	archived := createTombstoneTestSession(t, st, ctx, "rename-refuse-archived")
+	subject := createTombstoneTestSession(ctx, t, st, "rename-refuse-subject")
+	live := createTombstoneTestSession(ctx, t, st, "rename-refuse-live")
+	archived := createTombstoneTestSession(ctx, t, st, "rename-refuse-archived")
 	if err := st.ArchiveSession(ctx, archived.ID, 200); err != nil {
 		t.Fatalf("archive %q: %v", archived.ID, err)
 	}
@@ -541,7 +541,7 @@ func TestRenameSessionRefusesLiveAndArchivedHolders(t *testing.T) {
 func TestTombstonedNameHoldersAndSessionRowExists(t *testing.T) {
 	st := openTombstoneTestStore(t)
 	ctx := context.Background()
-	live := createTombstoneTestSession(t, st, ctx, "still-live")
+	live := createTombstoneTestSession(ctx, t, st, "still-live")
 	tomb, err := st.CreateSession(ctx, CreateSessionInput{
 		ID: "holder-tomb", Name: "Held Name", CWD: "/work/holder-tomb",
 		Agent: "shell", CapturedPath: "/bin", StatusAt: 100, CreatedAt: 100,
@@ -549,7 +549,7 @@ func TestTombstonedNameHoldersAndSessionRowExists(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	archived := createTombstoneTestSession(t, st, ctx, "archived-name")
+	archived := createTombstoneTestSession(ctx, t, st, "archived-name")
 	if err := st.ArchiveSession(ctx, archived.ID, 150); err != nil {
 		t.Fatal(err)
 	}
@@ -623,8 +623,8 @@ func TestTombstonedNameHoldersAndSessionRowExists(t *testing.T) {
 func TestDDOnAnArchivedRowIsReachableAndReapsCleanly(t *testing.T) {
 	st := openTombstoneTestStore(t)
 	ctx := context.Background()
-	bystander := createTombstoneTestSession(t, st, ctx, "dd-archived-bystander")
-	subject := createTombstoneTestSession(t, st, ctx, "dd-archived-subject")
+	bystander := createTombstoneTestSession(ctx, t, st, "dd-archived-bystander")
+	subject := createTombstoneTestSession(ctx, t, st, "dd-archived-subject")
 
 	if err := st.ArchiveSession(ctx, subject.ID, 100); err != nil {
 		t.Fatalf("archive: %v", err)

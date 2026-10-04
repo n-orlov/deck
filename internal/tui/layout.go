@@ -31,9 +31,10 @@ const (
 	// StackedPreviewFloor is the preview's minimum height when stacked
 	// below the list (§11.2).
 	StackedPreviewFloor = 8
-	// StackedListMin and StackedListMax bound the stacked list's height:
+	// StackedListMin bounds the stacked list's height from below:
 	// min(max(rows/3, 5), 12) (§11.2).
 	StackedListMin = 5
+	// StackedListMax bounds the stacked list's height from above (§11.2).
 	StackedListMax = 12
 
 	// AutoSideBySideWidth is deck's own supported minimum column count;

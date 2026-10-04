@@ -46,7 +46,7 @@ func (s *scriptedGitHub) requests() []recordedRequest {
 var validArgs = []string{"-repo", "o/r", "-pr", "7", "-link", "https://x/report", "-sha", "abc123"}
 
 func TestRunRejectsMissingRequiredFlagsWithoutTouchingTheNetwork(t *testing.T) {
-	gh := newScriptedGitHub(t, func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(500) })
+	gh := newScriptedGitHub(t, func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(500) })
 	for _, missing := range []string{"-repo", "-pr", "-link", "-sha"} {
 		var args []string
 		for i := 0; i < len(validArgs); i += 2 {
@@ -112,7 +112,7 @@ func TestRunSendsBearerTokenPreferringGitHubTokenOverGhToken(t *testing.T) {
 }
 
 func TestPublishSurfacesListFailureAndNeverWrites(t *testing.T) {
-	gh := newScriptedGitHub(t, func(w http.ResponseWriter, r *http.Request) {
+	gh := newScriptedGitHub(t, func(w http.ResponseWriter, _ *http.Request) {
 		http.Error(w, "rate limited", http.StatusForbidden)
 	})
 	err := run(validArgs, noTokenEnv)
@@ -132,7 +132,7 @@ func TestPublishSurfacesListFailureAndNeverWrites(t *testing.T) {
 }
 
 func TestPublishRejectsUnparseableListingAndNeverWrites(t *testing.T) {
-	gh := newScriptedGitHub(t, func(w http.ResponseWriter, r *http.Request) {
+	gh := newScriptedGitHub(t, func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte("<html>not json</html>"))
 	})
 	err := run(validArgs, noTokenEnv)
@@ -208,7 +208,7 @@ func TestDoGitHubRequestTransportAndURLErrors(t *testing.T) {
 }
 
 func TestDoGitHubRequestReturnsBodyAndLinkHeader(t *testing.T) {
-	newScriptedGitHub(t, func(w http.ResponseWriter, r *http.Request) {
+	newScriptedGitHub(t, func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Link", `<https://next>; rel="next"`)
 		_, _ = w.Write([]byte("payload"))
 	})
