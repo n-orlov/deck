@@ -8253,6 +8253,21 @@ func (m Model) groupMemberSessions(ctx context.Context, groupID int64) ([]store.
 // Retaining whatever the user typed is automatic here: this function never
 // mutates m, so a non-empty result leaves every field exactly as typed.
 func (m Model) validateCreateFields() string {
+	if msg := m.validateCreateCWD(); msg != "" {
+		return msg
+	}
+	if msg := m.validateCreateLaunchArgs(); msg != "" {
+		return msg
+	}
+	if msg := m.validateCreateEnv(); msg != "" {
+		return msg
+	}
+	return m.validateCreateProfile()
+}
+
+// validateCreateCWD is validateCreateFields' working-directory step: the
+// field must be non-empty and resolve to an existing directory.
+func (m Model) validateCreateCWD() string {
 	if strings.TrimSpace(m.createText(createFieldCWD)) == "" {
 		return "working directory is required"
 	}
@@ -8267,24 +8282,44 @@ func (m Model) validateCreateFields() string {
 	if !info.IsDir() {
 		return fmt.Sprintf("working directory %q is not a directory", resolvedCWD)
 	}
-	if strings.TrimSpace(m.createText(createFieldLaunchArgs)) != "" {
-		var args []string
-		if err := json.Unmarshal([]byte(m.createText(createFieldLaunchArgs)), &args); err != nil {
-			return "launch_args must be a JSON array of strings: " + err.Error()
+	return ""
+}
+
+// validateCreateLaunchArgs is validateCreateFields' launch_args step: a
+// non-blank field must parse as a JSON array of strings.
+func (m Model) validateCreateLaunchArgs() string {
+	if strings.TrimSpace(m.createText(createFieldLaunchArgs)) == "" {
+		return ""
+	}
+	var args []string
+	if err := json.Unmarshal([]byte(m.createText(createFieldLaunchArgs)), &args); err != nil {
+		return "launch_args must be a JSON array of strings: " + err.Error()
+	}
+	return ""
+}
+
+// validateCreateEnv is validateCreateFields' env step: every non-blank
+// comma-separated entry must be key=value with a non-blank key.
+func (m Model) validateCreateEnv() string {
+	if strings.TrimSpace(m.createText(createFieldEnv)) == "" {
+		return ""
+	}
+	for _, entry := range strings.Split(m.createText(createFieldEnv), ",") {
+		entry = strings.TrimSpace(entry)
+		if entry == "" {
+			continue
+		}
+		key, _, ok := strings.Cut(entry, "=")
+		if !ok || strings.TrimSpace(key) == "" {
+			return fmt.Sprintf("env entry %q must be key=value", entry)
 		}
 	}
-	if strings.TrimSpace(m.createText(createFieldEnv)) != "" {
-		for _, entry := range strings.Split(m.createText(createFieldEnv), ",") {
-			entry = strings.TrimSpace(entry)
-			if entry == "" {
-				continue
-			}
-			key, _, ok := strings.Cut(entry, "=")
-			if !ok || strings.TrimSpace(key) == "" {
-				return fmt.Sprintf("env entry %q must be key=value", entry)
-			}
-		}
-	}
+	return ""
+}
+
+// validateCreateProfile is validateCreateFields' permission-profile step:
+// the agent must support the selected profile, and yolo needs allow_yolo.
+func (m Model) validateCreateProfile() string {
 	if caps, applicable := m.agentCapabilities(m.createAgent); applicable {
 		if !caps.SupportsProfile(m.createProfile) {
 			_, _, reason := caps.ResolveProfile(m.createAgent, m.createProfile)
