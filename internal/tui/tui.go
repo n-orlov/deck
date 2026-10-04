@@ -1893,46 +1893,54 @@ func New(db *store.Store, settings config.Settings, tmuxNote string) Model {
 			}
 			return db.RecordAttachment(ctx, sessionID, settings.Clock.Now().UnixMilli())
 		}
-		// Task 016: layout_mode and sidebar_width (SPEC §11.2) live only in
-		// state.db's ui_state table, read once here so a restarted client
-		// (a fresh New(db, ...) call, exactly as acknowledge_test.go's
-		// "restarted" model simulates it) renders the persisted pin/width
-		// rather than falling back to the in-memory zero values. A read
-		// failure is not load-bearing: ui_state degrades to the Go zero
-		// value (""/0), which ComputeLayout already treats as auto/default.
-		ctx := context.Background()
-		if mode, err := db.GetLayoutMode(ctx); err == nil {
-			m.layoutMode = mode
-		}
-		if width, err := db.GetSidebarWidth(ctx); err == nil {
-			m.sidebarWidth = width
-		}
-		// Task 024: the last agent a create actually succeeded with (SPEC.md:
-		// 1364-1367). A read failure is likewise not load-bearing -- ""
-		// degrades to defaultCreateAgent's own fallback via pickCreateAgent.
-		if lastAgent, err := db.GetLastCreateAgent(ctx); err == nil {
-			m.lastCreateAgent = lastAgent
-		}
-		// Task 016 (R130): the last group a create actually succeeded into,
-		// mirroring lastCreateAgent's own read exactly. GetLastCreateGroup
-		// already degrades a deleted group's id to nil at the store level, so
-		// a read failure OR a nil result both leave lastCreateGroupID at its
-		// zero value (default), which pickCreateGroup treats identically.
-		if lastGroup, err := db.GetLastCreateGroup(ctx); err == nil && lastGroup != nil {
-			m.lastCreateGroupID = *lastGroup
-		}
-		// Task 013 (R129 part 3): collapse state persists in ui_state's
-		// collapsed_groups, keyed by group id -- read once here so a
-		// restarted client (a fresh New(db, ...) call, exactly as task 016's
-		// layoutMode/sidebarWidth reads above) renders the same groups
-		// collapsed today that were collapsed yesterday. A read failure is
-		// not load-bearing: it degrades to the Go zero value (nothing
-		// collapsed), GetCollapsedGroups' own documented default.
-		if collapsed, err := db.GetCollapsedGroups(ctx); err == nil {
-			m.collapsedGroups = collapsed
-		}
+		m.loadPersistedUIState(db)
 	}
 	return m
+}
+
+// loadPersistedUIState reads the ui_state values a restarted client starts
+// from: layout mode, sidebar width, the last create agent and group, and the
+// collapsed groups. Every read failure is non-load-bearing and leaves the
+// field at its zero value.
+func (m *Model) loadPersistedUIState(db *store.Store) {
+	// Task 016: layout_mode and sidebar_width (SPEC §11.2) live only in
+	// state.db's ui_state table, read once here so a restarted client
+	// (a fresh New(db, ...) call, exactly as acknowledge_test.go's
+	// "restarted" model simulates it) renders the persisted pin/width
+	// rather than falling back to the in-memory zero values. A read
+	// failure is not load-bearing: ui_state degrades to the Go zero
+	// value (""/0), which ComputeLayout already treats as auto/default.
+	ctx := context.Background()
+	if mode, err := db.GetLayoutMode(ctx); err == nil {
+		m.layoutMode = mode
+	}
+	if width, err := db.GetSidebarWidth(ctx); err == nil {
+		m.sidebarWidth = width
+	}
+	// Task 024: the last agent a create actually succeeded with (SPEC.md:
+	// 1364-1367). A read failure is likewise not load-bearing -- ""
+	// degrades to defaultCreateAgent's own fallback via pickCreateAgent.
+	if lastAgent, err := db.GetLastCreateAgent(ctx); err == nil {
+		m.lastCreateAgent = lastAgent
+	}
+	// Task 016 (R130): the last group a create actually succeeded into,
+	// mirroring lastCreateAgent's own read exactly. GetLastCreateGroup
+	// already degrades a deleted group's id to nil at the store level, so
+	// a read failure OR a nil result both leave lastCreateGroupID at its
+	// zero value (default), which pickCreateGroup treats identically.
+	if lastGroup, err := db.GetLastCreateGroup(ctx); err == nil && lastGroup != nil {
+		m.lastCreateGroupID = *lastGroup
+	}
+	// Task 013 (R129 part 3): collapse state persists in ui_state's
+	// collapsed_groups, keyed by group id -- read once here so a
+	// restarted client (a fresh New(db, ...) call, exactly as task 016's
+	// layoutMode/sidebarWidth reads above) renders the same groups
+	// collapsed today that were collapsed yesterday. A read failure is
+	// not load-bearing: it degrades to the Go zero value (nothing
+	// collapsed), GetCollapsedGroups' own documented default.
+	if collapsed, err := db.GetCollapsedGroups(ctx); err == nil {
+		m.collapsedGroups = collapsed
+	}
 }
 
 // NewWithShellCreator creates a list model that can create plain shell sessions.
