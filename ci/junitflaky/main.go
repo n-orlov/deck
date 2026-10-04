@@ -170,25 +170,7 @@ type attempt struct {
 // returns it.
 func merge(inputs []*node) *node {
 	out := inputs[0]
-	var order []key
-	attempts := map[key][]attempt{}
-	for fi, root := range inputs {
-		for _, suite := range root.Nodes {
-			if suite.XMLName.Local != "testsuite" {
-				continue
-			}
-			for _, tc := range suite.Nodes {
-				if tc.XMLName.Local != "testcase" {
-					continue
-				}
-				k := key{suite.attr("name"), tc.attr("classname"), tc.attr("name")}
-				if _, seen := attempts[k]; !seen {
-					order = append(order, k)
-				}
-				attempts[k] = append(attempts[k], attempt{suite: suite, tc: tc, file: fi})
-			}
-		}
-	}
+	order, attempts := collectAttempts(inputs)
 
 	drop := map[*node]bool{}
 	var appendLater []attempt
@@ -252,6 +234,32 @@ func merge(inputs []*node) *node {
 
 	recount(out)
 	return out
+}
+
+// collectAttempts groups every testcase of every input by its key, in the
+// order each key is first seen, each key's attempts in file then document
+// order.
+func collectAttempts(inputs []*node) ([]key, map[key][]attempt) {
+	var order []key
+	attempts := map[key][]attempt{}
+	for fi, root := range inputs {
+		for _, suite := range root.Nodes {
+			if suite.XMLName.Local != "testsuite" {
+				continue
+			}
+			for _, tc := range suite.Nodes {
+				if tc.XMLName.Local != "testcase" {
+					continue
+				}
+				k := key{suite.attr("name"), tc.attr("classname"), tc.attr("name")}
+				if _, seen := attempts[k]; !seen {
+					order = append(order, k)
+				}
+				attempts[k] = append(attempts[k], attempt{suite: suite, tc: tc, file: fi})
+			}
+		}
+	}
+	return order, attempts
 }
 
 func findSuite(root *node, name string) *node {
