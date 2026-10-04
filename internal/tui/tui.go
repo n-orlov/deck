@@ -6664,57 +6664,20 @@ func (m Model) profileSwitchBody() string {
 func (m Model) styledProfileSwitchBody() string {
 	session, _ := m.selectedSession()
 	options := m.createProfileOptionsFor(session.Agent, m.settings.AllowYolo)
-	wrap := m.wrapDialogLines
-	var out []string
-	colorWhole := func(tok theme.Token, line string) {
-		for _, l := range wrap(line) {
-			out = append(out, m.colorToken(tok, l))
-		}
-	}
-	colorField := func(label, value string, focused bool) {
-		for _, l := range wrap(label + value) {
-			var segs []settingsRowSegment
-			rest := l
-			if strings.HasPrefix(l, label) {
-				segs = append(segs, settingsRowSegment{Text: label, Tok: theme.Hint})
-				rest = strings.TrimPrefix(l, label)
-			}
-			if rest != "" {
-				segs = append(segs, settingsRowSegment{Text: rest, Tok: theme.Text})
-			}
-			if len(segs) == 0 {
-				segs = []settingsRowSegment{{Text: l, Tok: theme.Text}}
-			}
-			out = append(out, m.renderCreateRowSegments(focused, segs))
-		}
-	}
-	colorFooterLine := func(line string) {
-		for _, l := range wrap(line) {
-			fields := strings.Fields(l)
-			for i, f := range fields {
-				if cycleConfirmFooterKeyTokens[f] {
-					fields[i] = m.colorToken(theme.Key, f)
-				} else {
-					fields[i] = m.colorToken(theme.Hint, f)
-				}
-			}
-			out = append(out, strings.Join(fields, " "))
-		}
-	}
-
-	colorWhole(theme.Title, fmt.Sprintf("Change permission profile for %s", session.Name))
-	out = append(out, "")
-	colorField("Current:   ", session.PermissionProfile, false)
-	colorField("New:       ", fmt.Sprintf("%s (left/right cycles: %s)", m.profileSwitchValue, strings.Join(options, ", ")), true)
-	out = append(out, "")
-	colorWhole(theme.Dimmed, "This applies on the session's next launch/restart; it does not change a\nrunning pane's mode.")
-	out = append(out, "")
-	colorFooterLine("Left/Right cycles · Enter confirms · Esc cancels")
+	d := m.newCycleDialogBody()
+	d.whole(theme.Title, fmt.Sprintf("Change permission profile for %s", session.Name))
+	d.blank()
+	d.field("Current:   ", session.PermissionProfile, false)
+	d.field("New:       ", fmt.Sprintf("%s (left/right cycles: %s)", m.profileSwitchValue, strings.Join(options, ", ")), true)
+	d.blank()
+	d.whole(theme.Dimmed, "This applies on the session's next launch/restart; it does not change a\nrunning pane's mode.")
+	d.blank()
+	d.footer("Left/Right cycles · Enter confirms · Esc cancels")
 	if m.profileSwitchNote != "" {
-		out = append(out, "")
-		colorWhole(theme.Error, m.profileSwitchNote)
+		d.blank()
+		d.whole(theme.Error, m.profileSwitchNote)
 	}
-	return strings.Join(out, "\n")
+	return d.String()
 }
 
 // profileSwitchView renders the `P` permission-profile switch dialog. It
