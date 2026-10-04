@@ -29,55 +29,10 @@ func Parse(data []byte, source string) (*Theme, error) {
 		if text == "" {
 			continue
 		}
-		if strings.HasPrefix(text, "[") {
-			name, err := parseSectionHeader(text)
-			if err != nil {
-				return nil, fmt.Errorf("%s:%d: %w", source, line, err)
-			}
-			if name != "colors" {
-				return nil, fmt.Errorf("%s:%d: unknown section %q (only [colors] is defined)", source, line, name)
-			}
-			section = name
-			continue
-		}
-		key, value, err := parseKeyValue(text)
+		var err error
+		section, err = parseThemeLine(t, section, text)
 		if err != nil {
 			return nil, fmt.Errorf("%s:%d: %w", source, line, err)
-		}
-		switch section {
-		case "":
-			switch key {
-			case "name":
-				s, err := unquoteString(value)
-				if err != nil {
-					return nil, fmt.Errorf("%s:%d: name must be a quoted string: %w", source, line, err)
-				}
-				t.Name = s
-			case "appearance":
-				s, err := unquoteString(value)
-				if err != nil {
-					return nil, fmt.Errorf("%s:%d: appearance must be a quoted string: %w", source, line, err)
-				}
-				t.Appearance = s
-			default:
-				return nil, fmt.Errorf("%s:%d: unknown top-level key %q", source, line, key)
-			}
-		case "colors":
-			tok := Token(key)
-			if !isKnownToken(tok) {
-				return nil, fmt.Errorf("%s:%d: unknown colour token %q", source, line, key)
-			}
-			hex, err := unquoteString(value)
-			if err != nil {
-				return nil, fmt.Errorf("%s:%d: %s must be a quoted hex string: %w", source, line, key, err)
-			}
-			hex, err = normalizeHex(hex)
-			if err != nil {
-				return nil, fmt.Errorf("%s:%d: %s: %w", source, line, key, err)
-			}
-			t.Colors[tok] = hex
-		default:
-			return nil, fmt.Errorf("%s:%d: unknown section %q", source, line, section)
 		}
 	}
 	if err := scanner.Err(); err != nil {
@@ -95,6 +50,79 @@ func Parse(data []byte, source string) (*Theme, error) {
 	}
 	t.Quantized = quantized
 	return t, nil
+}
+
+// parseThemeLine applies one comment-stripped, non-empty line to t and
+// returns the section the next line is read in. Its errors carry no
+// source:line prefix; Parse adds it.
+func parseThemeLine(t *Theme, section, text string) (string, error) {
+	if strings.HasPrefix(text, "[") {
+		return parseThemeSection(text)
+	}
+	key, value, err := parseKeyValue(text)
+	if err != nil {
+		return section, err
+	}
+	return section, applyThemeKey(t, section, key, value)
+}
+
+func parseThemeSection(text string) (string, error) {
+	name, err := parseSectionHeader(text)
+	if err != nil {
+		return "", err
+	}
+	if name != "colors" {
+		return "", fmt.Errorf("unknown section %q (only [colors] is defined)", name)
+	}
+	return name, nil
+}
+
+func applyThemeKey(t *Theme, section, key, value string) error {
+	switch section {
+	case "":
+		return applyTopLevelKey(t, key, value)
+	case "colors":
+		return applyColourKey(t, key, value)
+	default:
+		return fmt.Errorf("unknown section %q", section)
+	}
+}
+
+func applyTopLevelKey(t *Theme, key, value string) error {
+	switch key {
+	case "name":
+		s, err := unquoteString(value)
+		if err != nil {
+			return fmt.Errorf("name must be a quoted string: %w", err)
+		}
+		t.Name = s
+	case "appearance":
+		s, err := unquoteString(value)
+		if err != nil {
+			return fmt.Errorf("appearance must be a quoted string: %w", err)
+		}
+		t.Appearance = s
+	default:
+		return fmt.Errorf("unknown top-level key %q", key)
+	}
+	return nil
+}
+
+func applyColourKey(t *Theme, key, value string) error {
+	tok := Token(key)
+	if !isKnownToken(tok) {
+		return fmt.Errorf("unknown colour token %q", key)
+	}
+	hex, err := unquoteString(value)
+	if err != nil {
+		return fmt.Errorf("%s must be a quoted hex string: %w", key, err)
+	}
+	hex, err = normalizeHex(hex)
+	if err != nil {
+		return fmt.Errorf("%s: %w", key, err)
+	}
+	t.Colors[tok] = hex
+	return nil
 }
 
 func normalizeHex(s string) (string, error) {
