@@ -365,16 +365,16 @@ func highlightRangeSGR(line string, startCol, endCol int, openSeq, closeSeq stri
 			n := ansiEscapeLen(line, i)
 			out.WriteString(line[i : i+n])
 			i += n
-			if opened && n >= 3 && line[i-n+1] == '[' && line[i-1] == 'm' {
+			if opened && isSGREscape(line[i-n:i]) {
 				out.WriteString(openSeq)
 			}
 			continue
 		}
-		switch {
-		case !opened && col >= startCol && col <= endCol:
+		switch spanEdgeAt(opened, col, startCol, endCol) {
+		case spanOpens:
 			out.WriteString(openSeq)
 			opened = true
-		case opened && col > endCol:
+		case spanCloses:
 			out.WriteString(closeSeq)
 			opened = false
 		}
@@ -387,4 +387,32 @@ func highlightRangeSGR(line string, startCol, endCol int, openSeq, closeSeq stri
 		out.WriteString(closeSeq)
 	}
 	return out.String()
+}
+
+// isSGREscape reports whether one whole escape sequence (as ansiEscapeLen
+// delimits it) is a CSI SGR: ESC [ ... m.
+func isSGREscape(seq string) bool {
+	return len(seq) >= 3 && seq[1] == '[' && seq[len(seq)-1] == 'm'
+}
+
+// spanEdge is what the printable cell at a column does to a highlight span.
+type spanEdge int
+
+const (
+	spanStays spanEdge = iota
+	spanOpens
+	spanCloses
+)
+
+// spanEdgeAt decides whether the cell at col opens the span (first cell in
+// [startCol, endCol] while it is closed) or closes it (first cell past
+// endCol while it is open).
+func spanEdgeAt(opened bool, col, startCol, endCol int) spanEdge {
+	switch {
+	case !opened && col >= startCol && col <= endCol:
+		return spanOpens
+	case opened && col > endCol:
+		return spanCloses
+	}
+	return spanStays
 }
