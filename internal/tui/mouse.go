@@ -120,17 +120,22 @@ func (m Model) hitTestStacked(layout LayoutResult, x, y int) hitResult {
 	pw, ph := layout.Preview.Width, layout.Preview.Height
 	if lh >= 2 {
 		if y >= 0 && y < lh {
-			if x < 0 || x >= lw {
+			if !inSpan(x, lw) {
 				return hitResult{}
 			}
 			return m.sidebarBoxHit(layout, y, lh)
 		}
 		y -= lh
 	}
-	if ph >= 2 && y >= 0 && y < ph && x >= 0 && x < pw {
+	if ph >= 2 && inSpan(x, pw) && inSpan(y, ph) {
 		return hitResult{panel: hitPanelPreview}
 	}
 	return hitResult{}
+}
+
+// inSpan reports whether v lies in [0, n).
+func inSpan(v, n int) bool {
+	return v >= 0 && v < n
 }
 
 // sidebarEntryHit turns one sidebarEntry (task 028's shared content, also
