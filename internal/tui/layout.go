@@ -159,6 +159,32 @@ func stackedListHeight(rows int) int {
 	return h
 }
 
+// effectiveLayoutMode resolves the requested pin to the mode actually used
+// at this width (§11.2): auto and unknown values follow the width, a
+// side-by-side pin that cannot hold its floors degrades to auto, and the
+// stacked/collapsed pins never fall back.
+func effectiveLayoutMode(requested string, width int) string {
+	switch requested {
+	case LayoutAuto:
+		return autoMode(width)
+	case LayoutSideBySide:
+		if !sideBySideFits(width) {
+			return autoMode(width)
+		}
+		return requested
+	case LayoutStacked, LayoutCollapsed:
+		// Stacked is itself the degrade-as-far-as-it-fits mode (§11.2's
+		// "below 80×24 ... renders the stacked mode as far as it
+		// fits"), and the collapsed strip has no floor to violate at
+		// any width ≥ its own 3 columns, so neither pin ever falls
+		// back to auto.
+		return requested
+	default:
+		// Unknown value: behave as auto rather than render nothing.
+		return autoMode(width)
+	}
+}
+
 // ComputeLayout is the single §11.2 geometry function. width and rows are
 // the full terminal size; pinned is "" (meaning auto), "side-by-side",
 // "stacked" or "collapsed"; sidebarWidth is the persisted sidebar_width
@@ -172,25 +198,7 @@ func ComputeLayout(width, rows int, pinned string, sidebarWidth int) LayoutResul
 		sidebarWidth = 35 // §11.2 default; internal/store.DefaultSidebarWidth
 	}
 
-	effective := requested
-	switch requested {
-	case LayoutAuto:
-		effective = autoMode(width)
-	case LayoutSideBySide:
-		if !sideBySideFits(width) {
-			effective = autoMode(width)
-		}
-	case LayoutStacked, LayoutCollapsed:
-		// Stacked is itself the degrade-as-far-as-it-fits mode (§11.2's
-		// "below 80×24 ... renders the stacked mode as far as it
-		// fits"), and the collapsed strip has no floor to violate at
-		// any width ≥ its own 3 columns, so neither pin ever falls
-		// back to auto.
-		effective = requested
-	default:
-		// Unknown value: behave as auto rather than render nothing.
-		effective = autoMode(width)
-	}
+	effective := effectiveLayoutMode(requested, width)
 
 	result := LayoutResult{
 		Requested: requested,
