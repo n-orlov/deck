@@ -7687,9 +7687,19 @@ func (m Model) detailBody() string {
 	session, _ := m.selectedSession()
 	var b strings.Builder
 	fmt.Fprintf(&b, "%s detail\n\n", session.Name)
-	fmt.Fprintf(&b, "%s\n", m.detailField("Agent:              ", session.Agent))
-	fmt.Fprintf(&b, "%s\n", m.detailField("Working directory:  ", session.CWD))
-	fmt.Fprintf(&b, "%s\n", m.detailField("Group:              ", sessionGroupLabel(session)))
+	m.writeDetailIdentity(&b, session)
+	m.writeDetailStatus(&b, session)
+	m.writeDetailPermission(&b, session)
+	m.writeDetailTexts(&b, session)
+	m.writeDetailFooter(&b)
+	return b.String()
+}
+
+// writeDetailIdentity writes detailBody's agent, directory, group, pin and PATH-advisory fields.
+func (m Model) writeDetailIdentity(b *strings.Builder, session store.Session) {
+	fmt.Fprintf(b, "%s\n", m.detailField("Agent:              ", session.Agent))
+	fmt.Fprintf(b, "%s\n", m.detailField("Working directory:  ", session.CWD))
+	fmt.Fprintf(b, "%s\n", m.detailField("Group:              ", sessionGroupLabel(session)))
 	// Task 011 (SPEC §11's pin rule, R159's own detail-dialog leg):
 	// pinned mirrors sessionsPinned's own store field (session.PinnedAt !=
 	// 0 means pinned, task 002/003's schemaV8 column), plain "yes"/"no"
@@ -7700,10 +7710,14 @@ func (m Model) detailBody() string {
 	if session.PinnedAt != 0 {
 		pinnedText = "yes"
 	}
-	fmt.Fprintf(&b, "%s\n", m.detailField("Pinned:             ", pinnedText))
+	fmt.Fprintf(b, "%s\n", m.detailField("Pinned:             ", pinnedText))
 	if session.CapturedPathAdvisory() {
-		fmt.Fprintf(&b, "%s\n", m.detailField("Captured PATH:      ", "advisory only (login_shell overrides PATH; SPEC \u00a76.3)"))
+		fmt.Fprintf(b, "%s\n", m.detailField("Captured PATH:      ", "advisory only (login_shell overrides PATH; SPEC \u00a76.3)"))
 	}
+}
+
+// writeDetailStatus writes detailBody's status, verdict-source, verdict-age and probe fields.
+func (m Model) writeDetailStatus(b *strings.Builder, session store.Session) {
 	status := session.Status
 	if status == "stopped" {
 		status += m.glyph(" · resumable", " - resumable")
@@ -7711,21 +7725,21 @@ func (m Model) detailBody() string {
 	if status == "starting" && session.Agent != "shell" {
 		status = "starting" + m.glyph(" · awaiting signal", " - awaiting signal")
 	}
-	fmt.Fprintf(&b, "%s\n", m.detailField("Status:             ", status))
+	fmt.Fprintf(b, "%s\n", m.detailField("Status:             ", status))
 	if session.StatusReason != "" {
-		fmt.Fprintf(&b, "%s\n", m.detailField("Status reason:      ", session.StatusReason))
+		fmt.Fprintf(b, "%s\n", m.detailField("Status reason:      ", session.StatusReason))
 	}
 	source := session.StatusSource
 	if source == "" {
 		source = "unknown"
 	}
 	if quality := statusSourceQuality(session.StatusSource); quality != "" {
-		fmt.Fprintf(&b, "%s\n", m.detailField("Verdict source:     ", fmt.Sprintf("%s (%s)", source, quality)))
+		fmt.Fprintf(b, "%s\n", m.detailField("Verdict source:     ", fmt.Sprintf("%s (%s)", source, quality)))
 	} else {
-		fmt.Fprintf(&b, "%s\n", m.detailField("Verdict source:     ", source))
+		fmt.Fprintf(b, "%s\n", m.detailField("Verdict source:     ", source))
 	}
 	if session.StatusAt > 0 {
-		fmt.Fprintf(&b, "%s\n", m.detailField("Verdict age:        ", m.relativeAge(session.StatusAt)))
+		fmt.Fprintf(b, "%s\n", m.detailField("Verdict age:        ", m.relativeAge(session.StatusAt)))
 	}
 	// A total probe miss (no probeRule matched the sampled pane at all) never
 	// changes Status/StatusSource/StatusAt (SPEC §7 is untouched), so it is
@@ -7733,24 +7747,28 @@ func (m Model) detailBody() string {
 	// than the row's current verdict is the freshest evidence deck has, and is
 	// superseded (stops rendering) the instant any later verdict lands.
 	if session.LastProbeAt > session.StatusAt {
-		fmt.Fprintf(&b, "%s\n", m.detailField("Probe:              ", fmt.Sprintf("sampled, no rule matched (%s)", m.relativeAge(session.LastProbeAt))))
+		fmt.Fprintf(b, "%s\n", m.detailField("Probe:              ", fmt.Sprintf("sampled, no rule matched (%s)", m.relativeAge(session.LastProbeAt))))
 	}
+}
+
+// writeDetailPermission writes detailBody's permission-profile, conversation-id and declined-hook fields.
+func (m Model) writeDetailPermission(b *strings.Builder, session store.Session) {
 	if _, applicable := m.agentCapabilities(session.Agent); applicable {
-		fmt.Fprintf(&b, "%s\n", m.detailField("Permission profile: ", session.PermissionProfile))
+		fmt.Fprintf(b, "%s\n", m.detailField("Permission profile: ", session.PermissionProfile))
 		if session.PermissionProfileReason != "" {
-			fmt.Fprintf(&b, "%s\n", m.detailField("  degraded: ", session.PermissionProfileReason))
+			fmt.Fprintf(b, "%s\n", m.detailField("  degraded: ", session.PermissionProfileReason))
 		}
 	} else {
-		fmt.Fprintf(&b, "%s\n", m.detailField("Permission profile: ", "n/a (shell has no permission profile)"))
+		fmt.Fprintf(b, "%s\n", m.detailField("Permission profile: ", "n/a (shell has no permission profile)"))
 	}
 	if session.ConversationID != "" {
-		fmt.Fprintf(&b, "%s\n", m.detailField("Conversation id:    ", session.ConversationID))
+		fmt.Fprintf(b, "%s\n", m.detailField("Conversation id:    ", session.ConversationID))
 	} else if m.resumableWithNoConversationIDYet(session) {
 		// R125: honest about the gap rather than a blank field -- codex
 		// mints its own conversation id on the agent's first prompt, never
 		// at launch, so this is a normal, named state for a live row, not
 		// an omission.
-		fmt.Fprintf(&b, "%s\n", m.detailField("Conversation id:    ", "none yet (assigned on first prompt)"))
+		fmt.Fprintf(b, "%s\n", m.detailField("Conversation id:    ", "none yet (assigned on first prompt)"))
 	}
 	if m.detailDroppedHookFound && m.detailDroppedHookSessionID == session.ID {
 		// R90/task 033: supersededLaunch (internal/hookrecv) recorded this
@@ -7764,19 +7782,27 @@ func (m Model) detailBody() string {
 		// naming both launch generations -- shown verbatim, exactly as `E`
 		// shows them, so the two views never disagree about the wording.
 		event := m.detailDroppedHookEvent
-		fmt.Fprintf(&b, "%s\n", m.detailField("Hook declined:      ", fmt.Sprintf("%s -- %s (%s)", event.Kind, event.Reason, m.relativeAge(event.At))))
+		fmt.Fprintf(b, "%s\n", m.detailField("Hook declined:      ", fmt.Sprintf("%s -- %s (%s)", event.Kind, event.Reason, m.relativeAge(event.At))))
 	}
+}
+
+// writeDetailTexts writes detailBody's last message and crash tail.
+func (m Model) writeDetailTexts(b *strings.Builder, session store.Session) {
 	if session.LastMessage != "" {
-		fmt.Fprintf(&b, "\nLast message:\n%s\n", session.LastMessage)
+		fmt.Fprintf(b, "\nLast message:\n%s\n", session.LastMessage)
 	}
 	if session.CrashTail != "" {
 		crashTail := m.renderCrashTail(session.CrashTail)
 		if session.PaneExitStatus != nil {
-			fmt.Fprintf(&b, "\nCrash tail (exit status %d):\n%s\n", *session.PaneExitStatus, crashTail)
+			fmt.Fprintf(b, "\nCrash tail (exit status %d):\n%s\n", *session.PaneExitStatus, crashTail)
 		} else {
-			fmt.Fprintf(&b, "\nCrash tail:\n%s\n", crashTail)
+			fmt.Fprintf(b, "\nCrash tail:\n%s\n", crashTail)
 		}
 	}
+}
+
+// writeDetailFooter writes detailBody's attach-error note and its two footer legend lines.
+func (m Model) writeDetailFooter(b *strings.Builder) {
 	// Task 015/D.4 (R137, PRD "Footer and `?` help must say what the cursor
 	// can do in each position", which names this footer by file and line):
 	// the detail dialog is session-scoped -- `i` is inert while the cursor
@@ -7831,7 +7857,6 @@ func (m Model) detailBody() string {
 	}
 	b.WriteString("\n" + m.glyph("header cursor: c folds/unfolds its group · ← folds it · → unfolds it", "header cursor: c folds/unfolds its group - left folds it - right unfolds it") + "\n")
 	b.WriteString(m.glyph("P switches permission profile · c changes resume mode · p toggles pinned · r renames · l edits launch inputs · g moves group · i or Esc closes detail", "P switches permission profile - c changes resume mode - p toggles pinned - r renames - l edits launch inputs - g moves group - i or Esc closes detail") + "\n")
-	return b.String()
 }
 
 // detailView renders detailBody inside framedDialogScrollable (task 078,
