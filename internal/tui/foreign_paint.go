@@ -214,91 +214,130 @@ func (m Model) repaintForeignDefaults(tok theme.Token, text string) string {
 		return bgSeq + fgSeq + text
 	}
 
-	var (
-		b       strings.Builder
-		fg, bg  sgrColor
-		reverse bool
-		// deckFitted records that the foreground currently in effect is
-		// one DECK chose (a fitted agent colour, or a fitted canvas text
-		// colour), not one the agent asked for -- so a later sequence that
-		// hands the pair back to the agent knows there is something to
-		// undo.
-		deckFitted bool
-	)
-	b.Grow(len(text) + 64)
-
-	// correct emits whatever deck needs to add on top of the state the
-	// agent's own sequence just established.
-	correct := func() {
-		if !bg.explicit {
-			b.WriteString(bgSeq)
-		}
-		switch {
-		case fg.explicit && bg.explicit:
-			// The agent owns this pair. If deck fitted this foreground
-			// while the background was still deck's, put the agent's own
-			// colour back: the fit was measured against a background that
-			// is no longer underneath it.
-			if deckFitted && fg.hex != "" {
-				b.WriteString(m.fgSGRForHex(fg.hex))
-				deckFitted = false
-			}
-		case fg.explicit:
-			if mode != foreignPaintFit || reverse || !bgHexOK {
-				return
-			}
-			if adjusted, changed, err := theme.FitForeground(fg.hex, canvasBg, theme.AAFloor); err == nil && changed {
-				b.WriteString(m.fgSGRForHex(adjusted))
-				deckFitted = true
-			}
-		case bg.explicit:
-			if mode != foreignPaintFit || reverse || fgSeq == "" || bg.hex == "" {
-				return
-			}
-			textHex, ok := m.tokenHex(theme.Text)
-			if !ok {
-				return
-			}
-			if adjusted, changed, err := theme.FitForeground(textHex, bg.hex, theme.AAFloor); err == nil && changed {
-				b.WriteString(m.fgSGRForHex(adjusted))
-				deckFitted = true
-			}
-		default:
-			b.WriteString(fgSeq)
-			deckFitted = false
-		}
+	r := foreignRow{
+		m: &m, mode: mode, bgSeq: bgSeq, fgSeq: fgSeq,
+		canvasBg: canvasBg, bgHexOK: bgHexOK,
 	}
-
-	b.WriteString(bgSeq)
+	r.b.Grow(len(text) + 64)
+	r.b.WriteString(bgSeq)
 	if fgSeq != "" {
-		b.WriteString(fgSeq)
+		r.b.WriteString(fgSeq)
 	}
 	for i := 0; i < len(text); {
-		if text[i] != 0x1b || i+1 >= len(text) || text[i+1] != '[' {
-			b.WriteByte(text[i])
-			i++
-			continue
-		}
-		// CSI: parameter/intermediate bytes, then one final byte in
-		// 0x40..0x7e. Anything that is not SGR ("m") passes through
-		// untouched -- deck has no business rewriting a pane's cursor
-		// moves or mode changes.
-		j := i + 2
-		for j < len(text) && (text[j] < 0x40 || text[j] > 0x7e) {
-			j++
-		}
-		if j >= len(text) {
-			b.WriteString(text[i:]) // truncated sequence at end of row
-			break
-		}
-		b.WriteString(text[i : j+1])
-		if text[j] == 'm' {
-			applySGR(text[i+2:j], &fg, &bg, &reverse)
-			correct()
-		}
-		i = j + 1
+		i = r.step(text, i)
 	}
-	return b.String()
+	return r.b.String()
+}
+
+// foreignRow is the per-row state of repaintForeignDefaults: the paint
+// parameters resolved once per row, the output builder, and the colour
+// state the agent's own SGR sequences have established so far.
+type foreignRow struct {
+	m        *Model
+	mode     foreignPaintMode
+	bgSeq    string
+	fgSeq    string
+	canvasBg string
+	bgHexOK  bool
+
+	b       strings.Builder
+	fg, bg  sgrColor
+	reverse bool
+	// deckFitted records that the foreground currently in effect is
+	// one DECK chose (a fitted agent colour, or a fitted canvas text
+	// colour), not one the agent asked for -- so a later sequence that
+	// hands the pair back to the agent knows there is something to
+	// undo.
+	deckFitted bool
+}
+
+// step consumes the bytes of text at i (one literal byte, or one whole CSI
+// sequence) and returns the next index, which is len(text) once the row
+// ends on a truncated sequence.
+func (r *foreignRow) step(text string, i int) int {
+	if text[i] != 0x1b || i+1 >= len(text) || text[i+1] != '[' {
+		r.b.WriteByte(text[i])
+		return i + 1
+	}
+	// CSI: parameter/intermediate bytes, then one final byte in
+	// 0x40..0x7e. Anything that is not SGR ("m") passes through
+	// untouched -- deck has no business rewriting a pane's cursor
+	// moves or mode changes.
+	j := i + 2
+	for j < len(text) && (text[j] < 0x40 || text[j] > 0x7e) {
+		j++
+	}
+	if j >= len(text) {
+		r.b.WriteString(text[i:]) // truncated sequence at end of row
+		return len(text)
+	}
+	r.b.WriteString(text[i : j+1])
+	if text[j] == 'm' {
+		applySGR(text[i+2:j], &r.fg, &r.bg, &r.reverse)
+		r.correct()
+	}
+	return j + 1
+}
+
+// correct emits whatever deck needs to add on top of the state the
+// agent's own sequence just established.
+func (r *foreignRow) correct() {
+	if !r.bg.explicit {
+		r.b.WriteString(r.bgSeq)
+	}
+	switch {
+	case r.fg.explicit && r.bg.explicit:
+		r.restoreAgentPair()
+	case r.fg.explicit:
+		r.fitExplicitForeground()
+	case r.bg.explicit:
+		r.fitCanvasText()
+	default:
+		r.b.WriteString(r.fgSeq)
+		r.deckFitted = false
+	}
+}
+
+// restoreAgentPair handles the pair the agent owns. If deck fitted this
+// foreground while the background was still deck's, put the agent's own
+// colour back: the fit was measured against a background that is no longer
+// underneath it.
+func (r *foreignRow) restoreAgentPair() {
+	if r.deckFitted && r.fg.hex != "" {
+		r.b.WriteString(r.m.fgSGRForHex(r.fg.hex))
+		r.deckFitted = false
+	}
+}
+
+// fitExplicitForeground fits the agent's explicit foreground against
+// deck's background (explicit fg, default bg).
+func (r *foreignRow) fitExplicitForeground() {
+	if r.mode != foreignPaintFit || r.reverse || !r.bgHexOK {
+		return
+	}
+	r.emitFit(r.fg.hex, r.canvasBg)
+}
+
+// fitCanvasText fits deck's text colour against the agent's explicit
+// background (default fg, explicit bg).
+func (r *foreignRow) fitCanvasText() {
+	if r.mode != foreignPaintFit || r.reverse || r.fgSeq == "" || r.bg.hex == "" {
+		return
+	}
+	textHex, ok := r.m.tokenHex(theme.Text)
+	if !ok {
+		return
+	}
+	r.emitFit(textHex, r.bg.hex)
+}
+
+// emitFit writes the foreground fitted from fgHex against bgHex when
+// fitting actually moves it, and records that deck chose that colour.
+func (r *foreignRow) emitFit(fgHex, bgHex string) {
+	if adjusted, changed, err := theme.FitForeground(fgHex, bgHex, theme.AAFloor); err == nil && changed {
+		r.b.WriteString(r.m.fgSGRForHex(adjusted))
+		r.deckFitted = true
+	}
 }
 
 // applySGR advances one row's colour state by one SGR sequence's
