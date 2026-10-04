@@ -172,9 +172,19 @@ func (e Editor) View(width int, st Style) string {
 		b.WriteString(st.mark())
 	}
 	offered := e.offered && st.Selection != "" && len(e.text) > 0
+	writeCells(&b, its[s:end], caret-s, st, offered)
+	if end < len(its) {
+		b.WriteString(st.mark())
+	}
+	return b.String()
+}
+
+// writeCells writes the visible items, caret being the caret's index within
+// them: the caret cell reversed, an offered value in the selection
+// background, closing the background after the last cell.
+func writeCells(b *strings.Builder, its []item, caret int, st Style, offered bool) {
 	inSel := false
-	for i := s; i < end; i++ {
-		it := its[i]
+	for i, it := range its {
 		isCaret := i == caret && !st.Blurred
 		want := offered && it.text != "" && !isCaret
 		if want && !inSel {
@@ -196,8 +206,4 @@ func (e Editor) View(width int, st Style) string {
 	if inSel {
 		b.WriteString(sgrDefaultBgOff)
 	}
-	if end < len(its) {
-		b.WriteString(st.mark())
-	}
-	return b.String()
 }
