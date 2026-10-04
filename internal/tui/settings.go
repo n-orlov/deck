@@ -2041,32 +2041,13 @@ func (m Model) updateSettingsSearch(msg tea.KeyMsg) (Model, tea.Cmd) {
 	query := m.settingsSearchEdit.Value()
 	switch msg.String() {
 	case "esc":
-		m.settingsSearchActive = false
-		m.settingsSearchEdit = lineedit.Editor{}
-		m.settingsSearchIndex = 0
-		return m, nil
+		return m.settingsSearchClose(), nil
 	case "enter":
-		results := settingsSearchMatches(query)
-		if m.settingsSearchIndex >= 0 && m.settingsSearchIndex < len(results) {
-			match := results[m.settingsSearchIndex]
-			m.settingsCategoryIndex = match.CategoryIndex
-			m.settingsFieldIndex = match.FieldIndex
-			m.settingsFocus = settingsFocusFields
-		}
-		m.settingsSearchActive = false
-		m.settingsSearchEdit = lineedit.Editor{}
-		m.settingsSearchIndex = 0
-		return m, nil
+		return m.settingsSearchJump(query), nil
 	case "up", "ctrl+p":
-		if n := len(settingsSearchMatches(query)); n > 0 {
-			m.settingsSearchIndex = (m.settingsSearchIndex - 1 + n) % n
-		}
-		return m, nil
+		return m.settingsSearchStep(query, -1), nil
 	case "down", "ctrl+n":
-		if n := len(settingsSearchMatches(query)); n > 0 {
-			m.settingsSearchIndex = (m.settingsSearchIndex + 1) % n
-		}
-		return m, nil
+		return m.settingsSearchStep(query, 1), nil
 	}
 	if isFieldCopyKey(msg) {
 		return m.copyFieldText(m.settingsSearchEdit.Value(), false), nil
@@ -2078,6 +2059,37 @@ func (m Model) updateSettingsSearch(msg tea.KeyMsg) (Model, tea.Cmd) {
 		}
 	}
 	return m, nil
+}
+
+// settingsSearchClose leaves search mode, clearing the query and the
+// highlighted match without moving the selection.
+func (m Model) settingsSearchClose() Model {
+	m.settingsSearchActive = false
+	m.settingsSearchEdit = lineedit.Editor{}
+	m.settingsSearchIndex = 0
+	return m
+}
+
+// settingsSearchJump moves the two lists to the highlighted match of query
+// (focus on the field list) when there is one, then leaves search mode.
+func (m Model) settingsSearchJump(query string) Model {
+	results := settingsSearchMatches(query)
+	if m.settingsSearchIndex >= 0 && m.settingsSearchIndex < len(results) {
+		match := results[m.settingsSearchIndex]
+		m.settingsCategoryIndex = match.CategoryIndex
+		m.settingsFieldIndex = match.FieldIndex
+		m.settingsFocus = settingsFocusFields
+	}
+	return m.settingsSearchClose()
+}
+
+// settingsSearchStep moves the highlighted match of query by delta (-1 up,
+// +1 down), wrapping around the match list; no matches leave it alone.
+func (m Model) settingsSearchStep(query string, delta int) Model {
+	if n := len(settingsSearchMatches(query)); n > 0 {
+		m.settingsSearchIndex = (m.settingsSearchIndex + delta + n) % n
+	}
+	return m
 }
 
 // settingsSearchLabel is the prompt drawn before the search field.
