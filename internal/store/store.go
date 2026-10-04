@@ -473,27 +473,9 @@ func Slug(name string) string {
 // uses an INSERT rather than a list rewrite so independent deck clients cannot
 // overwrite each other's rows.
 func (s *Store) CreateSession(ctx context.Context, input CreateSessionInput) (Session, error) {
-	if input.ID == "" || input.Name == "" || input.CWD == "" || input.Agent == "" || input.CapturedPath == "" {
-		return Session{}, errors.New("session id, name, cwd, agent, and captured path are required")
-	}
-	slug := Slug(input.Name)
-	if slug == "" {
-		return Session{}, fmt.Errorf("session name %q does not produce a usable slug", input.Name)
-	}
-	if input.Status == "" {
-		input.Status = "starting"
-	}
-	if input.StatusSource == "" {
-		input.StatusSource = "user"
-	}
-	if input.StatusAt == 0 || input.CreatedAt == 0 {
-		return Session{}, errors.New("session status_at and created_at timestamps are required")
-	}
-	if input.ResumeState == "" {
-		input.ResumeState = "auto"
-	}
-	if input.PermissionProfile == "" {
-		input.PermissionProfile = "safe"
+	input, slug, err := normalizeCreateInput(input)
+	if err != nil {
+		return Session{}, err
 	}
 	launchArgsJSON, err := marshalStrings(input.LaunchArgs)
 	if err != nil {
@@ -508,6 +490,63 @@ func (s *Store) CreateSession(ctx context.Context, input CreateSessionInput) (Se
 		return Session{}, fmt.Errorf("begin create session: %w", err)
 	}
 	defer rollbackTx(tx)
+	if err := claimSessionNameTx(ctx, tx, input, slug); err != nil {
+		return Session{}, err
+	}
+	if err := insertSessionRowTx(ctx, tx, input, slug, launchArgsJSON, envJSON); err != nil {
+		return Session{}, err
+	}
+	groupName, err := createdSessionGroupName(ctx, tx, input.GroupID)
+	if err != nil {
+		return Session{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return Session{}, fmt.Errorf("commit create session: %w", err)
+	}
+	return Session{
+		ID: input.ID, Name: input.Name, Slug: slug, CWD: input.CWD, Agent: input.Agent,
+		Status: input.Status, StatusSource: input.StatusSource, StatusAt: input.StatusAt, CreatedAt: input.CreatedAt,
+		Acknowledged: true,
+		LaunchArgs:   input.LaunchArgs, Env: input.Env, PreLaunch: input.PreLaunch, PostDestroy: input.PostDestroy, LoginShell: input.LoginShell,
+		PermissionProfile: input.PermissionProfile, PermissionProfileReason: input.PermissionProfileReason,
+		ConversationID: input.ConversationID,
+		ResumePin:      input.ResumePin, ResumeState: input.ResumeState,
+		GroupID: input.GroupID, GroupName: groupName,
+	}, nil
+}
+
+// normalizeCreateInput validates a CreateSessionInput's required fields and
+// fills the documented defaults, returning the normalised input and the slug
+// derived from its name.
+func normalizeCreateInput(input CreateSessionInput) (CreateSessionInput, string, error) {
+	if input.ID == "" || input.Name == "" || input.CWD == "" || input.Agent == "" || input.CapturedPath == "" {
+		return input, "", errors.New("session id, name, cwd, agent, and captured path are required")
+	}
+	slug := Slug(input.Name)
+	if slug == "" {
+		return input, "", fmt.Errorf("session name %q does not produce a usable slug", input.Name)
+	}
+	if input.Status == "" {
+		input.Status = "starting"
+	}
+	if input.StatusSource == "" {
+		input.StatusSource = "user"
+	}
+	if input.StatusAt == 0 || input.CreatedAt == 0 {
+		return input, "", errors.New("session status_at and created_at timestamps are required")
+	}
+	if input.ResumeState == "" {
+		input.ResumeState = "auto"
+	}
+	if input.PermissionProfile == "" {
+		input.PermissionProfile = "safe"
+	}
+	return input, slug, nil
+}
+
+// claimSessionNameTx frees the name and slug a new session wants, or reports
+// why it cannot, inside CreateSession's transaction.
+func claimSessionNameTx(ctx context.Context, tx *sql.Tx, input CreateSessionInput, slug string) error {
 	// A row whose name is exactly input.Name always computes the same slug
 	// (Slug is a pure function of the name), so an identical-name insert
 	// violates BOTH the name and slug UNIQUE constraints at once; which one
@@ -532,16 +571,22 @@ func (s *Store) CreateSession(ctx context.Context, input CreateSessionInput) (Se
 		func(holderName string) error {
 			return fmt.Errorf("the archived session %q holds this name; press U to unarchive it, or dd to delete it, to free the name", holderName)
 		}, input.CreatedAt); err != nil {
-		return Session{}, err
+		return err
 	}
 	if err := reapTombstonedHolderTx(ctx, tx, "slug", slug, "",
 		fmt.Sprintf("session name %q collides with existing slug %q", input.Name, slug),
 		func(holderName string) error {
 			return fmt.Errorf("session name %q collides with the archived session %q's slug; press U to unarchive it, or dd to delete it, to free the slug", input.Name, holderName)
 		}, input.CreatedAt); err != nil {
-		return Session{}, err
+		return err
 	}
-	_, err = tx.ExecContext(ctx, `INSERT INTO sessions
+	return nil
+}
+
+// insertSessionRowTx INSERTs the session row inside CreateSession's
+// transaction, translating a UNIQUE violation into the user-facing message.
+func insertSessionRowTx(ctx context.Context, tx *sql.Tx, input CreateSessionInput, slug, launchArgsJSON, envJSON string) error {
+	_, err := tx.ExecContext(ctx, `INSERT INTO sessions
 		(id, name, slug, cwd, agent, captured_path, status, status_source, status_at, created_at,
 		 launch_args, env, pre_launch, post_destroy, login_shell, permission_profile, permission_profile_reason, conversation_id, resume_pin, resume_state, group_id)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -552,13 +597,20 @@ func (s *Store) CreateSession(ctx context.Context, input CreateSessionInput) (Se
 		nullableGroupID(input.GroupID))
 	if err != nil {
 		if strings.Contains(err.Error(), "sessions.name") || strings.Contains(err.Error(), "UNIQUE constraint failed: sessions.name") {
-			return Session{}, fmt.Errorf("session name %q already exists", input.Name)
+			return fmt.Errorf("session name %q already exists", input.Name)
 		}
 		if strings.Contains(err.Error(), "sessions.slug") || strings.Contains(err.Error(), "UNIQUE constraint failed: sessions.slug") {
-			return Session{}, fmt.Errorf("session name %q collides with existing slug %q", input.Name, slug)
+			return fmt.Errorf("session name %q collides with existing slug %q", input.Name, slug)
 		}
-		return Session{}, fmt.Errorf("insert session: %w", err)
+		return fmt.Errorf("insert session: %w", err)
+
 	}
+	return nil
+}
+
+// createdSessionGroupName resolves the created session's group name inside
+// CreateSession's transaction.
+func createdSessionGroupName(ctx context.Context, tx *sql.Tx, groupID *int64) (string, error) {
 	// Resolve GroupName inside this same transaction, mirroring
 	// sessionsFromClause's LEFT JOIN semantics (ListSessions/GetSession):
 	// empty for a nil GroupID (the implicit default group) and for a
@@ -566,24 +618,12 @@ func (s *Store) CreateSession(ctx context.Context, input CreateSessionInput) (Se
 	// under default rather than vanishing, SPEC §11) -- never a second,
 	// separate read after commit that could race a concurrent rename.
 	var groupName string
-	if input.GroupID != nil {
-		if err := tx.QueryRowContext(ctx, `SELECT name FROM groups WHERE id = ?`, *input.GroupID).Scan(&groupName); err != nil && !errors.Is(err, sql.ErrNoRows) {
-			return Session{}, fmt.Errorf("resolve created session's group name: %w", err)
+	if groupID != nil {
+		if err := tx.QueryRowContext(ctx, `SELECT name FROM groups WHERE id = ?`, *groupID).Scan(&groupName); err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return "", fmt.Errorf("resolve created session's group name: %w", err)
 		}
 	}
-	if err := tx.Commit(); err != nil {
-		return Session{}, fmt.Errorf("commit create session: %w", err)
-	}
-	return Session{
-		ID: input.ID, Name: input.Name, Slug: slug, CWD: input.CWD, Agent: input.Agent,
-		Status: input.Status, StatusSource: input.StatusSource, StatusAt: input.StatusAt, CreatedAt: input.CreatedAt,
-		Acknowledged: true,
-		LaunchArgs:   input.LaunchArgs, Env: input.Env, PreLaunch: input.PreLaunch, PostDestroy: input.PostDestroy, LoginShell: input.LoginShell,
-		PermissionProfile: input.PermissionProfile, PermissionProfileReason: input.PermissionProfileReason,
-		ConversationID: input.ConversationID,
-		ResumePin:      input.ResumePin, ResumeState: input.ResumeState,
-		GroupID: input.GroupID, GroupName: groupName,
-	}, nil
+	return groupName, nil
 }
 
 // marshalStrings encodes a launch-args slice as a JSON array, defaulting a
