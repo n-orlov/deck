@@ -6814,6 +6814,66 @@ func (m Model) pinBody() string {
 	return b.String()
 }
 
+// cycleDialogBody accumulates the coloured, wrapped lines of the three
+// left/right-cycles confirm dialogs (resume mode, permission profile,
+// restart/inject): a title, labelled fields, dimmed explanation and the
+// shared footer legend.
+type cycleDialogBody struct {
+	m    Model
+	wrap func(string) []string
+	out  []string
+}
+
+func (m Model) newCycleDialogBody() *cycleDialogBody {
+	return &cycleDialogBody{m: m, wrap: m.wrapDialogLines}
+}
+
+func (d *cycleDialogBody) blank() { d.out = append(d.out, "") }
+
+func (d *cycleDialogBody) String() string { return strings.Join(d.out, "\n") }
+
+// whole colours every wrapped line of line in one token.
+func (d *cycleDialogBody) whole(tok theme.Token, line string) {
+	for _, l := range d.wrap(line) {
+		d.out = append(d.out, d.m.colorToken(tok, l))
+	}
+}
+
+// field renders a "label value" row, the label in hint colour.
+func (d *cycleDialogBody) field(label, value string, focused bool) {
+	for _, l := range d.wrap(label + value) {
+		var segs []settingsRowSegment
+		rest := l
+		if strings.HasPrefix(l, label) {
+			segs = append(segs, settingsRowSegment{Text: label, Tok: theme.Hint})
+			rest = strings.TrimPrefix(l, label)
+		}
+		if rest != "" {
+			segs = append(segs, settingsRowSegment{Text: rest, Tok: theme.Text})
+		}
+		if len(segs) == 0 {
+			segs = []settingsRowSegment{{Text: l, Tok: theme.Text}}
+		}
+		d.out = append(d.out, d.m.renderCreateRowSegments(focused, segs))
+	}
+}
+
+// footer renders the key legend, key words in the key token and the rest in
+// hint colour.
+func (d *cycleDialogBody) footer(line string) {
+	for _, l := range d.wrap(line) {
+		fields := strings.Fields(l)
+		for i, f := range fields {
+			if cycleConfirmFooterKeyTokens[f] {
+				fields[i] = d.m.colorToken(theme.Key, f)
+			} else {
+				fields[i] = d.m.colorToken(theme.Hint, f)
+			}
+		}
+		d.out = append(d.out, strings.Join(fields, " "))
+	}
+}
+
 // styledPinBody re-derives pinBody's exact structure -- see
 // styledProfileSwitchBody's own doc comment one section up for the shape
 // this mirrors line for line, including the same "New:" row selection
@@ -6827,57 +6887,20 @@ func (m Model) styledPinBody() string {
 	if state == "" {
 		state = "auto"
 	}
-	wrap := m.wrapDialogLines
-	var out []string
-	colorWhole := func(tok theme.Token, line string) {
-		for _, l := range wrap(line) {
-			out = append(out, m.colorToken(tok, l))
-		}
-	}
-	colorField := func(label, value string, focused bool) {
-		for _, l := range wrap(label + value) {
-			var segs []settingsRowSegment
-			rest := l
-			if strings.HasPrefix(l, label) {
-				segs = append(segs, settingsRowSegment{Text: label, Tok: theme.Hint})
-				rest = strings.TrimPrefix(l, label)
-			}
-			if rest != "" {
-				segs = append(segs, settingsRowSegment{Text: rest, Tok: theme.Text})
-			}
-			if len(segs) == 0 {
-				segs = []settingsRowSegment{{Text: l, Tok: theme.Text}}
-			}
-			out = append(out, m.renderCreateRowSegments(focused, segs))
-		}
-	}
-	colorFooterLine := func(line string) {
-		for _, l := range wrap(line) {
-			fields := strings.Fields(l)
-			for i, f := range fields {
-				if cycleConfirmFooterKeyTokens[f] {
-					fields[i] = m.colorToken(theme.Key, f)
-				} else {
-					fields[i] = m.colorToken(theme.Hint, f)
-				}
-			}
-			out = append(out, strings.Join(fields, " "))
-		}
-	}
-
-	colorWhole(theme.Title, fmt.Sprintf("Change resume mode for %s", session.Name))
-	out = append(out, "")
-	colorField("Current:   ", resumeModeLabel(state), false)
-	colorField("New:       ", fmt.Sprintf("%s (left/right cycles: %s)", resumeModeLabel(m.pinValue), strings.Join(resumeModeOptionLabels(), ", ")), true)
-	out = append(out, "")
-	colorWhole(theme.Dimmed, resumeModeExplanation)
-	out = append(out, "")
-	colorFooterLine("Left/Right cycles · Enter confirms · Esc cancels")
+	d := m.newCycleDialogBody()
+	d.whole(theme.Title, fmt.Sprintf("Change resume mode for %s", session.Name))
+	d.blank()
+	d.field("Current:   ", resumeModeLabel(state), false)
+	d.field("New:       ", fmt.Sprintf("%s (left/right cycles: %s)", resumeModeLabel(m.pinValue), strings.Join(resumeModeOptionLabels(), ", ")), true)
+	d.blank()
+	d.whole(theme.Dimmed, resumeModeExplanation)
+	d.blank()
+	d.footer("Left/Right cycles · Enter confirms · Esc cancels")
 	if m.pinNote != "" {
-		out = append(out, "")
-		colorWhole(theme.Error, m.pinNote)
+		d.blank()
+		d.whole(theme.Error, m.pinNote)
 	}
-	return strings.Join(out, "\n")
+	return d.String()
 }
 
 // pinView renders the `p` pin/start-fresh dialog. "pinned" always resumes
