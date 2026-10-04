@@ -373,47 +373,66 @@ func crashTail(captured []byte, maxLines int) string {
 func stripTerminalControls(text string) string {
 	var out strings.Builder
 	for i := 0; i < len(text); {
-		switch text[i] {
-		case 0x1b:
-			i++
-			if i >= len(text) {
-				continue
-			}
-			switch text[i] {
-			case '[': // CSI: consume through its final byte.
-				i++
-				for i < len(text) {
-					b := text[i]
-					i++
-					if b >= 0x40 && b <= 0x7e {
-						break
-					}
-				}
-			case ']': // OSC: consume through BEL or ST.
-				i++
-				for i < len(text) {
-					if text[i] == 0x07 {
-						i++
-						break
-					}
-					if i+1 < len(text) && text[i] == 0x1b && text[i+1] == '\\' {
-						i += 2
-						break
-					}
-					i++
-				}
-			default: // A two-byte escape sequence.
-				i++
-			}
-		default:
-			r, size := utf8.DecodeRuneInString(text[i:])
-			i += size
-			if r == '\n' || r == '\t' || r >= 0x20 && r != 0x7f && (r < 0x80 || r > 0x9f) {
-				out.WriteRune(r)
-			}
+		if text[i] == 0x1b {
+			i = skipEscapeSequence(text, i)
+			continue
+		}
+		r, size := utf8.DecodeRuneInString(text[i:])
+		i += size
+		if keepTerminalRune(r) {
+			out.WriteRune(r)
 		}
 	}
 	return out.String()
+}
+
+// skipEscapeSequence returns the index just past the escape sequence that
+// starts at text[i] (an ESC byte): a CSI, an OSC, or a two-byte escape.
+func skipEscapeSequence(text string, i int) int {
+	i++
+	if i >= len(text) {
+		return i
+	}
+	switch text[i] {
+	case '[':
+		return skipCSI(text, i+1)
+	case ']':
+		return skipOSC(text, i+1)
+	default: // A two-byte escape sequence.
+		return i + 1
+	}
+}
+
+// skipCSI consumes a CSI sequence's parameters through its final byte.
+func skipCSI(text string, i int) int {
+	for i < len(text) {
+		b := text[i]
+		i++
+		if b >= 0x40 && b <= 0x7e {
+			break
+		}
+	}
+	return i
+}
+
+// skipOSC consumes an OSC sequence through BEL or ST.
+func skipOSC(text string, i int) int {
+	for i < len(text) {
+		if text[i] == 0x07 {
+			return i + 1
+		}
+		if i+1 < len(text) && text[i] == 0x1b && text[i+1] == '\\' {
+			return i + 2
+		}
+		i++
+	}
+	return i
+}
+
+// keepTerminalRune reports whether a rune survives control stripping:
+// newline, tab, and printable runes outside DEL and the C1 range.
+func keepTerminalRune(r rune) bool {
+	return r == '\n' || r == '\t' || r >= 0x20 && r != 0x7f && (r < 0x80 || r > 0x9f)
 }
 
 // RunReconciler performs an immediate reconciliation and repeats it at the
