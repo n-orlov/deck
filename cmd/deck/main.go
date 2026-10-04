@@ -168,6 +168,41 @@ func runTUI(settings config.Settings, stderr io.Writer) int {
 	// restart-to-apply: a save changes config.toml immediately, but this already
 	// running client keeps enforcing the OLD window until deck restarts.
 	tuiReconcile := newTUIReconcile(db, sessions, settings)
+	model := newDeckModel(db, settings, sessions, client, registry, tuiReconcile)
+	programOptions := []tea.ProgramOption{tea.WithAltScreen()}
+	// [ui] mouse / DECK_MOUSE (requirement 3) gates SGR mouse reporting for the
+	// whole program lifetime; §11.8's hit-testing and gesture handling land in
+	// later phase-2b1 tasks, but the on/off control itself is honoured here.
+	if settings.Mouse {
+		programOptions = append(programOptions, tea.WithMouseCellMotion())
+	}
+	programOptions = append(programOptions, rawByteCountingProgramOptions()...)
+	// wrapForInteractiveShutdownOnPanic is deliberately the OUTERMOST wrap
+	// (applied last, around everything else): its own recover must see a
+	// panic thrown by any of the layers below it too, not only one from
+	// inside the real tui.Model's own Update (see cmd/deck/interactive_shutdown.go).
+	finalModel, runErr := tea.NewProgram(wrapForInteractiveShutdownOnPanic(wrapForInputCounting(wrapForDeliberateTestPanic(model))), programOptions...).Run()
+	// PRD R89/task 031: SIGTERM's QuitMsg (Bubble Tea's own signal handler)
+	// returns the model completely unchanged, without ever calling Update --
+	// so unlike a panic (already handled inside the wrapper above, before
+	// this point), a SIGTERM mid-interactive never reaches any recover at
+	// all. finalModel is exactly what QuitMsg's own early return in
+	// eventLoop handed back, so this is deck's only remaining chance to tear
+	// an armed claim down before the process exits. A no-op whenever
+	// interactive mode was not armed (ShutdownInteractive's own guard), so
+	// this is safe to call unconditionally on every other exit route too.
+	shutdownArmedInteractiveClaim(finalModel)
+	if runErr != nil {
+		sayln(stderr, "deck:", runErr)
+		return 0
+	}
+	return 0
+}
+
+// newDeckModel builds the tui.Model with every service-backed dependency
+// wired in: the positional constructor chain first, then each narrower
+// dependency through its With... option.
+func newDeckModel(db *store.Store, settings config.Settings, sessions service.Service, client tmux.Client, registry *agent.Registry, tuiReconcile func(context.Context) error) tui.Model {
 	// Archive and Delete now also return SPEC §9.2's teardown-hook toast
 	// message (task 013). WithTeardownHookReporters below wires that message
 	// through to an on-screen note (task 042); the constructor's own
@@ -226,34 +261,7 @@ func runTUI(settings config.Settings, stderr io.Writer) int {
 	// (registry_guard_test.go, TestBlackBoxRegistrySwapNeedsNoTUIEdit) still
 	// injects its own prober in setup; this is the one production wiring.
 	model = model.WithAvailableAgentKindsProber(sessions.AvailableKinds)
-	programOptions := []tea.ProgramOption{tea.WithAltScreen()}
-	// [ui] mouse / DECK_MOUSE (requirement 3) gates SGR mouse reporting for the
-	// whole program lifetime; §11.8's hit-testing and gesture handling land in
-	// later phase-2b1 tasks, but the on/off control itself is honoured here.
-	if settings.Mouse {
-		programOptions = append(programOptions, tea.WithMouseCellMotion())
-	}
-	programOptions = append(programOptions, rawByteCountingProgramOptions()...)
-	// wrapForInteractiveShutdownOnPanic is deliberately the OUTERMOST wrap
-	// (applied last, around everything else): its own recover must see a
-	// panic thrown by any of the layers below it too, not only one from
-	// inside the real tui.Model's own Update (see cmd/deck/interactive_shutdown.go).
-	finalModel, runErr := tea.NewProgram(wrapForInteractiveShutdownOnPanic(wrapForInputCounting(wrapForDeliberateTestPanic(model))), programOptions...).Run()
-	// PRD R89/task 031: SIGTERM's QuitMsg (Bubble Tea's own signal handler)
-	// returns the model completely unchanged, without ever calling Update --
-	// so unlike a panic (already handled inside the wrapper above, before
-	// this point), a SIGTERM mid-interactive never reaches any recover at
-	// all. finalModel is exactly what QuitMsg's own early return in
-	// eventLoop handed back, so this is deck's only remaining chance to tear
-	// an armed claim down before the process exits. A no-op whenever
-	// interactive mode was not armed (ShutdownInteractive's own guard), so
-	// this is safe to call unconditionally on every other exit route too.
-	shutdownArmedInteractiveClaim(finalModel)
-	if runErr != nil {
-		sayln(stderr, "deck:", runErr)
-		return 0
-	}
-	return 0
+	return model
 }
 
 // resolveStartupProfile runs run()'s profile gate: the hidden hook verb's
