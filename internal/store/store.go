@@ -2453,70 +2453,33 @@ func (s *Store) migrate(version int) error {
 		return fmt.Errorf("begin state database migration: %w", err)
 	}
 	defer rollbackTx(tx)
-	switch version {
-	case 0:
-		for _, statement := range schemaV1 {
-			if _, err := tx.Exec(statement); err != nil {
-				return fmt.Errorf("create schema v1: %w", err)
-			}
-		}
-		fallthrough
-	case 1:
-		for _, statement := range schemaV2 {
-			if _, err := tx.Exec(statement); err != nil {
-				return fmt.Errorf("create schema v2: %w", err)
-			}
-		}
-		fallthrough
-	case 2:
-		for _, statement := range schemaV3 {
-			if _, err := tx.Exec(statement); err != nil {
-				return fmt.Errorf("create schema v3: %w", err)
-			}
-		}
-		fallthrough
-	case 3:
-		for _, statement := range schemaV4 {
-			if _, err := tx.Exec(statement); err != nil {
-				return fmt.Errorf("create schema v4: %w", err)
-			}
-		}
-		fallthrough
-	case 4:
-		for _, statement := range schemaV5 {
-			if _, err := tx.Exec(statement); err != nil {
-				return fmt.Errorf("create schema v5: %w", err)
-			}
-		}
-		fallthrough
-	case 5:
-		for _, statement := range schemaV6 {
-			if _, err := tx.Exec(statement); err != nil {
-				return fmt.Errorf("create schema v6: %w", err)
-			}
-		}
-		fallthrough
-	case 6:
-		for _, statement := range schemaV7 {
-			if _, err := tx.Exec(statement); err != nil {
-				return fmt.Errorf("create schema v7: %w", err)
-			}
-		}
-		fallthrough
-	case 7:
-		for _, statement := range schemaV8 {
-			if _, err := tx.Exec(statement); err != nil {
-				return fmt.Errorf("create schema v8: %w", err)
-			}
-		}
-	default:
-		return fmt.Errorf("no migration path from schema version %d", version)
+	if err := applySchemaLadder(tx, version); err != nil {
+		return err
 	}
 	if _, err := tx.Exec(`INSERT INTO meta (key, version) VALUES ('schema_version', ?) ON CONFLICT(key) DO UPDATE SET version = excluded.version`, SchemaVersion); err != nil {
 		return fmt.Errorf("record schema version: %w", err)
 	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit state database migration: %w", err)
+	}
+	return nil
+}
+
+// applySchemaLadder runs every migration rung above the on-disk version,
+// oldest first, inside the caller's transaction. The rungs are read from
+// the schemaVN variables at call time (tests substitute them); a version
+// outside 0..SchemaVersion-1 has no migration path.
+func applySchemaLadder(tx *sql.Tx, version int) error {
+	rungs := [][]string{schemaV1, schemaV2, schemaV3, schemaV4, schemaV5, schemaV6, schemaV7, schemaV8}
+	if version < 0 || version >= len(rungs) {
+		return fmt.Errorf("no migration path from schema version %d", version)
+	}
+	for i := version; i < len(rungs); i++ {
+		for _, statement := range rungs[i] {
+			if _, err := tx.Exec(statement); err != nil {
+				return fmt.Errorf("create schema v%d: %w", i+1, err)
+			}
+		}
 	}
 	return nil
 }
