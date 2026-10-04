@@ -219,6 +219,17 @@ test that fails twice in a row fails the check.
   (its own row), never a pass. `ci/suitecheck` proves its pass/fail/skip/
   flaky rows equal the Allure results' on a fixture, and fails when they
   differ.
+- Allure smoke check (R196): before the real report is built, the `report`
+  job runs the formatter's own fixture
+  (`TestAllureFormatterWritesResultsForAFixtureRun`, kept with
+  `DECK_ALLURE_FIXTURE_OUT`) in the CI image, then `ci/allure-smoke.sh`
+  runs the pinned Allure's `allure generate` over it (through
+  `ci/allure-report.sh`, same checksum-verified download) and fails if
+  generation fails or the generated report lacks the fixture's steps or the
+  `@gh-61` issue link. These are steps of the existing `report` job, not a
+  job of their own (`ci/workflowcheck` guards that); a bumped Allure version
+  or a formatter change that Allure cannot render turns this red before
+  anything is published.
 - The features results changed `historyId` (the JUnit-derived id to the
   formatter's digest), so the features trend restarted once when this landed;
   unit trends continue. The root-publish history dir still carries over.
