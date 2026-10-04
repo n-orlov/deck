@@ -1661,6 +1661,25 @@ func (s *Store) RenameSession(ctx context.Context, sessionID, newName, source st
 		return fmt.Errorf("begin rename session: %w", err)
 	}
 	defer rollbackTx(tx)
+	if err := claimRenameNameTx(ctx, tx, sessionID, newName, slug, at); err != nil {
+		return err
+	}
+	if err := writeSessionNameTx(ctx, tx, sessionID, newName); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO events (session_id, at, kind, reason, payload)
+		VALUES (?, ?, ?, ?, ?)`, sessionID, at, "renamed", source, newName); err != nil {
+		return fmt.Errorf("record rename session event: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit rename session: %w", err)
+	}
+	return nil
+}
+
+// claimRenameNameTx is RenameSession's uniqueness pre-check inside its
+// transaction: the name, then the slug, each reaping a tombstoned holder.
+func claimRenameNameTx(ctx context.Context, tx *sql.Tx, sessionID, newName, slug string, at int64) error {
 	// Mirrors CreateSession's own name-then-slug pre-check order and
 	// reasoning (see the comment there): checking name equality first,
 	// inside this same transaction, makes "already exists" deterministic
@@ -1689,6 +1708,12 @@ func (s *Store) RenameSession(ctx context.Context, sessionID, newName, source st
 		}, at); err != nil {
 		return err
 	}
+	return nil
+}
+
+// writeSessionNameTx writes only the name column of one row (RenameSession
+// leaves slug alone) and reports a UNIQUE clash or a missing row.
+func writeSessionNameTx(ctx context.Context, tx *sql.Tx, sessionID, newName string) error {
 	// Note: only the `name` column is written here -- `slug` is deliberately
 	// left out of this UPDATE, which is the entire mechanism by which the
 	// live tmux session (named from the ORIGINAL slug) is left untouched.
@@ -1705,13 +1730,6 @@ func (s *Store) RenameSession(ctx context.Context, sessionID, newName, source st
 	}
 	if affected == 0 {
 		return fmt.Errorf("session %q not found", sessionID)
-	}
-	if _, err := tx.ExecContext(ctx, `INSERT INTO events (session_id, at, kind, reason, payload)
-		VALUES (?, ?, ?, ?, ?)`, sessionID, at, "renamed", source, newName); err != nil {
-		return fmt.Errorf("record rename session event: %w", err)
-	}
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("commit rename session: %w", err)
 	}
 	return nil
 }
