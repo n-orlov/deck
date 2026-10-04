@@ -394,7 +394,14 @@ jobs:
       && needs.report.result == 'success'
       && (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # Each deploy-pages attempt below carries its own `timeout: 120000`
+    # (2 min; a healthy deploy takes ~10 s). The action's default is
+    # 600000 (10 min), which equalled the old 10-minute job cap: one
+    # stalled Pages deployment then ran the whole job out
+    # before attempt 1 could fail, so the retry ladder never ran and the
+    # run ended `cancelled`. 4 x 2 min + 210 s of back-off = 11.5 min
+    # worst case, inside this cap (ci/workflowcheck pins the arithmetic).
+    timeout-minutes: 15
     permissions:
       pages: write
       id-token: write
@@ -443,6 +450,8 @@ jobs:
       - name: Deploy to GitHub Pages (attempt 1 of 4)
         id: deployment1
         uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4
+        with:
+          timeout: 120000
         continue-on-error: true
 
       - name: Back off before retry 2
@@ -453,6 +462,8 @@ jobs:
         id: deployment2
         if: steps.deployment1.outcome == 'failure'
         uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4
+        with:
+          timeout: 120000
         continue-on-error: true
 
       - name: Back off before retry 3
@@ -463,6 +474,8 @@ jobs:
         id: deployment3
         if: steps.deployment2.outcome == 'failure'
         uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4
+        with:
+          timeout: 120000
         continue-on-error: true
 
       - name: Back off before retry 4
@@ -473,6 +486,8 @@ jobs:
         id: deployment4
         if: steps.deployment3.outcome == 'failure'
         uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4
+        with:
+          timeout: 120000
 
   # R146: exactly one PR comment carrying the report link, created or
   # updated depending on whether a comment with the marker HTML string
