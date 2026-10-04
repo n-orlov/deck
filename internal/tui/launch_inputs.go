@@ -221,65 +221,27 @@ var launchInputsLegendKeys = map[string]bool{
 // in `dimmed`, the footer legend's keys in `key` and the rest of it in
 // `hint`, and a validation/failed-submit note in `error`.
 func (m Model) styledLaunchInputsBody() string {
-	wrap := m.wrapDialogLines
-	var out []string
-
-	colorWhole := func(tok theme.Token, line string) {
-		for _, l := range wrap(line) {
-			out = append(out, m.colorToken(tok, l))
-		}
-	}
-	colorRow := func(label, value string, focused bool) {
-		for _, l := range wrap(label + value) {
-			var segs []settingsRowSegment
-			rest := l
-			if strings.HasPrefix(l, label) {
-				segs = append(segs, settingsRowSegment{Text: label, Tok: theme.Hint})
-				rest = strings.TrimPrefix(l, label)
-			}
-			if rest != "" {
-				segs = append(segs, settingsRowSegment{Text: rest, Tok: theme.Text})
-			}
-			if len(segs) == 0 {
-				segs = []settingsRowSegment{{Text: l, Tok: theme.Text}}
-			}
-			out = append(out, m.renderCreateRowSegments(focused, segs))
-		}
-	}
-	colorLegendLine := func(line string, keys map[string]bool) {
-		for _, l := range wrap(line) {
-			fields := strings.Fields(l)
-			for i, f := range fields {
-				trimmed := strings.TrimRight(f, ",;.")
-				if keys[trimmed] {
-					fields[i] = m.colorToken(theme.Key, trimmed) + f[len(trimmed):]
-				} else {
-					fields[i] = m.colorToken(theme.Hint, f)
-				}
-			}
-			out = append(out, strings.Join(fields, " "))
-		}
-	}
+	c := &dialogBodyColorer{m: m}
 
 	session, _ := m.selectedSession()
-	colorWhole(theme.Title, fmt.Sprintf("Launch inputs for %s", session.Name))
-	out = append(out, "")
+	c.whole(theme.Title, fmt.Sprintf("Launch inputs for %s", session.Name))
+	c.out = append(c.out, "")
 	for field, row := range m.launchInputsFieldRows() {
 		label := m.launchInputsFieldLabel(field)
-		colorRow(label, row.value, field == m.launchInputsField)
-		colorWhole(theme.Dimmed, "    "+row.help)
+		c.row(label, row.value, field == m.launchInputsField)
+		c.whole(theme.Dimmed, "    "+row.help)
 	}
-	out = append(out, "")
-	colorWhole(theme.Dimmed, launchInputsVerbatimNote)
-	colorLegendLine(launchInputsFooterLine, launchInputsLegendKeys)
+	c.out = append(c.out, "")
+	c.whole(theme.Dimmed, launchInputsVerbatimNote)
+	c.legendLine(launchInputsFooterLine, launchInputsLegendKeys)
 	if launchInputsFieldIsText(m.launchInputsField) {
-		out = append(out, m.styledTextFieldEditKeys(wrap)...)
+		c.out = append(c.out, m.styledTextFieldEditKeys(m.wrapDialogLines)...)
 	}
 	if m.launchInputsNote != "" {
-		out = append(out, "")
-		colorWhole(theme.Error, m.launchInputsNote)
+		c.out = append(c.out, "")
+		c.whole(theme.Error, m.launchInputsNote)
 	}
-	return strings.Join(out, "\n")
+	return strings.Join(c.out, "\n")
 }
 
 // updateLaunchInputsDialog handles every key while the launch-inputs
