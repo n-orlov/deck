@@ -91,6 +91,7 @@ func TestSuiteScriptTimeoutFixtureRetainsScenarioResultsAndAbortInReport(t *test
 	copyFile(t, filepath.Join(root, "ci", "suite.sh"), filepath.Join(module, "ci", "suite.sh"), 0o755)
 	copyFile(t, filepath.Join(root, "ci", "summary.sh"), filepath.Join(module, "ci", "summary.sh"), 0o755)
 	copyFile(t, filepath.Join(root, "ci", "junitflaky", "main.go"), filepath.Join(module, "ci", "junitflaky", "main.go"), 0o644)
+	copyFile(t, filepath.Join(root, "ci", "junit2allure", "main.go"), filepath.Join(module, "ci", "junit2allure", "main.go"), 0o644)
 
 	outdir := filepath.Join(module, "out")
 	env := make([]string, 0, len(os.Environ())+6)

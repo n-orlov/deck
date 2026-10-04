@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"strconv"
 	"strings"
@@ -192,8 +193,14 @@ func TestAllureFormatterWritesResultsForAFixtureRun(t *testing.T) {
 		if got := allureLabelValues(r, "tag"); strings.Join(got, ",") != "multiclient,slow" {
 			t.Fatalf("tag labels = %v, want multiclient and slow", got)
 		}
-		if got := allureLabelValues(r, "parentSuite"); strings.Join(got, ",") != "claude" {
-			t.Fatalf("parentSuite = %v, want claude", got)
+		if got := allureLabelValues(r, "parentSuite"); strings.Join(got, ",") != "features" {
+			t.Fatalf("parentSuite = %v, want exactly features (the report group)", got)
+		}
+		if got := allureLabelValues(r, "suite"); strings.Join(got, ",") != "claude" {
+			t.Fatalf("suite = %v, want the @claude agent tag", got)
+		}
+		if got := allureLabelValues(r, "subSuite"); strings.Join(got, ",") != "Allure fixture" {
+			t.Fatalf("subSuite = %v, want the feature name under the agent suite", got)
 		}
 		if got := allureLabelValues(r, "feature"); strings.Join(got, ",") != "Allure fixture" {
 			t.Fatalf("feature label = %v", got)
@@ -392,5 +399,41 @@ func TestGodogFormatAddsAllureOnlyWhenTheEnvVarIsSet(t *testing.T) {
 	want := "pretty,junit:" + junit + ",allure:" + filepath.Join(dir, "godog-allure-summary.txt")
 	if got := godogFormat(); got != want {
 		t.Fatalf("godogFormat() = %q, want %q", got, want)
+	}
+}
+
+// TestAllureLabelsGroupFeaturesAndLiftTheAgentTagToSuite pins the Suites tree
+// the report relies on: parentSuite is "features" and only that, the feature
+// name is the suite, and an agent tag takes the suite level with the feature
+// name under it as subSuite.
+func TestAllureLabelsGroupFeaturesAndLiftTheAgentTagToSuite(t *testing.T) {
+	doc := &allureFeatureDoc{name: "A feature", uri: "a.feature"}
+	labelsFor := func(tags ...string) map[string]string {
+		p := &godog.Scenario{}
+		for _, name := range tags {
+			// reflect: the tag type lives in a module go.mod lists as indirect,
+			// and importing it would turn that into a direct dependency.
+			tag := reflect.New(reflect.TypeOf(p.Tags).Elem().Elem())
+			tag.Elem().FieldByName("Name").SetString(name)
+			tags := reflect.ValueOf(&p.Tags).Elem()
+			tags.Set(reflect.Append(tags, tag))
+		}
+		labels, _ := allureTagsToLabels(doc, p)
+		got := map[string]string{}
+		for _, l := range labels {
+			if l.Name == "parentSuite" || l.Name == "suite" || l.Name == "subSuite" {
+				if _, dup := got[l.Name]; dup {
+					t.Fatalf("tags %v: label %s appears twice in %v", tags, l.Name, labels)
+				}
+				got[l.Name] = l.Value
+			}
+		}
+		return got
+	}
+	if got := labelsFor("@slow"); got["parentSuite"] != "features" || got["suite"] != "A feature" || got["subSuite"] != "" {
+		t.Fatalf("no agent tag: %v", got)
+	}
+	if got := labelsFor("@pi", "@slow"); got["parentSuite"] != "features" || got["suite"] != "pi" || got["subSuite"] != "A feature" {
+		t.Fatalf("agent tag: %v", got)
 	}
 }

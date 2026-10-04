@@ -190,13 +190,36 @@ test that fails twice in a row fails the check.
   an Allure step (verbatim text, own status and duration). `@gh-NN` becomes an
   issue link to `https://github.com/n-orlov/deck/issues/NN`, `@multiclient`/
   `@slow`/`@nightly` become `tag` labels and `@claude`/`@pi`/`@codex` the
-  `parentSuite`. A failing step carries only what the harness already writes
+  `suite` (the feature name moving to `subSuite`); every result carries
+  `parentSuite` `features`. A failing step carries only what the harness already writes
   into its error text (last normalized pty frame, tmux captures, deck-log
   slice, store dump), cut out by its section headers; nothing is collected
   anew. The `historyId` is a digest of feature file, scenario name (and, for an
   outline, its substituted steps), so the one-retry rerun of a failed
   scenario (`DECK_GODOG_PATHS=<file>:<line>`) into the same directory is a
   retry of the same test, not a second one.
+- `ci/suite.sh` sets `DECK_GODOG_ALLURE` on the `TestFeatures` run and on
+  every solo scenario rerun, all into one `<outdir>/allure-results/`: a
+  rerun carries the failed attempt's `historyId`, so it is a retry of that
+  test, never a second one. The same directory gets the Go unit tests
+  converted from the merged JUnit by `ci/junit2allure` (`parentSuite` `unit`,
+  the `historyId` Allure's JUnit plugin used, so unit trends carry over; an
+  earlier failed attempt is a hidden retry and the test is marked flaky),
+  `environment.properties` (Go version, tmux version, sha, `race=yes|no`) and
+  `executor.json` (the Actions run link; the workflow passes `DECK_CI_SHA` and
+  `DECK_CI_RUN_URL` because `ci/run.sh` forwards only `DECK_*`). If no native
+  features results exist (the process died before the formatter flushed), the
+  merged features JUnit is converted instead, so a failed pass is never
+  missing; the synthetic "aborted" marker is converted either way.
+  `ci/allure-report.sh` builds the one report from that directory (a results
+  dir without it falls back to the merged JUnit). `ci/summary.sh` still counts
+  from the merged JUnit; `ci/suitecheck` proves its pass/fail/flaky counts
+  equal the Allure results' on a fixture. A test that fails on every attempt
+  is one failed test in Allure but one failure per attempt in the JUnit
+  count.
+- The features results changed `historyId` (the JUnit-derived id to the
+  formatter's digest), so the features trend restarted once when this landed;
+  unit trends continue. The root-publish history dir still carries over.
 - `main`/`schedule`/`workflow_dispatch` runs publish to the Pages **site
   root**, with Allure's own history/trend carried forward across runs. A
   `pull_request` run instead publishes under `/pr/<number>/`, with no shared
