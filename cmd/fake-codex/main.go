@@ -167,11 +167,8 @@ func parse(args []string) (options, error) {
 			continue
 		}
 
-		if argument == "--session-id" {
-			return result, errors.New("--session-id is not a codex-cli flag: codex mints its own conversation id")
-		}
-		if argument == "--full-auto" {
-			return result, errors.New("--full-auto was removed from codex-cli 0.154.0")
+		if err := rejectedFlag(argument); err != nil {
+			return result, err
 		}
 		if argument == dangerouslyBypassHookTrustFlag {
 			result.trustHooks = true
@@ -185,21 +182,8 @@ func parse(args []string) (options, error) {
 			}
 			value := following[0]
 			index++
-			switch argument {
-			case "-a", "--ask-for-approval":
-				if !askForApprovalValues[value] {
-					return result, fmt.Errorf("invalid value for %s: %q", argument, value)
-				}
-				result.askForApproval = value
-			case "-s", "--sandbox":
-				if !sandboxValues[value] {
-					return result, fmt.Errorf("invalid value for %s: %q", argument, value)
-				}
-				result.sandbox = value
-			case "-c", "--config":
-				result.configOverrides = append(result.configOverrides, value)
-			default:
-				return result, fmt.Errorf("unknown option %q", argument)
+			if err := applyValuedOption(&result, argument, value); err != nil {
+				return result, err
 			}
 			continue
 		}
@@ -208,6 +192,40 @@ func parse(args []string) (options, error) {
 	}
 	result.message = strings.Join(message, " ")
 	return result, nil
+}
+
+// rejectedFlag reports the two Claude-shaped flags codex-cli 0.154.0 does
+// not have; nil for any other argument.
+func rejectedFlag(argument string) error {
+	switch argument {
+	case "--session-id":
+		return errors.New("--session-id is not a codex-cli flag: codex mints its own conversation id")
+	case "--full-auto":
+		return errors.New("--full-auto was removed from codex-cli 0.154.0")
+	}
+	return nil
+}
+
+// applyValuedOption records one `<option> <value>` pair into result, or
+// rejects an unknown option or a value outside the option's allowed set.
+func applyValuedOption(result *options, argument, value string) error {
+	switch argument {
+	case "-a", "--ask-for-approval":
+		if !askForApprovalValues[value] {
+			return fmt.Errorf("invalid value for %s: %q", argument, value)
+		}
+		result.askForApproval = value
+	case "-s", "--sandbox":
+		if !sandboxValues[value] {
+			return fmt.Errorf("invalid value for %s: %q", argument, value)
+		}
+		result.sandbox = value
+	case "-c", "--config":
+		result.configOverrides = append(result.configOverrides, value)
+	default:
+		return fmt.Errorf("unknown option %q", argument)
+	}
+	return nil
 }
 
 // hookOverrideValuePattern matches exactly the -c VALUE shape
