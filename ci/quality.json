@@ -9,5 +9,9 @@
         "enabled": false,
         "ceiling": 30,
         "fixture_ceiling": 30
+    },
+    "trivy": {
+        "enabled": true,
+        "severity": "HIGH,CRITICAL"
     }
 }

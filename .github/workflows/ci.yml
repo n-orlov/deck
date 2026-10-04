@@ -116,7 +116,7 @@ jobs:
         continue-on-error: true
         run: ci/run.sh ci/suite.sh
 
-      - name: Quality gates (ci/quality.sh; every gate off until a later task flips one on, R187)
+      - name: Quality gates (ci/quality.sh; trivy on, others off until a later task flips them on, R187/R190)
         id: quality
         continue-on-error: true
         run: ci/run.sh ci/quality.sh "$DECK_CI_OUT"

@@ -12,7 +12,7 @@ look at the Actions run itself, found by its head sha.
 | job | runs on | purpose |
 |---|---|---|
 | `lint` | self-hosted `[self-hosted, linux, x64, deck]` | `gofmt -l`, `go vet ./...`, `go mod tidy` drift check, in that order, via `ci/lint.sh`. Fails fast, before the suite. |
-| `suite` | self-hosted `[self-hosted, linux, x64, deck]`, `needs: lint` | Builds/refreshes the `deck-ci:local` image, runs `ci/run.sh ci/suite.sh` (the whole `go test -p=1 -count=1 ./...` matrix), then `ci/run.sh ci/quality.sh` (R187's quality gates, each `enabled: false` until a later task flips one on), and on `schedule`/`workflow_dispatch` also runs `ci/stability.sh 3` (three clean-state repetitions) with `-race` enabled. The job fails if the suite, the quality gates, or (nightly) stability failed. Writes the job summary and uploads raw results as a workflow artifact. |
+| `suite` | self-hosted `[self-hosted, linux, x64, deck]`, `needs: lint` | Builds/refreshes the `deck-ci:local` image, runs `ci/run.sh ci/suite.sh` (the whole `go test -p=1 -count=1 ./...` matrix), then `ci/run.sh ci/quality.sh` (R187's quality gates; the trivy gate is on, the rest `enabled: false` until a later task flips them on), and on `schedule`/`workflow_dispatch` also runs `ci/stability.sh 3` (three clean-state repetitions) with `-race` enabled. The job fails if the suite, the quality gates, or (nightly) stability failed. Writes the job summary and uploads raw results as a workflow artifact. |
 | `report (Allure)` | self-hosted, `needs: [lint, suite]` | Turns the JUnit `suite` produced into an Allure report, merges it into the persisted `gh-pages` site tree, uploads the rendered report as a workflow artifact, and stages the merged tree as a Pages artifact. Holds no `pages:`/`id-token:` permission -- it stages, it never deploys. |
 | `publish (Pages)` | `ubuntu-latest`, `needs: report` | Deploys the root-triggered (`push`/`schedule`/`workflow_dispatch`) Pages artifact. Holds `pages: write`/`id-token: write`. Gated to `push`/`schedule`/`workflow_dispatch` only -- never `pull_request` (a PR-branch deploy is rejected server-side by the repo's `github-pages` environment's branch policy regardless; see "Publishing a PR's own report" below for how a PR's own report still gets published). |
 | `pr-comment` | `ubuntu-latest`, `needs: report` | Runs `go run ./ci/prcomment`, which pages through every existing PR comment and creates or updates the one comment (keyed on an HTML marker) carrying the PR's own `/pr/<n>/` Allure link and its head sha. Only for `pull_request` events whose head repo is this repository. |
@@ -491,6 +491,9 @@ threshold from here and nowhere else:
     },
     "crap": {
         "enabled": false, "ceiling": 30, "fixture_ceiling": 30
+    },
+    "trivy": {
+        "enabled": true, "severity": "HIGH,CRITICAL"
     }
 }
 ```
@@ -508,8 +511,26 @@ threshold from here and nowhere else:
   the whole module in one pass (no `-filter`), so the two thresholds only
   diverge in the config, never in enforcement, for as long as they stay
   equal.
-- Every gate starts `enabled: false` (R187: "no gate on yet"). A later task
-  flips one on only once the product passes it locally.
+- `trivy` (R190) runs `trivy fs` over the repository root with
+  `--scanners vuln,secret,misconfig`, `--severity HIGH,CRITICAL`,
+  `--ignore-unfixed` and `--exit-code 1`. `severity` must keep both `HIGH`
+  and `CRITICAL` (the gate refuses anything else, and the loosening test
+  fails if a level is dropped or the gate switched off). The DB cache is
+  `/go-cache/trivy` (the existing volume, so a warm run is fast); outside the
+  image `ci/quality.sh` falls back to a temp dir, and `TRIVY_CACHE_DIR`
+  overrides both. Skipped, by exact path with the reason in
+  `ci/qualitycheck/trivy.go`: the 11 MB stability log
+  `docs/reports/phase3g-812-stability10/summary.log`, and `ci-results/`
+  (the suite's own generated output, not repo content). The gate fails on an
+  empty or wrong scan target (no files, or no `go.mod`) without running
+  trivy, because trivy itself exits 0 on an empty directory.
+  Exceptions live only in `.trivyignore`, one per line, in the form
+  `<ID> review-by:YYYY-MM-DD # <reason>`: a line with no reason, no date, or a
+  date before today (UTC) fails the gate and
+  `TestTrivyIgnore_CheckedInFileIsValid`. `golang.org/x/text` is at v0.39.0
+  (fixing CVE-2026-56852), so there are no exceptions at present.
+- The other gates start `enabled: false` (R187: "no gate on yet"). A later
+  task flips one on only once the product passes it locally.
 
 `ci/qualitycheck` (`go run ./ci/qualitycheck -config <path> -profile
 <path>`) does the actual gate work behind `ci/quality.sh`: it reads

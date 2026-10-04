@@ -26,6 +26,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // coverageConfig is R187's coverage-gate thresholds: a floor over the
@@ -56,11 +57,22 @@ type crapConfig struct {
 type config struct {
 	Coverage coverageConfig `json:"coverage"`
 	Crap     crapConfig     `json:"crap"`
+	Trivy    trivyConfig    `json:"trivy"`
 }
+
+// trivyBase carries the trivy gate's flag-supplied options (binary,
+// target, cache dir, ignore file); run fills in the severity from the
+// config and the clock. A package variable so run's signature, which
+// every other gate's tests use, stays put.
+var trivyBase = trivyOptions{Target: ".", IgnoreFile: ".trivyignore", CacheDir: "/go-cache/trivy"}
 
 func main() {
 	configPath := flag.String("config", "", "path to ci/quality.json (required)")
 	profilePath := flag.String("profile", "", "path to the merged coverage profile (required if an on gate needs it)")
+	flag.StringVar(&trivyBase.Binary, "trivy-bin", "trivy", "trivy executable")
+	flag.StringVar(&trivyBase.Target, "trivy-target", ".", "directory the trivy gate scans")
+	flag.StringVar(&trivyBase.CacheDir, "trivy-cache", "/go-cache/trivy", "trivy DB cache directory")
+	flag.StringVar(&trivyBase.IgnoreFile, "trivy-ignore", ".trivyignore", "trivy exceptions file")
 	flag.Parse()
 
 	report, exitCode, err := run(*configPath, *profilePath)
@@ -118,6 +130,18 @@ func run(configPath, profilePath string) (report string, exitCode int, err error
 				"(R189/task 022 adds ci/covgate)\nwhat to do: set coverage.enabled back to " +
 				"false until ci/covgate lands, or implement it before enabling this gate.\n",
 		})
+	}
+
+	if cfg.Trivy.Enabled {
+		anyEnabled = true
+		opts := trivyBase
+		opts.Severity = cfg.Trivy.Severity
+		opts.Now = time.Now()
+		ok, out, rerr := runTrivyGate(opts)
+		if rerr != nil {
+			return "", 2, rerr
+		}
+		results = append(results, gateResult{name: "trivy", ok: ok, output: out})
 	}
 
 	var b strings.Builder

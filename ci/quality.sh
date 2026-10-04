@@ -45,6 +45,18 @@ done
 
 profile="$outdir/coverage-merged.out"
 
+# Trivy's DB cache lives under the image's /go-cache volume so a warm run
+# is fast (R190); outside the image (no /go-cache) it falls back to a
+# temp dir. TRIVY_CACHE_DIR overrides both.
+if [ -n "${TRIVY_CACHE_DIR:-}" ]; then
+    trivy_cache=$TRIVY_CACHE_DIR
+elif [ -d /go-cache ] && [ -w /go-cache ]; then
+    trivy_cache=/go-cache/trivy
+else
+    trivy_cache=${TMPDIR:-/tmp}/deck-trivy-cache
+fi
+
 exit_code=0
-go run ./ci/qualitycheck -config "$config" -profile "$profile" || exit_code=$?
+go run ./ci/qualitycheck -config "$config" -profile "$profile" \
+    -trivy-target . -trivy-cache "$trivy_cache" -trivy-ignore .trivyignore || exit_code=$?
 exit "$exit_code"
