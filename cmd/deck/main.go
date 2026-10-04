@@ -38,36 +38,9 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return runProfilesListing(os.Getenv, os.UserHomeDir, stdout)
 	}
 	isHook := len(args) == 2 && args[1] == "_hook"
-	var positional string
-	if isHook {
-		if !refuseBadHookProfile(os.Getenv, os.UserHomeDir, stderr) {
-			return 1
-		}
-	} else {
-		var ok, provided bool
-		positional, provided, ok = parseProfileArgs(args[1:], stderr)
-		if !ok {
-			return 2
-		}
-		if err := validateResolvedProfile(positional, provided, os.Getenv); err != nil {
-			sayln(stderr, err)
-			return 2
-		}
-		// SPEC §3.4's launch order is validate -> confirm if unknown -> create
-		// -> launch: the name above is already syntactically valid, so this is
-		// the one remaining gate before config.LoadFromProfile (and therefore
-		// store.Open/tmux) below ever touches this profile's directories.
-		resolved := config.ResolveProfileName(positional, os.Getenv)
-		exists, err := config.ProfileExists(os.Getenv, os.UserHomeDir, resolved)
-		if err != nil {
-			sayln(stderr, "deck profile:", err)
-			return 0
-		}
-		if !exists {
-			if code := confirmAndCreateProfile(resolved, os.Getenv, os.UserHomeDir, stdin, stderr); code != 0 {
-				return code
-			}
-		}
+	positional, code, proceed := resolveStartupProfile(args, isHook, stdin, stderr)
+	if !proceed {
+		return code
 	}
 	settings, err := config.LoadFromProfile(os.Getenv, os.UserHomeDir, positional)
 	if err != nil {
@@ -272,6 +245,44 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return 0
 	}
 	return 0
+}
+
+// resolveStartupProfile runs run()'s profile gate: the hidden hook verb's
+// profile check, or for a normal launch the argument parse, the SPEC §3.4
+// name validation and the confirm-and-create step for an unknown profile. It
+// reports the positional profile argument and, when proceed is false, the
+// exit code run must return immediately.
+func resolveStartupProfile(args []string, isHook bool, stdin io.Reader, stderr io.Writer) (positional string, code int, proceed bool) {
+	if isHook {
+		if !refuseBadHookProfile(os.Getenv, os.UserHomeDir, stderr) {
+			return "", 1, false
+		}
+		return "", 0, true
+	}
+	positional, provided, ok := parseProfileArgs(args[1:], stderr)
+	if !ok {
+		return "", 2, false
+	}
+	if err := validateResolvedProfile(positional, provided, os.Getenv); err != nil {
+		sayln(stderr, err)
+		return "", 2, false
+	}
+	// SPEC §3.4's launch order is validate -> confirm if unknown -> create
+	// -> launch: the name above is already syntactically valid, so this is
+	// the one remaining gate before config.LoadFromProfile (and therefore
+	// store.Open/tmux) below ever touches this profile's directories.
+	resolved := config.ResolveProfileName(positional, os.Getenv)
+	exists, err := config.ProfileExists(os.Getenv, os.UserHomeDir, resolved)
+	if err != nil {
+		sayln(stderr, "deck profile:", err)
+		return "", 0, false
+	}
+	if !exists {
+		if exit := confirmAndCreateProfile(resolved, os.Getenv, os.UserHomeDir, stdin, stderr); exit != 0 {
+			return "", exit, false
+		}
+	}
+	return positional, 0, true
 }
 
 // parseProfileArgs parses the CLI arguments after the program name into
