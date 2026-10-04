@@ -283,6 +283,42 @@ func TestApplySGRTracksState(t *testing.T) {
 	}
 }
 
+// TestApplySGRColonSubParameterForm: the colon form (38:2::r:g:b) is one
+// self-contained field -- an explicit, unresolved colour on the channel it
+// names (38 foreground, 48 background), and nothing at all for any other
+// colon field (58 underline colour), which must leave both channels as the
+// earlier parameters of the same sequence left them.
+func TestApplySGRColonSubParameterForm(t *testing.T) {
+	explicit := sgrColor{explicit: true}
+	cases := []struct {
+		params         string
+		wantFg, wantBg sgrColor
+	}{
+		{"38:2::12:34:56", explicit, sgrColor{}},
+		{"48:2::12:34:56", sgrColor{}, explicit},
+		{"58:2::12:34:56", sgrColor{}, sgrColor{}},
+		{"4:3", sgrColor{}, sgrColor{}},
+		{"38:5:4;48:5:5", explicit, explicit},
+		// A colon field consumes nothing after it: the next field is read normally.
+		{"38:2::1:2:3;41", explicit, sgrColor{true, theme.ReferencePalette[1]}},
+	}
+	for _, c := range cases {
+		var fg, bg sgrColor
+		var reverse bool
+		applySGR(c.params, &fg, &bg, &reverse)
+		if fg != c.wantFg || bg != c.wantBg || reverse {
+			t.Errorf("applySGR(%q) = fg%+v bg%+v rev=%v, want fg%+v bg%+v rev=false",
+				c.params, fg, bg, reverse, c.wantFg, c.wantBg)
+		}
+	}
+	// A colon field leaves the channel it does not name untouched.
+	fg, bg := sgrColor{true, "#010203"}, sgrColor{true, "#040506"}
+	applyColonSGR("38:2::9:9:9", &fg, &bg)
+	if fg != explicit || bg != (sgrColor{true, "#040506"}) {
+		t.Errorf("applyColonSGR(38:...) = fg%+v bg%+v, want explicit fg and untouched bg", fg, bg)
+	}
+}
+
 // TestForeignPaintPassesNonSGRSequencesThrough: deck rewrites colour and
 // nothing else. A pane's cursor moves, mode changes and hyperlinks are its
 // own business, and a row carrying them must come back with them intact.
