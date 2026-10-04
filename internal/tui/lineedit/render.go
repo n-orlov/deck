@@ -71,10 +71,7 @@ func (e Editor) items() (its []item, caretIdx int) {
 // window returns the end of the run of whole items that fit in width cells
 // when drawing starts at item s, marks included.
 func window(its []item, s, width int, mw int) int {
-	avail := width
-	if s > 0 {
-		avail -= mw
-	}
+	avail := width - leadingMarkWidth(s, mw)
 	end := s
 	used := 0
 	rest := itemsWidth(its[s:]) // cells the items from end onward need, drawn without a right mark
@@ -102,6 +99,15 @@ func window(its []item, s, width int, mw int) int {
 		end = s + 1 // never draw an empty window: the item overflows its cell
 	}
 	return end
+}
+
+// leadingMarkWidth is the cells the left mark takes when drawing starts at
+// item s: none at the first item.
+func leadingMarkWidth(s, mw int) int {
+	if s > 0 {
+		return mw
+	}
+	return 0
 }
 
 // itemsWidth is the total cell width of its.
