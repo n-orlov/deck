@@ -181,29 +181,67 @@ func (s Service) paneArgv(caps agent.Caps, argv []string) ([]string, error) {
 	return append([]string{shell}, argv[1:]...), nil
 }
 
+// shellCreatePlan is what CreateShell resolves before it touches the store:
+// the new session id, the user's shell, the captured PATH and the creation
+// timestamp.
+type shellCreatePlan struct {
+	id           string
+	shell        string
+	capturedPath string
+	now          int64
+}
+
 // CreateShell creates the durable row before starting its one-pane private
 // tmux session. A failed tmux launch is represented as an error row plus a
 // transition event, rather than leaving a misleading "starting" row behind.
 func (s Service) CreateShell(ctx context.Context, input ShellCreateInput) (store.Session, error) {
-	if s.Store == nil || s.Audit == nil || s.Clock == nil || s.IDs == nil {
-		return store.Session{}, errors.New("shell creation requires store, audit logger, clock, and id generator")
-	}
-	if input.Name == "" || input.CWD == "" {
-		return store.Session{}, errors.New("shell session name and working directory are required")
-	}
-	id, err := s.IDs.UUID()
-	if err != nil {
-		return store.Session{}, fmt.Errorf("generate shell session id: %w", err)
-	}
-	shell, err := s.resolveUserShell()
+	plan, err := s.planShellCreate(input)
 	if err != nil {
 		return store.Session{}, err
 	}
+	session, err := s.insertShellRow(ctx, input, plan)
+	if err != nil {
+		return session, err
+	}
+	paneCommand, launchEnv, err := s.buildShellLaunch(session, input, plan)
+	if err != nil {
+		return s.launchFailed(ctx, session, err)
+	}
+	if err := s.startShellPane(ctx, session, paneCommand, launchEnv); err != nil {
+		return s.launchFailed(ctx, session, err)
+	}
+	session.StatusSource = "tmux"
+	return session, nil
+}
+
+// planShellCreate validates the create input and resolves everything that can
+// refuse a shell create before the durable row exists.
+func (s Service) planShellCreate(input ShellCreateInput) (shellCreatePlan, error) {
+	if s.Store == nil || s.Audit == nil || s.Clock == nil || s.IDs == nil {
+		return shellCreatePlan{}, errors.New("shell creation requires store, audit logger, clock, and id generator")
+	}
+	if input.Name == "" || input.CWD == "" {
+		return shellCreatePlan{}, errors.New("shell session name and working directory are required")
+	}
+	id, err := s.IDs.UUID()
+	if err != nil {
+		return shellCreatePlan{}, fmt.Errorf("generate shell session id: %w", err)
+	}
+	shell, err := s.resolveUserShell()
+	if err != nil {
+		return shellCreatePlan{}, err
+	}
 	capturedPath := os.Getenv("PATH")
 	if capturedPath == "" {
-		return store.Session{}, errors.New("PATH is required to create a shell session")
+		return shellCreatePlan{}, errors.New("PATH is required to create a shell session")
 	}
-	now := s.Clock.Now().UnixMilli()
+	return shellCreatePlan{id: id, shell: shell, capturedPath: capturedPath, now: s.Clock.Now().UnixMilli()}, nil
+}
+
+// insertShellRow writes the durable "starting" row and its first audit
+// transition. Once the row exists, a failure still returns it so the caller can
+// report the created session.
+func (s Service) insertShellRow(ctx context.Context, input ShellCreateInput, plan shellCreatePlan) (store.Session, error) {
 	// SPEC §9.2 (R77): if this name (or its slug) is held only by a
 	// tombstoned row, CreateSession reaps that row inside its own
 	// transaction. Note the holders now, remove their files only after that
@@ -213,8 +251,8 @@ func (s Service) CreateShell(ctx context.Context, input ShellCreateInput) (store
 		return store.Session{}, err
 	}
 	session, err := s.Store.CreateSession(ctx, store.CreateSessionInput{
-		ID: id, Name: input.Name, CWD: input.CWD, Agent: "shell", CapturedPath: capturedPath,
-		Status: "starting", StatusSource: "user", StatusAt: now, CreatedAt: now,
+		ID: plan.id, Name: input.Name, CWD: input.CWD, Agent: "shell", CapturedPath: plan.capturedPath,
+		Status: "starting", StatusSource: "user", StatusAt: plan.now, CreatedAt: plan.now,
 		PreLaunch: input.PreLaunch, PostDestroy: input.PostDestroy, GroupID: input.GroupID,
 	})
 	if err != nil {
@@ -227,6 +265,12 @@ func (s Service) CreateShell(ctx context.Context, input ShellCreateInput) (store
 	if err := s.Audit.Transition(session.ID, "starting"); err != nil {
 		return session, fmt.Errorf("audit starting shell session %q: %w", session.Name, err)
 	}
+	return session, nil
+}
+
+// buildShellLaunch assembles the pane command and environment for a shell
+// session. Its errors are already wrapped for launchFailed.
+func (s Service) buildShellLaunch(session store.Session, input ShellCreateInput, plan shellCreatePlan) ([]string, map[string]string, error) {
 	// Route the shell adapter through the same applyInstrumentation call
 	// every other launch path uses (CreateAgent, Resume), even though
 	// Shell.Instrument always returns nil (SPEC §8.1: shell has no agent
@@ -250,11 +294,11 @@ func (s Service) CreateShell(ctx context.Context, input ShellCreateInput) (store
 	// then the session's own env, highest priority) -- CreateAgent and
 	// Resume both build launchEnv through it and CreateShell now does too,
 	// rather than a second, drifting copy that only ever saw input.Env.
-	launchEnv := s.resolveLaunchEnv(capturedPath, input.Env)
-	argv := []string{shell}
-	argv, launchEnv, err = applyInstrumentation(shellAdapter, launchInput, argv, launchEnv)
+	launchEnv := s.resolveLaunchEnv(plan.capturedPath, input.Env)
+	argv := []string{plan.shell}
+	argv, launchEnv, err := applyInstrumentation(shellAdapter, launchInput, argv, launchEnv)
 	if err != nil {
-		return s.launchFailed(ctx, session, fmt.Errorf("instrument shell session %q: %w", session.Name, err))
+		return nil, nil, fmt.Errorf("instrument shell session %q: %w", session.Name, err)
 	}
 	// SPEC §6.1 (R104): deck's own session context is merged last, above
 	// the instrumentation adapter's own -- last here too, even though
@@ -275,16 +319,22 @@ func (s Service) CreateShell(ctx context.Context, input ShellCreateInput) (store
 	// shell), so this path never asks for the -lc wrapper.
 	paneCommand, err := buildPaneCommand(s.GlobalPreLaunch, input.PreLaunch, false, argv)
 	if err != nil {
-		return s.launchFailed(ctx, session, fmt.Errorf("build pane command for shell session %q: %w", session.Name, err))
+		return nil, nil, fmt.Errorf("build pane command for shell session %q: %w", session.Name, err)
 	}
+	return paneCommand, launchEnv, nil
+}
+
+// startShellPane starts the tmux pane, writes its launch audit record and
+// marks the row launch-ready. Its errors are already wrapped for launchFailed.
+func (s Service) startShellPane(ctx context.Context, session store.Session, paneCommand []string, launchEnv map[string]string) error {
 	if _, err := s.TMux.Create(ctx, tmux.Launch{Slug: session.Slug, CWD: session.CWD, Command: paneCommand, Env: launchEnv}); err != nil {
-		return s.launchFailed(ctx, session, fmt.Errorf("launch shell session %q: %w", session.Name, err))
+		return fmt.Errorf("launch shell session %q: %w", session.Name, err)
 	}
 	if err := s.Audit.Launch(session.ID, paneCommand, launchEnv); err != nil {
 		// The pane is not a successful deck launch if its required audit record
 		// cannot be written, so remove it and leave an observable durable error.
 		_ = s.TMux.Kill(ctx, session.Slug)
-		return s.launchFailed(ctx, session, fmt.Errorf("audit shell launch %q: %w", session.Name, err))
+		return fmt.Errorf("audit shell launch %q: %w", session.Name, err)
 	}
 	// A user-sourced starting row is still being launched and must not be
 	// mistaken for a disappeared pane by another live deck client. Once tmux
@@ -294,13 +344,12 @@ func (s Service) CreateShell(ctx context.Context, input ShellCreateInput) (store
 		SessionID: session.ID, Status: "starting", Reason: "", Source: "tmux",
 		At: s.Clock.Now().UnixMilli(), EventKind: "launch.ready",
 	}); err != nil {
-		return s.launchFailed(ctx, session, fmt.Errorf("record ready shell session %q: %w", session.Name, err))
+		return fmt.Errorf("record ready shell session %q: %w", session.Name, err)
 	}
 	if err := s.Audit.Transition(session.ID, "launch.ready"); err != nil {
-		return s.launchFailed(ctx, session, fmt.Errorf("audit ready shell session %q: %w", session.Name, err))
+		return fmt.Errorf("audit ready shell session %q: %w", session.Name, err)
 	}
-	session.StatusSource = "tmux"
-	return session, nil
+	return nil
 }
 
 func (s Service) launchFailed(ctx context.Context, session store.Session, cause error) (store.Session, error) {
