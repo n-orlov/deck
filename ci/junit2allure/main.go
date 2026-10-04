@@ -16,6 +16,7 @@
 package main
 
 import (
+	"bytes"
 	"crypto/md5" //nolint:gosec // an identity digest for result uuids, not a security primitive
 	"encoding/hex"
 	"encoding/json"
@@ -202,6 +203,20 @@ func (w *writer) suite(s testSuite, parent string) error {
 	return nil
 }
 
+// rootElementIs reports whether the document's first element is named name.
+func rootElementIs(raw []byte, name string) bool {
+	dec := xml.NewDecoder(bytes.NewReader(raw))
+	for {
+		tok, err := dec.Token()
+		if err != nil {
+			return false
+		}
+		if start, ok := tok.(xml.StartElement); ok {
+			return start.Name.Local == name
+		}
+	}
+}
+
 func convert(path string, w *writer) error {
 	f, err := os.Open(path)
 	if err != nil {
@@ -213,12 +228,16 @@ func convert(path string, w *writer) error {
 		return err
 	}
 	var root testSuites
-	if err := xml.Unmarshal(raw, &root); err != nil {
+	if rootElementIs(raw, "testsuite") {
+		// A file whose root is one <testsuite> (not <testsuites>): its own
+		// cases and nested suites all belong to it.
 		var single testSuite
-		if err2 := xml.Unmarshal(raw, &single); err2 != nil {
+		if err := xml.Unmarshal(raw, &single); err != nil {
 			return fmt.Errorf("%s: %w", path, err)
 		}
 		root.Suites = []testSuite{single}
+	} else if err := xml.Unmarshal(raw, &root); err != nil {
+		return fmt.Errorf("%s: %w", path, err)
 	}
 	for _, s := range root.Suites {
 		if err := w.suite(s, filepath.Base(path)); err != nil {

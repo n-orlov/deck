@@ -74,23 +74,3 @@ func TestRun_MissingConfigPathIsUsageError(t *testing.T) {
 		t.Errorf("exitCode = %d, want 2 (usage error)", exitCode)
 	}
 }
-
-// TestRun_CoverageGateEnabledButUnimplementedFailsLoudly proves that
-// switching the coverage gate on, ahead of ci/covgate existing, fails
-// rather than passing vacuously.
-func TestRun_CoverageGateEnabledButUnimplementedFailsLoudly(t *testing.T) {
-	path := writeTempFile(t, `{
-		"coverage": {"enabled": true, "total_floor": 85, "package_floor": 80, "fixture_floor": 50},
-		"crap": {"enabled": false, "ceiling": 30, "fixture_ceiling": 30}
-	}`)
-	report, exitCode, err := run(path, "")
-	if err != nil {
-		t.Fatalf("run: unexpected error: %v", err)
-	}
-	if exitCode == 0 {
-		t.Fatalf("exitCode = 0, want non-zero (coverage gate is on but unimplemented)")
-	}
-	if !strings.Contains(report, "=== coverage gate ===") {
-		t.Errorf("report has no coverage gate section:\n%s", report)
-	}
-}

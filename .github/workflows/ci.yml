@@ -127,7 +127,7 @@ jobs:
         if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
         run: ci/run.sh sh -c 'rm -rf /go-cache/trivy/db /go-cache/trivy/java-db /go-cache/xdg-cache/govulncheck'
 
-      - name: Quality gates (ci/quality.sh; trivy and govulncheck on, others off until a later task flips them on, R187/R190)
+      - name: Quality gates (ci/quality.sh; coverage, trivy and govulncheck on, others off until a later task flips them on, R187/R189/R190)
         id: quality
         continue-on-error: true
         run: ci/run.sh ci/quality.sh "$DECK_CI_OUT"
