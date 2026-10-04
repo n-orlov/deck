@@ -89,6 +89,13 @@ func (m Model) hitTestSideBySide(layout LayoutResult, x, y int) hitResult {
 	if collapsed {
 		return hitResult{panel: hitPanelSidebar, target: hitTargetCollapsedStrip}
 	}
+	return m.sidebarBoxHit(layout, y, height)
+}
+
+// sidebarBoxHit resolves a row y inside the sidebar box (height rows tall,
+// the point already known to be within its width) to the border, an entry or
+// the empty space below the entries.
+func (m Model) sidebarBoxHit(layout LayoutResult, y, height int) hitResult {
 	if y == 0 || y == height-1 {
 		// Top/bottom border row: within the sidebar panel, but on no
 		// particular row or header.
@@ -116,16 +123,7 @@ func (m Model) hitTestStacked(layout LayoutResult, x, y int) hitResult {
 			if x < 0 || x >= lw {
 				return hitResult{}
 			}
-			if y == 0 || y == lh-1 {
-				return hitResult{panel: hitPanelSidebar}
-			}
-			contentRow := y - 1
-			contentHeight := lh - 2
-			visible := m.sidebarVisibleEntries(sidebarEntryContentWidth(layout), contentHeight)
-			if contentRow < 0 || contentRow >= len(visible) {
-				return hitResult{panel: hitPanelSidebar}
-			}
-			return sidebarEntryHit(visible[contentRow])
+			return m.sidebarBoxHit(layout, y, lh)
 		}
 		y -= lh
 	}
