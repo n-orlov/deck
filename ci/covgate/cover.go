@@ -32,7 +32,7 @@ type profile struct {
 // "mode:" first line and a file with a mode line but no blocks are all
 // errors: an empty profile must fail the gate, never pass it (R189).
 func parseProfile(path string) (*profile, error) {
-	f, err := os.Open(path)
+	f, err := os.Open(path) //nolint:gosec // G304: the coverprofile path is the tool's own command-line argument
 	if err != nil {
 		return nil, fmt.Errorf("coverprofile %q: %w", path, err)
 	}

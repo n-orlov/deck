@@ -30,7 +30,7 @@ func newLaunchInputsTestStore(t *testing.T) (*store.Store, string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { db.Close() })
+	t.Cleanup(func() { _ = db.Close() })
 	ctx := context.Background()
 	const id = "00000000-0000-4000-8000-000000000024"
 	if _, err := db.CreateSession(ctx, store.CreateSessionInput{

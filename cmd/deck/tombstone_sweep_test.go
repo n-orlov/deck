@@ -156,24 +156,24 @@ func TestAbandonedDDIsReapedAtNextStoreOpen(t *testing.T) {
 	}
 	deleted, err := verify1.ListDeletedSessions(context.Background())
 	if err != nil {
-		verify1.Close()
+		_ = verify1.Close()
 		t.Fatal(err)
 	}
 	if len(deleted) != 1 || deleted[0].Name != sessionName || deleted[0].DeletedAt == 0 {
-		verify1.Close()
+		_ = verify1.Close()
 		t.Fatalf("tombstoned rows after run 1 = %#v, want exactly one tombstoned %q", deleted, sessionName)
 	}
 	sessionID := deleted[0].ID
 	var eventsAfterRun1 int
 	if err := verify1.DB().QueryRow(`SELECT COUNT(*) FROM events WHERE session_id = ?`, sessionID).Scan(&eventsAfterRun1); err != nil {
-		verify1.Close()
+		_ = verify1.Close()
 		t.Fatal(err)
 	}
 	if eventsAfterRun1 == 0 {
-		verify1.Close()
+		_ = verify1.Close()
 		t.Fatal("tombstoned session has no events of its own after run 1, want its create/status history still on record before any sweep has a chance to run")
 	}
-	verify1.Close()
+	_ = verify1.Close()
 
 	// --- run 2: open the SAME store more than an hour later, past
 	// DeleteGrace and the sweep's own hourly throttle. ---
@@ -214,32 +214,32 @@ func TestAbandonedDDIsReapedAtNextStoreOpen(t *testing.T) {
 	}
 	exists, err := verify2.SessionRowExists(context.Background(), sessionID)
 	if err != nil {
-		verify2.Close()
+		_ = verify2.Close()
 		t.Fatal(err)
 	}
 	if exists {
-		verify2.Close()
+		_ = verify2.Close()
 		t.Fatalf("session %q row still exists after run 2's store open, want the abandoned tombstone reaped by task 010's call site", sessionID)
 	}
 	var eventsAfterRun2 int
 	if err := verify2.DB().QueryRow(`SELECT COUNT(*) FROM events WHERE session_id = ?`, sessionID).Scan(&eventsAfterRun2); err != nil {
-		verify2.Close()
+		_ = verify2.Close()
 		t.Fatal(err)
 	}
 	if eventsAfterRun2 != 0 {
-		verify2.Close()
+		_ = verify2.Close()
 		t.Fatalf("events for reaped session %q = %d, want 0 (reapSessionTx's cascade delete)", sessionID, eventsAfterRun2)
 	}
 	holders, err := verify2.TombstonedNameHolders(context.Background(), sessionName)
 	if err != nil {
-		verify2.Close()
+		_ = verify2.Close()
 		t.Fatal(err)
 	}
 	if len(holders) != 0 {
-		verify2.Close()
+		_ = verify2.Close()
 		t.Fatalf("tombstoned holders of %q after run 2 = %v, want none -- the name must be free", sessionName, holders)
 	}
-	verify2.Close()
+	_ = verify2.Close()
 
 	// --- run 3: the name is not merely absent from the tombstone list --
 	// it must be genuinely reusable, through the same real deck binary and

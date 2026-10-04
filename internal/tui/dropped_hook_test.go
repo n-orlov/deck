@@ -26,7 +26,7 @@ func droppedHookTestStore(t *testing.T) (*store.Store, string) {
 	if err != nil {
 		t.Fatalf("open store: %v", err)
 	}
-	t.Cleanup(func() { db.Close() })
+	t.Cleanup(func() { _ = db.Close() })
 	const id = "dropped-hook-session"
 	const conversationID = "conversation-dropped-hook"
 	if _, err := db.CreateSession(context.Background(), store.CreateSessionInput{

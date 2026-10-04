@@ -96,7 +96,7 @@ func zeroFuncFieldsForEquality(v reflect.Value) {
 		}
 	case reflect.Func:
 		if v.CanAddr() {
-			addr := unsafe.Pointer(v.UnsafeAddr())
+			addr := unsafe.Pointer(v.UnsafeAddr()) //nolint:gosec // G103: zeroing an unexported func field needs reflect.NewAt over its address; test-only, nothing else can reach it
 			reflect.NewAt(v.Type(), addr).Elem().Set(reflect.Zero(v.Type()))
 		}
 	}
@@ -123,7 +123,7 @@ func readPossiblyUnexportedField(v reflect.Value) any {
 	if !v.CanAddr() {
 		return nil
 	}
-	return reflect.NewAt(v.Type(), unsafe.Pointer(v.UnsafeAddr())).Elem().Interface()
+	return reflect.NewAt(v.Type(), unsafe.Pointer(v.UnsafeAddr())).Elem().Interface() //nolint:gosec // G103: reading an unexported field needs reflect.NewAt over its address; test-only, nothing else can reach it
 }
 
 // differingModelFields names the top-level Model fields on which two

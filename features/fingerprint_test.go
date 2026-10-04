@@ -49,7 +49,14 @@ const rootFingerprintKey = "."
 // a symlink's target is still caught rather than silently resolved through.
 func fingerprintDirectory(root string) (directoryFingerprint, error) {
 	fp := make(directoryFingerprint)
-	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
+	// Reads go through an os.Root so a symlink swapped in mid-walk cannot make
+	// a read land outside root (the walk's own entries are lstat-only).
+	scope, err := os.OpenRoot(root)
+	if err != nil {
+		return nil, fmt.Errorf("open %q: %w", root, err)
+	}
+	defer func() { _ = scope.Close() }() // read-only handle; nothing to flush
+	err = filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
 		}
@@ -96,7 +103,7 @@ func fingerprintDirectory(root string) (directoryFingerprint, error) {
 			}
 			record.Content = []byte(target)
 		case !entry.IsDir():
-			content, err := os.ReadFile(path)
+			content, err := scope.ReadFile(rel)
 			if err != nil {
 				return fmt.Errorf("read file %q: %w", rel, err)
 			}
@@ -377,7 +384,7 @@ func assertNamedDirectoryMatchesFingerprint(ctx context.Context, dirLabel, fpLab
 // be grepped afterwards to prove every expected assertion actually ran, not
 // merely that the scenario it belongs to reported green.
 func logFingerprintAssertionExecution(dirLabel, fpLabel, path string, compareErr error) {
-	logPath := os.Getenv("DECK_FINGERPRINT_ASSERT_LOG")
+	logPath := envAbsPath("DECK_FINGERPRINT_ASSERT_LOG")
 	if logPath == "" {
 		return
 	}

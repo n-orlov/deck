@@ -60,7 +60,7 @@ func SaveInteractiveClaimRecord(dir string, record InteractiveClaimRecord) error
 // caller can tell "no metadata to reclaim against, just remove the leaked
 // dir" apart from "a genuine record was found".
 func loadInteractiveClaimRecord(dir string) (InteractiveClaimRecord, error) {
-	data, err := os.ReadFile(filepath.Join(dir, interactiveClaimFileName))
+	data, err := os.ReadFile(filepath.Join(dir, interactiveClaimFileName)) //nolint:gosec // G304: dir is a deck-created interactive-claim directory; the file name is a package constant
 	if err != nil {
 		return InteractiveClaimRecord{}, err
 	}

@@ -30,7 +30,7 @@ func launchInputsSeededModel(t *testing.T, pre, post, args string) (Model, *stor
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { db.Close() })
+	t.Cleanup(func() { _ = db.Close() })
 	ctx := context.Background()
 	if _, err := db.CreateSession(ctx, store.CreateSessionInput{
 		ID: launchInputsCaretSessionID, Name: "launch-012", CWD: "/work/launch-012", Agent: "shell", CapturedPath: "/bin",

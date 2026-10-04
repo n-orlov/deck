@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -413,7 +414,11 @@ func (d *ScreenDriver) FrameFitsBudget(cols, rows int) error {
 // no fd state at all, so it is safe to call from this read loop with no
 // coordination against Send whatsoever.
 func ptyReadable(f *os.File) bool {
-	fds := []unix.PollFd{{Fd: int32(f.Fd()), Events: unix.POLLIN}}
+	fd := f.Fd()
+	if fd > math.MaxInt32 {
+		return false // not a descriptor poll(2) can name
+	}
+	fds := []unix.PollFd{{Fd: int32(fd), Events: unix.POLLIN}}
 	for {
 		n, err := unix.Poll(fds, 0)
 		if err == unix.EINTR {

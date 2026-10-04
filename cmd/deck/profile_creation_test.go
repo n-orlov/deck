@@ -90,7 +90,7 @@ func launchProfileCreationPTY(t *testing.T, binary, home string) (terminal *os.F
 	// the derivation itself is pinned in internal/config and by the
 	// features/ profile scenarios.
 	sum := fnv.New32a()
-	sum.Write([]byte(home))
+	_, _ = sum.Write([]byte(home))
 	socket := fmt.Sprintf("priv-profile-creation-%d-%08x", os.Getpid(), sum.Sum32())
 	cmd.Env = append(os.Environ(), "DECK_HOME="+home, "DECK_TMUX_SOCKET="+socket, "NO_COLOR=1", "DECK_ASCII=1", "DECK_ANIM=0", "TERM=xterm-256color", "SHELL=/bin/sh")
 	terminal, err := pty.StartWithSize(cmd, &pty.Winsize{Rows: 24, Cols: 100})
@@ -107,7 +107,7 @@ func launchProfileCreationPTY(t *testing.T, binary, home string) (terminal *os.F
 	}()
 	return terminal, out, doneCh, func() {
 		cancelCtx()
-		terminal.Close()
+		_ = terminal.Close()
 		// Never leave the private server behind, should one have started.
 		_ = exec.Command("tmux", "-L", socket, "kill-server").Run()
 	}

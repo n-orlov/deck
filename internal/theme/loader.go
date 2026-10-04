@@ -55,7 +55,7 @@ func DiscoverUserThemes(dir string) (themes map[string]*Theme, errs []UserThemeE
 	sort.Strings(names)
 	for _, fname := range names {
 		path := filepath.Join(dir, fname)
-		data, readErr := os.ReadFile(path)
+		data, readErr := os.ReadFile(path) //nolint:gosec // G304: fname is a *.toml name read from the user's own themes directory listing above
 		if readErr != nil {
 			errs = append(errs, UserThemeError{Path: path, Err: readErr})
 			continue

@@ -68,7 +68,7 @@ func ackOfferStoreModel(t *testing.T) (Model, *store.Store) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { db.Close() })
+	t.Cleanup(func() { _ = db.Close() })
 	ctx := context.Background()
 	if _, err := db.CreateSession(ctx, store.CreateSessionInput{
 		ID: "waiting", Name: "waiting", CWD: "/work", Agent: "claude", CapturedPath: "/bin",

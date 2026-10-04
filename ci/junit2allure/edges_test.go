@@ -209,7 +209,7 @@ func TestRunReportsAWriteFailure(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = os.Chmod(out, 0o755) })
 	if f, err := os.Create(filepath.Join(out, "probe")); err == nil {
-		f.Close()
+		_ = f.Close()
 		t.Skip("the process can write into a 0500 directory (running as root); the write-failure path cannot be provoked")
 	}
 	if err := run([]string{"-group", "unit", "-o", out, in}, &bytes.Buffer{}); err == nil {

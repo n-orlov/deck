@@ -91,6 +91,10 @@ func OpenPath(home, path string) (*Store, error) {
 	if path == "" {
 		return nil, errors.New("store database path is required")
 	}
+	// The directory and file below are created, chmodded and opened from these
+	// two caller-resolved paths; normalise them once so every later operation
+	// works on the same cleaned spelling.
+	home, path = filepath.Clean(home), filepath.Clean(path)
 	if err := os.MkdirAll(home, 0o700); err != nil {
 		return nil, fmt.Errorf("create store directory: %w", err)
 	}
@@ -150,7 +154,7 @@ func OpenPath(home, path string) (*Store, error) {
 	if version > SchemaVersion {
 		return nil, closeAfter(db, fmt.Errorf("state database schema version %d is newer than supported version %d; upgrade deck", version, SchemaVersion))
 	}
-	if err := os.Chmod(home, 0o700); err != nil {
+	if err := os.Chmod(home, 0o700); err != nil { //nolint:gosec // G302: home is a directory, 0o700 is owner-only (gosec reads it as a file mode)
 		return nil, closeAfter(db, fmt.Errorf("secure store directory: %w", err))
 	}
 	// Tighten state.db before journal_mode=WAL: SQLite creates -wal and -shm

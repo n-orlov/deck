@@ -126,7 +126,7 @@ func TestEnvEditorRevealResetsToMaskedOnReopen(t *testing.T) {
 // list -- the other of the two surfaces that render an env key/value pair
 // today.
 func TestSettingsEnvEntriesMaskSecretShapedValueByDefaultAndRevealOnR(t *testing.T) {
-	cfg := config.Settings{Env: map[string]string{"DB_PASSWORD": "leak-me-not-either"}}
+	cfg := config.Settings{Env: map[string]string{"DB_PASSWORD": "leak-me-not-either"}} //nolint:gosec // G101: a fixture value shaped like a secret on purpose, to prove the mask; not a credential
 	cfg.File.Env = cfg.Env
 	model := New(nil, cfg, "")
 

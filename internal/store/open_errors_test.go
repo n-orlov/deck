@@ -46,7 +46,7 @@ func TestOpenPathRefusesFileThatIsNotADatabase(t *testing.T) {
 		t.Fatal(err)
 	}
 	if s, err := OpenPath(home, path); err == nil {
-		s.Close()
+		_ = s.Close()
 		t.Fatal("OpenPath on a non-database file succeeded; want an error")
 	}
 	got, err := os.ReadFile(path)

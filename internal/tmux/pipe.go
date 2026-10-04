@@ -156,7 +156,7 @@ func (c Client) ArmPipePane(ctx context.Context, target string) (*PanePipe, erro
 	}()
 
 	fifoPath := filepath.Join(tempDir, "pane.fifo")
-	if output, err := exec.CommandContext(ctx, "mkfifo", fifoPath).CombinedOutput(); err != nil {
+	if output, err := exec.CommandContext(ctx, "mkfifo", fifoPath).CombinedOutput(); err != nil { //nolint:gosec // G204: mkfifo runs with a fixed argv and a path inside the private temp dir created above
 		return nil, fmt.Errorf("mkfifo %s: %w: %s", fifoPath, err, output)
 	}
 

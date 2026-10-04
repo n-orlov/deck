@@ -139,7 +139,7 @@ func trimSpace(n *node) {
 }
 
 func parse(path string) (*node, error) {
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(path) //nolint:gosec // G304: the JUnit file is a command-line argument naming the report to scan
 	if err != nil {
 		return nil, err
 	}

@@ -88,7 +88,7 @@ func validateTrivySeverity(severity string) error {
 // with a non-empty reason, a parseable date, and a date not before now
 // (the date itself is the last good day).
 func checkTrivyIgnore(path string, now time.Time) ([]string, error) {
-	f, err := os.Open(path)
+	f, err := os.Open(path) //nolint:gosec // G304: the .trivyignore path is the gate's configured file
 	if os.IsNotExist(err) {
 		return nil, nil
 	}
@@ -203,7 +203,7 @@ func runTrivyGate(o trivyOptions) (ok bool, output string, err error) {
 	if bin == "" {
 		bin = "trivy"
 	}
-	cmd := exec.Command(bin, trivyArgs(o)...)
+	cmd := exec.Command(bin, trivyArgs(o)...) //nolint:gosec // G204: the trivy binary is the operator's gate option, default trivy
 	out, runErr := cmd.CombinedOutput()
 	text := string(out)
 	if runErr == nil {

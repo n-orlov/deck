@@ -733,7 +733,7 @@ func TestHangModeBlocksOnThePaneUntilACommandOrEOFArrives(t *testing.T) {
 	if _, err := writer.Write([]byte(`{"command":"exit"}` + "\n")); err != nil {
 		t.Fatalf("write exit command: %v", err)
 	}
-	writer.Close()
+	_ = writer.Close()
 
 	select {
 	case err := <-done:

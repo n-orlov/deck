@@ -121,7 +121,7 @@ func (c Client) timeout() time.Duration {
 }
 
 func (c Client) command(ctx context.Context, args ...string) *exec.Cmd {
-	return exec.CommandContext(ctx, c.binary(), append([]string{"-L", c.Socket}, args...)...)
+	return exec.CommandContext(ctx, c.binary(), append([]string{"-L", c.Socket}, args...)...) //nolint:gosec // G204: the tmux binary and socket are the Client's own configuration, never external input
 }
 
 func (c Client) run(ctx context.Context, args ...string) ([]byte, error) {
@@ -197,7 +197,7 @@ func environmentArgs(environment map[string]string) ([]string, error) {
 func (c Client) Discover(ctx context.Context) (Version, error) {
 	checkCtx, cancel := context.WithTimeout(ctx, c.timeout())
 	defer cancel()
-	output, err := exec.CommandContext(checkCtx, c.binary(), "-V").CombinedOutput()
+	output, err := exec.CommandContext(checkCtx, c.binary(), "-V").CombinedOutput() //nolint:gosec // G204: the tmux binary is the Client's own configuration, argv is the fixed -V
 	if err != nil {
 		if errors.Is(err, exec.ErrNotFound) || errors.Is(err, os.ErrNotExist) {
 			return Version{}, fmt.Errorf("tmux is required but was not found on PATH; install tmux %d.%d or newer: %w", MinimumMajor, MinimumMinor, err)

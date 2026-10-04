@@ -57,14 +57,25 @@ func (d *ScreenDriver) gridText() string {
 // state.db are today.
 func homeFileLeaks(home, value string) ([]string, error) {
 	var leaks []string
-	err := filepath.WalkDir(home, func(path string, entry fs.DirEntry, walkErr error) error {
+	// Reads go through an os.Root so a symlink swapped in mid-walk cannot
+	// make a read land outside home.
+	scope, err := os.OpenRoot(home)
+	if err != nil {
+		return nil, fmt.Errorf("open %q: %w", home, err)
+	}
+	defer func() { _ = scope.Close() }() // read-only handle; nothing to flush
+	err = filepath.WalkDir(home, func(path string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
 		}
 		if entry.IsDir() {
 			return nil
 		}
-		data, err := os.ReadFile(path)
+		relPath, err := filepath.Rel(home, path)
+		if err != nil {
+			return err
+		}
+		data, err := scope.ReadFile(relPath)
 		if err != nil {
 			return fmt.Errorf("read %q: %w", path, err)
 		}

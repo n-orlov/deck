@@ -319,7 +319,11 @@ func TestAttachThroughPTY(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestAttachHelper$")
+	self, err := os.Executable() // the running test binary, re-run as the helper below
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.CommandContext(ctx, self, "-test.run=^TestAttachHelper$")
 	cmd.Env = append(os.Environ(),
 		attachHelperEnv+"=1",
 		"DECK_TMUX_ATTACH_SOCKET="+socket,

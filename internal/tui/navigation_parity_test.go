@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"strconv"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -300,7 +301,7 @@ func TestNavigationNeverLandsOnAHiddenRow(t *testing.T) {
 	for _, gid := range []int64{agentSessionsTuiID, ralphdID, 0} {
 		m.selected = headerCursor(gid)
 		m = press(m, "left")
-		mustBeVisible(t, m, "left on header of group "+string(rune('0'+gid)))
+		mustBeVisible(t, m, "left on header of group "+strconv.FormatInt(gid, 10))
 	}
 	// A row cursor left pointing at an already-hidden row (a stale state a
 	// reload can produce) is rescued by the fold gesture itself: `left` on

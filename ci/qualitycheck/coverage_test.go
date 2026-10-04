@@ -100,7 +100,7 @@ func TestRun_CoverageGateFailsWhenOnePackageIsBelowItsFloor(t *testing.T) {
 	if seeded == string(data) {
 		t.Fatal("seeding did not change the profile (ci/crapgate line not found)")
 	}
-	if err := os.WriteFile(profile, []byte(seeded), 0o644); err != nil {
+	if err := rewriteProfile(profile, seeded); err != nil {
 		t.Fatal(err)
 	}
 	report, exitCode, err := run(writeCoverageConfig(t), profile)
@@ -150,4 +150,16 @@ func TestCheckedInConfigHasTheCoverageGateOn(t *testing.T) {
 	if !c.Enabled || c.TotalFloor < 85 || c.PackageFloor < 80 || c.FixtureFloor <= 0 {
 		t.Errorf("ci/quality.json coverage = %+v, want enabled with total_floor >= 85 and package_floor >= 80", c)
 	}
+}
+
+// rewriteProfile replaces the coverage profile at path with body, writing
+// through an os.Root on its directory so the name stays inside the temp dir
+// fullyCoveredTreeProfile created it in.
+func rewriteProfile(path, body string) error {
+	scope, err := os.OpenRoot(filepath.Dir(path))
+	if err != nil {
+		return err
+	}
+	defer func() { _ = scope.Close() }() // nothing is read back through this handle
+	return scope.WriteFile(filepath.Base(path), []byte(body), 0o600)
 }

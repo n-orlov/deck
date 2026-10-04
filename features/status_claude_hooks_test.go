@@ -257,7 +257,7 @@ func releasedHookFiresForSession(ctx context.Context, event, target, identity st
 	}
 	var leaseOwner string
 	err = db.QueryRowContext(ctx, `SELECT COALESCE(launch_lease_owner, '') FROM sessions WHERE id = ?`, targetID).Scan(&leaseOwner)
-	db.Close()
+	_ = db.Close()
 	if err != nil {
 		return fmt.Errorf("resolve launch lease owner for session %q: %w", target, err)
 	}

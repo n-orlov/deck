@@ -731,7 +731,7 @@ type Clock struct {
 	start      time.Time
 	sharedPath string
 	mu         sync.Mutex
-	ticks      uint64
+	ticks      int64
 }
 
 // NewClock builds the process clock from DECK_CLOCK (wall, RFC3339; empty

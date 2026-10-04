@@ -281,7 +281,7 @@ func TestReleasedDeckHookIsOneShotAndDoesNotBootstrapStateOrTmux(t *testing.T) {
 	if err := db.DB().QueryRow(`SELECT COUNT(*) FROM events`).Scan(&eventCount); err != nil {
 		t.Fatal(err)
 	}
-	db.Close()
+	_ = db.Close()
 	if eventCount != 2 {
 		t.Fatalf("invalid input performed a write; event count = %d", eventCount)
 	}

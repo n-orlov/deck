@@ -143,15 +143,15 @@ func scanForPrefixSpecialCasing(t *testing.T, dir string) string {
 				continue
 			}
 			if prefixSpecialCasingPattern.MatchString(trimmed) {
-				file.Close()
+				_ = file.Close()
 				return path + ":" + strconv.Itoa(lineNumber) + ": " + trimmed
 			}
 		}
 		if err := scanner.Err(); err != nil {
-			file.Close()
+			_ = file.Close()
 			t.Fatalf("scan %s: %v", path, err)
 		}
-		file.Close()
+		_ = file.Close()
 	}
 	return ""
 }

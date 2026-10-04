@@ -234,7 +234,12 @@ func fakeTMuxLivePane(t *testing.T, client tmux.Client, slug string) {
 	if updated == string(contents) {
 		t.Fatalf("fake tmux script has no session placeholder to bind to %q", slug)
 	}
-	if err := os.WriteFile(client.Binary, []byte(updated), 0o700); err != nil {
+	scope, err := os.OpenRoot(filepath.Dir(client.Binary)) // the fake binary lives in the test's temp dir
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = scope.Close() }() // nothing is read back through this handle
+	if err := scope.WriteFile(filepath.Base(client.Binary), []byte(updated), 0o700); err != nil {
 		t.Fatal(err)
 	}
 }

@@ -443,7 +443,7 @@ func openObservedDatabase(h *ScenarioHarness) (*sql.DB, error) {
 	db.SetMaxOpenConns(1)
 	db.SetMaxIdleConns(1)
 	if _, err := db.Exec(`PRAGMA busy_timeout=5000`); err != nil {
-		db.Close()
+		_ = db.Close()
 		return nil, fmt.Errorf("configure observed database: %w", err)
 	}
 	return db, nil
@@ -555,7 +555,7 @@ func releasedHookForSession(ctx context.Context, name, payload string) error {
 	var sessionID string
 	var leaseOwner string
 	if err := db.QueryRowContext(ctx, `SELECT id, COALESCE(launch_lease_owner, '') FROM sessions WHERE name = ?`, name).Scan(&sessionID, &leaseOwner); err != nil {
-		db.Close()
+		_ = db.Close()
 		return fmt.Errorf("resolve hook target %q: %w", name, err)
 	}
 	if err := db.Close(); err != nil {

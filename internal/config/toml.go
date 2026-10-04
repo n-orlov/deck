@@ -55,7 +55,7 @@ type FileConfig struct {
 func loadConfigFile(path string) (FileConfig, error) {
 	cfg := defaultFileConfig()
 
-	file, err := os.Open(path)
+	file, err := os.Open(path) //nolint:gosec // G304: the config path is the resolved config.toml location (or the profile file the operator named)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return cfg, nil

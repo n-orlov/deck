@@ -34,13 +34,13 @@ func TestSettingsGroupsPanelRefreshesOnOrdinaryReload(t *testing.T) {
 	if err != nil {
 		t.Fatalf("client A OpenPath: %v", err)
 	}
-	t.Cleanup(func() { clientA.Close() })
+	t.Cleanup(func() { _ = clientA.Close() })
 
 	clientB, err := store.OpenPath(home, dbPath)
 	if err != nil {
 		t.Fatalf("client B OpenPath: %v", err)
 	}
-	t.Cleanup(func() { clientB.Close() })
+	t.Cleanup(func() { _ = clientB.Close() })
 
 	ctx := context.Background()
 
@@ -145,13 +145,13 @@ func TestSettingsGroupsPanelReloadPreservesSelectionAndInProgressEditing(t *test
 	if err != nil {
 		t.Fatalf("client A OpenPath: %v", err)
 	}
-	t.Cleanup(func() { clientA.Close() })
+	t.Cleanup(func() { _ = clientA.Close() })
 
 	clientB, err := store.OpenPath(home, dbPath)
 	if err != nil {
 		t.Fatalf("client B OpenPath: %v", err)
 	}
-	t.Cleanup(func() { clientB.Close() })
+	t.Cleanup(func() { _ = clientB.Close() })
 
 	ctx := context.Background()
 

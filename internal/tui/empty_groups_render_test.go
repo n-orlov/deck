@@ -55,7 +55,7 @@ func emptyGroupsTestStore(t *testing.T) *store.Store {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { db.Close() })
+	t.Cleanup(func() { _ = db.Close() })
 	return db
 }
 
@@ -261,12 +261,12 @@ func TestGroupCreatedByAnotherClientAppearsAfterReload(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { clientA.Close() })
+	t.Cleanup(func() { _ = clientA.Close() })
 	clientB, err := store.OpenPath(home, dbPath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { clientB.Close() })
+	t.Cleanup(func() { _ = clientB.Close() })
 
 	m := New(clientB, config.Settings{}, "")
 	m.width, m.height = 100, 40

@@ -70,7 +70,7 @@ func findModule() (root string, modulePath string, err error) {
 	}
 	for {
 		gomod := filepath.Join(dir, "go.mod")
-		if data, readErr := os.ReadFile(gomod); readErr == nil {
+		if data, readErr := os.ReadFile(gomod); readErr == nil { //nolint:gosec // G304: go.mod is looked up in the directories above the directory the tool was pointed at
 			for _, line := range strings.Split(string(data), "\n") {
 				line = strings.TrimSpace(line)
 				if strings.HasPrefix(line, "module ") {

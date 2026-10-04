@@ -69,7 +69,7 @@ func TestStoreDurabilityCrashHelper(_ *testing.T) {
 	dbPath := os.Getenv(durabilityHelperDBEnv)
 	sessionID := os.Getenv(durabilityHelperSessEnv)
 	mode := os.Getenv(durabilityHelperModeEnv)
-	readyPath := os.Getenv(durabilityHelperRdyEnv)
+	readyPath := helperReadyPath()
 
 	st, err := OpenPath(filepath.Dir(dbPath), dbPath)
 	if err != nil {
@@ -168,7 +168,11 @@ func waitForFile(t *testing.T, path string) {
 func runCrashHelper(t *testing.T, dbPath, sessionID, mode string) {
 	t.Helper()
 	readyPath := dbPath + "." + mode + ".ready"
-	cmd := exec.Command(os.Args[0], "-test.run=^TestStoreDurabilityCrashHelper$")
+	self, err := os.Executable() // the running test binary, re-run as the helper below
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(self, "-test.run=^TestStoreDurabilityCrashHelper$")
 	cmd.Env = append(os.Environ(),
 		durabilityHelperEnv+"=1",
 		durabilityHelperDBEnv+"="+dbPath,
@@ -291,4 +295,18 @@ func TestStoreSurvivesProcessCrashMidTransaction(t *testing.T) {
 		// paired event log entry did not. The atomic subtest above proves
 		// deck's real mutateSessionWithEvent shape never produces this.
 	})
+}
+
+// helperReadyPath returns the ready-file path the parent test exported to the
+// crash helper process. The parent always builds it as an absolute path beside
+// the database file (runCrashHelper), so anything else means the helper was
+// launched by hand and must not write anywhere; it then exits like any other
+// helper failure.
+func helperReadyPath() string {
+	p := os.Getenv(durabilityHelperRdyEnv)
+	if !filepath.IsAbs(p) {
+		fmt.Fprintln(os.Stderr, "helper: ready path is not absolute:", p)
+		os.Exit(2)
+	}
+	return filepath.Clean(p)
 }
