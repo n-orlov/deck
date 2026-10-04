@@ -30,8 +30,10 @@ errorlint, misspell, unconvert, unparam, bodyclose, copyloopvar and nolintlint
 (`require-specific`, `require-explanation`); gocognit is not enabled, CRAP is the
 complexity gate. Its only exclusions are two `_test.go`-scoped rules (gosec
 G204/G304/G301/G302/G306, and errcheck on `Close`), each with its reason in the
-file; production code has none. `ci/lintcheck/golangci_test.go` runs the real
-binary to prove a seeded unchecked error, a `//nolint` without a linter name or
+file; production code has none, and golangci's default skip of files with a
+"generated" header is turned off (`exclusions.generated: disable`).
+`ci/lintcheck/golangci_test.go` runs the real binary to prove a seeded unchecked
+error (also under a generated-file header), a `//nolint` without a linter name or
 a reason, and an empty package list each fail. It is not yet a required gate:
 `ci/lint.sh` does not run it until the tree is at zero findings.
 
