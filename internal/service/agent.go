@@ -58,57 +58,99 @@ type AgentCreateInput struct {
 // a launch failure after the row exists is represented as a durable error
 // row plus a transition event, never a misleading "starting" row.
 func (s Service) CreateAgent(ctx context.Context, input AgentCreateInput) (store.Session, error) {
+	plan, err := s.planAgentCreate(input)
+	if err != nil {
+		return store.Session{}, err
+	}
+	session, err := s.insertAgentRow(ctx, input, plan)
+	if err != nil {
+		return session, err
+	}
+	return s.launchAgent(ctx, input, plan, session)
+}
+
+// agentCreatePlan is everything CreateAgent resolves before any row exists:
+// the adapter, its resolved permission profile, the two generated ids and the
+// captured PATH.
+type agentCreatePlan struct {
+	adapter           agent.Adapter
+	caps              agent.Caps
+	profile           string
+	degradationReason string
+	id                string
+	conversationID    string
+	capturedPath      string
+}
+
+// planAgentCreate validates the input and resolves the adapter, profile, ids
+// and captured PATH, then probes the adapter's executable (R111), all before
+// any row or pane exists.
+func (s Service) planAgentCreate(input AgentCreateInput) (agentCreatePlan, error) {
 	if s.Store == nil || s.Audit == nil || s.Clock == nil || s.IDs == nil || s.Agents == nil {
-		return store.Session{}, errors.New("agent creation requires store, audit logger, clock, id generator, and adapter registry")
+		return agentCreatePlan{}, errors.New("agent creation requires store, audit logger, clock, id generator, and adapter registry")
 	}
 	if input.Name == "" || input.CWD == "" {
-		return store.Session{}, errors.New("agent session name and working directory are required")
+		return agentCreatePlan{}, errors.New("agent session name and working directory are required")
 	}
 	adapter, ok := s.Agents.Lookup(input.Agent)
 	if !ok {
-		return store.Session{}, fmt.Errorf("unknown agent kind %q", input.Agent)
+		return agentCreatePlan{}, fmt.Errorf("unknown agent kind %q", input.Agent)
 	}
 	caps := adapter.Capabilities()
 	profile, _, degradationReason := caps.ResolveProfile(adapter.Kind(), input.PermissionProfile)
+	plan := agentCreatePlan{adapter: adapter, caps: caps, profile: profile, degradationReason: degradationReason}
 
 	id, err := s.IDs.UUID()
 	if err != nil {
-		return store.Session{}, fmt.Errorf("generate agent session id: %w", err)
+		return agentCreatePlan{}, fmt.Errorf("generate agent session id: %w", err)
 	}
-	var conversationID string
+	plan.id = id
 	if caps.AssignsConversationID {
-		conversationID, err = s.IDs.UUID()
+		plan.conversationID, err = s.IDs.UUID()
 		if err != nil {
-			return store.Session{}, fmt.Errorf("assign conversation id: %w", err)
+			return agentCreatePlan{}, fmt.Errorf("assign conversation id: %w", err)
 		}
 	}
 
-	capturedPath := os.Getenv("PATH")
-	if capturedPath == "" {
-		return store.Session{}, errors.New("PATH is required to create an agent session")
+	plan.capturedPath = os.Getenv("PATH")
+	if plan.capturedPath == "" {
+		return agentCreatePlan{}, errors.New("PATH is required to create an agent session")
 	}
-
-	// R111: probe the adapter's declared executable against the PATH this
-	// session's own pane would launch under, before any row or pane
-	// exists, so a doomed create never gets as far as a durable "starting"
-	// row (task 010). This is the same lookPathIn (availability.go) that
-	// resume's own preflight (resume.go) and AvailableKinds use, against
-	// the same resolveLaunchEnv PATH resume's preflight checks against, so
-	// create and resume can never disagree about whether a binary is on
-	// PATH. An adapter with no declared executable (shell) has nothing to
-	// probe, same as kindAvailable.
-	//
-	// A login shell resolves its own PATH via its own profile/rc scripts
-	// (SPEC §6.4), so deck cannot judge PATH membership for it and must
-	// not fail create on that basis -- the same exemption resume.go's own
-	// preflight makes for a resumed login shell.
-	if !input.LoginShell && caps.Executable != "" {
-		launchPath := s.resolveLaunchEnv(capturedPath, input.Env)["PATH"]
-		if lookErr := lookPathIn(caps.Executable, launchPath); lookErr != nil {
-			return store.Session{}, fmt.Errorf("create agent session %q: agent binary %q not found on PATH: %w", input.Name, caps.Executable, lookErr)
-		}
+	if err := s.probeAgentExecutable(input, plan); err != nil {
+		return agentCreatePlan{}, err
 	}
+	return plan, nil
+}
 
+// probeAgentExecutable is R111: probe the adapter's declared executable
+// against the PATH this session's own pane would launch under, before any row
+// or pane exists, so a doomed create never gets as far as a durable "starting"
+// row (task 010). This is the same lookPathIn (availability.go) that
+// resume's own preflight (resume.go) and AvailableKinds use, against
+// the same resolveLaunchEnv PATH resume's preflight checks against, so
+// create and resume can never disagree about whether a binary is on
+// PATH. An adapter with no declared executable (shell) has nothing to
+// probe, same as kindAvailable.
+//
+// A login shell resolves its own PATH via its own profile/rc scripts
+// (SPEC §6.4), so deck cannot judge PATH membership for it and must
+// not fail create on that basis -- the same exemption resume.go's own
+// preflight makes for a resumed login shell.
+func (s Service) probeAgentExecutable(input AgentCreateInput, plan agentCreatePlan) error {
+	if input.LoginShell || plan.caps.Executable == "" {
+		return nil
+	}
+	launchPath := s.resolveLaunchEnv(plan.capturedPath, input.Env)["PATH"]
+	if lookErr := lookPathIn(plan.caps.Executable, launchPath); lookErr != nil {
+		return fmt.Errorf("create agent session %q: agent binary %q not found on PATH: %w", input.Name, plan.caps.Executable, lookErr)
+	}
+	return nil
+}
+
+// insertAgentRow creates the durable "starting" row and its follow-ups. On a
+// failure after the row exists it returns the row alongside the error, as
+// CreateAgent always has.
+func (s Service) insertAgentRow(ctx context.Context, input AgentCreateInput, plan agentCreatePlan) (store.Session, error) {
 	now := s.Clock.Now().UnixMilli()
 	// SPEC §9.2 (R77), as in CreateShell: note which tombstoned rows hold
 	// this name before the create reaps them in its own transaction, and
@@ -118,11 +160,11 @@ func (s Service) CreateAgent(ctx context.Context, input AgentCreateInput) (store
 		return store.Session{}, err
 	}
 	session, err := s.Store.CreateSession(ctx, store.CreateSessionInput{
-		ID: id, Name: input.Name, CWD: input.CWD, Agent: adapter.Kind(), CapturedPath: capturedPath,
+		ID: plan.id, Name: input.Name, CWD: input.CWD, Agent: plan.adapter.Kind(), CapturedPath: plan.capturedPath,
 		Status: "starting", StatusSource: "user", StatusAt: now, CreatedAt: now,
 		LaunchArgs: input.LaunchArgs, Env: input.Env, PreLaunch: input.PreLaunch, LoginShell: input.LoginShell,
 		PostDestroy:       input.PostDestroy,
-		PermissionProfile: profile, PermissionProfileReason: degradationReason, ConversationID: conversationID,
+		PermissionProfile: plan.profile, PermissionProfileReason: plan.degradationReason, ConversationID: plan.conversationID,
 		GroupID: input.GroupID,
 	})
 	if err != nil {
@@ -135,49 +177,16 @@ func (s Service) CreateAgent(ctx context.Context, input AgentCreateInput) (store
 	if err := s.Audit.Transition(session.ID, "starting"); err != nil {
 		return session, fmt.Errorf("audit starting agent session %q: %w", session.Name, err)
 	}
+	return session, nil
+}
 
-	// No LaunchGeneration here: a brand-new row's first launch takes no launch
-	// lease (the row is created directly as `starting`), so there is no earlier
-	// launch of it that a hook could be confused with (issue #11, R74). The
-	// row's generation is first written by the AcquireLaunchLease of its first
-	// resume/restart.
-	launchInput := agent.LaunchInput{
-		CWD: session.CWD, ConversationID: conversationID, Profile: profile, ExtraArgs: input.LaunchArgs,
-		DeckExecutable: s.DeckExecutable, DeckSessionID: session.ID, DeckHome: s.DeckHome,
-	}
-	argv, err := adapter.Launch(launchInput)
+// launchAgent builds the pane command and environment for an existing
+// "starting" row, launches it in tmux and records the ready transition. Every
+// failure leaves a durable error row through launchFailed.
+func (s Service) launchAgent(ctx context.Context, input AgentCreateInput, plan agentCreatePlan, session store.Session) (store.Session, error) {
+	paneCommand, launchEnv, err := s.buildAgentLaunch(input, plan, session)
 	if err != nil {
-		return s.launchFailed(ctx, session, fmt.Errorf("build launch argv for agent session %q: %w", session.Name, err))
-	}
-	// An adapter that declares no executable (`shell`) names no argv[0] of its
-	// own, so the launcher supplies the shell it resolves for the pane -- the
-	// same single resolution CreateShell uses (paneArgv/resolveUserShell).
-	argv, err = s.paneArgv(caps, argv)
-	if err != nil {
-		return s.launchFailed(ctx, session, fmt.Errorf("resolve launch argv for agent session %q: %w", session.Name, err))
-	}
-
-	// login_shell=1 is mutually exclusive with relying on captured_path: the
-	// login shell resolves its own PATH via its own profile/rc scripts, so
-	// deck must not also inject a PATH override here.
-	envCapturedPath := capturedPath
-	if input.LoginShell {
-		envCapturedPath = ""
-	}
-	launchEnv := s.resolveLaunchEnv(envCapturedPath, input.Env)
-	argv, launchEnv, err = applyInstrumentation(adapter, launchInput, argv, launchEnv)
-	if err != nil {
-		return s.launchFailed(ctx, session, fmt.Errorf("instrument agent session %q: %w", session.Name, err))
-	}
-	// SPEC §6.1 (R104): deck's own session context is merged last, above the
-	// instrumentation adapters own, so a session `env` or config `[env]` key
-	// of the same name can never lie to a hook about which session it is.
-	for key, value := range s.sessionContextEnv(session, LaunchKindCreate) {
-		launchEnv[key] = value
-	}
-	paneCommand, err := buildPaneCommand(s.GlobalPreLaunch, input.PreLaunch, input.LoginShell, argv)
-	if err != nil {
-		return s.launchFailed(ctx, session, fmt.Errorf("build pane command for agent session %q: %w", session.Name, err))
+		return s.launchFailed(ctx, session, err)
 	}
 	if _, err := s.TMux.Create(ctx, tmux.Launch{Slug: session.Slug, CWD: session.CWD, Command: paneCommand, Env: launchEnv}); err != nil {
 		return s.launchFailed(ctx, session, fmt.Errorf("launch agent session %q: %w", session.Name, err))
@@ -188,20 +197,78 @@ func (s Service) CreateAgent(ctx context.Context, input AgentCreateInput) (store
 		_ = s.TMux.Kill(ctx, session.Slug)
 		return s.launchFailed(ctx, session, fmt.Errorf("audit agent launch %q: %w", session.Name, err))
 	}
+	if err := s.recordAgentReady(ctx, session); err != nil {
+		return s.launchFailed(ctx, session, err)
+	}
+	session.StatusSource = "tmux"
+	session.ConversationID = plan.conversationID
+	session.PermissionProfile = plan.profile
+	session.PermissionProfileReason = plan.degradationReason
+	return session, nil
+}
+
+// recordAgentReady stores and audits the launch.ready transition.
+func (s Service) recordAgentReady(ctx context.Context, session store.Session) error {
 	if err := s.Store.UpdateSessionStatus(ctx, store.StatusUpdateInput{
 		SessionID: session.ID, Status: "starting", Reason: "", Source: "tmux",
 		At: s.Clock.Now().UnixMilli(), EventKind: "launch.ready",
 	}); err != nil {
-		return s.launchFailed(ctx, session, fmt.Errorf("record ready agent session %q: %w", session.Name, err))
+		return fmt.Errorf("record ready agent session %q: %w", session.Name, err)
 	}
 	if err := s.Audit.Transition(session.ID, "launch.ready"); err != nil {
-		return s.launchFailed(ctx, session, fmt.Errorf("audit ready agent session %q: %w", session.Name, err))
+		return fmt.Errorf("audit ready agent session %q: %w", session.Name, err)
 	}
-	session.StatusSource = "tmux"
-	session.ConversationID = conversationID
-	session.PermissionProfile = profile
-	session.PermissionProfileReason = degradationReason
-	return session, nil
+	return nil
+}
+
+// buildAgentLaunch resolves the pane command and environment a created row
+// launches with. Its errors are already the final, wrapped launch-failure
+// messages.
+func (s Service) buildAgentLaunch(input AgentCreateInput, plan agentCreatePlan, session store.Session) ([]string, map[string]string, error) {
+	// No LaunchGeneration here: a brand-new row's first launch takes no launch
+	// lease (the row is created directly as `starting`), so there is no earlier
+	// launch of it that a hook could be confused with (issue #11, R74). The
+	// row's generation is first written by the AcquireLaunchLease of its first
+	// resume/restart.
+	launchInput := agent.LaunchInput{
+		CWD: session.CWD, ConversationID: plan.conversationID, Profile: plan.profile, ExtraArgs: input.LaunchArgs,
+		DeckExecutable: s.DeckExecutable, DeckSessionID: session.ID, DeckHome: s.DeckHome,
+	}
+	argv, err := plan.adapter.Launch(launchInput)
+	if err != nil {
+		return nil, nil, fmt.Errorf("build launch argv for agent session %q: %w", session.Name, err)
+	}
+	// An adapter that declares no executable (`shell`) names no argv[0] of its
+	// own, so the launcher supplies the shell it resolves for the pane -- the
+	// same single resolution CreateShell uses (paneArgv/resolveUserShell).
+	argv, err = s.paneArgv(plan.caps, argv)
+	if err != nil {
+		return nil, nil, fmt.Errorf("resolve launch argv for agent session %q: %w", session.Name, err)
+	}
+
+	// login_shell=1 is mutually exclusive with relying on captured_path: the
+	// login shell resolves its own PATH via its own profile/rc scripts, so
+	// deck must not also inject a PATH override here.
+	envCapturedPath := plan.capturedPath
+	if input.LoginShell {
+		envCapturedPath = ""
+	}
+	launchEnv := s.resolveLaunchEnv(envCapturedPath, input.Env)
+	argv, launchEnv, err = applyInstrumentation(plan.adapter, launchInput, argv, launchEnv)
+	if err != nil {
+		return nil, nil, fmt.Errorf("instrument agent session %q: %w", session.Name, err)
+	}
+	// SPEC §6.1 (R104): deck's own session context is merged last, above the
+	// instrumentation adapters own, so a session `env` or config `[env]` key
+	// of the same name can never lie to a hook about which session it is.
+	for key, value := range s.sessionContextEnv(session, LaunchKindCreate) {
+		launchEnv[key] = value
+	}
+	paneCommand, err := buildPaneCommand(s.GlobalPreLaunch, input.PreLaunch, input.LoginShell, argv)
+	if err != nil {
+		return nil, nil, fmt.Errorf("build pane command for agent session %q: %w", session.Name, err)
+	}
+	return paneCommand, launchEnv, nil
 }
 
 // buildPaneCommand wraps the adapter's launch/resume argv in a shell so
