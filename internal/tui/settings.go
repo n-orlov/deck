@@ -1775,30 +1775,9 @@ func settingsFieldRunningValueDisplay(f config.Field, s config.Settings, fallbac
 func settingsFieldValueDisplay(f config.Field, cfg config.FileConfig) string {
 	switch f.Kind {
 	case config.KindToggle:
-		v := settingsToggleValue(f, cfg)
-		text := "Off"
-		if v {
-			text = "On"
-		}
-		// steer 017 item 2: yolo_default=true with allow_yolo=false is a
-		// stated, visible inconsistency in THIS row's own text -- never a
-		// silent override of either key in either direction (allow_yolo
-		// does not flip on because of this, and this does not get silently
-		// cleared/ignored either).
-		if f.FullKey() == "yolo_default" && v && !cfg.AllowYolo {
-			text += " (inert: allow_yolo is off, so this has no effect yet)"
-		}
-		return text
+		return settingsToggleValueDisplay(f, cfg)
 	case config.KindInteger:
-		v := settingsIntegerValue(f, cfg)
-		text := strconv.Itoa(v)
-		if f.Unit != "" {
-			text += " " + f.Unit
-		}
-		if bounds := settingsIntegerBoundsText(f); bounds != "" {
-			text += " (" + bounds + ")"
-		}
-		return text
+		return settingsIntegerValueDisplay(f, cfg)
 	case config.KindEnum:
 		v := settingsEnumValue(f, cfg)
 		if v == "" {
@@ -1812,16 +1791,52 @@ func settingsFieldValueDisplay(f config.Field, cfg config.FileConfig) string {
 	case config.KindListOfStrings:
 		return settingsListValueDisplay(f, cfg)
 	case config.KindLink:
-		switch f.FullKey() {
-		case "[notify]":
-			return "unavailable this phase"
-		case "ui.clear_recent_cwds":
-			return "press enter/space to clear now"
-		default:
-			return "opens its own dialog"
-		}
+		return settingsLinkValueDisplay(f)
 	default:
 		return fmt.Sprintf("%v", f.Default)
+	}
+}
+
+// settingsToggleValueDisplay is settingsFieldValueDisplay's KindToggle arm.
+func settingsToggleValueDisplay(f config.Field, cfg config.FileConfig) string {
+	v := settingsToggleValue(f, cfg)
+	text := "Off"
+	if v {
+		text = "On"
+	}
+	// steer 017 item 2: yolo_default=true with allow_yolo=false is a
+	// stated, visible inconsistency in THIS row's own text -- never a
+	// silent override of either key in either direction (allow_yolo
+	// does not flip on because of this, and this does not get silently
+	// cleared/ignored either).
+	if f.FullKey() == "yolo_default" && v && !cfg.AllowYolo {
+		text += " (inert: allow_yolo is off, so this has no effect yet)"
+	}
+	return text
+}
+
+// settingsIntegerValueDisplay is settingsFieldValueDisplay's KindInteger arm.
+func settingsIntegerValueDisplay(f config.Field, cfg config.FileConfig) string {
+	v := settingsIntegerValue(f, cfg)
+	text := strconv.Itoa(v)
+	if f.Unit != "" {
+		text += " " + f.Unit
+	}
+	if bounds := settingsIntegerBoundsText(f); bounds != "" {
+		text += " (" + bounds + ")"
+	}
+	return text
+}
+
+// settingsLinkValueDisplay is settingsFieldValueDisplay's KindLink arm.
+func settingsLinkValueDisplay(f config.Field) string {
+	switch f.FullKey() {
+	case "[notify]":
+		return "unavailable this phase"
+	case "ui.clear_recent_cwds":
+		return "press enter/space to clear now"
+	default:
+		return "opens its own dialog"
 	}
 }
 
