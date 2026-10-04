@@ -5627,6 +5627,20 @@ func (m Model) appendGroupEntries(entries []sidebarEntry, group sidebarGroup, co
 	return entries
 }
 
+// selectedRowAnchor is the id of the session under a row cursor (empty when
+// the cursor index is out of range) and whether the cursor is on a row at
+// all rather than on a group header.
+func (m Model) selectedRowAnchor() (id string, onRow bool) {
+	idx, ok := m.selected.SessionIndex()
+	if !ok {
+		return "", false
+	}
+	if idx >= 0 && idx < len(m.sessions) {
+		id = m.sessions[idx].ID
+	}
+	return id, true
+}
+
 // resortSessionsLive re-sorts the exact session set already held in
 // m.baseSessions/m.sessions for the just-changed [ui] sort_order
 // (requirement R53/task 306's settingsApplyLiveFields consumer) -- unlike
@@ -5639,14 +5653,7 @@ func (m Model) appendGroupEntries(entries []sidebarEntry, group sidebarGroup, co
 // and scrollSessionIntoView keeps its row inside the sidebar's visible
 // window, mirroring requirement 52's own one-shot new-session path.
 func (m *Model) resortSessionsLive() {
-	var selectedID string
-	selectedWasRow := false
-	if idx, ok := m.selected.SessionIndex(); ok {
-		selectedWasRow = true
-		if idx >= 0 && idx < len(m.sessions) {
-			selectedID = m.sessions[idx].ID
-		}
-	}
+	selectedID, selectedWasRow := m.selectedRowAnchor()
 	order, _ := m.effectiveSortOrder()
 	// R129/task 011: group order (when grouping is on) is now alphabetical
 	// with default last (internal/tui/group.go's groupSortsBefore), never
