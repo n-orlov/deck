@@ -86,18 +86,28 @@ func applyDialogContract(msg tea.KeyMsg, c dialogContract) (cmd tea.Cmd, handled
 			return nil, false
 		}
 		return c.Submit(), true
-	case "down":
-		return nil, c.Fields.moveIndex(1)
-	case "up":
-		return nil, c.Fields.moveIndex(-1)
-	case "left":
-		return nil, c.Fields.cycleUnlessTyping(-1, false)
-	case "right":
-		return nil, c.Fields.cycleUnlessTyping(1, false)
-	case " ":
-		return nil, c.Fields.cycleUnlessTyping(1, true)
+	default:
+		return nil, c.Fields.applyKey(msg.String())
 	}
-	return nil, false
+}
+
+// applyKey is the field-navigation half of applyDialogContract: down/up move
+// the focused field, left/right/space cycle a selection. It reports whether
+// the key was handled; any other key is left unhandled.
+func (f dialogFields) applyKey(key string) bool {
+	switch key {
+	case "down":
+		return f.moveIndex(1)
+	case "up":
+		return f.moveIndex(-1)
+	case "left":
+		return f.cycleUnlessTyping(-1, false)
+	case "right":
+		return f.cycleUnlessTyping(1, false)
+	case " ":
+		return f.cycleUnlessTyping(1, true)
+	}
+	return false
 }
 
 // moveIndex steps the focused field by delta (+1 down, -1 up), wrapping, and
