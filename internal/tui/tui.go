@@ -4834,6 +4834,32 @@ func (m Model) footerLineContent() string {
 	return m.elideToWidth(reason, reasonBudget) + gap + m.footerLegendWithin(available-reasonBudget)
 }
 
+// footerSegment is one styled piece of the interactive footer and its plain
+// display width.
+type footerSegment struct {
+	styled string
+	width  int
+}
+
+// footerSegmentsKept is how many leading segments fit in budget columns, each
+// joined by a separator and with one more separator reserved before the
+// always-present quit hint.
+func footerSegmentsKept(segments []footerSegment, budget, sepWidth int) int {
+	kept, used := 0, 0
+	for _, s := range segments {
+		add := s.width
+		if kept > 0 {
+			add += sepWidth
+		}
+		if used+add+sepWidth > budget {
+			break
+		}
+		used += add
+		kept++
+	}
+	return kept
+}
+
 // interactiveFooterLine is PRD Part II requirement 43's other half: list
 // mode's own footer (footerKeyLegend, unchanged in shape) advertises `↵
 // interactive`/`a attach`; interactive mode's footer is a DIFFERENT line
@@ -4913,10 +4939,6 @@ func (m Model) interactiveFooterLine() string {
 	scrollHint := m.colorToken(theme.Hint, "scroll")
 	scrollAd := scrollKey + " " + scrollHint
 
-	type footerSegment struct {
-		styled string
-		width  int
-	}
 	segments := []footerSegment{
 		{m.colorToken(theme.Hint, cue), stringWidth(cue)},
 		{scrollAd, stringWidth("Shift+PgUp/PgDn scroll")},
@@ -4934,18 +4956,7 @@ func (m Model) interactiveFooterLine() string {
 		// out.
 		return key
 	}
-	kept, used := 0, 0
-	for _, s := range segments {
-		add := s.width
-		if kept > 0 {
-			add += sepWidth
-		}
-		if used+add+sepWidth > budget {
-			break
-		}
-		used += add
-		kept++
-	}
+	kept := footerSegmentsKept(segments, budget, sepWidth)
 	if kept == 0 {
 		return quit
 	}
