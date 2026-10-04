@@ -32,6 +32,14 @@ in `ci.yml` and `release.yml` install the patched toolchain instead of 1.25.0
 the line is removed or a `ci.yml` `setup-go` step could resolve to 1.25.0;
 bump the line together with the image's Go.
 
+Workflow hardening (R197, GH #61): every `uses:` line in `ci.yml` and
+`pages-pr-publish.yml` is pinned by a 40-hex commit SHA with the tag in a
+trailing comment (bump both together), `ci.yml`'s notify step reads
+`github.ref_name` through `env:` rather than interpolating it into the script,
+and the `report` job drops the `GITHUB_TOKEN` extraheader from
+`site/.git/config` (an `if: always()` step) once the gh-pages push is done.
+`ci/workflowcheck/hardening_test.go` fails if any of the three regresses.
+
 `release.yml` adds one more gate, described under "The release gate" below.
 `pages-pr-publish.yml`, a separate `workflow_run`-triggered workflow, is
 described under "Publishing a PR's own report" below.
