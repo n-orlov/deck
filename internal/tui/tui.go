@@ -2252,6 +2252,30 @@ func (m Model) capturePreview() tea.Cmd {
 	}
 }
 
+// previewFitCandidate is previewFit's eligibility guard: it reports the
+// selected session and the preview panel's content size when a passive fit
+// should be scheduled for it now, and ok=false when any precondition fails.
+func (m *Model) previewFitCandidate() (session store.Session, width, height int, ok bool) {
+	if !m.settings.PreviewFit || m.interactive || m.tmuxClient.Socket == "" {
+		return store.Session{}, 0, 0, false
+	}
+	if !m.hasSelectedSession() {
+		return store.Session{}, 0, 0, false
+	}
+	if !m.computeLayout().PreviewShown {
+		return store.Session{}, 0, 0, false
+	}
+	session, _ = m.selectedSession()
+	if session.ID == m.previewFitSessionID || m.previewFitInFlight != "" {
+		return store.Session{}, 0, 0, false
+	}
+	width, height = m.previewContentSize()
+	if width <= 0 || height < interactiveMinInnerRows {
+		return store.Session{}, 0, 0, false
+	}
+	return session, width, height, true
+}
+
 // previewFit is steer 018 item 4's passive-preview fit (SPEC §11: "The
 // preview fits the selected session's window to the panel"), issued
 // alongside capturePreview on every previewTick. It returns nil -- issuing
@@ -2329,21 +2353,8 @@ func (m Model) capturePreview() tea.Cmd {
 // change: previewFitInFlight has to be marked before the command is handed
 // to the event loop, or the very next tick can slip past the guard.
 func (m *Model) previewFit() tea.Cmd {
-	if !m.settings.PreviewFit || m.interactive || m.tmuxClient.Socket == "" {
-		return nil
-	}
-	if !m.hasSelectedSession() {
-		return nil
-	}
-	if !m.computeLayout().PreviewShown {
-		return nil
-	}
-	session, _ := m.selectedSession()
-	if session.ID == m.previewFitSessionID || m.previewFitInFlight != "" {
-		return nil
-	}
-	width, height := m.previewContentSize()
-	if width <= 0 || height < interactiveMinInnerRows {
+	session, width, height, ok := m.previewFitCandidate()
+	if !ok {
 		return nil
 	}
 	client := m.tmuxClient
