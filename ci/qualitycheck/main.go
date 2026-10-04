@@ -118,59 +118,80 @@ func run(configPath, profilePath string) (report string, exitCode int, err error
 		return "", 2, err
 	}
 
-	var results []gateResult
-	anyEnabled := false
+	results, anyEnabled, err := runEnabledGates(enabledGates(cfg, configPath, profilePath))
+	if err != nil {
+		return "", 2, err
+	}
 
+	text, overallOK := renderGateReport(results)
+	if !anyEnabled {
+		text += fmt.Sprintf("ci/quality.sh: no gates are enabled in %s\n", configPath)
+	}
+
+	if !overallOK {
+		return text, 1, nil
+	}
+	return text, 0, nil
+}
+
+// gateRunner is one enabled gate: its report name and the function that
+// runs it (a non-nil error is a usage error, exit 2).
+type gateRunner struct {
+	name string
+	run  func() (ok bool, output string, err error)
+}
+
+// enabledGates lists, in report order, the gates cfg switches on.
+func enabledGates(cfg config, configPath, profilePath string) []gateRunner {
+	var gates []gateRunner
 	if cfg.Crap.Enabled {
-		anyEnabled = true
-		ok, out, rerr := runCrapGate(profilePath, cfg.Crap.Ceiling)
-		if rerr != nil {
-			return "", 2, rerr
-		}
-		results = append(results, gateResult{name: "crap", ok: ok, output: out})
+		gates = append(gates, gateRunner{"crap", func() (bool, string, error) {
+			return runCrapGate(profilePath, cfg.Crap.Ceiling)
+		}})
 	}
-
 	if cfg.Coverage.Enabled {
-		anyEnabled = true
-		ok, out, rerr := runCoverageGate(configPath, profilePath)
-		if rerr != nil {
-			return "", 2, rerr
-		}
-		results = append(results, gateResult{name: "coverage", ok: ok, output: out})
+		gates = append(gates, gateRunner{"coverage", func() (bool, string, error) {
+			return runCoverageGate(configPath, profilePath)
+		}})
 	}
-
 	if cfg.Trivy.Enabled {
-		anyEnabled = true
-		opts := trivyBase
-		opts.Severity = cfg.Trivy.Severity
-		opts.Now = time.Now()
-		ok, out, rerr := runTrivyGate(opts)
-		if rerr != nil {
-			return "", 2, rerr
-		}
-		results = append(results, gateResult{name: "trivy", ok: ok, output: out})
+		gates = append(gates, gateRunner{"trivy", func() (bool, string, error) {
+			opts := trivyBase
+			opts.Severity = cfg.Trivy.Severity
+			opts.Now = time.Now()
+			return runTrivyGate(opts)
+		}})
 	}
-
 	if cfg.Govulncheck.Enabled {
-		anyEnabled = true
-		ok, out, rerr := runGovulncheckGate(govulncheckBase)
-		if rerr != nil {
-			return "", 2, rerr
-		}
-		results = append(results, gateResult{name: "govulncheck", ok: ok, output: out})
+		gates = append(gates, gateRunner{"govulncheck", func() (bool, string, error) {
+			return runGovulncheckGate(govulncheckBase)
+		}})
 	}
-
 	if cfg.Golangci.Enabled {
-		anyEnabled = true
-		ok, out, rerr := runGolangciGate(golangciBase)
-		if rerr != nil {
-			return "", 2, rerr
-		}
-		results = append(results, gateResult{name: "golangci", ok: ok, output: out})
+		gates = append(gates, gateRunner{"golangci", func() (bool, string, error) {
+			return runGolangciGate(golangciBase)
+		}})
 	}
+	return gates
+}
 
+// runEnabledGates runs gates in order, stopping at the first usage error.
+func runEnabledGates(gates []gateRunner) (results []gateResult, anyEnabled bool, err error) {
+	for _, g := range gates {
+		ok, out, rerr := g.run()
+		if rerr != nil {
+			return nil, true, rerr
+		}
+		results = append(results, gateResult{name: g.name, ok: ok, output: out})
+	}
+	return results, len(gates) > 0, nil
+}
+
+// renderGateReport writes one "=== name gate ===" section per result and
+// reports whether every gate passed.
+func renderGateReport(results []gateResult) (text string, overallOK bool) {
 	var b strings.Builder
-	overallOK := true
+	overallOK = true
 	for _, r := range results {
 		fmt.Fprintf(&b, "=== %s gate ===\n", r.name)
 		b.WriteString(r.output)
@@ -181,14 +202,7 @@ func run(configPath, profilePath string) (report string, exitCode int, err error
 			overallOK = false
 		}
 	}
-	if !anyEnabled {
-		fmt.Fprintf(&b, "ci/quality.sh: no gates are enabled in %s\n", configPath)
-	}
-
-	if !overallOK {
-		return b.String(), 1, nil
-	}
-	return b.String(), 0, nil
+	return b.String(), overallOK
 }
 
 // loadConfig reads and parses path as a config. A missing or malformed
