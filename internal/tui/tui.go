@@ -8354,56 +8354,8 @@ func (m Model) updateCreate(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.closeCreateCWDCandidates()
 	}
 	if m.createField == 1 {
-		switch msg.String() {
-		case "tab":
-			// §11.7's bash-completion-contract key (task 012), and (task 025,
-			// SPEC §11.4) the ONLY thing tab ever does anywhere in this
-			// dialog: "tab completes to the longest common prefix when that
-			// advances the text, and otherwise lists the candidates for
-			// selection". When there is nothing to do at all -- no directory
-			// matches the segment, or the segment already names the one
-			// candidate there is in full -- tabCompleteCreateCWD reports
-			// false and tab is left UNHANDLED here: applyDialogContract below
-			// no longer binds tab at all (field navigation moved to ↑/↓), so
-			// falling out of this switch with no return means tab simply does
-			// nothing and focus stays exactly where it was.
-			if m.tabCompleteCreateCWD() {
-				return m, nil
-			}
-			return m, nil
-		case "esc":
-			// esc closes an open candidate list without changing the field
-			// or the value, one step short of applyDialogContract's own esc
-			// (cancel the whole modal) -- consumed here first so a user
-			// backing out of the list is not also thrown out of the create
-			// modal in the same keystroke.
-			if len(m.createCWDCandidates) > 0 {
-				m.closeCreateCWDCandidates()
-				return m, nil
-			}
-		case "enter":
-			// enter selects the highlighted candidate into the field rather
-			// than submitting the whole modal, one step short of
-			// applyDialogContract's own enter -- exactly like esc above.
-			if len(m.createCWDCandidates) > 0 {
-				m.acceptCWDCandidate(m.createCWDCandidates[m.createCWDCandidateIndex])
-				return m, nil
-			}
-		case "up":
-			// While the list is open, up/down move the highlighted entry
-			// rather than moving the dialog's focused field or cycling
-			// recent_cwds (Ctrl+P/Ctrl+N, below): the three per-field key sets
-			// are mutually exclusive, same as the ghost/ambiguous-count/recent
-			// labels already are.
-			if len(m.createCWDCandidates) > 0 {
-				m.createCWDCandidateIndex = (m.createCWDCandidateIndex - 1 + len(m.createCWDCandidates)) % len(m.createCWDCandidates)
-				return m, nil
-			}
-		case "down":
-			if len(m.createCWDCandidates) > 0 {
-				m.createCWDCandidateIndex = (m.createCWDCandidateIndex + 1) % len(m.createCWDCandidates)
-				return m, nil
-			}
+		if cmd, handled := m.updateCreateCWDKey(msg); handled {
+			return m, cmd
 		}
 	}
 	if cmd, handled := applyDialogContract(msg, dialogContract{
@@ -8420,13 +8372,83 @@ func (m Model) updateCreate(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}); handled {
 		return m, cmd
 	}
+	if m.updateCreateExtraKey(msg) {
+		return m, nil
+	}
+	return m.editCreateField(msg), nil
+}
+
+// updateCreateCWDKey is updateCreate's first pass while the cwd field (field 1)
+// is focused: the tab-completion candidate list's own keys (task 012). It
+// reports handled=false for every key the list does not claim, which then
+// fall through to applyDialogContract exactly as before.
+func (m *Model) updateCreateCWDKey(msg tea.KeyMsg) (tea.Cmd, bool) {
+	switch msg.String() {
+	case "tab":
+		// §11.7's bash-completion-contract key (task 012), and (task 025,
+		// SPEC §11.4) the ONLY thing tab ever does anywhere in this
+		// dialog: "tab completes to the longest common prefix when that
+		// advances the text, and otherwise lists the candidates for
+		// selection". When there is nothing to do at all -- no directory
+		// matches the segment, or the segment already names the one
+		// candidate there is in full -- tabCompleteCreateCWD reports
+		// false and tab is left UNHANDLED here: applyDialogContract below
+		// no longer binds tab at all (field navigation moved to ↑/↓), so
+		// falling out of this switch with no return means tab simply does
+		// nothing and focus stays exactly where it was.
+		if m.tabCompleteCreateCWD() {
+			return nil, true
+		}
+		return nil, true
+	case "esc":
+		// esc closes an open candidate list without changing the field
+		// or the value, one step short of applyDialogContract's own esc
+		// (cancel the whole modal) -- consumed here first so a user
+		// backing out of the list is not also thrown out of the create
+		// modal in the same keystroke.
+		if len(m.createCWDCandidates) > 0 {
+			m.closeCreateCWDCandidates()
+			return nil, true
+		}
+	case "enter":
+		// enter selects the highlighted candidate into the field rather
+		// than submitting the whole modal, one step short of
+		// applyDialogContract's own enter -- exactly like esc above.
+		if len(m.createCWDCandidates) > 0 {
+			m.acceptCWDCandidate(m.createCWDCandidates[m.createCWDCandidateIndex])
+			return nil, true
+		}
+	case "up":
+		// While the list is open, up/down move the highlighted entry
+		// rather than moving the dialog's focused field or cycling
+		// recent_cwds (Ctrl+P/Ctrl+N, below): the three per-field key sets
+		// are mutually exclusive, same as the ghost/ambiguous-count/recent
+		// labels already are.
+		if len(m.createCWDCandidates) > 0 {
+			m.createCWDCandidateIndex = (m.createCWDCandidateIndex - 1 + len(m.createCWDCandidates)) % len(m.createCWDCandidates)
+			return nil, true
+		}
+	case "down":
+		if len(m.createCWDCandidates) > 0 {
+			m.createCWDCandidateIndex = (m.createCWDCandidateIndex + 1) % len(m.createCWDCandidates)
+			return nil, true
+		}
+	}
+	return nil, false
+}
+
+// updateCreateExtraKey is updateCreate's pass over the keys applyDialogContract
+// leaves alone: the Env reveal toggle, the cwd field's recent_cwds cycling and
+// ghost acceptance, and PgUp/PgDn scrolling. handled=false hands the key on to
+// the shared line editor.
+func (m *Model) updateCreateExtraKey(msg tea.KeyMsg) bool {
 	switch msg.String() {
 	case "ctrl+r":
 		// §6.4's explicit per-view reveal toggle for the Env field's
 		// secret-shaped values (masked by default, back to masked on reopen).
 		if m.createField == createFieldEnv {
 			m.createEnvReveal = !m.createEnvReveal
-			return m, nil
+			return true
 		}
 	case "ctrl+p":
 		// §11.7's second declared per-field key set on the cwd field (task
@@ -8437,14 +8459,14 @@ func (m Model) updateCreate(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		// every other field's Ctrl+P/Ctrl+N stays a no-op here.
 		if m.createField == 1 {
 			m.cycleCreateCWDRecent(1)
-			return m, nil
+			return true
 		}
 	case "ctrl+n":
 		// readline's "next history": newer, eventually exiting the cycle
 		// back to whatever the field held before it started.
 		if m.createField == 1 {
 			m.cycleCreateCWDRecent(-1)
-			return m, nil
+			return true
 		}
 	case "end", "right":
 		// The ghost completion's two declared acceptance keys (task 010),
@@ -8453,7 +8475,7 @@ func (m Model) updateCreate(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		// §11.11's caret keys and nothing more, so they fall through to the
 		// editor below.
 		if m.createField == 1 && m.acceptCWDGhost() {
-			return m, nil
+			return true
 		}
 	case "pgup":
 		// Task 016: the create modal moved onto framedDialogScrollable
@@ -8463,11 +8485,17 @@ func (m Model) updateCreate(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		// m.createBody(), the plain body, never the coloured one, so a
 		// theme change can never move where a page boundary falls.
 		m.createScroll = m.dialogScrollByPage(m.createScroll, m.createBody(), -1)
-		return m, nil
+		return true
 	case "pgdown":
 		m.createScroll = m.dialogScrollByPage(m.createScroll, m.createBody(), 1)
-		return m, nil
+		return true
 	}
+	return false
+}
+
+// editCreateField hands a key to the shared line editor on a text field of the
+// create modal and returns the resulting model.
+func (m Model) editCreateField(msg tea.KeyMsg) Model {
 	// Every editing key, a typed rune and a bracketed paste on a text field
 	// belong to the shared line editor (§11.11): the cwd's prefill is an
 	// offered value, so a printable key or a paste replaces it and a caret or
@@ -8476,7 +8504,7 @@ func (m Model) updateCreate(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if field := m.createField; createFieldIsText(field) {
 		before := m.createEdits[field]
 		if isFieldCopyKey(msg) {
-			return m.copyFieldText(before.Value(), field == createFieldEnv && m.createEnvMasked()), nil
+			return m.copyFieldText(before.Value(), field == createFieldEnv && m.createEnvMasked())
 		}
 		if edited, ok := before.Update(msg); ok {
 			m.createEdits[field] = edited.Fit(m.createFieldWidth(field), m.createEditStyle(field))
@@ -8485,7 +8513,7 @@ func (m Model) updateCreate(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 		}
 	}
-	return m, nil
+	return m
 }
 
 // createCWDEdited is what an edit of the cwd field ends (task 009/012): a
