@@ -452,25 +452,9 @@ func extendedColor(rest []string) (hex string, consumed int) {
 	}
 	switch rest[0] {
 	case "5":
-		if len(rest) < 2 {
-			return "", 1
-		}
-		n, ok := atoiSGR(rest[1])
-		if !ok {
-			return "", 2
-		}
-		return xterm256Hex(n), 2
+		return extendedIndexed(rest)
 	case "2":
-		if len(rest) < 4 {
-			return "", len(rest)
-		}
-		r, rOK := atoiSGR(rest[1])
-		g, gOK := atoiSGR(rest[2])
-		bl, bOK := atoiSGR(rest[3])
-		if !rOK || !gOK || !bOK {
-			return "", 4
-		}
-		return fmt.Sprintf("#%02x%02x%02x", clamp255(r), clamp255(g), clamp255(bl)), 4
+		return extendedRGB(rest)
 	case "3", "4":
 		// CMY / CMYK, implementation-defined and vanishingly rare. Consume
 		// the fields so nothing after them is misread; do not resolve.
@@ -478,6 +462,32 @@ func extendedColor(rest []string) (hex string, consumed int) {
 	default:
 		return "", 1
 	}
+}
+
+// extendedIndexed resolves the 38;5;n form (rest[0] is the "5").
+func extendedIndexed(rest []string) (hex string, consumed int) {
+	if len(rest) < 2 {
+		return "", 1
+	}
+	n, ok := atoiSGR(rest[1])
+	if !ok {
+		return "", 2
+	}
+	return xterm256Hex(n), 2
+}
+
+// extendedRGB resolves the 38;2;r;g;b form (rest[0] is the "2").
+func extendedRGB(rest []string) (hex string, consumed int) {
+	if len(rest) < 4 {
+		return "", len(rest)
+	}
+	r, rOK := atoiSGR(rest[1])
+	g, gOK := atoiSGR(rest[2])
+	bl, bOK := atoiSGR(rest[3])
+	if !rOK || !gOK || !bOK {
+		return "", 4
+	}
+	return fmt.Sprintf("#%02x%02x%02x", clamp255(r), clamp255(g), clamp255(bl)), 4
 }
 
 // xterm256Hex resolves an xterm 256-colour index: 0-15 the ANSI slots
