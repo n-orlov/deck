@@ -116,7 +116,18 @@ jobs:
         continue-on-error: true
         run: ci/run.sh ci/suite.sh
 
-      - name: Quality gates (ci/quality.sh; trivy on, others off until a later task flips them on, R187/R190)
+      # R190: the nightly re-runs govulncheck and trivy on the same tree so a
+      # vulnerability disclosed since the last push turns the nightly red (the
+      # quality step below fails the job, `notify` then fires). Both scanners
+      # keep their databases on the shared /go-cache volume; dropping those two
+      # database caches here means the nightly scan reads fresh data instead
+      # of whatever a warm cache last fetched. Only the databases are removed,
+      # never the Go build/module caches.
+      - name: Nightly vulnerability rescan -- drop cached trivy/govulncheck databases (R190)
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        run: ci/run.sh sh -c 'rm -rf /go-cache/trivy/db /go-cache/trivy/java-db /go-cache/xdg-cache/govulncheck'
+
+      - name: Quality gates (ci/quality.sh; trivy and govulncheck on, others off until a later task flips them on, R187/R190)
         id: quality
         continue-on-error: true
         run: ci/run.sh ci/quality.sh "$DECK_CI_OUT"
