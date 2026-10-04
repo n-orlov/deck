@@ -13,5 +13,8 @@
     "trivy": {
         "enabled": true,
         "severity": "HIGH,CRITICAL"
+    },
+    "govulncheck": {
+        "enabled": true
     }
 }

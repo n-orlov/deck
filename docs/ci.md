@@ -12,7 +12,7 @@ look at the Actions run itself, found by its head sha.
 | job | runs on | purpose |
 |---|---|---|
 | `lint` | self-hosted `[self-hosted, linux, x64, deck]` | `gofmt -l`, `go vet ./...`, `go mod tidy` drift check, in that order, via `ci/lint.sh`. Fails fast, before the suite. |
-| `suite` | self-hosted `[self-hosted, linux, x64, deck]`, `needs: lint` | Builds/refreshes the `deck-ci:local` image, runs `ci/run.sh ci/suite.sh` (the whole `go test -p=1 -count=1 ./...` matrix), then `ci/run.sh ci/quality.sh` (R187's quality gates; the trivy gate is on, the rest `enabled: false` until a later task flips them on), and on `schedule`/`workflow_dispatch` also runs `ci/stability.sh 3` (three clean-state repetitions) with `-race` enabled. The job fails if the suite, the quality gates, or (nightly) stability failed. Writes the job summary and uploads raw results as a workflow artifact. |
+| `suite` | self-hosted `[self-hosted, linux, x64, deck]`, `needs: lint` | Builds/refreshes the `deck-ci:local` image, runs `ci/run.sh ci/suite.sh` (the whole `go test -p=1 -count=1 ./...` matrix), then `ci/run.sh ci/quality.sh` (R187's quality gates; the trivy and govulncheck gates are on, the rest `enabled: false` until a later task flips them on), and on `schedule`/`workflow_dispatch` also runs `ci/stability.sh 3` (three clean-state repetitions) with `-race` enabled. The job fails if the suite, the quality gates, or (nightly) stability failed. Writes the job summary and uploads raw results as a workflow artifact. |
 | `report (Allure)` | self-hosted, `needs: [lint, suite]` | Turns the JUnit `suite` produced into an Allure report, merges it into the persisted `gh-pages` site tree, uploads the rendered report as a workflow artifact, and stages the merged tree as a Pages artifact. Holds no `pages:`/`id-token:` permission -- it stages, it never deploys. |
 | `publish (Pages)` | `ubuntu-latest`, `needs: report` | Deploys the root-triggered (`push`/`schedule`/`workflow_dispatch`) Pages artifact. Holds `pages: write`/`id-token: write`. Gated to `push`/`schedule`/`workflow_dispatch` only -- never `pull_request` (a PR-branch deploy is rejected server-side by the repo's `github-pages` environment's branch policy regardless; see "Publishing a PR's own report" below for how a PR's own report still gets published). |
 | `pr-comment` | `ubuntu-latest`, `needs: report` | Runs `go run ./ci/prcomment`, which pages through every existing PR comment and creates or updates the one comment (keyed on an HTML marker) carrying the PR's own `/pr/<n>/` Allure link and its head sha. Only for `pull_request` events whose head repo is this repository. |
@@ -494,6 +494,9 @@ threshold from here and nowhere else:
     },
     "trivy": {
         "enabled": true, "severity": "HIGH,CRITICAL"
+    },
+    "govulncheck": {
+        "enabled": true
     }
 }
 ```
@@ -529,6 +532,19 @@ threshold from here and nowhere else:
   date before today (UTC) fails the gate and
   `TestTrivyIgnore_CheckedInFileIsValid`. `golang.org/x/text` is at v0.39.0
   (fixing CVE-2026-56852), so there are no exceptions at present.
+- `govulncheck` (R190) runs `govulncheck ./...` from the repository root with
+  `GOTOOLCHAIN=local` (the image's pinned binary, v1.8.0), failing on a
+  vulnerability whose vulnerable function the code actually calls (exit 3);
+  an imported-but-uncalled finding does not fail it. Two guards keep it from
+  passing vacuously: the running `go version` must not be older than
+  `go.mod`'s `toolchain` line (the `go` line when there is none), and the
+  target must hold a `go.mod` and Go files -- an empty or wrong target fails
+  without running govulncheck. Its vulnerability-database cache follows
+  `XDG_CACHE_HOME`, which `ci/quality.sh` points at `/go-cache/xdg-cache` in
+  the image. Switching it off is a loosening the threshold test rejects. Its
+  tests (`ci/qualitycheck/govulncheck_test.go`) run the real govulncheck
+  against a vendored vulnerable-module fixture with a local `file://`
+  database, so they need no network.
 - The other gates start `enabled: false` (R187: "no gate on yet"). A later
   task flips one on only once the product passes it locally.
 

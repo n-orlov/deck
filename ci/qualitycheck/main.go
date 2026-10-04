@@ -58,6 +58,8 @@ type config struct {
 	Coverage coverageConfig `json:"coverage"`
 	Crap     crapConfig     `json:"crap"`
 	Trivy    trivyConfig    `json:"trivy"`
+
+	Govulncheck govulncheckConfig `json:"govulncheck"`
 }
 
 // trivyBase carries the trivy gate's flag-supplied options (binary,
@@ -66,6 +68,9 @@ type config struct {
 // every other gate's tests use, stays put.
 var trivyBase = trivyOptions{Target: ".", IgnoreFile: ".trivyignore", CacheDir: "/go-cache/trivy"}
 
+// govulncheckBase carries the govulncheck gate's flag-supplied options.
+var govulncheckBase = govulncheckOptions{Target: "."}
+
 func main() {
 	configPath := flag.String("config", "", "path to ci/quality.json (required)")
 	profilePath := flag.String("profile", "", "path to the merged coverage profile (required if an on gate needs it)")
@@ -73,6 +78,9 @@ func main() {
 	flag.StringVar(&trivyBase.Target, "trivy-target", ".", "directory the trivy gate scans")
 	flag.StringVar(&trivyBase.CacheDir, "trivy-cache", "/go-cache/trivy", "trivy DB cache directory")
 	flag.StringVar(&trivyBase.IgnoreFile, "trivy-ignore", ".trivyignore", "trivy exceptions file")
+	flag.StringVar(&govulncheckBase.Binary, "govulncheck-bin", "govulncheck", "govulncheck executable")
+	flag.StringVar(&govulncheckBase.Target, "govulncheck-target", ".", "module root the govulncheck gate scans")
+	flag.StringVar(&govulncheckBase.CacheDir, "govulncheck-cache", "", "XDG_CACHE_HOME for govulncheck (its vuln DB cache); empty inherits")
 	flag.Parse()
 
 	report, exitCode, err := run(*configPath, *profilePath)
@@ -142,6 +150,15 @@ func run(configPath, profilePath string) (report string, exitCode int, err error
 			return "", 2, rerr
 		}
 		results = append(results, gateResult{name: "trivy", ok: ok, output: out})
+	}
+
+	if cfg.Govulncheck.Enabled {
+		anyEnabled = true
+		ok, out, rerr := runGovulncheckGate(govulncheckBase)
+		if rerr != nil {
+			return "", 2, rerr
+		}
+		results = append(results, gateResult{name: "govulncheck", ok: ok, output: out})
 	}
 
 	var b strings.Builder

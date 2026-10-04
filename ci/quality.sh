@@ -56,7 +56,16 @@ else
     trivy_cache=${TMPDIR:-/tmp}/deck-trivy-cache
 fi
 
+# govulncheck's vuln-DB cache goes to the same volume (it follows
+# XDG_CACHE_HOME); outside the image it inherits the caller's own cache.
+govuln_cache=
+if [ -d /go-cache ] && [ -w /go-cache ]; then
+    govuln_cache=/go-cache/xdg-cache
+    mkdir -p "$govuln_cache"
+fi
+
 exit_code=0
 go run ./ci/qualitycheck -config "$config" -profile "$profile" \
-    -trivy-target . -trivy-cache "$trivy_cache" -trivy-ignore .trivyignore || exit_code=$?
+    -trivy-target . -trivy-cache "$trivy_cache" -trivy-ignore .trivyignore \
+    -govulncheck-target . -govulncheck-cache "$govuln_cache" || exit_code=$?
 exit "$exit_code"

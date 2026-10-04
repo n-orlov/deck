@@ -131,6 +131,10 @@ func looserThresholds(base, current config) []string {
 		}
 	}
 
+	if base.Govulncheck.Enabled && !current.Govulncheck.Enabled {
+		problems = append(problems, "govulncheck.enabled: switched off (base had it on)")
+	}
+
 	return problems
 }
 
