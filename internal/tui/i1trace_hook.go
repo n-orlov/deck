@@ -54,14 +54,18 @@ func describeMsg(message tea.Msg) string {
 	case debugMsg:
 		return string(msg)
 	case sessionsLoaded:
-		parts := make([]string, 0, len(msg.sessions))
-		for _, s := range msg.sessions {
-			parts = append(parts, fmt.Sprintf("%s:%s@%d", s.Name, s.Status, s.StatusAt))
-		}
-		return fmt.Sprintf("sessionsLoaded%v", parts)
+		return describeSessionsLoaded(msg)
 	default:
 		return fmt.Sprintf("%T", message)
 	}
+}
+
+func describeSessionsLoaded(msg sessionsLoaded) string {
+	parts := make([]string, 0, len(msg.sessions))
+	for _, s := range msg.sessions {
+		parts = append(parts, fmt.Sprintf("%s:%s@%d", s.Name, s.Status, s.StatusAt))
+	}
+	return fmt.Sprintf("sessionsLoaded%v", parts)
 }
 
 // i1TraceSessions logs m.sessions' current name/status/statusAt in index
