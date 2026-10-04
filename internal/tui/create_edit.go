@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/n-orlov/deck/internal/theme"
 	"github.com/n-orlov/deck/internal/tui/lineedit"
@@ -79,5 +80,51 @@ func (m Model) createFieldText(field int) string {
 			style.Blurred = true
 		}
 	}
-	return m.createEdits[field].View(width, style)
+	ed := m.createEdits[field]
+	if field == createFieldEnv {
+		// SPEC §6.4: a secret-shaped key's value is masked in every view, the
+		// create modal's Env field included, until this view's own reveal
+		// toggle (Ctrl+R on the field) is on. The draw swaps in the masked
+		// text with the caret at its end; the stored value is untouched.
+		if masked := m.maskCreateEnvText(ed.Value(), m.createEnvReveal); masked != ed.Value() {
+			ed = lineedit.New(masked)
+		}
+	}
+	return ed.View(width, style)
+}
+
+// maskCreateEnvText applies maskEnvValue to every `key=value` entry of the
+// Env field's comma-separated text. A key's own text and the entry's
+// separators are kept; only a non-empty value of a secret-shaped key becomes
+// the fixed placeholder (never the real length). revealed returns text as is.
+func (m Model) maskCreateEnvText(text string, revealed bool) string {
+	if revealed || text == "" {
+		return text
+	}
+	entries := strings.Split(text, ",")
+	for i, entry := range entries {
+		key, value, ok := strings.Cut(entry, "=")
+		if !ok || value == "" {
+			continue
+		}
+		entries[i] = key + "=" + m.maskEnvValue(strings.TrimSpace(key), value, false)
+	}
+	return strings.Join(entries, ",")
+}
+
+// createEnvMasked reports whether the Env field is currently drawing a
+// masked secret: copying it then is refused, as the env editor's is.
+func (m Model) createEnvMasked() bool {
+	text := m.createText(createFieldEnv)
+	return m.maskCreateEnvText(text, m.createEnvReveal) != text
+}
+
+// createEnvHelp is the Env row's one-line explanation, naming the §6.4 reveal
+// toggle for as long as it is relevant.
+func (m Model) createEnvHelp() string {
+	help := "session env, wins PATH resolution; secrets masked, Ctrl+R reveals"
+	if m.createEnvReveal {
+		help = "session env, wins PATH resolution; secrets shown, Ctrl+R masks"
+	}
+	return help
 }

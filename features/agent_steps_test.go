@@ -395,6 +395,32 @@ func typedFieldTail(text string) string {
 	return string(runes)
 }
 
+// typedEnvFieldTails is typedFieldTail for the create modal's Env field as it
+// is DRAWN (SPEC §6.4): every non-empty value of a key matching
+// *TOKEN*|*SECRET*|*KEY*|*PASSWORD*|*CREDENTIAL* (case-insensitive) is the
+// fixed placeholder, one candidate per glyph set.
+func typedEnvFieldTails(envText string) []string {
+	var tails []string
+	for _, placeholder := range []string{"••••••••", "********"} {
+		entries := strings.Split(envText, ",")
+		for i, entry := range entries {
+			key, value, ok := strings.Cut(entry, "=")
+			if !ok || value == "" {
+				continue
+			}
+			upper := strings.ToUpper(key)
+			for _, secret := range []string{"TOKEN", "SECRET", "KEY", "PASSWORD", "CREDENTIAL"} {
+				if strings.Contains(upper, secret) {
+					entries[i] = key + "=" + placeholder
+					break
+				}
+			}
+		}
+		tails = append(tails, typedFieldTail(strings.Join(entries, ",")))
+	}
+	return tails
+}
+
 // clientCreatesAgentSessionWithProfileAndEnv is clientCreatesAgentSessionWithProfile's
 // counterpart that also fills the Env field (createFieldRows field 5, two
 // down-arrows past Permission profile (task 025 moved field navigation off
@@ -420,8 +446,19 @@ func clientCreatesAgentSessionWithProfileAndEnv(ctx context.Context, clientName,
 	// (internal/tui/lineedit), so waiting for the whole text can never match
 	// a long value. Its tail is what is on screen once the LAST typed key has
 	// been applied, which makes it the stronger sync for "everything typed".
-	if err := client.WaitForFrame(ctx, false, typedFieldTail(envText)); err != nil {
-		return fmt.Errorf("type Env field with %q: %w", envText, err)
+	// SPEC §6.4: the Env field draws a secret-shaped key's value as the fixed
+	// placeholder (the "••••••••" glyph, "********" under DECK_ASCII), so the
+	// tail to wait for is the MASKED text's, not the typed text's.
+	tails := typedEnvFieldTails(envText)
+	if _, err := client.WaitForFrameFunc(ctx, false, func(frame string) bool {
+		for _, tail := range tails {
+			if strings.Contains(frame, tail) {
+				return true
+			}
+		}
+		return false
+	}); err != nil {
+		return fmt.Errorf("type Env field with %q (waiting for one of %q): %w", envText, tails, err)
 	}
 	// Durable sync point, never a frame wait on the transient "starting"
 	// (task 026): see waitForAgentCreateRecorded.
