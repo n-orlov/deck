@@ -8,6 +8,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/n-orlov/deck/internal/interactive"
+	"github.com/n-orlov/deck/internal/store"
 	"github.com/n-orlov/deck/internal/tmux"
 )
 
@@ -64,38 +65,14 @@ func (m Model) enterInteractiveBody(force bool) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	session, _ := m.selectedSession()
-	if !canReachPane(session) {
-		m.setEntryRefusal(session.ID, entryRefusalStopped, stoppedSessionRefusalTail)
-		return m, nil
-	}
 	ctx := context.Background()
 	client := m.tmuxClient
-
-	windowTarget, err := tmux.SessionName(session.Slug)
-	if err != nil {
-		m.setEntryRefusal(session.ID, entryRefusalOther, err.Error())
-		return m, nil
-	}
-
-	width, height, ref := m.interactiveFloorRefusal()
+	entry, ref := m.claimInteractiveEntry(ctx, session, force)
 	if ref != nil {
 		m.setEntryRefusal(session.ID, ref.kind, ref.reason)
 		return m, nil
 	}
-	if ref := interactiveAttachedRefusal(ctx, client, windowTarget, force); ref != nil {
-		m.setEntryRefusal(session.ID, ref.kind, ref.reason)
-		return m, nil
-	}
-	claim, ref := acquireInteractiveClaim(ctx, client, session.Slug, windowTarget, force)
-	if ref != nil {
-		m.setEntryRefusal(session.ID, ref.kind, ref.reason)
-		return m, nil
-	}
-	dispatcher, grid, ref := m.armInteractiveClaim(ctx, client, claim, windowTarget, width, height)
-	if ref != nil {
-		m.setEntryRefusal(session.ID, ref.kind, ref.reason)
-		return m, nil
-	}
+	windowTarget, claim, dispatcher, grid := entry.windowTarget, entry.claim, entry.dispatcher, entry.grid
 
 	// SPEC §7: entering the interactive preview is a deck-mediated
 	// attachment in exactly `a`'s sense -- the keyboard is about to reach
@@ -127,6 +104,47 @@ func (m Model) enterInteractiveBody(force bool) (tea.Model, tea.Cmd) {
 	m.setInteractiveScrollOffset(0)
 	m.clearEntryRefusal()
 	return m, nil
+}
+
+// interactiveEntry is what enterInteractiveBody's refusal ladder and claim
+// sequence hand back on success: the window, the claim, and the transport
+// armed on it.
+type interactiveEntry struct {
+	windowTarget string
+	claim        interactiveEntryClaim
+	dispatcher   *tmux.Dispatcher
+	grid         *interactive.Session
+}
+
+// claimInteractiveEntry is enterInteractiveBody's refusal ladder and every
+// fallible tmux step up to (not including) the durable attach record, in
+// the order the refusals are specified: stopped session, window name, the
+// row floor, attached client (skipped under force), the claim, the arming.
+func (m Model) claimInteractiveEntry(ctx context.Context, session store.Session, force bool) (interactiveEntry, *entryRefusalSpec) {
+	client := m.tmuxClient
+	if !canReachPane(session) {
+		return interactiveEntry{}, refuse(entryRefusalStopped, stoppedSessionRefusalTail)
+	}
+	windowTarget, err := tmux.SessionName(session.Slug)
+	if err != nil {
+		return interactiveEntry{}, refuse(entryRefusalOther, err.Error())
+	}
+	width, height, ref := m.interactiveFloorRefusal()
+	if ref != nil {
+		return interactiveEntry{}, ref
+	}
+	if ref := interactiveAttachedRefusal(ctx, client, windowTarget, force); ref != nil {
+		return interactiveEntry{}, ref
+	}
+	claim, ref := acquireInteractiveClaim(ctx, client, session.Slug, windowTarget, force)
+	if ref != nil {
+		return interactiveEntry{}, ref
+	}
+	dispatcher, grid, ref := m.armInteractiveClaim(ctx, client, claim, windowTarget, width, height)
+	if ref != nil {
+		return interactiveEntry{}, ref
+	}
+	return interactiveEntry{windowTarget: windowTarget, claim: claim, dispatcher: dispatcher, grid: grid}, nil
 }
 
 // entryRefusalSpec is one refusal enterInteractiveBody's steps report to it:
