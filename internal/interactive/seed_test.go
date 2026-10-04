@@ -20,15 +20,15 @@ import (
 // firstPaneID resolves a bare session's own pane_id, which
 // Client.CapturePane requires (unlike PaneSeedState/display-message, it
 // only accepts a real "%N" target, not a session name).
-func firstPaneID(t *testing.T, socket, session string) string {
+func firstPaneID(t *testing.T, socket string) string {
 	t.Helper()
-	out, err := exec.Command("tmux", "-L", socket, "list-panes", "-t", session, "-F", "#{pane_id}").Output()
+	out, err := exec.Command("tmux", "-L", socket, "list-panes", "-t", "s0", "-F", "#{pane_id}").Output()
 	if err != nil {
-		t.Fatalf("list-panes -t %s: %v", session, err)
+		t.Fatalf("list-panes -t %s: %v", "s0", err)
 	}
 	id := strings.TrimSpace(strings.SplitN(string(out), "\n", 2)[0])
 	if id == "" {
-		t.Fatalf("list-panes -t %s returned no pane_id", session)
+		t.Fatalf("list-panes -t %s returned no pane_id", "s0")
 	}
 	return id
 }
@@ -39,13 +39,13 @@ func firstPaneID(t *testing.T, socket, session string) string {
 // the resulting bytes as PANE OUTPUT exactly like any real program's
 // output would (the same technique internal/tmux/paneseed_test.go's
 // runInPaneBlocking uses).
-func runShellPrintf(t *testing.T, socket, target, rawEscapes string) {
+func runShellPrintf(t *testing.T, socket, rawEscapes string) {
 	t.Helper()
 	cmd := fmt.Sprintf(`printf "%s"`, rawEscapes)
-	if out, err := exec.Command("tmux", "-L", socket, "send-keys", "-t", target, "-l", "--", cmd).CombinedOutput(); err != nil {
+	if out, err := exec.Command("tmux", "-L", socket, "send-keys", "-t", "s0", "-l", "--", cmd).CombinedOutput(); err != nil {
 		t.Fatalf("send-keys -l -- %q: %v: %s", cmd, err, out)
 	}
-	if out, err := exec.Command("tmux", "-L", socket, "send-keys", "-t", target, "Enter").CombinedOutput(); err != nil {
+	if out, err := exec.Command("tmux", "-L", socket, "send-keys", "-t", "s0", "Enter").CombinedOutput(); err != nil {
 		t.Fatalf("send-keys Enter: %v: %s", err, out)
 	}
 	time.Sleep(300 * time.Millisecond)
@@ -112,16 +112,16 @@ func diffCells(a, b *Grid, width, height int) [][2]int {
 func TestBuildSeedReproducesInheritedSGRAcrossLinesWithZeroDifferingCells(t *testing.T) {
 	socket := interactiveSocket("seed-verbatim")
 	width, height := 10, 4
-	cleanup := newBareInteractiveSession(t, socket, "s0", width, height)
+	cleanup := newBareInteractiveSession(t, socket, width, height)
 	defer cleanup()
 
 	// Row 1: full-width blue background, "AAAAAAAAAA". Row 2:
 	// "BBBBBBBBBB" with NO colour code of its own -- but because row 1's
 	// blue ran to the pane's exact width, tmux's `-e` capture will still
 	// render row 2 blue by inheritance (confirmed below).
-	runShellPrintf(t, socket, "s0", `\033[2J\033[H\033[44mAAAAAAAAAA\033[44mBBBBBBBBBB\033[0m\n`)
+	runShellPrintf(t, socket, `\033[2J\033[H\033[44mAAAAAAAAAA\033[44mBBBBBBBBBB\033[0m\n`)
 
-	paneID := firstPaneID(t, socket, "s0")
+	paneID := firstPaneID(t, socket)
 	client := tmux.Client{Socket: socket, Timeout: 5 * time.Second}
 	ctx := context.Background()
 
@@ -193,12 +193,12 @@ func TestBuildSeedReproducesInheritedSGRAcrossLinesWithZeroDifferingCells(t *tes
 func TestNaivePerLineResetVariantIsWrongInColour(t *testing.T) {
 	socket := interactiveSocket("seed-naive-control")
 	width, height := 10, 4
-	cleanup := newBareInteractiveSession(t, socket, "s0", width, height)
+	cleanup := newBareInteractiveSession(t, socket, width, height)
 	defer cleanup()
 
-	runShellPrintf(t, socket, "s0", `\033[2J\033[H\033[44mAAAAAAAAAA\033[44mBBBBBBBBBB\033[0m\n`)
+	runShellPrintf(t, socket, `\033[2J\033[H\033[44mAAAAAAAAAA\033[44mBBBBBBBBBB\033[0m\n`)
 
-	paneID := firstPaneID(t, socket, "s0")
+	paneID := firstPaneID(t, socket)
 	client := tmux.Client{Socket: socket, Timeout: 5 * time.Second}
 	ctx := context.Background()
 
@@ -262,16 +262,16 @@ func TestNaivePerLineResetVariantIsWrongInColour(t *testing.T) {
 func TestDroppingPreserveTrailingBlankLinesTrimsBackgroundStyledBlanks(t *testing.T) {
 	socket := interactiveSocket("seed-dash-n-control")
 	width, height := 10, 4
-	cleanup := newBareInteractiveSession(t, socket, "s0", width, height)
+	cleanup := newBareInteractiveSession(t, socket, width, height)
 	defer cleanup()
 
 	// A short glyph followed by nothing else on the line, but with the
 	// background colour set BEFORE it and never reset -- so every column
 	// after the glyph is a background-styled blank, trimmed by tmux
 	// unless -N is given.
-	runShellPrintf(t, socket, "s0", `\033[44m\033[2J\033[HAB\n`)
+	runShellPrintf(t, socket, `\033[44m\033[2J\033[HAB\n`)
 
-	paneID := firstPaneID(t, socket, "s0")
+	paneID := firstPaneID(t, socket)
 	client := tmux.Client{Socket: socket, Timeout: 5 * time.Second}
 	ctx := context.Background()
 
@@ -366,7 +366,7 @@ func TestBuildSeedFieldOrderAndPerFieldEscapes(t *testing.T) {
 
 			// Step 1 (alt screen) must precede step 2 (neutral state),
 			// which must precede step 3 (the body).
-			if !(iAlt < iNeutral6l && iNeutral6l < iNeutralR && iNeutralR < iNeutral7h && iNeutral7h < iNeutral4l && iNeutral4l < iBody) {
+			if iAlt >= iNeutral6l || iNeutral6l >= iNeutralR || iNeutralR >= iNeutral7h || iNeutral7h >= iNeutral4l || iNeutral4l >= iBody {
 				t.Fatalf("seed order violated before the body: alt=%d neutral(?6l=%d r=%d ?7h=%d 4l=%d) body=%d, want strictly increasing", iAlt, iNeutral6l, iNeutralR, iNeutral7h, iNeutral4l, iBody)
 			}
 

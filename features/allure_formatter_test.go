@@ -479,7 +479,7 @@ func (f *allureFormatter) writeFile(name string, data []byte) bool {
 		fmt.Fprintln(os.Stderr, "allure:", err)
 		return false
 	}
-	if err := os.WriteFile(filepath.Join(f.dir, name), data, 0o644); err != nil { //nolint:gosec // report files are meant to be world-readable
+	if err := os.WriteFile(filepath.Join(f.dir, name), data, 0o644); err != nil {
 		fmt.Fprintln(os.Stderr, "allure:", err)
 		return false
 	}

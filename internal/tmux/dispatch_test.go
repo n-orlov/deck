@@ -80,8 +80,8 @@ func TestCaptureIdentityRefusesADeadPaneAtEntry(t *testing.T) {
 	client := Client{Socket: socket, Timeout: 5 * time.Second}
 	ctx := context.Background()
 
-	killPaneProcessUnderRemainOnExitFailed(t, socket, "s0")
-	waitForPaneDeadTest(t, client, "s0", 5*time.Second)
+	killPaneProcessUnderRemainOnExitFailed(t, socket)
+	waitForPaneDeadTest(t, client)
 
 	if _, err := client.CaptureIdentity(ctx, "s0"); err == nil {
 		t.Fatalf("CaptureIdentity against an already-dead pane: got nil error, want a refusal")
@@ -226,8 +226,8 @@ func TestDispatcherRejectsOnPaneDead(t *testing.T) {
 		t.Fatalf("NewDispatcher: %v", err)
 	}
 
-	killPaneProcessUnderRemainOnExitFailed(t, socket, "s0")
-	waitForPaneDeadTest(t, client, "s0", 5*time.Second)
+	killPaneProcessUnderRemainOnExitFailed(t, socket)
+	waitForPaneDeadTest(t, client)
 
 	err = dispatcher.Send(ctx, "send-keys", "-l", "--", "should-not-be-delivered")
 	if err == nil {

@@ -21,9 +21,9 @@ import (
 const launchInputsCaretSessionID = "00000000-0000-4000-8000-000000000012"
 
 // launchInputsSeededModel opens the editor on a session whose three text
-// inputs hold pre/post/args, wired to the real store mutator, and returns the
+// inputs hold pre/post (args stay empty), wired to the real store mutator, and returns the
 // store so the test can read back exactly what a submit wrote.
-func launchInputsSeededModel(t *testing.T, pre, post, args string) (Model, *store.Store) {
+func launchInputsSeededModel(t *testing.T, pre, post string) (Model, *store.Store) {
 	t.Helper()
 	home := t.TempDir()
 	db, err := store.OpenPath(home, filepath.Join(home, "state.db"))
@@ -38,11 +38,7 @@ func launchInputsSeededModel(t *testing.T, pre, post, args string) (Model, *stor
 	}); err != nil {
 		t.Fatal(err)
 	}
-	var launchArgs []string
-	if args != "" {
-		launchArgs = []string{args}
-	}
-	if err := db.SetLaunchInputs(ctx, launchInputsCaretSessionID, pre, post, launchArgs, false, "user", 5); err != nil {
+	if err := db.SetLaunchInputs(ctx, launchInputsCaretSessionID, pre, post, nil, false, "user", 5); err != nil {
 		t.Fatal(err)
 	}
 	session, err := db.GetSession(ctx, launchInputsCaretSessionID)
@@ -99,7 +95,7 @@ func submitLaunchInputsRow(t *testing.T, m Model, db *store.Store) store.Session
 // left on a focused text field reaches the editor, so a character typed next
 // lands inside the value rather than at its end.
 func TestLaunchInputsLeftMovesTheCaretOnATextField(t *testing.T) {
-	m, db := launchInputsSeededModel(t, "abc", "", "")
+	m, db := launchInputsSeededModel(t, "abc", "")
 	m = sendKeys(m, "left", "X")
 	if row := submitLaunchInputsRow(t, m, db); row.PreLaunch != "abXc" {
 		t.Fatalf("PreLaunch = %q, want %q (left accepted the offer and moved the caret before the c)", row.PreLaunch, "abXc")
@@ -108,7 +104,7 @@ func TestLaunchInputsLeftMovesTheCaretOnATextField(t *testing.T) {
 
 // TestLaunchInputsRightMovesTheCaretOnATextField: right is the editor's too.
 func TestLaunchInputsRightMovesTheCaretOnATextField(t *testing.T) {
-	m, db := launchInputsSeededModel(t, "abc", "", "")
+	m, db := launchInputsSeededModel(t, "abc", "")
 	m = sendKeys(m, "left", "left", "left", "right", "X")
 	if row := submitLaunchInputsRow(t, m, db); row.PreLaunch != "aXbc" {
 		t.Fatalf("PreLaunch = %q, want %q", row.PreLaunch, "aXbc")
@@ -119,7 +115,7 @@ func TestLaunchInputsRightMovesTheCaretOnATextField(t *testing.T) {
 // old append-to-prefill expectation to the §11.11 offered rule: the first
 // printable key replaces the stored value, it is not appended to it.
 func TestLaunchInputsOpeningValueIsOfferedAndReplacedByAPrintableKey(t *testing.T) {
-	m, db := launchInputsSeededModel(t, "echo old", "echo gone", "")
+	m, db := launchInputsSeededModel(t, "echo old", "echo gone")
 	m = sendKeys(m, "n", "e", "w")
 	m = sendKeys(m, "down", "backspace") // backspace accepts the offer and edits it in place
 	row := submitLaunchInputsRow(t, m, db)
@@ -134,7 +130,7 @@ func TestLaunchInputsOpeningValueIsOfferedAndReplacedByAPrintableKey(t *testing.
 // TestLaunchInputsSpaceOnATextFieldIsTypedAndOnLoginShellToggles: space is the
 // editor's on a text field and the selection's on login_shell.
 func TestLaunchInputsSpaceOnATextFieldIsTypedAndOnLoginShellToggles(t *testing.T) {
-	m, db := launchInputsSeededModel(t, "", "", "")
+	m, db := launchInputsSeededModel(t, "", "")
 	m = sendKeys(m, "a", " ", "b")
 	if m.launchInputsLoginShell {
 		t.Fatal("space on a text field toggled login_shell")

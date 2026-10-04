@@ -5,6 +5,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -141,7 +142,7 @@ func TestHookRefusesBadOrMissingProfile(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			hookEnv := append(env, "DECK_PROFILE="+tc.profile, "TMUX_PANE=%3")
+			hookEnv := slices.Concat(env, []string{"DECK_PROFILE=" + tc.profile, "TMUX_PANE=%3"})
 			code, _, stderr := runWithEnv(t, hookEnv, "_hook")
 			if code != 1 {
 				t.Fatalf("run(deck _hook) DECK_PROFILE=%s exit = %d, want 1 (stderr=%q)", tc.profile, code, stderr)

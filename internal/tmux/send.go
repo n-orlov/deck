@@ -178,7 +178,7 @@ func (d *Dispatcher) sendLiteralBody(ctx context.Context, body string) error {
 // Send like every other actual delivery in this package.
 func (d *Dispatcher) streamLiteralViaLoadBuffer(ctx context.Context, body string) error {
 	name := nextLiteralBufferName()
-	if _, err := d.client.runWithStdin(ctx, strings.NewReader(body), "load-buffer", "-b", name, "-"); err != nil {
+	if err := d.client.runWithStdin(ctx, strings.NewReader(body), "load-buffer", "-b", name, "-"); err != nil {
 		return fmt.Errorf("stream oversized literal payload (%d bytes) to %q via load-buffer: %w", len(body), d.target, err)
 	}
 	if err := d.Send(ctx, "paste-buffer", "-d", "-b", name); err != nil {
@@ -219,7 +219,7 @@ func (d *Dispatcher) streamLiteralViaLoadBuffer(ctx context.Context, body string
 // buffer behind forever.
 func (d *Dispatcher) SendMultiline(ctx context.Context, payload string) error {
 	name := nextMultilineBufferName()
-	if _, err := d.client.runWithStdin(ctx, strings.NewReader(payload), "load-buffer", "-b", name, "-"); err != nil {
+	if err := d.client.runWithStdin(ctx, strings.NewReader(payload), "load-buffer", "-b", name, "-"); err != nil {
 		return fmt.Errorf("stream multi-line payload (%d bytes) to %q via load-buffer: %w", len(payload), d.target, err)
 	}
 	if err := d.Send(ctx, "paste-buffer", "-d", "-p", "-b", name); err != nil {

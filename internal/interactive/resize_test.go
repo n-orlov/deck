@@ -101,7 +101,7 @@ func TestReseedIntoSameGridCorruptsAfterTruncatedControlSequence(t *testing.T) {
 // no unfinished parser state left over to misinterpret any of it.
 func TestSessionResizeIntoFreshGridDoesNotCorrupt(t *testing.T) {
 	socket := interactiveSocket("resize-fresh-parser")
-	cleanup := newBareInteractiveSession(t, socket, "s0", 40, 10)
+	cleanup := newBareInteractiveSession(t, socket, 40, 10)
 	defer cleanup()
 	client := tmux.Client{Socket: socket, Timeout: 5 * time.Second}
 	ctx := context.Background()
@@ -139,7 +139,7 @@ func TestSessionResizeIntoFreshGridDoesNotCorrupt(t *testing.T) {
 // -- the property that makes the fresh-parser guarantee above hold.
 func TestSessionResizeReplacesGridInstance(t *testing.T) {
 	socket := interactiveSocket("resize-swap")
-	cleanup := newBareInteractiveSession(t, socket, "s0", 40, 10)
+	cleanup := newBareInteractiveSession(t, socket, 40, 10)
 	defer cleanup()
 	client := tmux.Client{Socket: socket, Timeout: 5 * time.Second}
 	ctx := context.Background()
@@ -176,7 +176,7 @@ func TestSessionResizeReplacesGridInstance(t *testing.T) {
 // all, not even accidentally via a nil func value.
 func TestSessionResizeRejectsNilSeed(t *testing.T) {
 	socket := interactiveSocket("resize-nil-seed")
-	cleanup := newBareInteractiveSession(t, socket, "s0", 40, 10)
+	cleanup := newBareInteractiveSession(t, socket, 40, 10)
 	defer cleanup()
 	client := tmux.Client{Socket: socket, Timeout: 5 * time.Second}
 	ctx := context.Background()
@@ -199,7 +199,7 @@ func TestSessionResizeRejectsNilSeed(t *testing.T) {
 // a grid Resize half-replaced) impossible rather than merely unlikely.
 func TestSessionResizeDuringLiveDrainIsRaceFree(t *testing.T) {
 	socket := interactiveSocket("resize-race")
-	cleanup := newBareInteractiveSession(t, socket, "s0", 40, 10)
+	cleanup := newBareInteractiveSession(t, socket, 40, 10)
 	defer cleanup()
 	client := tmux.Client{Socket: socket, Timeout: 5 * time.Second}
 	ctx := context.Background()

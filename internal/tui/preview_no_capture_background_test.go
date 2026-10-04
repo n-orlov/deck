@@ -47,7 +47,6 @@ func previewInteriorNoCaptureModel(t *testing.T, bt *theme.Theme, width, height 
 // carries the active theme's `background` token, for every built-in theme.
 func TestNoLiveCapturePreviewInteriorCarriesDeckBackgroundSideBySide(t *testing.T) {
 	for _, bt := range theme.Builtins() {
-		bt := bt
 		t.Run(bt.Name, func(t *testing.T) {
 			m := previewInteriorNoCaptureModel(t, bt, 100, 30, LayoutSideBySide)
 			backgroundHex := tokenHex(t, m, theme.Background)
@@ -92,7 +91,6 @@ func TestNoLiveCapturePreviewInteriorCarriesDeckBackgroundSideBySide(t *testing.
 // previewContentLine.
 func TestNoLiveCapturePreviewInteriorCarriesDeckBackgroundStacked(t *testing.T) {
 	for _, bt := range theme.Builtins() {
-		bt := bt
 		t.Run(bt.Name, func(t *testing.T) {
 			m := previewInteriorNoCaptureModel(t, bt, 60, 30, LayoutStacked)
 			backgroundHex := tokenHex(t, m, theme.Background)

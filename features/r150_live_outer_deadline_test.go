@@ -2,9 +2,13 @@ package features
 
 import "time"
 
+// r150FailingReconcileWaits is how many rejected reconcile waits the two live
+// R150 tests burn in sequence (the base and rename_only_control cases).
+const r150FailingReconcileWaits = 2
+
 // r150LiveOuterDeadline (R164 cure, cure-01-01) computes the outer
 // context.WithTimeout budget for an R150 live scenario test that drives
-// failingReconcileWaits sequential calls to clientRowContainsWithinReconcile
+// r150FailingReconcileWaits sequential calls to clientRowContainsWithinReconcile
 // that are EXPECTED TO REJECT (a negative/rename-only control): each such
 // call burns its own full reconcileIntervalPollDeadline before returning,
 // because the awaited condition never becomes true. On a normal build that
@@ -20,10 +24,10 @@ import "time"
 // the inner deadline but left these two live tests' outer contexts fixed at
 // 15s/30s, so two sequential 20.25s rejections under -race blew straight
 // through them with "context deadline exceeded"/"signal: killed").
-func r150LiveOuterDeadline(base time.Duration, failingReconcileWaits int, raceBuild bool) time.Duration {
+func r150LiveOuterDeadline(base time.Duration, raceBuild bool) time.Duration {
 	if !raceBuild {
 		return base
 	}
-	perFailingWait := reconcileIntervalPollDeadline(scenarioReconcileInterval, true)
-	return base + time.Duration(failingReconcileWaits)*perFailingWait
+	perFailingWait := reconcileIntervalPollDeadline(true)
+	return base + time.Duration(r150FailingReconcileWaits)*perFailingWait
 }

@@ -253,7 +253,7 @@ func TestSettingsGroupsPanelReloadPreservesSelectionAndInProgressEditing(t *test
 	}
 
 	// The in-progress rename editor is untouched: still open, on the same
-	// target, with the exact same unc­ommitted text.
+	// target, with the exact same unc­omitted text.
 	if !mb.settingsGroupRenaming {
 		t.Fatal("the ordinary reload closed the in-progress rename editor")
 	}

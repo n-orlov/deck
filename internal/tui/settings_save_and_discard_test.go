@@ -42,7 +42,9 @@ func settingsTestModel(t *testing.T) (model Model, configFile string, reload fun
 	// settingsFocusFields (settingsSelectedField's own guard).
 	m.settingsFocus = settingsFocusFields
 	m.settingsFieldIndex = 0
-	reload = func() (config.Settings, error) { return config.LoadFrom(getenv, userHome) }
+	reload = func() (config.Settings, error) {
+		return config.LoadFrom(getenv, func() (string, error) { return dir, nil })
+	}
 	return m, loaded.Paths.ConfigFile, reload
 }
 

@@ -88,15 +88,15 @@ func drift005FixtureModel(n, height int) Model {
 // enough "wheel down" notches to leave sidebarScroll well away from 0
 // while the selection itself never moves, exactly the setup R142/GH #40's
 // drift rule describes.
-func drift005DriftedModel(t *testing.T, n, height, notches int) Model {
+func drift005DriftedModel(t *testing.T) Model {
 	t.Helper()
-	m := drift005FixtureModel(n, height)
-	for i := 0; i < notches; i++ {
+	m := drift005FixtureModel(30, 24)
+	for i := 0; i < 6; i++ {
 		next, _ := m.Update(wheelDown(10, 5))
 		m = next.(Model)
 	}
 	if m.sidebarScroll == 0 {
-		t.Fatalf("fixture: %d wheel-down notches left sidebarScroll at 0", notches)
+		t.Fatalf("fixture: %d wheel-down notches left sidebarScroll at 0", 6)
 	}
 	return m
 }
@@ -151,7 +151,7 @@ func driftEndingKeyFollowTestCases() []string {
 func TestDriftEndingKeysBringSelectionBackIntoView(t *testing.T) {
 	for _, k := range driftEndingKeyFollowTestCases() {
 		t.Run(fmt.Sprintf("key=%q", k), func(t *testing.T) {
-			m := drift005DriftedModel(t, 30, 24, 6)
+			m := drift005DriftedModel(t)
 			updated, _ := m.Update(key(k))
 			out, ok := updated.(Model)
 			if !ok {
@@ -169,7 +169,7 @@ func TestDriftEndingKeysBringSelectionBackIntoView(t *testing.T) {
 // real key above -- it is called directly, with the `i` detail dialog
 // open, exactly as rename.go's own case "g" calls it.
 func TestDriftEndingDetailGKey(t *testing.T) {
-	m := drift005DriftedModel(t, 30, 24, 6)
+	m := drift005DriftedModel(t)
 	m.detail = true
 	if m.guardSessionScopedKey("detail:g") {
 		t.Fatalf(`guardSessionScopedKey("detail:g") refused with a selected session in force`)
@@ -183,7 +183,7 @@ func TestDriftEndingDetailGKey(t *testing.T) {
 // SECOND `d` ever opens the confirm dialog -- and the confirm opens with
 // the same row still in view.
 func TestWheelDriftDDRaisesConfirmWithTargetVisible(t *testing.T) {
-	m := drift005DriftedModel(t, 30, 24, 6)
+	m := drift005DriftedModel(t)
 	targetID := m.sessions[0].ID
 
 	firstUpdated, cmd := m.Update(key("d"))
@@ -225,7 +225,7 @@ func TestWheelDriftDDRaisesConfirmWithTargetVisible(t *testing.T) {
 // the next background reload must still keep the wheel's offset.
 func assertDriftLeftInPlace(t *testing.T, k string) {
 	t.Helper()
-	m := drift005DriftedModel(t, 30, 24, 6)
+	m := drift005DriftedModel(t)
 	driftedScroll := m.sidebarScroll
 	updated, _ := m.Update(key(k))
 	out, ok := updated.(Model)

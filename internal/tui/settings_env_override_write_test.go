@@ -60,7 +60,9 @@ func settingsEnvOverrideFileTestModel(t *testing.T) (model Model, reload func() 
 	if got := settingsFieldLabel(settingsCategories()[1].Fields[1]); got != "Ascii" {
 		t.Fatalf("category 1 field 1 = %q, want the Ascii field (schema order changed?)", got)
 	}
-	reload = func() (config.Settings, error) { return config.LoadFrom(getenv, userHome) }
+	reload = func() (config.Settings, error) {
+		return config.LoadFrom(getenv, func() (string, error) { return dir, nil })
+	}
 	return m, reload
 }
 

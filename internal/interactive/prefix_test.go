@@ -65,7 +65,7 @@ func assertBareSessionPrefixIsCtrlB(t *testing.T, socket string) {
 // rules out).
 func TestCtrlBReachesTheTargetProgramBypassingTmuxPrefixTable(t *testing.T) {
 	socket := interactiveSocket("ctrlb")
-	cleanup := newBareInteractiveSession(t, socket, "s0", 40, 10)
+	cleanup := newBareInteractiveSession(t, socket, 40, 10)
 	defer cleanup()
 
 	assertBareSessionPrefixIsCtrlB(t, socket)

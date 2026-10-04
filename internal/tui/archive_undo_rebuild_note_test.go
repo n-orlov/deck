@@ -24,7 +24,7 @@ import (
 // configured (the session's own field, the global config key, neither).
 func archiveUndoRebuildFrameAfterUndo(t *testing.T, sessionHook, globalHook string) (Model, string) {
 	t.Helper()
-	model, _, unarchived := archiveUndoTestModel(t)
+	model, unarchived := archiveUndoTestModel(t)
 	model.settings = config.Settings{Undo: time.Hour, PostDestroy: globalHook}
 	model.sessions[0].PostDestroy = sessionHook
 	model.width, model.height = 100, 40

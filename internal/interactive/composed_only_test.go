@@ -88,7 +88,7 @@ const dangerousPayload = `` +
 // one of those classes -- the mandatory non-vacuous control.
 func TestOnlyComposedCellsReachTheOuterTerminal(t *testing.T) {
 	socket := interactiveSocket("composed-only")
-	cleanup := newBareInteractiveSession(t, socket, "s0", 40, 10)
+	cleanup := newBareInteractiveSession(t, socket, 40, 10)
 	defer cleanup()
 
 	// --- Control: raw pass-through -----------------------------------
@@ -105,7 +105,7 @@ func TestOnlyComposedCellsReachTheOuterTerminal(t *testing.T) {
 	if out, err := exec.Command("tmux", "-L", socket, "pipe-pane", "-O", "-t", "s0", "cat >> "+rawFile).CombinedOutput(); err != nil {
 		t.Fatalf("arm raw pipe-pane -O: %v: %s", err, out)
 	}
-	runShellPrintf(t, socket, "s0", dangerousPayload)
+	runShellPrintf(t, socket, dangerousPayload)
 	// Give the pane's process time to actually emit and flush the whole
 	// payload before disarming the observer pipe.
 	time.Sleep(300 * time.Millisecond)
@@ -135,7 +135,7 @@ func TestOnlyComposedCellsReachTheOuterTerminal(t *testing.T) {
 	}
 	defer session.Close()
 
-	runShellPrintf(t, socket, "s0", dangerousPayload)
+	runShellPrintf(t, socket, dangerousPayload)
 	if !waitFor(t, 3*time.Second, func() bool {
 		return gridContains(session.Grid(), "HELLO-FROM-PANE")
 	}) {

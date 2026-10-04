@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/n-orlov/deck/internal/store"
 )
@@ -562,13 +561,13 @@ func TestResumeUsesTheServicesGlobalPreLaunch(t *testing.T) {
 	if outcome != ResumeStarted {
 		t.Fatalf("outcome = %v, want ResumeStarted", outcome)
 	}
-	if !waitForFile(t, globalMarker, 5*time.Second) {
+	if !waitForFile(t, globalMarker) {
 		t.Fatalf("global pre_launch never ran on resume: %s missing", globalMarker)
 	}
-	if !waitForFile(t, sessionMarker, 5*time.Second) {
+	if !waitForFile(t, sessionMarker) {
 		t.Fatalf("session pre_launch never ran after the global hook on resume: %s missing", sessionMarker)
 	}
-	if !waitForFile(t, agentMarker, 5*time.Second) {
+	if !waitForFile(t, agentMarker) {
 		t.Fatalf("agent never started on resume after both hooks succeeded: %s missing", agentMarker)
 	}
 }

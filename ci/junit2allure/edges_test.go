@@ -57,9 +57,12 @@ func labelOf(r map[string]any, name string) string {
 }
 
 func TestMillisParsesSecondsAndIgnoresGarbage(t *testing.T) {
-	for in, want := range map[string]int64{"0.250": 250, " 1.5 ": 1500, "": 0, "abc": 0, "-3": 0, "2": 2000} {
-		if got := millis(in); got != want {
-			t.Errorf("millis(%q) = %d, want %d", in, got, want)
+	for _, tc := range []struct {
+		in   string
+		want int64
+	}{{"0.250", 250}, {" 1.5 ", 1500}, {"", 0}, {"abc", 0}, {"-3", 0}, {"2", 2000}} {
+		if got := millis(tc.in); got != tc.want {
+			t.Errorf("millis(%q) = %d, want %d", tc.in, got, tc.want)
 		}
 	}
 }

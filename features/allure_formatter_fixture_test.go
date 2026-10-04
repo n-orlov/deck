@@ -193,7 +193,11 @@ func TestAllureFormatterWritesResultsForAFixtureRun(t *testing.T) {
 	if status := allureFixtureRun(t, results, feature, true); status == 0 {
 		t.Fatal("first fixture run succeeded, want a failing run")
 	}
-	retryLine := strings.Count(allureFixtureFeature[:strings.Index(allureFixtureFeature, "Scenario: fails once")], "\n") + 1
+	failsOnce := strings.Index(allureFixtureFeature, "Scenario: fails once")
+	if failsOnce < 0 {
+		t.Fatal(`fixture feature has no "Scenario: fails once"`)
+	}
+	retryLine := strings.Count(allureFixtureFeature[:failsOnce], "\n") + 1
 	if status := allureFixtureRun(t, results, feature+":"+strconv.Itoa(retryLine), false); status != 0 {
 		t.Fatalf("retry run status %d, want 0", status)
 	}

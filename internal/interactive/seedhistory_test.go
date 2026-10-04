@@ -57,8 +57,13 @@ func runPaneCommand(t *testing.T, socket, target, cmd string) {
 	time.Sleep(600 * time.Millisecond)
 }
 
-// fillPaneHistory makes target produce `lines` numbered lines -- enough of
-// them to scroll well off a short pane and become real tmux scrollback.
+// seedHistoryLines is six times the 10-row panes these tests build, so the
+// great majority of what a pane prints is in tmux's history, not on screen.
+const seedHistoryLines = 60
+
+// fillPaneHistory makes the pane produce seedHistoryLines numbered lines --
+// enough of them to scroll well off a short pane and become real tmux
+// scrollback.
 // The command is a POSIX `while` loop rather than `seq`, so it needs
 // nothing beyond the /bin/sh tmux falls back to inside ci/run.sh's
 // container.
@@ -70,13 +75,13 @@ func runPaneCommand(t *testing.T, socket, target, cmd string) {
 // attempt. A test that needs to send a SECOND command to the pane (the
 // alternate-screen switch) must pass false, since a pane sitting in `cat`
 // would swallow that command as stdin instead of running it.
-func fillPaneHistory(t *testing.T, socket, target string, lines int, thenBlock bool) {
+func fillPaneHistory(t *testing.T, socket string, thenBlock bool) {
 	t.Helper()
-	cmd := "i=0; while [ $i -lt " + strconv.Itoa(lines) + " ]; do i=$((i+1)); printf '" + seedHistoryMarker + "-%04d\\n' $i; done"
+	cmd := "i=0; while [ $i -lt " + strconv.Itoa(seedHistoryLines) + " ]; do i=$((i+1)); printf '" + seedHistoryMarker + "-%04d\\n' $i; done"
 	if thenBlock {
 		cmd += "; cat > /dev/null"
 	}
-	runPaneCommand(t, socket, target, cmd)
+	runPaneCommand(t, socket, "s0", cmd)
 }
 
 // gridRows returns the grid's VISIBLE rows as plain text, one string per
@@ -201,13 +206,13 @@ func TestBuildSeedKeepsTrailingBlankRowsBottomAnchored(t *testing.T) {
 func TestCaptureSeedWithHistoryFillsScrollbackWithoutMovingTheLiveScreen(t *testing.T) {
 	const width, height = 40, 10
 	socket := interactiveSocket("seed-history-scrollback")
-	cleanup := newBareInteractiveSession(t, socket, "s0", width, height)
+	cleanup := newBareInteractiveSession(t, socket, width, height)
 	defer cleanup()
 
 	// Six times the pane's height, so the great majority of what the pane
 	// printed is in tmux's history and nowhere on its screen.
-	fillPaneHistory(t, socket, "s0", height*6, true)
-	paneID := firstPaneID(t, socket, "s0")
+	fillPaneHistory(t, socket, true)
+	paneID := firstPaneID(t, socket)
 	client := tmux.Client{Socket: socket, Timeout: 5 * time.Second}
 	ctx := context.Background()
 
@@ -319,11 +324,11 @@ func TestCaptureSeedWithHistoryFillsScrollbackWithoutMovingTheLiveScreen(t *test
 func TestVisibleOnlyCaptureSeedLeavesScrollbackEmpty(t *testing.T) {
 	const width, height = 40, 10
 	socket := interactiveSocket("seed-visible-only-empty-sb")
-	cleanup := newBareInteractiveSession(t, socket, "s0", width, height)
+	cleanup := newBareInteractiveSession(t, socket, width, height)
 	defer cleanup()
 
-	fillPaneHistory(t, socket, "s0", height*6, true)
-	paneID := firstPaneID(t, socket, "s0")
+	fillPaneHistory(t, socket, true)
+	paneID := firstPaneID(t, socket)
 	client := tmux.Client{Socket: socket, Timeout: 5 * time.Second}
 	ctx := context.Background()
 
@@ -373,15 +378,15 @@ func TestVisibleOnlyCaptureSeedLeavesScrollbackEmpty(t *testing.T) {
 func TestCaptureSeedWithHistoryOnAlternateScreenPaneHasNoHistoryAtAll(t *testing.T) {
 	const width, height = 40, 10
 	socket := interactiveSocket("seed-history-altscreen")
-	cleanup := newBareInteractiveSession(t, socket, "s0", width, height)
+	cleanup := newBareInteractiveSession(t, socket, width, height)
 	defer cleanup()
 
 	// Real history first, then the alternate-screen switch with some
 	// content of its own, then a blocking `cat` so the shell never
 	// redraws a prompt and switches straight back.
-	fillPaneHistory(t, socket, "s0", height*6, false)
+	fillPaneHistory(t, socket, false)
 	runPaneCommand(t, socket, "s0", `printf "\033[?1049h\033[HALT-SCREEN-ONLY-CONTENT"; cat > /dev/null`)
-	paneID := firstPaneID(t, socket, "s0")
+	paneID := firstPaneID(t, socket)
 	client := tmux.Client{Socket: socket, Timeout: 5 * time.Second}
 	ctx := context.Background()
 
@@ -713,11 +718,11 @@ func TestCaptureSeedWithHistoryDoesNotSwallowTheFallbacksOwnFailure(t *testing.T
 func TestCaptureSeedWithHistoryAtZeroIsExactlyCaptureSeed(t *testing.T) {
 	const width, height = 40, 10
 	socket := interactiveSocket("seed-history-zero")
-	cleanup := newBareInteractiveSession(t, socket, "s0", width, height)
+	cleanup := newBareInteractiveSession(t, socket, width, height)
 	defer cleanup()
 
-	fillPaneHistory(t, socket, "s0", height*6, true)
-	paneID := firstPaneID(t, socket, "s0")
+	fillPaneHistory(t, socket, true)
+	paneID := firstPaneID(t, socket)
 	client := tmux.Client{Socket: socket, Timeout: 5 * time.Second}
 	ctx := context.Background()
 
@@ -1035,11 +1040,11 @@ func TestCaptureTransportFirstTickDiscardsAnyHistoryTheEntrySeedPulled(t *testin
 	defer func() { capturePollInterval = original }()
 
 	socket := interactiveSocket("capture-discards-history")
-	cleanup := newBareInteractiveSession(t, socket, "s0", width, height)
+	cleanup := newBareInteractiveSession(t, socket, width, height)
 	defer cleanup()
 
-	fillPaneHistory(t, socket, "s0", height*6, true)
-	paneID := firstPaneID(t, socket, "s0")
+	fillPaneHistory(t, socket, true)
+	paneID := firstPaneID(t, socket)
 	client := tmux.Client{Socket: socket, Timeout: 5 * time.Second}
 	ctx := context.Background()
 

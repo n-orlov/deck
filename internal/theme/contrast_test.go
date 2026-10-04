@@ -55,7 +55,6 @@ func contrastChecks() []struct {
 // so it can be pasted into the phase report per task 054.
 func TestBuiltinContrastFloor(t *testing.T) {
 	for _, th := range Builtins() {
-		th := th
 		t.Run(th.Name, func(t *testing.T) {
 			for _, chk := range contrastChecks() {
 				fgHex, err := th.Color(chk.fg)
@@ -148,7 +147,6 @@ func sessionRowSurfaceChecks() []struct {
 // exactly like TestBuiltinContrastFloor does for Background.
 func TestSessionRowTokensClearContrastFloorOnSurface(t *testing.T) {
 	for _, th := range Builtins() {
-		th := th
 		t.Run(th.Name, func(t *testing.T) {
 			for _, chk := range sessionRowSurfaceChecks() {
 				fgHex, err := th.Color(chk.fg)
@@ -300,7 +298,6 @@ func TestThemedDialogTokensClearContrastFloor(t *testing.T) {
 	thinnestLabel := make(map[string]string, len(Builtins()))
 
 	for _, th := range Builtins() {
-		th := th
 		lowest := math.Inf(1)
 		minLabel := ""
 		t.Run(th.Name, func(t *testing.T) {
@@ -405,7 +402,6 @@ func TestGutterBarContrastFloor(t *testing.T) {
 		t.Fatalf("Builtins() returned %d themes, want exactly len(builtinFiles) = %d -- every registry.go entry must be checked, no allowlist", len(Builtins()), len(builtinFiles))
 	}
 	for _, th := range Builtins() {
-		th := th
 		t.Run(th.Name, func(t *testing.T) {
 			for _, chk := range gutterBarChecks() {
 				fgHex, err := th.Color(chk.fg)
@@ -530,7 +526,6 @@ func TestCanvasDefaultForegroundClearsFloor(t *testing.T) {
 	}
 	seenLight := map[string]bool{}
 	for _, th := range Builtins() {
-		th := th
 		if th.Appearance == "light" {
 			seenLight[th.Name] = true
 		}

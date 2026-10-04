@@ -64,7 +64,7 @@ func TestRestoreWindowGeometryUnsetsAPreEntrySetWindowSize(t *testing.T) {
 		t.Fatalf("restore window geometry: %v", err)
 	}
 
-	if value, set, err := client.readBuiltinWindowOption(ctx, "s0", "window-size"); err != nil {
+	if value, set, err := client.readBuiltinWindowOption(ctx, "s0"); err != nil {
 		t.Fatalf("read window-size after restore: %v", err)
 	} else if set {
 		t.Fatalf("window-size after restore = set=true value=%q, want UNSET -- RestoreWindowGeometry's plain unsetWindowSize call never reads WindowSizeValue, so a pre-entry SET value (here %q) is deliberately not restored, per SPEC.md §11.9 / PRD phase3b II-9's plain-unset recipe, not R100's literal \"including its set shape\" wording", value, original.WindowSizeValue)

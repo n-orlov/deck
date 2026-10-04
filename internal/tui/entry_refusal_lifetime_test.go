@@ -112,9 +112,7 @@ func TestReviewNoLivePaneRefusalClearsWhenTickFindsRespawnedPane(t *testing.T) {
 		t.Fatalf("test assumption violated: preview content height %d is below the %d-row floor", height, interactiveMinInnerRows)
 	}
 	m.tmuxClient = client
-	m.previewCapture = func(ctx context.Context, slug string) (tmux.PreviewCapture, error) {
-		return client.CapturePreview(ctx, slug)
-	}
+	m.previewCapture = client.CapturePreview
 	m.sessions = []store.Session{{ID: "sess-nolive-1", Name: "norefusal1", Slug: "norefusal1", Status: "waiting"}}
 	m.baseSessions = m.sessions
 	m.selected = rowCursor(0)
@@ -190,9 +188,7 @@ func TestIndependentCaptureFromBeforeRefusalCannotDismissIt(t *testing.T) {
 		t.Fatalf("test assumption violated: preview content height %d is below the %d-row floor", height, interactiveMinInnerRows)
 	}
 	m.tmuxClient = client
-	m.previewCapture = func(ctx context.Context, slug string) (tmux.PreviewCapture, error) {
-		return client.CapturePreview(ctx, slug)
-	}
+	m.previewCapture = client.CapturePreview
 	m.sessions = []store.Session{{ID: "sess-nolive-2", Name: "norefusal2", Slug: "norefusal2", Status: "waiting"}}
 	m.baseSessions = m.sessions
 	m.selected = rowCursor(0)

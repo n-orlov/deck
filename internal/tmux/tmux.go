@@ -145,16 +145,16 @@ func (c Client) run(ctx context.Context, args ...string) ([]byte, error) {
 // added to dispatch_test.go's per-file send-primitive allowlist -- only
 // the call site that actually names "load-buffer" does, and that call
 // site lives in send.go, which is already allowlisted.
-func (c Client) runWithStdin(ctx context.Context, stdin io.Reader, args ...string) ([]byte, error) {
+func (c Client) runWithStdin(ctx context.Context, stdin io.Reader, args ...string) error {
 	commandCtx, cancel := context.WithTimeout(ctx, c.timeout())
 	defer cancel()
 	cmd := c.command(commandCtx, args...)
 	cmd.Stdin = stdin
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		return output, fmt.Errorf("tmux -L %s %s: %w: %s", c.Socket, strings.Join(args, " "), err, strings.TrimSpace(string(output)))
+		return fmt.Errorf("tmux -L %s %s: %w: %s", c.Socket, strings.Join(args, " "), err, strings.TrimSpace(string(output)))
 	}
-	return output, nil
+	return nil
 }
 
 func sessionName(slug string) (string, error) {

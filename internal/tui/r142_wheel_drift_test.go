@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"slices"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -26,10 +27,10 @@ import (
 // with the selection pinned at the FIRST row -- so a background reload's
 // own selection-follow (were it still armed) would visibly snap
 // sidebarScroll back toward 0, the exact behaviour a drift must suppress.
-func wheelDriftReloadTestModel(n, height int) Model {
+func wheelDriftReloadTestModel() Model {
 	grpID := int64(1)
 	var sessions []store.Session
-	for i := 0; i < n; i++ {
+	for i := 0; i < 30; i++ {
 		sessions = append(sessions, store.Session{
 			ID:        fmt.Sprintf("s%02d", i),
 			Name:      fmt.Sprintf("s%02d", i),
@@ -42,7 +43,7 @@ func wheelDriftReloadTestModel(n, height int) Model {
 	m := New(nil, config.Settings{Mouse: true}, "")
 	m.sessions = sessions
 	m.baseSessions = sessions
-	m.width, m.height = 80, height
+	m.width, m.height = 80, 24
 	m.selected = rowCursor(0)
 	m.selectedByUser = true
 	return m
@@ -54,7 +55,7 @@ func wheelDriftReloadTestModel(n, height int) Model {
 // across at least 3 successive sessionsLoaded messages while drifted,
 // with the selection still tracking its session by id.
 func TestR142WheelDriftSurvivesSuccessiveReloads(t *testing.T) {
-	m := wheelDriftReloadTestModel(30, 24)
+	m := wheelDriftReloadTestModel()
 	selectedID := m.sessions[0].ID
 
 	updated, _ := m.Update(wheelDown(10, 5))
@@ -86,7 +87,7 @@ func TestR142WheelDriftSurvivesSuccessiveReloads(t *testing.T) {
 // it pointing past the end, while still not snapping it all the way back
 // to the (still off-screen) selection.
 func TestR142WheelDriftSurvivesSuccessiveReloadsClampsToShorterList(t *testing.T) {
-	m := wheelDriftReloadTestModel(30, 24)
+	m := wheelDriftReloadTestModel()
 	selectedID := m.sessions[0].ID
 
 	// Scroll all the way to the bottom of the full 30-session list.
@@ -126,7 +127,7 @@ func TestR142WheelDriftSurvivesSuccessiveReloadsClampsToShorterList(t *testing.T
 // still call followSelectionViewport exactly as it always has -- a
 // selection whose rendered position moves must stay in view.
 func TestR142NoDriftReloadStillFollowsSelection(t *testing.T) {
-	m := wheelDriftReloadTestModel(30, 24)
+	m := wheelDriftReloadTestModel()
 	m.selected = rowCursor(29)
 	m.followSelectionViewport()
 	if m.sidebarScroll == 0 {
@@ -210,11 +211,11 @@ func TestR142WheelDriftSurvivesLiveReGroup(t *testing.T) {
 		{name: "selection-at-bottom-wheel-up", selected: 30, wheel: wheelUp},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			m, _ := settingsLiveApplyTestModel(t)
+			m := settingsLiveApplyTestModel(t)
 			base := viewportFollowTestModel(30, 24)
 			m.width, m.height = 80, 24
 			m.settings.Mouse = true
-			m.sessions = append(base.sessions, store.Session{ID: "d", Name: "d", Status: "idle"})
+			m.sessions = slices.Concat(base.sessions, []store.Session{{ID: "d", Name: "d", Status: "idle"}})
 			m.baseSessions = m.sessions
 			m.setSelection(rowCursor(tc.selected))
 			selectedID := m.sessions[tc.selected].ID
@@ -252,7 +253,7 @@ func TestR142WheelDriftSurvivesLiveReGroup(t *testing.T) {
 // archived-pool refresh): it too must leave a drifted offset where the
 // wheel put it across successive arrivals, with the selection kept by id.
 func TestR142WheelDriftSurvivesArchivedPoolReloads(t *testing.T) {
-	m := wheelDriftReloadTestModel(30, 24)
+	m := wheelDriftReloadTestModel()
 	selectedID := m.sessions[0].ID
 	for i := 0; i < 5; i++ {
 		next, _ := m.Update(wheelDown(10, 5))

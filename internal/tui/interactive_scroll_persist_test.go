@@ -33,7 +33,7 @@ func TestStoredScrollOffsetHealedAcrossViewAndNextScroll(t *testing.T) {
 	m := New(nil, config.Settings{}, "")
 	m.width, m.height = 100, 30
 	socket := selectionTestSocket("persistheal")
-	newShellPaneWithHistory(t, socket, "deck_persistheal", 80, 10, 100)
+	newShellPaneWithHistory(t, socket, "deck_persistheal", 100)
 	m.tmuxClient = tmux.Client{Socket: socket}
 	m.sessions = []store.Session{{ID: "persist-heal", Name: "persistheal", Slug: "persistheal", Status: "waiting"}}
 	next, _ := m.enterInteractive()

@@ -585,11 +585,11 @@ func (m Model) canvasBackground(tok theme.Token, parts ...string) string {
 // rightly assert those lines come back byte-for-byte as their own plain
 // content (see TestSettingsFooterUnderNoColorCarriesNoEscapes). Painting
 // and filling are the same decision, so they are made in one place.
-func (m Model) canvasFillLine(tok theme.Token, s string, width int) string {
-	if _, ok := m.backgroundSGR(tok); ok {
+func (m Model) canvasFillLine(s string, width int) string {
+	if _, ok := m.backgroundSGR(theme.Background); ok {
 		s = padToWidth(s, width)
 	}
-	return m.canvasBackground(tok, s)
+	return m.canvasBackground(theme.Background, s)
 }
 
 // canvasWrapText mirrors wrapText's own word-wrapping, additionally
@@ -622,7 +622,7 @@ func (m Model) canvasWrapText(s string, width int) []string {
 	lines := wrapText(s, width)
 	out := make([]string, len(lines))
 	for i, line := range lines {
-		out[i] = m.canvasFillLine(theme.Background, line, width)
+		out[i] = m.canvasFillLine(line, width)
 	}
 	return out
 }

@@ -358,9 +358,10 @@ func applySGR(params string, fg, bg *sgrColor, reverse *bool) {
 		case n == 38 || n == 48 || n == 58:
 			hex, consumed := extendedColor(fields[i+1:])
 			c := sgrColor{explicit: hex != "", hex: hex}
-			if n == 38 {
+			switch n {
+			case 38:
 				*fg = c
-			} else if n == 48 {
+			case 48:
 				*bg = c
 			}
 			i += consumed

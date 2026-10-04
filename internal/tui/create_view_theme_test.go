@@ -196,7 +196,6 @@ func TestCreateCWDGhostValueCarriesNoSGRBytes(t *testing.T) {
 // ghost's first cell.
 func TestCreateViewGhostRendersDimmedAtRenderTime(t *testing.T) {
 	for _, bt := range theme.Builtins() {
-		bt := bt
 		t.Run(bt.Name, func(t *testing.T) {
 			m, _ := task016GhostModel(t)
 			m.settings.Theme = bt

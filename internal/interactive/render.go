@@ -12,7 +12,7 @@ import (
 // interval the Part II spike measured render cost against. Like
 // pipeDisplacedFallbackInterval above, this is a
 // package var (not a Start parameter) so a test can lower it; wiring
-// settings.InteractiveMS into it at runtime is the job of whichever later
+// settings.InteractiveInterval into it at runtime is the job of whichever later
 // task plumbs interactive mode into internal/tui -- Session itself takes
 // no config dependency today, the same honest-pending-consumer shape
 // config/schema.go's own comment on interactive_ms already documents.

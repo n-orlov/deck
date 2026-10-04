@@ -28,7 +28,8 @@ import "time"
 // shares the same exposure. The race build's own instrumentation and the
 // host contention it invites push real wall-clock cost past a bound that
 // is otherwise generous on a normal build.
-func reconcileIntervalPollDeadline(interval time.Duration, raceBuild bool) time.Duration {
+func reconcileIntervalPollDeadline(raceBuild bool) time.Duration {
+	interval := scenarioReconcileInterval
 	if raceBuild {
 		return interval + 20*time.Second
 	}

@@ -98,12 +98,12 @@ type Settings struct {
 	// key (SPEC §9.4): the minimum spacing between opportunistic scrollback
 	// captures triggered by hook traffic. Defaults per internal/config.Schema.
 	CaptureMinInterval time.Duration
-	// InteractiveMS mirrors config.toml's top-level interactive_ms key (SPEC
+	// InteractiveInterval mirrors config.toml's top-level interactive_ms key (SPEC
 	// §11.9/§13.1): the grid render-coalescing interval for interactive
 	// preview. DECK_INTERACTIVE_MS overrides the file when set, exactly like
 	// DECK_RECONCILE_MS/DECK_PREVIEW_MS override their own (env-only) knobs.
 	// Defaults per internal/config.Schema.
-	InteractiveMS time.Duration
+	InteractiveInterval time.Duration
 	// InteractiveTransport mirrors config.toml's top-level
 	// interactive_transport key (SPEC §6.5/§13.1, II-5): "pipe" or
 	// "capture", selecting which of the two §11.9 interactive-preview
@@ -394,7 +394,7 @@ func LoadFromProfile(getenv func(string) string, userHome func() (string, error)
 		}
 		envOverrides["tmux_mouse"] = "DECK_TMUX_MOUSE"
 	}
-	interactiveMS, err := milliseconds(getenv("DECK_INTERACTIVE_MS"), int(fileCfg.InteractiveMS/time.Millisecond), "DECK_INTERACTIVE_MS")
+	interactiveInterval, err := milliseconds(getenv("DECK_INTERACTIVE_MS"), int(fileCfg.InteractiveInterval/time.Millisecond), "DECK_INTERACTIVE_MS")
 	if err != nil {
 		return Settings{}, err
 	}
@@ -418,7 +418,7 @@ func LoadFromProfile(getenv func(string) string, userHome func() (string, error)
 	return Settings{
 		Paths: paths, DataRoot: dataRoot, Profile: profile, Socket: socket, Clock: clock, IDs: NewIDGenerator(getenv("DECK_ID_SEED")),
 		ThemesDir: themesDir,
-		Reconcile: reconcile, Preview: preview, Undo: undo, DeleteGrace: deleteGrace, StaleAfter: fileCfg.StaleAfter, CaptureMinInterval: fileCfg.CaptureMinInterval, InteractiveMS: interactiveMS, InteractiveTransport: interactiveTransport,
+		Reconcile: reconcile, Preview: preview, Undo: undo, DeleteGrace: deleteGrace, StaleAfter: fileCfg.StaleAfter, CaptureMinInterval: fileCfg.CaptureMinInterval, InteractiveInterval: interactiveInterval, InteractiveTransport: interactiveTransport,
 		ASCII: ascii, Animation: animation, Color: color, ColorDepth: colorDepth, AllowYolo: fileCfg.AllowYolo, YoloDefault: fileCfg.YoloDefault, Env: fileCfg.Env, Mouse: mouse,
 		DefaultGroupFirst:  fileCfg.DefaultGroupFirst,
 		PreLaunch:          fileCfg.PreLaunch,

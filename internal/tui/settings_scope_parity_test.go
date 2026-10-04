@@ -176,9 +176,8 @@ func settingsStageRealEdit(m *Model, f config.Field) {
 // nothing here becomes more permissive for a field with no override.
 func TestSettingsScopeParityMatchesSaveBehaviour(t *testing.T) {
 	for _, f := range config.Schema {
-		f := f
 		t.Run(f.FullKey(), func(t *testing.T) {
-			m, _ := settingsLiveApplyTestModel(t)
+			m := settingsLiveApplyTestModel(t)
 			ci, fi, ok := settingsFindFieldIndex(f)
 			if !ok {
 				t.Fatalf("field %s not found in settingsCategories(); settingsFindFieldIndex/settingsCategories disagree with config.Schema", f.FullKey())
@@ -293,7 +292,6 @@ func TestSettingsScopeParityEnvOverrideExemption(t *testing.T) {
 		{fullKey: "ui.mouse", envVar: "DECK_MOUSE", category: 1, fieldIndex: 2, label: "Mouse", wantCmdNil: true},
 	}
 	for _, c := range cases {
-		c := c
 		t.Run(c.fullKey, func(t *testing.T) {
 			f, ok := config.FieldByFullKey(c.fullKey)
 			if !ok {

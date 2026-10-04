@@ -154,11 +154,9 @@ func TestR150NamedCallbacksVerifyTheRequestedSessionsOwnStatus(t *testing.T) {
 	}
 
 	for _, cb := range r150NamedStatusCallbacks {
-		cb := cb
 		t.Run(cb.name, func(t *testing.T) {
 			t.Parallel()
 			for _, tc := range cases {
-				tc := tc
 				t.Run(tc.name, func(t *testing.T) {
 					t.Parallel()
 					var lines []string
@@ -256,7 +254,7 @@ func TestR150LiveNamedRowSettleIgnoresAnotherSessionsName(t *testing.T) {
 	// REJECT, burning the full race-widened reconcileIntervalPollDeadline
 	// (task 016) before returning; widen this outer context to accommodate
 	// both, on top of the unchanged 30s normal-build budget.
-	ctx, cancel := context.WithTimeout(context.Background(), r150LiveOuterDeadline(30*time.Second, 2, racebuild.Enabled))
+	ctx, cancel := context.WithTimeout(context.Background(), r150LiveOuterDeadline(30*time.Second, racebuild.Enabled))
 	defer cancel()
 	ctx = context.WithValue(ctx, scenarioHarnessKey{}, h)
 	must := func(err error) {

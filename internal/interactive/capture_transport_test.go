@@ -26,11 +26,11 @@ import (
 // Dispatcher enforces (PRD II-30) and exactly what production always
 // passes (client.PreviewPane's own pane.ID), so this is the target every
 // TransportCapture test in this file must use, not "s0" itself.
-func capturePaneID(t *testing.T, socket, target string) string {
+func capturePaneID(t *testing.T, socket string) string {
 	t.Helper()
-	out, err := exec.Command("tmux", "-L", socket, "display-message", "-p", "-t", target, "#{pane_id}").Output()
+	out, err := exec.Command("tmux", "-L", socket, "display-message", "-p", "-t", "s0", "#{pane_id}").Output()
 	if err != nil {
-		t.Fatalf("display-message #{pane_id} -t %s: %v", target, err)
+		t.Fatalf("display-message #{pane_id} -t %s: %v", "s0", err)
 	}
 	return strings.TrimSpace(string(out))
 }
@@ -40,10 +40,10 @@ func capturePaneID(t *testing.T, socket, target string) string {
 // other test in this package builds inline. Unlike Start's own tests
 // elsewhere in this package, target here must already be a resolved pane
 // id (see capturePaneID) -- captureLoop's CaptureSeed calls require it.
-func startCaptureSession(t *testing.T, client tmux.Client, socket, target string, width, height int) *Session {
+func startCaptureSession(t *testing.T, client tmux.Client, socket, target string) *Session {
 	t.Helper()
 	ctx := context.Background()
-	session, err := StartWithTransport(ctx, client, target, width, height, func(_ context.Context) ([]byte, error) {
+	session, err := StartWithTransport(ctx, client, target, 40, 10, func(_ context.Context) ([]byte, error) {
 		return rawCapturePane(t, socket, target), nil
 	}, TransportCapture)
 	if err != nil {
@@ -63,12 +63,12 @@ func TestCaptureTransportNeverArmsPipePane(t *testing.T) {
 	defer func() { capturePollInterval = original }()
 
 	socket := interactiveSocket("capture-no-pipe")
-	cleanup := newBareInteractiveSession(t, socket, "s0", 40, 10)
+	cleanup := newBareInteractiveSession(t, socket, 40, 10)
 	defer cleanup()
 	client := tmux.Client{Socket: socket, Timeout: 5 * time.Second}
 
-	paneID := capturePaneID(t, socket, "s0")
-	session := startCaptureSession(t, client, socket, paneID, 40, 10)
+	paneID := capturePaneID(t, socket)
+	session := startCaptureSession(t, client, socket, paneID)
 	defer session.Close()
 
 	// Give captureLoop a few ticks to have actually run at least once,
@@ -95,12 +95,12 @@ func TestCaptureTransportPicksUpNewContentByPolling(t *testing.T) {
 	defer func() { capturePollInterval = original }()
 
 	socket := interactiveSocket("capture-polls")
-	cleanup := newBareInteractiveSession(t, socket, "s0", 40, 10)
+	cleanup := newBareInteractiveSession(t, socket, 40, 10)
 	defer cleanup()
 	client := tmux.Client{Socket: socket, Timeout: 5 * time.Second}
 
-	paneID := capturePaneID(t, socket, "s0")
-	session := startCaptureSession(t, client, socket, paneID, 40, 10)
+	paneID := capturePaneID(t, socket)
+	session := startCaptureSession(t, client, socket, paneID)
 	defer session.Close()
 
 	sendLiteralLine(t, socket, "s0", "CAPTURE-POLLED-CONTENT")
@@ -123,12 +123,12 @@ func TestCaptureTransportStatusStaysLive(t *testing.T) {
 	defer func() { capturePollInterval = original }()
 
 	socket := interactiveSocket("capture-status")
-	cleanup := newBareInteractiveSession(t, socket, "s0", 40, 10)
+	cleanup := newBareInteractiveSession(t, socket, 40, 10)
 	defer cleanup()
 	client := tmux.Client{Socket: socket, Timeout: 5 * time.Second}
 
-	paneID := capturePaneID(t, socket, "s0")
-	session := startCaptureSession(t, client, socket, paneID, 40, 10)
+	paneID := capturePaneID(t, socket)
+	session := startCaptureSession(t, client, socket, paneID)
 	defer session.Close()
 
 	time.Sleep(5 * capturePollInterval)
@@ -150,12 +150,12 @@ func TestCaptureTransportNoticesDeadPaneAndClosesCleanly(t *testing.T) {
 	defer func() { capturePollInterval = originalCapture }()
 
 	socket := interactiveSocket("capture-dead")
-	cleanup := newBareInteractiveSession(t, socket, "s0", 40, 10)
+	cleanup := newBareInteractiveSession(t, socket, 40, 10)
 	defer cleanup()
 	client := tmux.Client{Socket: socket, Timeout: 5 * time.Second}
 
-	paneID := capturePaneID(t, socket, "s0")
-	session := startCaptureSession(t, client, socket, paneID, 40, 10)
+	paneID := capturePaneID(t, socket)
+	session := startCaptureSession(t, client, socket, paneID)
 
 	killPaneProcessUnderRemainOnExitFailed(t, socket, "s0")
 
@@ -185,7 +185,7 @@ func TestCaptureTransportNoticesDeadPaneAndClosesCleanly(t *testing.T) {
 // gets armed.
 func TestStartStillDefaultsToTransportPipe(t *testing.T) {
 	socket := interactiveSocket("start-still-pipe")
-	cleanup := newBareInteractiveSession(t, socket, "s0", 40, 10)
+	cleanup := newBareInteractiveSession(t, socket, 40, 10)
 	defer cleanup()
 	client := tmux.Client{Socket: socket, Timeout: 5 * time.Second}
 	ctx := context.Background()

@@ -46,7 +46,7 @@ func TestFitWindowToPaneUnpinnedHoldsTheSizeWithoutPinningTheWindow(t *testing.T
 	if _, err := client.FitWindowToPane(ctx, "s0", "s0", 45, 15); err != nil {
 		t.Fatalf("plain fit window to pane: %v", err)
 	}
-	if value, set, err := client.readBuiltinWindowOption(ctx, "s0", "window-size"); err != nil {
+	if value, set, err := client.readBuiltinWindowOption(ctx, "s0"); err != nil {
 		t.Fatalf("read window-size after a plain fit: %v", err)
 	} else if !set || value != "manual" {
 		t.Fatalf("window-size after a plain FitWindowToPane = set=%v value=%q, want set=true value=%q -- if resize-window ever stops writing this, the unpin below is unnecessary and this whole test should go", set, value, "manual")
@@ -55,7 +55,7 @@ func TestFitWindowToPaneUnpinnedHoldsTheSizeWithoutPinningTheWindow(t *testing.T
 	const clientCols, clientRows = 100, 40
 	croppedTerminal, croppedCmd := attachThroughPTY(t, socket, "s0", clientCols, clientRows)
 	defer func() { _ = croppedTerminal.Close() }()
-	waitForSessionAttachedCount(t, client, "s0", 1)
+	waitForSessionAttachedCount(t, client, "s0")
 	_, _, paneWidth, paneHeight, err := client.windowAndPaneSize(ctx, "s0")
 	if err != nil {
 		t.Fatalf("read pane size under the pinned attach: %v", err)
@@ -77,7 +77,7 @@ func TestFitWindowToPaneUnpinnedHoldsTheSizeWithoutPinningTheWindow(t *testing.T
 	if resizes != 0 {
 		t.Fatalf("the unpinned fit issued %d resize-window calls, want 0 -- the pane already measured 45x15, so this test is no longer exercising the already-fitted path", resizes)
 	}
-	if value, set, err := client.readBuiltinWindowOption(ctx, "s0", "window-size"); err != nil {
+	if value, set, err := client.readBuiltinWindowOption(ctx, "s0"); err != nil {
 		t.Fatalf("read window-size after the unpinned fit: %v", err)
 	} else if set {
 		t.Fatalf("window-size after FitWindowToPaneUnpinned = %q, want unset -- the unpin must run even when the fit itself resized nothing", value)
@@ -92,7 +92,7 @@ func TestFitWindowToPaneUnpinnedHoldsTheSizeWithoutPinningTheWindow(t *testing.T
 	// --- Property 2b: the next client to attach wins. ---
 	freeTerminal, freeCmd := attachThroughPTY(t, socket, "s0", clientCols, clientRows)
 	defer func() { _ = freeTerminal.Close() }()
-	waitForSessionAttachedCount(t, client, "s0", 1)
+	waitForSessionAttachedCount(t, client, "s0")
 	if _, _, paneWidth, paneHeight, err = client.windowAndPaneSize(ctx, "s0"); err != nil {
 		t.Fatalf("read pane size under the unpinned attach: %v", err)
 	}
@@ -136,7 +136,7 @@ func TestPinWindowSizeHoldsAWindowThatNeededNoResize(t *testing.T) {
 	if resizes != 0 {
 		t.Fatalf("the entry fit issued %d resize-window calls, want 0 -- this test only means something when the fit writes no pin of its own", resizes)
 	}
-	if _, set, err := client.readBuiltinWindowOption(ctx, "s0", "window-size"); err != nil {
+	if _, set, err := client.readBuiltinWindowOption(ctx, "s0"); err != nil {
 		t.Fatalf("read window-size after a zero-resize entry fit: %v", err)
 	} else if set {
 		t.Fatalf("window-size is set after a fit that issued no resize-window; the premise of this test (and of PinWindowSize) is that it is not")
@@ -154,7 +154,7 @@ func TestPinWindowSizeHoldsAWindowThatNeededNoResize(t *testing.T) {
 	const clientCols, clientRows = 100, 40
 	terminal, cmd := attachThroughPTY(t, socket, "s0", clientCols, clientRows)
 	defer func() { _ = terminal.Close() }()
-	waitForSessionAttachedCount(t, client, "s0", 1)
+	waitForSessionAttachedCount(t, client, "s0")
 	_, _, paneWidth, paneHeight, err := client.windowAndPaneSize(ctx, "s0")
 	if err != nil {
 		t.Fatalf("read pane size under the attach: %v", err)

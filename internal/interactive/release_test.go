@@ -23,7 +23,7 @@ import (
 // against any in-process state Session/PanePipe keep.
 func TestSessionCloseReleasesThePipeAndPanePipeReturnsToZero(t *testing.T) {
 	socket := interactiveSocket("release-clean")
-	cleanup := newBareInteractiveSession(t, socket, "s0", 40, 10)
+	cleanup := newBareInteractiveSession(t, socket, 40, 10)
 	defer cleanup()
 	client := tmux.Client{Socket: socket, Timeout: 5 * time.Second}
 	ctx := context.Background()
@@ -67,7 +67,7 @@ func TestSessionCloseReleasesThePipeAndPanePipeReturnsToZero(t *testing.T) {
 // never returned a *Session.
 func TestSessionStartFailureAfterArmingReleasesThePipeOnErrorExit(t *testing.T) {
 	socket := interactiveSocket("release-error")
-	cleanup := newBareInteractiveSession(t, socket, "s0", 40, 10)
+	cleanup := newBareInteractiveSession(t, socket, 40, 10)
 	defer cleanup()
 	client := tmux.Client{Socket: socket, Timeout: 5 * time.Second}
 	ctx := context.Background()

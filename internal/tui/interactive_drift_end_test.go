@@ -43,7 +43,7 @@ import (
 // off the interactive target's own row at rowCursor(targetIdx), near the
 // top of that list. Only the target session has a real tmux session
 // behind it; the rest exist purely to give the sidebar room to scroll.
-func driftEndDispatchFixtureModel(t *testing.T, socket, slug string, targetIdx int) Model {
+func driftEndDispatchFixtureModel(t *testing.T, socket, slug string) Model {
 	t.Helper()
 	m := New(nil, config.Settings{Mouse: true, Color: true}, "")
 	var sessions []store.Session
@@ -51,11 +51,11 @@ func driftEndDispatchFixtureModel(t *testing.T, socket, slug string, targetIdx i
 		id := fmt.Sprintf("s%02d", i)
 		sessions = append(sessions, store.Session{ID: id, Name: id, Slug: id, CWD: "/work/infra", Status: "idle"})
 	}
-	sessions[targetIdx] = store.Session{ID: "target-" + slug, Name: slug, Slug: slug, CWD: "/work", Status: "waiting"}
+	sessions[3] = store.Session{ID: "target-" + slug, Name: slug, Slug: slug, CWD: "/work", Status: "waiting"}
 	m.sessions = sessions
 	m.baseSessions = append([]store.Session(nil), sessions...)
 	m.width, m.height = 100, 30
-	m.selected = rowCursor(targetIdx)
+	m.selected = rowCursor(3)
 
 	newQuietSelectionPane(t, socket, "deck_"+slug, 80, 24)
 	m.tmuxClient = tmux.Client{Socket: socket}
@@ -167,7 +167,7 @@ func tmuxCursorY(t *testing.T, socket, target string) int {
 // event loop has to read the byte back off the pty before its screen
 // model reflects it) until its first line equals want, settled on that
 // durable fact rather than a fixed sleep.
-func waitForPaneCaptureLine0(t *testing.T, socket, target, want string) string {
+func waitForPaneCaptureLine0(t *testing.T, socket, target, want string) {
 	t.Helper()
 	deadline := time.Now().Add(5 * time.Second)
 	var last string
@@ -175,7 +175,7 @@ func waitForPaneCaptureLine0(t *testing.T, socket, target, want string) string {
 		last = tmuxCapturePane(t, socket, target)
 		line0, _, _ := strings.Cut(last, "\n")
 		if line0 == want {
-			return last
+			return
 		}
 		if time.Now().After(deadline) {
 			t.Fatalf("pane capture's first line never became %q within the deadline; last capture:\n%s", want, last)
@@ -211,7 +211,7 @@ func waitForCursorY(t *testing.T, socket, target string, want int) {
 func TestUpdateInteractiveForwardedRuneKeyEndsSidebarDriftAndForwardsSameByte(t *testing.T) {
 	socket := selectionTestSocket("drift149-rune")
 	slug := "drift149_rune"
-	m := driftEndDispatchFixtureModel(t, socket, slug, 3)
+	m := driftEndDispatchFixtureModel(t, socket, slug)
 	m = armSidebarWheelDriftPastSelection(t, m)
 	target := "deck_" + slug
 	verificationsBefore := m.interactiveDispatcher.Verifications()
@@ -243,7 +243,7 @@ func TestUpdateInteractiveForwardedRuneKeyEndsSidebarDriftAndForwardsSameByte(t 
 func TestUpdateInteractiveForwardedEnterEndsSidebarDriftAndForwardsSameByte(t *testing.T) {
 	socket := selectionTestSocket("drift149-enter")
 	slug := "drift149_enter"
-	m := driftEndDispatchFixtureModel(t, socket, slug, 3)
+	m := driftEndDispatchFixtureModel(t, socket, slug)
 	m = armSidebarWheelDriftPastSelection(t, m)
 	target := "deck_" + slug
 	verificationsBefore := m.interactiveDispatcher.Verifications()
@@ -279,7 +279,7 @@ func TestUpdateInteractiveForwardedEnterEndsSidebarDriftAndForwardsSameByte(t *t
 func TestUpdateInteractiveForwardedBracketedPasteEndsSidebarDriftAndForwardsSameBytes(t *testing.T) {
 	socket := selectionTestSocket("drift149-paste")
 	slug := "drift149_paste"
-	m := driftEndDispatchFixtureModel(t, socket, slug, 3)
+	m := driftEndDispatchFixtureModel(t, socket, slug)
 	m = armSidebarWheelDriftPastSelection(t, m)
 	target := "deck_" + slug
 	verificationsBefore := m.interactiveDispatcher.Verifications()
@@ -312,7 +312,7 @@ func TestUpdateInteractiveForwardedBracketedPasteEndsSidebarDriftAndForwardsSame
 func TestUpdateInteractiveUnrecognisedKeyWritesNoBytesAndKeepsSidebarDrift(t *testing.T) {
 	socket := selectionTestSocket("drift149-unrecognised")
 	slug := "drift149_unrec"
-	m := driftEndDispatchFixtureModel(t, socket, slug, 3)
+	m := driftEndDispatchFixtureModel(t, socket, slug)
 	m = armSidebarWheelDriftPastSelection(t, m)
 	target := "deck_" + slug
 
@@ -467,7 +467,7 @@ func TestInteractiveDragToCopyKeepsSidebarDrift(t *testing.T) {
 
 	socket := selectionTestSocket("drift149-drag")
 	slug := "drift149_drag"
-	m := driftEndDispatchFixtureModel(t, socket, slug, 3)
+	m := driftEndDispatchFixtureModel(t, socket, slug)
 	m = armSidebarWheelDriftPastSelection(t, m)
 	driftedScroll := m.sidebarScroll
 

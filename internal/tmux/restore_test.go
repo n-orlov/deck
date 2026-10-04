@@ -48,7 +48,7 @@ func TestRestoreWindowGeometryDetachedResizesThenUnsets(t *testing.T) {
 	if _, err := client.FitWindowToPane(ctx, "s0", "s0", 45, 15); err != nil {
 		t.Fatalf("fit window to pane: %v", err)
 	}
-	if value, set, err := client.readBuiltinWindowOption(ctx, "s0", "window-size"); err != nil {
+	if value, set, err := client.readBuiltinWindowOption(ctx, "s0"); err != nil {
 		t.Fatalf("read window-size after fit: %v", err)
 	} else if !set || value != "manual" {
 		t.Fatalf("window-size after fit = set=%v value=%q, want set=true value=\"manual\" (test assumption violated, not what this test is proving)", set, value)
@@ -71,7 +71,7 @@ func TestRestoreWindowGeometryDetachedResizesThenUnsets(t *testing.T) {
 	if paneWidth != original.Width || paneHeight != original.Height {
 		t.Fatalf("pane size after restore = %dx%d, want the original %dx%d", paneWidth, paneHeight, original.Width, original.Height)
 	}
-	if value, set, err := client.readBuiltinWindowOption(ctx, "s0", "window-size"); err != nil {
+	if value, set, err := client.readBuiltinWindowOption(ctx, "s0"); err != nil {
 		t.Fatalf("read window-size after restore: %v", err)
 	} else if set {
 		t.Fatalf("window-size after restore = set=true value=%q, want unset -- a live client attaching next must be governed by its own size, not left pinned", value)
@@ -120,7 +120,7 @@ func TestReversedRestoreOrderLeavesWindowPinned(t *testing.T) {
 		t.Fatalf("resize-window (reversed step 2): %v", err)
 	}
 
-	if value, set, err := client.readBuiltinWindowOption(ctx, "s0", "window-size"); err != nil {
+	if value, set, err := client.readBuiltinWindowOption(ctx, "s0"); err != nil {
 		t.Fatalf("read window-size after reversed order: %v", err)
 	} else if !set || value != "manual" {
 		t.Fatalf("window-size after the REVERSED restore order = set=%v value=%q, want set=true value=\"manual\" -- resize-window re-flips it, undoing the unset that came before it", set, value)
@@ -133,7 +133,7 @@ func TestReversedRestoreOrderLeavesWindowPinned(t *testing.T) {
 	const pinnedClientCols, pinnedClientRows = 100, 40
 	pinnedTerminal, pinnedCmd := attachThroughPTY(t, socket, "s0", pinnedClientCols, pinnedClientRows)
 	defer func() { _ = pinnedTerminal.Close() }()
-	waitForSessionAttachedCount(t, client, "s0", 1)
+	waitForSessionAttachedCount(t, client, "s0")
 
 	_, _, paneWidth, paneHeight, err := client.windowAndPaneSize(ctx, "s0")
 	if err != nil {
@@ -154,7 +154,7 @@ func TestReversedRestoreOrderLeavesWindowPinned(t *testing.T) {
 	const correctClientCols, correctClientRows = 90, 30
 	correctTerminal, correctCmd := attachThroughPTY(t, socket, "s0", correctClientCols, correctClientRows)
 	defer func() { _ = correctTerminal.Close() }()
-	waitForSessionAttachedCount(t, client, "s0", 1)
+	waitForSessionAttachedCount(t, client, "s0")
 
 	if err := client.RestoreWindowGeometry(ctx, "s0", original); err != nil {
 		t.Fatalf("correct-order restore with a client attached: %v", err)
@@ -224,7 +224,7 @@ func TestRestoreWindowGeometryAttachedUnsetFollowsClientWithNoThirdSigwinch(t *t
 	const clientCols, clientRows = 100, 40
 	terminal, cmd := attachThroughPTY(t, socket, target, clientCols, clientRows)
 	defer func() { _ = terminal.Close() }()
-	waitForSessionAttachedCount(t, client, target, 1)
+	waitForSessionAttachedCount(t, client, target)
 
 	_, _, paneWidth, paneHeight, err := client.windowAndPaneSize(ctx, target)
 	if err != nil {
@@ -305,7 +305,7 @@ func TestFreshClientAtThirdSizeGovernsWindowAfterExit(t *testing.T) {
 	const thirdClientCols, thirdClientRows = 100, 40
 	terminal, cmd := attachThroughPTY(t, socket, "s0", thirdClientCols, thirdClientRows)
 	defer func() { _ = terminal.Close() }()
-	waitForSessionAttachedCount(t, client, "s0", 1)
+	waitForSessionAttachedCount(t, client, "s0")
 
 	_, _, paneWidth, paneHeight, err := client.windowAndPaneSize(ctx, "s0")
 	if err != nil {
@@ -355,7 +355,7 @@ func TestSkippingRestoreLeavesFreshClientPinnedAtPreviewSize(t *testing.T) {
 	if _, err := client.FitWindowToPane(ctx, "s0", "s0", 45, 15); err != nil {
 		t.Fatalf("fit window to pane (enter): %v", err)
 	}
-	if value, set, err := client.readBuiltinWindowOption(ctx, "s0", "window-size"); err != nil {
+	if value, set, err := client.readBuiltinWindowOption(ctx, "s0"); err != nil {
 		t.Fatalf("read window-size after fit: %v", err)
 	} else if !set || value != "manual" {
 		t.Fatalf("window-size after fit = set=%v value=%q, want set=true value=\"manual\" (test assumption violated, not what this test is proving)", set, value)
@@ -366,7 +366,7 @@ func TestSkippingRestoreLeavesFreshClientPinnedAtPreviewSize(t *testing.T) {
 	const thirdClientCols, thirdClientRows = 100, 40
 	terminal, cmd := attachThroughPTY(t, socket, "s0", thirdClientCols, thirdClientRows)
 	defer func() { _ = terminal.Close() }()
-	waitForSessionAttachedCount(t, client, "s0", 1)
+	waitForSessionAttachedCount(t, client, "s0")
 
 	_, _, paneWidth, paneHeight, err := client.windowAndPaneSize(ctx, "s0")
 	if err != nil {
@@ -388,7 +388,7 @@ func TestSkippingRestoreLeavesFreshClientPinnedAtPreviewSize(t *testing.T) {
 	if paneWidth != 45 || paneHeight != 15 {
 		t.Fatalf("pane size after the fresh client detaches, with the restore skipped, = %dx%d, want it STILL pinned at the interactive preview's 45x15", paneWidth, paneHeight)
 	}
-	if value, set, err := client.readBuiltinWindowOption(ctx, "s0", "window-size"); err != nil {
+	if value, set, err := client.readBuiltinWindowOption(ctx, "s0"); err != nil {
 		t.Fatalf("read window-size after detach: %v", err)
 	} else if !set || value != "manual" {
 		t.Fatalf("window-size after detach, with the restore skipped, = set=%v value=%q, want set=true value=\"manual\" -- nothing detaches ever unsets, which is exactly why the restore step is not optional", set, value)
@@ -441,7 +441,7 @@ func TestGlobalWindowSizeWriteDoesNotRestoreWindowLocalPin(t *testing.T) {
 
 	// The window-local override is untouched by that write: it shadows the
 	// global value regardless of what the global value is re-asserted to.
-	if value, set, err := client.readBuiltinWindowOption(ctx, "s0", "window-size"); err != nil {
+	if value, set, err := client.readBuiltinWindowOption(ctx, "s0"); err != nil {
 		t.Fatalf("read window-size after the global write: %v", err)
 	} else if !set || value != "manual" {
 		t.Fatalf("window-size after writing the GLOBAL option = set=%v value=%q, want set=true value=\"manual\" -- a global write must not touch the window-local override left by resize-window", set, value)
@@ -453,7 +453,7 @@ func TestGlobalWindowSizeWriteDoesNotRestoreWindowLocalPin(t *testing.T) {
 	const pinnedClientCols, pinnedClientRows = 100, 40
 	pinnedTerminal, pinnedCmd := attachThroughPTY(t, socket, "s0", pinnedClientCols, pinnedClientRows)
 	defer func() { _ = pinnedTerminal.Close() }()
-	waitForSessionAttachedCount(t, client, "s0", 1)
+	waitForSessionAttachedCount(t, client, "s0")
 
 	_, _, paneWidth, paneHeight, err := client.windowAndPaneSize(ctx, "s0")
 	if err != nil {
@@ -525,19 +525,19 @@ func detachAndWait(t *testing.T, terminal *os.File, cmd *exec.Cmd) {
 // fake_agent_size_test.go's waitForSigwinchCount uses in the features
 // package -- attaching a client through a pty is asynchronous from this
 // goroutine's point of view.
-func waitForSessionAttachedCount(t *testing.T, client Client, target string, want int) {
+func waitForSessionAttachedCount(t *testing.T, client Client, target string) {
 	t.Helper()
 	deadline := time.Now().Add(3 * time.Second)
 	var last int
 	var lastErr error
 	for time.Now().Before(deadline) {
 		last, lastErr = client.SessionAttachedCount(context.Background(), target)
-		if lastErr == nil && last == want {
+		if lastErr == nil && last == 1 {
 			return
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
-	t.Fatalf("session_attached on %q did not reach %d within the deadline (last=%d err=%v)", target, want, last, lastErr)
+	t.Fatalf("session_attached on %q did not reach %d within the deadline (last=%d err=%v)", target, 1, last, lastErr)
 }
 
 // readWinchCount reads the WINCH-trap counter file written by

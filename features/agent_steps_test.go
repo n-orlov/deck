@@ -1321,7 +1321,7 @@ func auditHasLaunchRecordCountForSessionWithinReconcileInterval(ctx context.Cont
 	if err != nil {
 		return err
 	}
-	deadline := time.Now().Add(reconcileIntervalPollDeadline(scenarioReconcileInterval, racebuild.Enabled))
+	deadline := time.Now().Add(reconcileIntervalPollDeadline(racebuild.Enabled))
 	var lastLen int
 	var lastErr error
 	for {

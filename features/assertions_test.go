@@ -113,7 +113,7 @@ func clientScreenContains(ctx context.Context, name, want string) error {
 // bounded allowance for the scheduled tick's tmux/SQLite work and PTY render;
 // unlike the general-purpose timeout, it cannot conceal a missed tick.
 func clientScreenContainsWithinReconcileInterval(ctx context.Context, name, want string) error {
-	return clientScreenContainsBefore(ctx, name, want, reconcileIntervalPollDeadline(scenarioReconcileInterval, racebuild.Enabled))
+	return clientScreenContainsBefore(ctx, name, want, reconcileIntervalPollDeadline(racebuild.Enabled))
 }
 
 // clientScreenStillContainsAfterReconcileInterval is deliberately not a
@@ -169,7 +169,7 @@ func clientScreenDoesNotContainWithinReconcileInterval(ctx context.Context, name
 	if err != nil {
 		return err
 	}
-	timeout := reconcileIntervalPollDeadline(scenarioReconcileInterval, racebuild.Enabled)
+	timeout := reconcileIntervalPollDeadline(racebuild.Enabled)
 	wait, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	if err := client.WaitForFrameGone(wait, false, unwanted); err != nil {

@@ -105,7 +105,7 @@ exit 0
 		reconcileErr <- svc.Reconcile(context.Background())
 	}()
 
-	if !waitForFile(t, started, 5*time.Second) {
+	if !waitForFile(t, started) {
 		t.Fatalf("fake tmux list-panes was never invoked; the test never armed its rendezvous")
 	}
 

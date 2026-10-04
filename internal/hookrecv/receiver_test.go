@@ -105,7 +105,8 @@ func TestReceiveHookAppliesOverAnyStaleSourceExceptStopped(t *testing.T) {
 					if err != nil {
 						t.Fatal(err)
 					}
-					if current == "stopped" && event == "SessionEnd" && currentSource == "tmux" {
+					switch {
+					case current == "stopped" && event == "SessionEnd" && currentSource == "tmux":
 						// The one hook write onto a stopped row that resurrects
 						// nothing: the status stays stopped, and the hook's own
 						// verdict outranks tmux's bare liveness fact (SPEC §7
@@ -113,11 +114,11 @@ func TestReceiveHookAppliesOverAnyStaleSourceExceptStopped(t *testing.T) {
 						if got.Status != "stopped" || got.StatusSource != "hook" || got.StatusReason != "logout" || got.StatusAt != 20 || got.NotifyEpoch != 3 || !got.Acknowledged || got.LastMessage != "before message" {
 							t.Fatalf("SessionEnd did not refine a tmux-sourced stop: %#v", got)
 						}
-					} else if current == "stopped" {
+					case current == "stopped":
 						if got.Status != current || got.StatusReason != "before" || got.StatusSource != currentSource || got.StatusAt != 7 || got.NotifyEpoch != 3 || !got.Acknowledged || got.LastMessage != "before message" {
 							t.Fatalf("hook resurrected a stopped row: %#v", got)
 						}
-					} else if got.Status != mapping.Status || got.StatusSource != "hook" || got.StatusAt != 20 {
+					case got.Status != mapping.Status || got.StatusSource != "hook" || got.StatusAt != 20:
 						t.Fatalf("hook did not apply over stale %s verdict: %#v", currentSource, got)
 					}
 					var events int

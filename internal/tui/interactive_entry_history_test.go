@@ -59,11 +59,11 @@ func entryHistoryLine(n int) string {
 // The loop is a POSIX `while` rather than `seq`, so it needs nothing
 // beyond the /bin/sh tmux falls back to inside ci/run.sh's container, the
 // same reasoning internal/interactive's own fillPaneHistory records.
-func newShellPaneWithHistory(t *testing.T, socket, session string, width, height, lines int) {
+func newShellPaneWithHistory(t *testing.T, socket, session string, lines int) {
 	t.Helper()
 	create := []string{
 		"-L", socket, "new-session", "-d", "-s", session,
-		"-x", strconv.Itoa(width), "-y", strconv.Itoa(height),
+		"-x", strconv.Itoa(80), "-y", strconv.Itoa(10),
 	}
 	if out, err := exec.Command("tmux", create...).CombinedOutput(); err != nil {
 		t.Fatalf("start shell tmux session: %v: %s", err, out)
@@ -89,7 +89,7 @@ func newShellPaneWithHistory(t *testing.T, socket, session string, width, height
 	// is about, so it is also the honest readiness signal. `lines - height`
 	// is the floor the loop must reach once a screenful is still on screen.
 	deadline := time.Now().Add(15 * time.Second)
-	want := lines - height
+	want := lines - 10
 	for {
 		out, err := exec.Command("tmux", "-L", socket, "display-message", "-p", "-t", session, "#{history_size}").Output()
 		if err != nil {
@@ -162,7 +162,7 @@ func TestEnterInteractiveSeedsTheGridWithThePanesOwnTmuxHistory(t *testing.T) {
 	// screenful rather than just a few rows over).
 	const printed = 400
 	socket := selectionTestSocket("entryhist")
-	newShellPaneWithHistory(t, socket, "deck_entryhist", 80, 10, printed)
+	newShellPaneWithHistory(t, socket, "deck_entryhist", printed)
 
 	m.tmuxClient = tmux.Client{Socket: socket}
 	m.sessions = []store.Session{{ID: "sess-entryhist-1", Name: "entryhist", Slug: "entryhist", Status: "waiting"}}

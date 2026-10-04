@@ -10,9 +10,9 @@ import (
 
 // settingsStringOfferedModel opens the pre_launch editor on a staged value,
 // which the shared editor holds as an offered value (§11.11).
-func settingsStringOfferedModel(t *testing.T, value string) Model {
+func settingsStringOfferedModel(t *testing.T) Model {
 	t.Helper()
-	m := settingsOpenOnStringField(t, config.Settings{File: config.FileConfig{PreLaunch: value}}, "pre_launch")
+	m := settingsOpenOnStringField(t, config.Settings{File: config.FileConfig{PreLaunch: "echo staged"}})
 	m.width, m.height = 100, 30
 	updated, _ := m.Update(key("enter"))
 	m = updated.(Model)
@@ -25,7 +25,7 @@ func settingsStringOfferedModel(t *testing.T, value string) Model {
 // TestSettingsStringEditorOpensOnTheValueAsAnOfferedValue: the editor starts
 // on the staged value, offered rather than accepted.
 func TestSettingsStringEditorOpensOnTheValueAsAnOfferedValue(t *testing.T) {
-	m := settingsStringOfferedModel(t, "echo staged")
+	m := settingsStringOfferedModel(t)
 	if got := m.settingsStringEdit.Value(); got != "echo staged" {
 		t.Fatalf("editor opened on %q, want the staged value", got)
 	}
@@ -38,7 +38,7 @@ func TestSettingsStringEditorOpensOnTheValueAsAnOfferedValue(t *testing.T) {
 // offered-value rule for the free-text editor: the first printable key
 // replaces the whole offered value instead of being appended to it.
 func TestSettingsStringEditorPrintableKeyReplacesTheOfferedValue(t *testing.T) {
-	m := settingsStringOfferedModel(t, "echo staged")
+	m := settingsStringOfferedModel(t)
 	updated, _ := m.Update(key("x"))
 	m = updated.(Model)
 	if got := m.settingsStringEdit.Value(); got != "x" {
@@ -53,7 +53,7 @@ func TestSettingsStringEditorPrintableKeyReplacesTheOfferedValue(t *testing.T) {
 // TestSettingsStringEditorPasteReplacesTheOfferedValue: a bracketed paste
 // replaces an offered value as well.
 func TestSettingsStringEditorPasteReplacesTheOfferedValue(t *testing.T) {
-	m := settingsStringOfferedModel(t, "echo staged")
+	m := settingsStringOfferedModel(t)
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("pasted"), Paste: true})
 	m = updated.(Model)
 	if got := m.settingsStringEdit.Value(); got != "pasted" {
@@ -65,7 +65,7 @@ func TestSettingsStringEditorPasteReplacesTheOfferedValue(t *testing.T) {
 // offer and moves the caret, so the next key inserts mid-value, and the
 // space a hook command needs is text, not an activation.
 func TestSettingsStringEditorCaretKeysAcceptAndEditInPlace(t *testing.T) {
-	m := settingsStringOfferedModel(t, "echo staged")
+	m := settingsStringOfferedModel(t)
 	for _, k := range []string{"left", "left", "left", "left", "left", "left"} {
 		updated, _ := m.Update(key(k))
 		m = updated.(Model)

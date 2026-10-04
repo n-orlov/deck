@@ -234,7 +234,7 @@ func serializeFieldValue(field Field, cfg FileConfig) string {
 	case "capture_min_interval":
 		return strconv.Itoa(int(cfg.CaptureMinInterval.Seconds()))
 	case "interactive_ms":
-		return strconv.Itoa(int(cfg.InteractiveMS.Milliseconds()))
+		return strconv.Itoa(int(cfg.InteractiveInterval.Milliseconds()))
 	case "interactive_transport":
 		return strconv.Quote(cfg.InteractiveTransport)
 	case "ui.ascii":

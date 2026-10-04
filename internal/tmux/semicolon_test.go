@@ -35,17 +35,17 @@ func semicolonSocket(name string) string {
 // not before). Every test in this file that asserts an EXACT line, not
 // just a substring, needs the race closed at its source rather than
 // papered over with a substring check.
-func waitForBarePrompt(t *testing.T, socket, target string) {
+func waitForBarePrompt(t *testing.T, socket string) {
 	t.Helper()
 	deadline := time.Now().Add(3 * time.Second)
 	for {
-		capture := runTmux(t, socket, "capture-pane", "-p", "-t", target)
+		capture := runTmux(t, socket, "capture-pane", "-p", "-t", "s0")
 		lines := strings.Split(capture, "\n")
 		if strings.TrimRight(lines[0], " ") == "$" {
 			return
 		}
 		if time.Now().After(deadline) {
-			t.Fatalf("pane %q never showed a bare prompt within the deadline (last capture: %q)", target, capture)
+			t.Fatalf("pane %q never showed a bare prompt within the deadline (last capture: %q)", "s0", capture)
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
@@ -59,13 +59,13 @@ func TestSendKeysConsumesExactlyOneTrailingSemicolonZeroCase(t *testing.T) {
 	socket := semicolonSocket("zero")
 	cleanup := newBareGeometrySession(t, socket, "s0", 80, 10)
 	defer cleanup()
-	waitForBarePrompt(t, socket, "s0")
+	waitForBarePrompt(t, socket)
 
 	_, _, code := runTmuxRaw(t, socket, "send-keys", "-l", "-t", "s0", "--", "ab")
 	if code != 0 {
 		t.Fatalf("send-keys -l -t s0 -- ab: exit=%d, want 0", code)
 	}
-	waitForPaneLine(t, socket, "s0", "$ ab")
+	waitForPaneLine(t, socket, "$ ab")
 }
 
 // TestSendKeysConsumesExactlyOneTrailingSemicolonOneCase is PRD II-33's
@@ -76,13 +76,13 @@ func TestSendKeysConsumesExactlyOneTrailingSemicolonOneCase(t *testing.T) {
 	socket := semicolonSocket("one")
 	cleanup := newBareGeometrySession(t, socket, "s0", 80, 10)
 	defer cleanup()
-	waitForBarePrompt(t, socket, "s0")
+	waitForBarePrompt(t, socket)
 
 	_, _, code := runTmuxRaw(t, socket, "send-keys", "-l", "-t", "s0", "--", "ab;")
 	if code != 0 {
 		t.Fatalf("send-keys -l -t s0 -- ab;: exit=%d, want 0", code)
 	}
-	waitForPaneLine(t, socket, "s0", "$ ab")
+	waitForPaneLine(t, socket, "$ ab")
 }
 
 // TestSendKeysConsumesExactlyOneTrailingSemicolonTwoCase is PRD II-33's
@@ -95,13 +95,13 @@ func TestSendKeysConsumesExactlyOneTrailingSemicolonTwoCase(t *testing.T) {
 	socket := semicolonSocket("two")
 	cleanup := newBareGeometrySession(t, socket, "s0", 80, 10)
 	defer cleanup()
-	waitForBarePrompt(t, socket, "s0")
+	waitForBarePrompt(t, socket)
 
 	_, _, code := runTmuxRaw(t, socket, "send-keys", "-l", "-t", "s0", "--", "ab;;")
 	if code != 0 {
 		t.Fatalf("send-keys -l -t s0 -- ab;;: exit=%d, want 0", code)
 	}
-	waitForPaneLine(t, socket, "s0", "$ ab;")
+	waitForPaneLine(t, socket, "$ ab;")
 }
 
 // TestSendKeysInteriorSemicolonIsUntouched is PRD II-33's other named
@@ -111,13 +111,13 @@ func TestSendKeysInteriorSemicolonIsUntouched(t *testing.T) {
 	socket := semicolonSocket("interior")
 	cleanup := newBareGeometrySession(t, socket, "s0", 80, 10)
 	defer cleanup()
-	waitForBarePrompt(t, socket, "s0")
+	waitForBarePrompt(t, socket)
 
 	_, _, code := runTmuxRaw(t, socket, "send-keys", "-l", "-t", "s0", "--", "a;b")
 	if code != 0 {
 		t.Fatalf("send-keys -l -t s0 -- a;b: exit=%d, want 0", code)
 	}
-	waitForPaneLine(t, socket, "s0", "$ a;b")
+	waitForPaneLine(t, socket, "$ a;b")
 }
 
 // TestDispatcherSendLiteralDeliversZeroTrailingSemicolons is the green
@@ -176,7 +176,7 @@ func assertSendLiteralDelivers(t *testing.T, name, payload, wantSuffix string) {
 	client := Client{Socket: socket, Timeout: 5 * time.Second}
 	ctx := context.Background()
 
-	waitForBarePrompt(t, socket, "s0")
+	waitForBarePrompt(t, socket)
 	dispatcher, err := NewDispatcher(ctx, client, "%0")
 	if err != nil {
 		t.Fatalf("NewDispatcher: %v", err)
@@ -184,7 +184,7 @@ func assertSendLiteralDelivers(t *testing.T, name, payload, wantSuffix string) {
 	if err := dispatcher.SendLiteral(ctx, payload); err != nil {
 		t.Fatalf("SendLiteral(%q): %v", payload, err)
 	}
-	waitForPaneLine(t, socket, "s0", "$ "+wantSuffix)
+	waitForPaneLine(t, socket, "$ "+wantSuffix)
 }
 
 // waitForPaneLine polls target's pane-0 capture until its FIRST line
@@ -196,18 +196,18 @@ func assertSendLiteralDelivers(t *testing.T, name, payload, wantSuffix string) {
 // that assert an EXACT final line (not just a substring) need the same
 // poll-until-stable discipline waitForLiteralSendMarker already uses for
 // substring checks.
-func waitForPaneLine(t *testing.T, socket, target, want string) {
+func waitForPaneLine(t *testing.T, socket, want string) {
 	t.Helper()
 	deadline := time.Now().Add(3 * time.Second)
 	for {
-		capture := runTmux(t, socket, "capture-pane", "-p", "-t", target)
+		capture := runTmux(t, socket, "capture-pane", "-p", "-t", "s0")
 		lines := strings.Split(capture, "\n")
 		firstLine := strings.TrimRight(lines[0], " ")
 		if firstLine == want {
 			return
 		}
 		if time.Now().After(deadline) {
-			t.Fatalf("pane %q first line = %q, want %q (full capture: %q)", target, firstLine, want, capture)
+			t.Fatalf("pane %q first line = %q, want %q (full capture: %q)", "s0", firstLine, want, capture)
 		}
 		time.Sleep(50 * time.Millisecond)
 	}

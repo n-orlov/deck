@@ -651,7 +651,7 @@ func sidebarCell(line string) (string, bool) {
 }
 
 func clientRowContainsWithinReconcile(ctx context.Context, clientName, rowName, want string) error {
-	return waitForClientSessionRow(ctx, clientName, rowName, want, reconcileIntervalPollDeadline(scenarioReconcileInterval, racebuild.Enabled), "within reconcile interval")
+	return waitForClientSessionRow(ctx, clientName, rowName, want, reconcileIntervalPollDeadline(racebuild.Enabled), "within reconcile interval")
 }
 
 func raceFreshHookAgainstProbe(ctx context.Context, victim, emitter string) error {

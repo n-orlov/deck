@@ -75,7 +75,7 @@ func TestUnfilteredSidebarAlwaysRendersDefaultWithZeroSessionsAndZeroGroups(t *t
 	if len(m.sessions) != 0 || len(m.allGroups) != 0 {
 		t.Fatalf("fixture has %d sessions / %d groups, want 0/0", len(m.sessions), len(m.allGroups))
 	}
-	body := strings.Join(m.sidebarBodyLines(60), "\n")
+	body := strings.Join(m.sidebarBodyLines(), "\n")
 	if !strings.Contains(body, "default  (0)") {
 		t.Errorf("structural default header missing from an empty store's unfiltered sidebar; sidebar=%q", body)
 	}
@@ -123,7 +123,7 @@ func TestEmptyGroupsRenderFromDBWithZeroSessions(t *testing.T) {
 	if len(m.sessions) != 0 {
 		t.Fatalf("fixture has %d sessions, want 0", len(m.sessions))
 	}
-	body := strings.Join(m.sidebarBodyLines(60), "\n")
+	body := strings.Join(m.sidebarBodyLines(), "\n")
 	if !strings.Contains(body, g.Name+"  (0)") {
 		t.Errorf("defined empty group %q missing after reload; sidebar=%q", g.Name, body)
 	}
@@ -168,7 +168,7 @@ func TestEmptyGroupsRenderFromDBWithUnrelatedPopulatedGroup(t *testing.T) {
 	if len(m.sessions) != 1 {
 		t.Fatalf("fixture has %d sessions, want 1", len(m.sessions))
 	}
-	body := strings.Join(m.sidebarBodyLines(60), "\n")
+	body := strings.Join(m.sidebarBodyLines(), "\n")
 	if !strings.Contains(body, "other  (1)") {
 		t.Errorf("populated group's own header/count missing; sidebar=%q", body)
 	}
@@ -207,7 +207,7 @@ func TestEmptyGroupsHiddenUnderAnActiveFilter(t *testing.T) {
 	m.filterQuery = "solo-member"
 	m.sessions = m.filteredSessions()
 
-	body := strings.Join(m.sidebarBodyLines(60), "\n")
+	body := strings.Join(m.sidebarBodyLines(), "\n")
 	if strings.Contains(body, "empty-visible") {
 		t.Errorf("defined-but-empty group rendered under an active filter with no match; sidebar=%q", body)
 	}
@@ -234,13 +234,13 @@ func TestEmptyGroupCollapsesByItsDurableID(t *testing.T) {
 	m.width, m.height = 100, 40
 	m = reviewReloadForEmptyGroups(t, m)
 
-	expanded := strings.Join(m.sidebarBodyLines(60), "\n")
+	expanded := strings.Join(m.sidebarBodyLines(), "\n")
 	if !strings.Contains(expanded, "\u25be "+g.Name+"  (0)") {
 		t.Fatalf("expanded empty group header missing its expanded marker; sidebar=%q", expanded)
 	}
 
 	m.toggleGroupCollapse(g.ID)
-	collapsed := strings.Join(m.sidebarBodyLines(60), "\n")
+	collapsed := strings.Join(m.sidebarBodyLines(), "\n")
 	if !strings.Contains(collapsed, "\u25b8 "+g.Name+"  (0)") {
 		t.Errorf("toggling collapse by the group's durable id did not flip its marker; sidebar=%q", collapsed)
 	}
@@ -271,7 +271,7 @@ func TestGroupCreatedByAnotherClientAppearsAfterReload(t *testing.T) {
 	m := New(clientB, config.Settings{}, "")
 	m.width, m.height = 100, 40
 	m = reviewReloadForEmptyGroups(t, m)
-	before := strings.Join(m.sidebarBodyLines(60), "\n")
+	before := strings.Join(m.sidebarBodyLines(), "\n")
 	if strings.Contains(before, "shared-by-a") {
 		t.Fatalf("group already visible before client A ever created it; sidebar=%q", before)
 	}
@@ -281,7 +281,7 @@ func TestGroupCreatedByAnotherClientAppearsAfterReload(t *testing.T) {
 	}
 
 	m = reviewReloadForEmptyGroups(t, m)
-	after := strings.Join(m.sidebarBodyLines(60), "\n")
+	after := strings.Join(m.sidebarBodyLines(), "\n")
 	if !strings.Contains(after, "shared-by-a  (0)") {
 		t.Errorf("client A's group did not appear in client B's sidebar on the next reload; sidebar=%q", after)
 	}

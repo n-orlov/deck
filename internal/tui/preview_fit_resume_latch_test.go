@@ -87,7 +87,6 @@ var noopResumeOutcomes = []service.ResumeOutcome{
 
 func TestSessionResumedNoopOutcomesLeaveTheLatchSetAndIssueNoFit(t *testing.T) {
 	for _, outcome := range noopResumeOutcomes {
-		outcome := outcome
 		t.Run(fmt.Sprintf("outcome=%d", outcome), func(t *testing.T) {
 			m := resumeLatchModel(t)
 
@@ -114,7 +113,6 @@ func TestSessionResumedNoopOutcomesLeaveTheLatchSetAndIssueNoFit(t *testing.T) {
 
 func TestSessionRestartedNoopOutcomesLeaveTheLatchSetAndIssueNoFit(t *testing.T) {
 	for _, outcome := range noopResumeOutcomes {
-		outcome := outcome
 		t.Run(fmt.Sprintf("outcome=%d", outcome), func(t *testing.T) {
 			m := resumeLatchModel(t)
 

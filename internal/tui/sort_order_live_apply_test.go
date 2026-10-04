@@ -24,7 +24,7 @@ import (
 // cannot show 20 two-line rows at once) would leave the row off screen
 // without scrollSessionIntoView's help.
 func TestSettingsSaveResortsLivePreservingSelectionByID(t *testing.T) {
-	model, _ := settingsLiveApplyTestModel(t)
+	model := settingsLiveApplyTestModel(t)
 
 	var sessions []store.Session
 	for i := 0; i < 20; i++ {

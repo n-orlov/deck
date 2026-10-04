@@ -6,7 +6,6 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/n-orlov/deck/internal/store"
-	"github.com/n-orlov/deck/internal/theme"
 	"github.com/n-orlov/deck/internal/tui/lineedit"
 )
 
@@ -235,7 +234,7 @@ func (m Model) filterStatusLine(width int) []string {
 	if m.filtering {
 		// One line: the editor scrolls inside the field instead of wrapping,
 		// and draws its own caret (a reverse-video cell, never a stand-in).
-		lines := []string{m.canvasFillLine(theme.Background, filterFieldLabel+m.filterFieldText(width), width)}
+		lines := []string{m.canvasFillLine(filterFieldLabel+m.filterFieldText(width), width)}
 		// R186: the field names its editor keys and alt+w (SPEC §11.11); the
 		// rows are budgeted with the field's own, as this function's callers
 		// count len() of what it returns.

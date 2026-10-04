@@ -46,7 +46,6 @@ func TestProbeGoldenPaneCorpus(t *testing.T) {
 	adapters := map[string]Adapter{"claude": NewClaude(), "pi": NewPi(), "codex": NewCodex()}
 	var tested []string
 	for _, golden := range probeGoldens {
-		golden := golden
 		t.Run(golden.kind+"/"+golden.file, func(t *testing.T) {
 			path := filepath.Join("testdata", "probes", golden.kind, golden.file)
 			pane, err := os.ReadFile(path)

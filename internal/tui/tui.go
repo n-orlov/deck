@@ -4715,7 +4715,7 @@ func (m Model) mainView() string {
 // asserting composition rather than padding.
 func (m Model) footerLine() string {
 	width, _ := m.frameSize()
-	return m.canvasFillLine(theme.Background, m.footerLineContent(), width)
+	return m.canvasFillLine(m.footerLineContent(), width)
 }
 
 // footerLineContent is footerLine's own composition, before the canvas
@@ -5399,8 +5399,8 @@ func sidebarEntryContentWidth(layout LayoutResult) int {
 // or every session's two-line row (SPEC §11.3: "the empty state and Press n
 // copy now live inside the sidebar"). The tmux-unavailable startup note is
 // not part of this body — see mainView's full-width banner.
-func (m Model) sidebarBodyLines(contentWidth int) []string {
-	entries := m.sidebarEntries(contentWidth)
+func (m Model) sidebarBodyLines() []string {
+	entries := m.sidebarEntries(60)
 	lines := make([]string, len(entries))
 	for i, e := range entries {
 		lines[i] = e.text
@@ -6252,7 +6252,7 @@ func (m Model) previewBodyLines(contentWidth, contentHeight int) ([]string, []pr
 		lines, owners := m.interactiveBodyLines(contentWidth, contentHeight)
 		return lines, owners, m.interactiveScrollOffset()
 	}
-	lines, owners, scrollOffset := m.previewBodyLinesBeforeRefusal(contentWidth, contentHeight)
+	lines, owners := m.previewBodyLinesBeforeRefusal(contentWidth, contentHeight)
 	// R143/GH #38 (task 007): an active entry refusal for the CURRENTLY
 	// selected session draws its banner over whatever the background
 	// branch above already built -- the passive capture, a placeholder or
@@ -6261,7 +6261,7 @@ func (m Model) previewBodyLines(contentWidth, contentHeight int) ([]string, []pr
 	if r, ok := m.activeEntryRefusalForSelection(); ok {
 		lines, owners = m.overlayEntryRefusalBanner(lines, owners, contentWidth, r)
 	}
-	return lines, owners, scrollOffset
+	return lines, owners, 0
 }
 
 // previewBodyLinesBeforeRefusal is previewBodyLines' own background
@@ -6270,18 +6270,18 @@ func (m Model) previewBodyLines(contentWidth, contentHeight int) ([]string, []pr
 // selected session has a live capture on file, otherwise a placeholder
 // naming exactly which no-live-pane state applies. See previewBodyLines'
 // own doc comment for the full rationale; unchanged by this split.
-func (m Model) previewBodyLinesBeforeRefusal(contentWidth, contentHeight int) ([]string, []previewLineOwner, int) {
+func (m Model) previewBodyLinesBeforeRefusal(contentWidth, contentHeight int) ([]string, []previewLineOwner) {
 	if !m.hasSelectedSession() {
 		lines := fitLines(wrapText("Select or create a session to preview it here.", contentWidth), contentHeight)
-		return lines, deckOwnedPreviewLines(len(lines)), 0
+		return lines, deckOwnedPreviewLines(len(lines))
 	}
 	session, _ := m.selectedSession()
 	if m.previewLive && m.previewSessionID == session.ID {
 		lines, owners := m.cropPreviewBottomLeft(m.previewBytes, contentWidth, contentHeight, m.previewPaneWidth, m.previewPaneHeight)
-		return lines, owners, 0
+		return lines, owners
 	}
 	lines := fitLines(m.previewPlaceholderLines(session, contentWidth, contentHeight), contentHeight)
-	return lines, deckOwnedPreviewLines(len(lines)), 0
+	return lines, deckOwnedPreviewLines(len(lines))
 }
 
 // previewPlaceholderLines names, rather than papers over, why the preview

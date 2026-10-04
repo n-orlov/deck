@@ -27,7 +27,7 @@ import (
 // for the wrong reason.
 func TestSessionStatusStaysLiveWithoutAnyDisplacementOrDisable(t *testing.T) {
 	socket := interactiveSocket("status-live")
-	cleanup := newBareInteractiveSession(t, socket, "s0", 40, 10)
+	cleanup := newBareInteractiveSession(t, socket, 40, 10)
 	defer cleanup()
 	client := tmux.Client{Socket: socket, Timeout: 5 * time.Second}
 	ctx := context.Background()
@@ -62,7 +62,7 @@ func TestSessionFallsBackToPassiveCaptureWhenPipeIsDisplaced(t *testing.T) {
 	defer func() { pipeDisplacedFallbackInterval = originalInterval }()
 
 	socket := interactiveSocket("displaced")
-	cleanup := newBareInteractiveSession(t, socket, "s0", 40, 10)
+	cleanup := newBareInteractiveSession(t, socket, 40, 10)
 	defer cleanup()
 	client := tmux.Client{Socket: socket, Timeout: 5 * time.Second}
 	ctx := context.Background()
@@ -72,7 +72,7 @@ func TestSessionFallsBackToPassiveCaptureWhenPipeIsDisplaced(t *testing.T) {
 	// all accept a bare session name just as well -- so, unlike this
 	// package's other Session tests, target must be resolved to the
 	// pane id here.
-	pane := firstPaneID(t, socket, "s0")
+	pane := firstPaneID(t, socket)
 
 	session, err := Start(ctx, client, pane, 40, 10, func(_ context.Context) ([]byte, error) {
 		return rawCapturePane(t, socket, "s0"), nil
@@ -135,7 +135,7 @@ func TestSessionFallsBackToPassiveCaptureWhenPipeIsDisplaced(t *testing.T) {
 // which takes this same disabled path deliberately).
 func TestSessionReportsDisabledAndNeverStartsAFallbackWhenPipeIsDisabled(t *testing.T) {
 	socket := interactiveSocket("disabled")
-	cleanup := newBareInteractiveSession(t, socket, "s0", 40, 10)
+	cleanup := newBareInteractiveSession(t, socket, 40, 10)
 	defer cleanup()
 	client := tmux.Client{Socket: socket, Timeout: 5 * time.Second}
 	ctx := context.Background()

@@ -60,7 +60,7 @@ func TestEventLogViewOrdersEventsNewestFirstAndTruncatesALongPayload(t *testing.
 	// (archived < set_permission_profile < set_resume_pin alphabetically,
 	// which is exactly insertion order and therefore NOT what this proves
 	// on its own -- the row positions below are the actual proof).
-	if !(posNewest < posMiddle && posMiddle < posOldest) {
+	if posNewest >= posMiddle || posMiddle >= posOldest {
 		t.Fatalf("event log is not newest-first: positions oldest=%d middle=%d newest=%d in:\n%s", posOldest, posMiddle, posNewest, view)
 	}
 

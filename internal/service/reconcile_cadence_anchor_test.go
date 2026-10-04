@@ -86,7 +86,7 @@ exit 0
 	service := Service{Store: db, TMux: tmux.Client{Binary: script, Socket: "priv-cadence-anchor"}, Audit: logger, Clock: clock}
 
 	stop := startReconciler(t, service, interval)
-	if !waitForFile(t, filepath.Join(state, "first-taken"), 5*time.Second) {
+	if !waitForFile(t, filepath.Join(state, "first-taken")) {
 		t.Fatal("the first snapshot was never requested")
 	}
 	// The session vanishes now (every later snapshot reports it gone) while the
