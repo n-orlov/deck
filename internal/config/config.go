@@ -622,7 +622,7 @@ func CreateProfile(getenv func(string) string, userHome func() (string, error), 
 	if err := os.MkdirAll(paths.DataDir, 0o700); err != nil {
 		return fmt.Errorf("create profile %q data directory: %w", profile, err)
 	}
-	if err := os.MkdirAll(filepath.Dir(paths.ConfigFile), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(paths.ConfigFile), 0o700); err != nil {
 		return fmt.Errorf("create profile %q config directory: %w", profile, err)
 	}
 	if err := os.MkdirAll(paths.LogDir, 0o700); err != nil {
