@@ -347,9 +347,7 @@ func (b *backgroundSpanTracker) observeCode(n int, rest []string) int {
 	switch {
 	case n == 49:
 		b.open = false
-	case n >= 40 && n <= 47:
-		b.open = true
-	case n >= 100 && n <= 107:
+	case isBackgroundSGR(n):
 		b.open = true
 	case n == 48:
 		b.open = true
@@ -358,6 +356,12 @@ func (b *backgroundSpanTracker) observeCode(n int, rest []string) int {
 		return extendedColourSkip(rest)
 	}
 	return 0
+}
+
+// isBackgroundSGR reports whether n is a basic (40-47) or bright (100-107)
+// background-setting SGR parameter.
+func isBackgroundSGR(n int) bool {
+	return n >= 40 && n <= 47 || n >= 100 && n <= 107
 }
 
 // extendedColourSkip is the number of fields after a 48/38 selector that
