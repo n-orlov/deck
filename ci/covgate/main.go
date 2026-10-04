@@ -125,31 +125,45 @@ func (s pkgScore) pct() float64 {
 
 func isFixture(pkg string) bool { return strings.HasPrefix(pkg, fixturePrefix) }
 
-// run is main's testable core. moduleDir is any directory inside the module.
-func run(configPath, profilePath, moduleDir string) (string, int, error) {
+// gateInputs is everything run reads before scoring.
+type gateInputs struct {
+	cfg        coverageConfig
+	prof       *profile
+	modulePath string
+	onDisk     map[string]bool
+}
+
+// loadInputs validates the flags and reads the config, the profile and the
+// module's source packages; every failure is a usage/input error (exit 2).
+func loadInputs(configPath, profilePath, moduleDir string) (gateInputs, error) {
 	if configPath == "" {
-		return "", 2, fmt.Errorf("-config is required")
+		return gateInputs{}, fmt.Errorf("-config is required")
 	}
 	if profilePath == "" {
-		return "", 2, fmt.Errorf("-profile is required")
+		return gateInputs{}, fmt.Errorf("-profile is required")
 	}
 	cfg, err := loadConfig(configPath)
 	if err != nil {
-		return "", 2, err
+		return gateInputs{}, err
 	}
 	prof, err := parseProfile(profilePath)
 	if err != nil {
-		return "", 2, err
+		return gateInputs{}, err
 	}
 	root, modulePath, err := findModule(moduleDir)
 	if err != nil {
-		return "", 2, err
+		return gateInputs{}, err
 	}
 	onDisk, err := sourcePackages(root)
 	if err != nil {
-		return "", 2, err
+		return gateInputs{}, err
 	}
+	return gateInputs{cfg: cfg, prof: prof, modulePath: modulePath, onDisk: onDisk}, nil
+}
 
+// scorePackages totals the profile's statements per package and adds every
+// on-disk package, so an unbuilt one shows up with zero statements.
+func scorePackages(in gateInputs) (map[string]*pkgScore, error) {
 	byPkg := make(map[string]*pkgScore)
 	score := func(pkg string) *pkgScore {
 		if byPkg[pkg] == nil {
@@ -157,10 +171,10 @@ func run(configPath, profilePath, moduleDir string) (string, int, error) {
 		}
 		return byPkg[pkg]
 	}
-	for key, stat := range prof.blocks {
-		pkg, perr := packageOf(key.file, modulePath)
+	for key, stat := range in.prof.blocks {
+		pkg, perr := packageOf(key.file, in.modulePath)
 		if perr != nil {
-			return "", 2, perr
+			return nil, perr
 		}
 		s := score(pkg)
 		s.stmts += stat.numStmt
@@ -168,10 +182,15 @@ func run(configPath, profilePath, moduleDir string) (string, int, error) {
 			s.covered += stat.numStmt
 		}
 	}
-	for pkg := range onDisk {
+	for pkg := range in.onDisk {
 		score(pkg)
 	}
+	return byPkg, nil
+}
 
+// zeroListProblems checks zeroStatementPackages against the profile and the
+// disk, and returns the set of names the list holds.
+func zeroListProblems(byPkg map[string]*pkgScore, onDisk map[string]bool) (map[string]bool, []string) {
 	var problems []string
 	zero := make(map[string]bool, len(zeroStatementPackages))
 	for _, z := range zeroStatementPackages {
@@ -183,6 +202,93 @@ func run(configPath, profilePath, moduleDir string) (string, int, error) {
 			problems = append(problems, fmt.Sprintf("%s: named in the zero-statement list but the profile has %d statements for it (remove the entry; the package is measured)", z, s.stmts))
 		}
 	}
+	return zero, problems
+}
+
+// gateReport accumulates the gate's text, its problems and the tighten prompts.
+type gateReport struct {
+	b        strings.Builder
+	problems []string
+	tighten  []string
+	product  pkgScore
+}
+
+// addPackage scores one package against its floor.
+func (r *gateReport) addPackage(cfg coverageConfig, s *pkgScore, zero map[string]bool) {
+	pkg := s.path
+	if s.stmts == 0 {
+		if zero[pkg] {
+			fmt.Fprintf(&r.b, "%-34s %8s %6s  0 (named in the zero-statement list)\n", pkg, "n/a", "n/a")
+			return
+		}
+		r.problems = append(r.problems, fmt.Sprintf("%s: zero statements in the profile and not named in the zero-statement list (the package was never built under the profile: run it under the suite, or, if it truly has no statements, name it by exact path in ci/covgate's zeroStatementPackages)", pkg))
+		fmt.Fprintf(&r.b, "%-34s %8s %6s  0 MISSING\n", pkg, "-", "-")
+		return
+	}
+	floor, kind := cfg.PackageFloor, "package"
+	if isFixture(pkg) {
+		floor, kind = cfg.FixtureFloor, "fixture"
+	} else {
+		r.product.stmts += s.stmts
+		r.product.covered += s.covered
+	}
+	status := "ok"
+	if s.pct() < floor {
+		status = "FAIL"
+		r.problems = append(r.problems, fmt.Sprintf("%s: %.1f%% is below the %s floor of %v%% (%d of %d statements covered; add behaviour tests for its uncovered paths)", pkg, s.pct(), kind, floor, s.covered, s.stmts))
+	} else if s.pct()-floor >= tightenMargin {
+		r.tighten = append(r.tighten, fmt.Sprintf("%s is at %.1f%%, %.1f pp above its %s floor of %v%%", pkg, s.pct(), s.pct()-floor, kind, floor))
+	}
+	fmt.Fprintf(&r.b, "%-34s %7.1f%% %5v%%  %d %s\n", pkg, s.pct(), floor, s.stmts, status)
+}
+
+// addTotal scores the product total; a profile with no product statements
+// is an input error.
+func (r *gateReport) addTotal(cfg coverageConfig) error {
+	if r.product.stmts == 0 {
+		return fmt.Errorf("the profile holds no product statements (only cmd/fake-* fixtures, or nothing)")
+	}
+	status := "ok"
+	if r.product.pct() < cfg.TotalFloor {
+		status = "FAIL"
+		r.problems = append(r.problems, fmt.Sprintf("product total: %.1f%% is below the total floor of %v%% (%d of %d statements covered)", r.product.pct(), cfg.TotalFloor, r.product.covered, r.product.stmts))
+	} else if r.product.pct()-cfg.TotalFloor >= tightenMargin {
+		r.tighten = append(r.tighten, fmt.Sprintf("the product total is at %.1f%%, %.1f pp above its floor of %v%%", r.product.pct(), r.product.pct()-cfg.TotalFloor, cfg.TotalFloor))
+	}
+	fmt.Fprintf(&r.b, "%-34s %7.1f%% %5v%%  %d %s (cmd/fake-* excluded)\n", r.product.path, r.product.pct(), cfg.TotalFloor, r.product.stmts, status)
+	return nil
+}
+
+// finish renders the tighten prompts and the verdict.
+func (r *gateReport) finish() (string, int) {
+	if len(r.tighten) > 0 {
+		r.b.WriteString("tighten: raise the floor in ci/quality.json (floors never go down) -- these beat theirs by >= 1 pp:\n")
+		for _, t := range r.tighten {
+			fmt.Fprintf(&r.b, "  tighten: %s\n", t)
+		}
+	}
+	if len(r.problems) > 0 {
+		r.b.WriteString("coverage gate FAILED:\n")
+		for _, p := range r.problems {
+			fmt.Fprintf(&r.b, "  %s\n", p)
+		}
+		return r.b.String(), 1
+	}
+	r.b.WriteString("coverage gate passed: every floor is met.\n")
+	return r.b.String(), 0
+}
+
+// run is main's testable core. moduleDir is any directory inside the module.
+func run(configPath, profilePath, moduleDir string) (string, int, error) {
+	in, err := loadInputs(configPath, profilePath, moduleDir)
+	if err != nil {
+		return "", 2, err
+	}
+	byPkg, err := scorePackages(in)
+	if err != nil {
+		return "", 2, err
+	}
+	zero, problems := zeroListProblems(byPkg, in.onDisk)
 
 	names := make([]string, 0, len(byPkg))
 	for pkg := range byPkg {
@@ -190,64 +296,15 @@ func run(configPath, profilePath, moduleDir string) (string, int, error) {
 	}
 	sort.Strings(names)
 
-	var b strings.Builder
-	var tighten []string
-	var product pkgScore
-	product.path = "product total"
-	fmt.Fprintf(&b, "%-34s %8s %6s  %s\n", "package", "cover", "floor", "statements")
+	r := &gateReport{problems: problems}
+	r.product.path = "product total"
+	fmt.Fprintf(&r.b, "%-34s %8s %6s  %s\n", "package", "cover", "floor", "statements")
 	for _, pkg := range names {
-		s := byPkg[pkg]
-		if s.stmts == 0 {
-			if zero[pkg] {
-				fmt.Fprintf(&b, "%-34s %8s %6s  0 (named in the zero-statement list)\n", pkg, "n/a", "n/a")
-				continue
-			}
-			problems = append(problems, fmt.Sprintf("%s: zero statements in the profile and not named in the zero-statement list (the package was never built under the profile: run it under the suite, or, if it truly has no statements, name it by exact path in ci/covgate's zeroStatementPackages)", pkg))
-			fmt.Fprintf(&b, "%-34s %8s %6s  0 MISSING\n", pkg, "-", "-")
-			continue
-		}
-		floor, kind := cfg.PackageFloor, "package"
-		if isFixture(pkg) {
-			floor, kind = cfg.FixtureFloor, "fixture"
-		} else {
-			product.stmts += s.stmts
-			product.covered += s.covered
-		}
-		status := "ok"
-		if s.pct() < floor {
-			status = "FAIL"
-			problems = append(problems, fmt.Sprintf("%s: %.1f%% is below the %s floor of %v%% (%d of %d statements covered; add behaviour tests for its uncovered paths)", pkg, s.pct(), kind, floor, s.covered, s.stmts))
-		} else if s.pct()-floor >= tightenMargin {
-			tighten = append(tighten, fmt.Sprintf("%s is at %.1f%%, %.1f pp above its %s floor of %v%%", pkg, s.pct(), s.pct()-floor, kind, floor))
-		}
-		fmt.Fprintf(&b, "%-34s %7.1f%% %5v%%  %d %s\n", pkg, s.pct(), floor, s.stmts, status)
+		r.addPackage(in.cfg, byPkg[pkg], zero)
 	}
-
-	if product.stmts == 0 {
-		return "", 2, fmt.Errorf("the profile holds no product statements (only cmd/fake-* fixtures, or nothing)")
+	if err := r.addTotal(in.cfg); err != nil {
+		return "", 2, err
 	}
-	status := "ok"
-	if product.pct() < cfg.TotalFloor {
-		status = "FAIL"
-		problems = append(problems, fmt.Sprintf("product total: %.1f%% is below the total floor of %v%% (%d of %d statements covered)", product.pct(), cfg.TotalFloor, product.covered, product.stmts))
-	} else if product.pct()-cfg.TotalFloor >= tightenMargin {
-		tighten = append(tighten, fmt.Sprintf("the product total is at %.1f%%, %.1f pp above its floor of %v%%", product.pct(), product.pct()-cfg.TotalFloor, cfg.TotalFloor))
-	}
-	fmt.Fprintf(&b, "%-34s %7.1f%% %5v%%  %d %s (cmd/fake-* excluded)\n", product.path, product.pct(), cfg.TotalFloor, product.stmts, status)
-
-	if len(tighten) > 0 {
-		b.WriteString("tighten: raise the floor in ci/quality.json (floors never go down) -- these beat theirs by >= 1 pp:\n")
-		for _, t := range tighten {
-			fmt.Fprintf(&b, "  tighten: %s\n", t)
-		}
-	}
-	if len(problems) > 0 {
-		b.WriteString("coverage gate FAILED:\n")
-		for _, p := range problems {
-			fmt.Fprintf(&b, "  %s\n", p)
-		}
-		return b.String(), 1, nil
-	}
-	b.WriteString("coverage gate passed: every floor is met.\n")
-	return b.String(), 0, nil
+	out, code := r.finish()
+	return out, code, nil
 }
