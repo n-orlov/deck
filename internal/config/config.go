@@ -275,7 +275,6 @@ func LoadFromProfile(getenv func(string) string, userHome func() (string, error)
 	if err != nil {
 		return Settings{}, err
 	}
-	dataRoot := defaultPaths.DataDir
 	clock, err := NewClock(getenv("DECK_CLOCK"), getenv("DECK_CLOCK_STEP"))
 	if err != nil {
 		return Settings{}, err
@@ -283,158 +282,205 @@ func LoadFromProfile(getenv func(string) string, userHome func() (string, error)
 	// A frozen clock is shared under the resolved data root even when DECK_HOME
 	// is unset, so every process using the same normal installation agrees.
 	clock.sharedPath = filepath.Join(paths.Home, "clock.now")
-	reconcile, err := milliseconds(getenv("DECK_RECONCILE_MS"), DefaultReconcileMS, "DECK_RECONCILE_MS")
-	if err != nil {
+	settings := Settings{Paths: paths, DataRoot: defaultPaths.DataDir, Profile: profile, Clock: clock, IDs: NewIDGenerator(getenv("DECK_ID_SEED"))}
+	if err := applyIntervalEnv(getenv, &settings); err != nil {
 		return Settings{}, err
 	}
-	preview, err := milliseconds(getenv("DECK_PREVIEW_MS"), DefaultPreviewMS, "DECK_PREVIEW_MS")
-	if err != nil {
+	if settings.Socket, err = resolveSocket(getenv, profile); err != nil {
 		return Settings{}, err
-	}
-	undo, err := milliseconds(getenv("DECK_UNDO_MS"), DefaultUndoMS, "DECK_UNDO_MS")
-	if err != nil {
-		return Settings{}, err
-	}
-	deleteGrace, err := milliseconds(getenv("DECK_DELETE_GRACE_MS"), DefaultDeleteGraceMS, "DECK_DELETE_GRACE_MS")
-	if err != nil {
-		return Settings{}, err
-	}
-	// DECK_TMUX_SOCKET always wins outright (SPEC §3.4); otherwise the
-	// default profile keeps socket "deck" byte-for-byte and any named
-	// profile derives "deck-<name>".
-	socket := getenv("DECK_TMUX_SOCKET")
-	if socket == "" {
-		if profile == DefaultProfile {
-			socket = DefaultSocket
-		} else {
-			socket = "deck-" + profile
-		}
-	}
-	if strings.ContainsAny(socket, "/\x00") {
-		return Settings{}, fmt.Errorf("DECK_TMUX_SOCKET must be a tmux socket name, not a path")
 	}
 	fileCfg, err := loadConfigFile(paths.ConfigFile)
 	if err != nil {
 		return Settings{}, err
 	}
+	applyFileConfig(&settings, fileCfg)
 	envOverrides := map[string]string{}
-	asciiRaw := getenv("DECK_ASCII")
-	ascii, err := boolEnv(asciiRaw, fileCfg.ASCII, "DECK_ASCII")
-	if err != nil {
+	if err := applyDisplayEnv(getenv, &settings, envOverrides); err != nil {
 		return Settings{}, err
 	}
-	if asciiRaw != "" {
-		envOverrides["ui.ascii"] = "DECK_ASCII"
+	for _, step := range envOverrideSteps {
+		if err := step(getenv, &settings, envOverrides); err != nil {
+			return Settings{}, err
+		}
 	}
-	animation, err := boolEnv(getenv("DECK_ANIM"), true, "DECK_ANIM")
+	settings.ThemesDir = theme.ThemesDir(defaultPaths.ConfigFile)
+	userThemes, userErrs := theme.DiscoverUserThemes(settings.ThemesDir)
+	settings.Theme, settings.ThemeReason = theme.Resolve(userThemes, userErrs, fileCfg.Theme)
+	if len(envOverrides) > 0 {
+		settings.EnvOverrides = envOverrides
+	}
+	return settings, nil
+}
+
+// applyIntervalEnv resolves the four DECK_*_MS interval variables, in the
+// order they are validated (the first bad one is the error reported).
+func applyIntervalEnv(getenv func(string) string, settings *Settings) error {
+	intervals := []struct {
+		env      string
+		fallback int
+		dst      *time.Duration
+	}{
+		{"DECK_RECONCILE_MS", DefaultReconcileMS, &settings.Reconcile},
+		{"DECK_PREVIEW_MS", DefaultPreviewMS, &settings.Preview},
+		{"DECK_UNDO_MS", DefaultUndoMS, &settings.Undo},
+		{"DECK_DELETE_GRACE_MS", DefaultDeleteGraceMS, &settings.DeleteGrace},
+	}
+	for _, interval := range intervals {
+		value, err := milliseconds(getenv(interval.env), interval.fallback, interval.env)
+		if err != nil {
+			return err
+		}
+		*interval.dst = value
+	}
+	return nil
+}
+
+// resolveSocket picks the tmux socket name: DECK_TMUX_SOCKET always wins
+// outright (SPEC §3.4); otherwise the default profile keeps socket "deck"
+// byte-for-byte and any named profile derives "deck-<name>".
+func resolveSocket(getenv func(string) string, profile string) (string, error) {
+	socket := getenv("DECK_TMUX_SOCKET")
+	if socket == "" {
+		socket = DefaultSocket
+		if profile != DefaultProfile {
+			socket = "deck-" + profile
+		}
+	}
+	if strings.ContainsAny(socket, "/\x00") {
+		return "", fmt.Errorf("DECK_TMUX_SOCKET must be a tmux socket name, not a path")
+	}
+	return socket, nil
+}
+
+// applyFileConfig copies the settings that come straight from the config
+// file; the environment overrides then apply on top of them.
+func applyFileConfig(settings *Settings, fileCfg FileConfig) {
+	settings.StaleAfter = fileCfg.StaleAfter
+	settings.CaptureMinInterval = fileCfg.CaptureMinInterval
+	settings.AllowYolo = fileCfg.AllowYolo
+	settings.YoloDefault = fileCfg.YoloDefault
+	settings.Env = fileCfg.Env
+	settings.DefaultGroupFirst = fileCfg.DefaultGroupFirst
+	settings.PreLaunch = fileCfg.PreLaunch
+	settings.PostDestroy = fileCfg.PostDestroy
+	settings.SortOrder = fileCfg.SortOrder
+	settings.RecentCwdLimit = fileCfg.RecentCwdLimit
+	settings.Mouse = fileCfg.Mouse
+	settings.PreviewFit = fileCfg.PreviewFit
+	settings.AttachOnNew = fileCfg.AttachOnNew
+	settings.AttachOnResume = fileCfg.AttachOnResume
+	settings.PreviewPaint = fileCfg.PreviewPaint
+	settings.TmuxMouse = fileCfg.TmuxMouse
+	settings.EventRetentionDays = fileCfg.EventRetentionDays
+	settings.File = fileCfg
+}
+
+// boolOverride resolves one boolean setting from its DECK_ variable, falling
+// back to fallback when unset, and records the override under key when the
+// variable is set.
+func boolOverride(getenv func(string) string, env, key string, fallback bool, overrides map[string]string) (bool, error) {
+	raw := getenv(env)
+	value, err := boolEnv(raw, fallback, env)
 	if err != nil {
-		return Settings{}, err
+		return false, err
 	}
-	color := getenv("NO_COLOR") == ""
+	if raw != "" {
+		overrides[key] = env
+	}
+	return value, nil
+}
+
+// applyDisplayEnv resolves the display variables that have no config-file
+// override of their own except DECK_ASCII: DECK_ASCII, DECK_ANIM,
+// DECK_COLOR (NO_COLOR when unset) and DECK_COLOR_DEPTH.
+func applyDisplayEnv(getenv func(string) string, settings *Settings, overrides map[string]string) error {
+	var err error
+	if settings.ASCII, err = boolOverride(getenv, "DECK_ASCII", "ui.ascii", settings.File.ASCII, overrides); err != nil {
+		return err
+	}
+	if settings.Animation, err = boolEnv(getenv("DECK_ANIM"), true, "DECK_ANIM"); err != nil {
+		return err
+	}
+	settings.Color = getenv("NO_COLOR") == ""
 	if raw := getenv("DECK_COLOR"); raw != "" {
-		color, err = boolEnv(raw, true, "DECK_COLOR")
-		if err != nil {
-			return Settings{}, err
+		if settings.Color, err = boolEnv(raw, true, "DECK_COLOR"); err != nil {
+			return err
 		}
 	}
-	colorDepth, err := colorDepthEnv(getenv("DECK_COLOR_DEPTH"))
+	settings.ColorDepth, err = colorDepthEnv(getenv("DECK_COLOR_DEPTH"))
+	return err
+}
+
+// envOverrideStep applies one environment override on top of the file
+// config already copied into the Settings.
+type envOverrideStep func(getenv func(string) string, settings *Settings, overrides map[string]string) error
+
+// boolOverrideStep builds the step for a boolean setting whose file value is
+// already in *field.
+func boolOverrideStep(env, key string, field func(*Settings) *bool) envOverrideStep {
+	return func(getenv func(string) string, settings *Settings, overrides map[string]string) error {
+		dst := field(settings)
+		value, err := boolOverride(getenv, env, key, *dst, overrides)
+		if err != nil {
+			return err
+		}
+		*dst = value
+		return nil
+	}
+}
+
+// envOverrideSteps lists the overrides in the order they are validated.
+var envOverrideSteps = []envOverrideStep{
+	boolOverrideStep("DECK_MOUSE", "ui.mouse", func(s *Settings) *bool { return &s.Mouse }),
+	boolOverrideStep("DECK_PREVIEW_FIT", "ui.preview_fit", func(s *Settings) *bool { return &s.PreviewFit }),
+	boolOverrideStep("DECK_ATTACH_ON_NEW", "ui.attach_on_new", func(s *Settings) *bool { return &s.AttachOnNew }),
+	boolOverrideStep("DECK_ATTACH_ON_RESUME", "ui.attach_on_resume", func(s *Settings) *bool { return &s.AttachOnResume }),
+	previewPaintOverride,
+	boolOverrideStep("DECK_TMUX_MOUSE", "tmux_mouse", func(s *Settings) *bool { return &s.TmuxMouse }),
+	interactiveIntervalOverride,
+	interactiveTransportOverride,
+}
+
+func previewPaintOverride(getenv func(string) string, settings *Settings, overrides map[string]string) error {
+	raw := getenv("DECK_PREVIEW_PAINT")
+	if raw == "" {
+		return nil
+	}
+	value, err := previewPaintEnv(raw)
 	if err != nil {
-		return Settings{}, err
+		return err
 	}
-	mouse := fileCfg.Mouse
-	mouseRaw := getenv("DECK_MOUSE")
-	if mouseRaw != "" {
-		mouse, err = boolEnv(mouseRaw, mouse, "DECK_MOUSE")
-		if err != nil {
-			return Settings{}, err
-		}
-		envOverrides["ui.mouse"] = "DECK_MOUSE"
-	}
-	previewFit := fileCfg.PreviewFit
-	previewFitRaw := getenv("DECK_PREVIEW_FIT")
-	if previewFitRaw != "" {
-		previewFit, err = boolEnv(previewFitRaw, previewFit, "DECK_PREVIEW_FIT")
-		if err != nil {
-			return Settings{}, err
-		}
-		envOverrides["ui.preview_fit"] = "DECK_PREVIEW_FIT"
-	}
-	attachOnNew := fileCfg.AttachOnNew
-	attachOnNewRaw := getenv("DECK_ATTACH_ON_NEW")
-	if attachOnNewRaw != "" {
-		attachOnNew, err = boolEnv(attachOnNewRaw, attachOnNew, "DECK_ATTACH_ON_NEW")
-		if err != nil {
-			return Settings{}, err
-		}
-		envOverrides["ui.attach_on_new"] = "DECK_ATTACH_ON_NEW"
-	}
-	attachOnResume := fileCfg.AttachOnResume
-	attachOnResumeRaw := getenv("DECK_ATTACH_ON_RESUME")
-	if attachOnResumeRaw != "" {
-		attachOnResume, err = boolEnv(attachOnResumeRaw, attachOnResume, "DECK_ATTACH_ON_RESUME")
-		if err != nil {
-			return Settings{}, err
-		}
-		envOverrides["ui.attach_on_resume"] = "DECK_ATTACH_ON_RESUME"
-	}
-	previewPaint := fileCfg.PreviewPaint
-	if raw := getenv("DECK_PREVIEW_PAINT"); raw != "" {
-		previewPaint, err = previewPaintEnv(raw)
-		if err != nil {
-			return Settings{}, err
-		}
-		envOverrides["ui.preview_paint"] = "DECK_PREVIEW_PAINT"
-	}
-	tmuxMouse := fileCfg.TmuxMouse
-	tmuxMouseRaw := getenv("DECK_TMUX_MOUSE")
-	if tmuxMouseRaw != "" {
-		tmuxMouse, err = boolEnv(tmuxMouseRaw, tmuxMouse, "DECK_TMUX_MOUSE")
-		if err != nil {
-			return Settings{}, err
-		}
-		envOverrides["tmux_mouse"] = "DECK_TMUX_MOUSE"
-	}
-	interactiveInterval, err := milliseconds(getenv("DECK_INTERACTIVE_MS"), int(fileCfg.InteractiveInterval/time.Millisecond), "DECK_INTERACTIVE_MS")
+	settings.PreviewPaint = value
+	overrides["ui.preview_paint"] = "DECK_PREVIEW_PAINT"
+	return nil
+}
+
+func interactiveIntervalOverride(getenv func(string) string, settings *Settings, overrides map[string]string) error {
+	raw := getenv("DECK_INTERACTIVE_MS")
+	value, err := milliseconds(raw, int(settings.File.InteractiveInterval/time.Millisecond), "DECK_INTERACTIVE_MS")
 	if err != nil {
-		return Settings{}, err
+		return err
 	}
-	if getenv("DECK_INTERACTIVE_MS") != "" {
-		envOverrides["interactive_ms"] = "DECK_INTERACTIVE_MS"
+	settings.InteractiveInterval = value
+	if raw != "" {
+		overrides["interactive_ms"] = "DECK_INTERACTIVE_MS"
 	}
-	interactiveTransport := fileCfg.InteractiveTransport
-	if raw := getenv("DECK_INTERACTIVE_TRANSPORT"); raw != "" {
-		interactiveTransport, err = interactiveTransportEnv(raw)
-		if err != nil {
-			return Settings{}, err
-		}
-		envOverrides["interactive_transport"] = "DECK_INTERACTIVE_TRANSPORT"
+	return nil
+}
+
+func interactiveTransportOverride(getenv func(string) string, settings *Settings, overrides map[string]string) error {
+	settings.InteractiveTransport = settings.File.InteractiveTransport
+	raw := getenv("DECK_INTERACTIVE_TRANSPORT")
+	if raw == "" {
+		return nil
 	}
-	themesDir := theme.ThemesDir(defaultPaths.ConfigFile)
-	userThemes, userErrs := theme.DiscoverUserThemes(themesDir)
-	resolvedTheme, themeReason := theme.Resolve(userThemes, userErrs, fileCfg.Theme)
-	if len(envOverrides) == 0 {
-		envOverrides = nil
+	value, err := interactiveTransportEnv(raw)
+	if err != nil {
+		return err
 	}
-	return Settings{
-		Paths: paths, DataRoot: dataRoot, Profile: profile, Socket: socket, Clock: clock, IDs: NewIDGenerator(getenv("DECK_ID_SEED")),
-		ThemesDir: themesDir,
-		Reconcile: reconcile, Preview: preview, Undo: undo, DeleteGrace: deleteGrace, StaleAfter: fileCfg.StaleAfter, CaptureMinInterval: fileCfg.CaptureMinInterval, InteractiveInterval: interactiveInterval, InteractiveTransport: interactiveTransport,
-		ASCII: ascii, Animation: animation, Color: color, ColorDepth: colorDepth, AllowYolo: fileCfg.AllowYolo, YoloDefault: fileCfg.YoloDefault, Env: fileCfg.Env, Mouse: mouse,
-		DefaultGroupFirst:  fileCfg.DefaultGroupFirst,
-		PreLaunch:          fileCfg.PreLaunch,
-		PostDestroy:        fileCfg.PostDestroy,
-		SortOrder:          fileCfg.SortOrder,
-		PreviewFit:         previewFit,
-		AttachOnNew:        attachOnNew,
-		AttachOnResume:     attachOnResume,
-		PreviewPaint:       previewPaint,
-		TmuxMouse:          tmuxMouse,
-		RecentCwdLimit:     fileCfg.RecentCwdLimit,
-		EventRetentionDays: fileCfg.EventRetentionDays,
-		Theme:              resolvedTheme, ThemeReason: themeReason,
-		EnvOverrides: envOverrides,
-		File:         fileCfg,
-	}, nil
+	settings.InteractiveTransport = value
+	overrides["interactive_transport"] = "DECK_INTERACTIVE_TRANSPORT"
+	return nil
 }
 
 // CapturesDir returns the single, canonical location SPEC §9.4 reserves for
