@@ -150,7 +150,7 @@ func exactlyOneHookStoreWrite(ctx context.Context) error {
 	}
 	var succeeded bool
 	if err := json.Unmarshal(writes[0]["succeeded"], &succeeded); err != nil || !succeeded {
-		return fmt.Errorf("hook store write succeeded = %v, decode error %v", succeeded, err)
+		return fmt.Errorf("hook store write succeeded = %v, decode error %w", succeeded, err)
 	}
 	return nil
 }

@@ -50,7 +50,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 			return 2
 		}
 		if err := validateResolvedProfile(positional, provided, os.Getenv); err != nil {
-			fmt.Fprintln(stderr, err)
+			sayln(stderr, err)
 			return 2
 		}
 		// SPEC §3.4's launch order is validate -> confirm if unknown -> create
@@ -60,7 +60,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		resolved := config.ResolveProfileName(positional, os.Getenv)
 		exists, err := config.ProfileExists(os.Getenv, os.UserHomeDir, resolved)
 		if err != nil {
-			fmt.Fprintln(stderr, "deck profile:", err)
+			sayln(stderr, "deck profile:", err)
 			return 0
 		}
 		if !exists {
@@ -71,7 +71,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	}
 	settings, err := config.LoadFromProfile(os.Getenv, os.UserHomeDir, positional)
 	if err != nil {
-		fmt.Fprintln(stderr, "deck configuration:", err)
+		sayln(stderr, "deck configuration:", err)
 		if isHook {
 			return 1
 		}
@@ -79,7 +79,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	}
 	if isHook {
 		if err := runHook(context.Background(), settings, stdin); err != nil {
-			fmt.Fprintln(stderr, "deck hook:", err)
+			sayln(stderr, "deck hook:", err)
 			return 1
 		}
 		return 0
@@ -90,7 +90,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	// launch, default included. Best-effort, like the tombstone sweep
 	// below -- an unwritable data root must never stop deck from starting.
 	if err := config.TouchLastUsed(settings.Paths); err != nil {
-		fmt.Fprintln(stderr, "deck last used:", err)
+		sayln(stderr, "deck last used:", err)
 	}
 
 	stopClockStep := startClockStepTrigger(settings.Clock, stderr)
@@ -98,10 +98,14 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 
 	db, err := store.Open(settings.Paths)
 	if err != nil {
-		fmt.Fprintln(stderr, "deck state:", err)
+		sayln(stderr, "deck state:", err)
 		return 0
 	}
-	defer db.Close()
+	defer func() {
+		if closeErr := db.Close(); closeErr != nil {
+			sayln(stderr, "deck state: close:", closeErr)
+		}
+	}()
 
 	// R62 (steer 3e-001 §6.4/§7): the first EnforceEventRetention call --
 	// right here, on store open -- always performs its deletion pass (no
@@ -113,7 +117,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	// own comment), and the throttle above already guarantees this main
 	// process's own next reconcile tick will catch up within the hour.
 	if err := db.EnforceEventRetention(context.Background(), settings.EventRetentionDays, settings.Clock.Now().UnixMilli()); err != nil {
-		fmt.Fprintln(stderr, "deck event retention:", err)
+		sayln(stderr, "deck event retention:", err)
 		return 0
 	}
 	// Task 010's store-open call site, deliberately right beside R62's above
@@ -134,17 +138,17 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 
 	logger, err := audit.New(settings.Paths, settings.Clock)
 	if err != nil {
-		fmt.Fprintln(stderr, "deck audit:", err)
+		sayln(stderr, "deck audit:", err)
 		return 0
 	}
 	executable, err := os.Executable()
 	if err != nil {
-		fmt.Fprintln(stderr, "deck executable:", err)
+		sayln(stderr, "deck executable:", err)
 		return 0
 	}
 	executable, err = filepath.Abs(executable)
 	if err != nil {
-		fmt.Fprintln(stderr, "deck executable:", err)
+		sayln(stderr, "deck executable:", err)
 		return 0
 	}
 	client := tmux.Client{Socket: settings.Socket, Mouse: settings.TmuxMouse}
@@ -156,7 +160,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	// failure here must never stop deck from starting, since this is a
 	// backlog catch-up, not part of any promise made at open time.
 	if _, err := tmux.ReclaimLeakedInteractivePipes(context.Background()); err != nil {
-		fmt.Fprintln(stderr, "deck interactive pipe reclaim:", err)
+		sayln(stderr, "deck interactive pipe reclaim:", err)
 	}
 	registry := agent.NewRegistry()
 	registry.Register(agent.NewShell())
@@ -264,7 +268,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	// this is safe to call unconditionally on every other exit route too.
 	shutdownArmedInteractiveClaim(finalModel)
 	if runErr != nil {
-		fmt.Fprintln(stderr, "deck:", runErr)
+		sayln(stderr, "deck:", runErr)
 		return 0
 	}
 	return 0
@@ -288,11 +292,11 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 func parseProfileArgs(rest []string, stderr io.Writer) (positional string, provided bool, ok bool) {
 	for _, arg := range rest {
 		if strings.HasPrefix(arg, "-") {
-			fmt.Fprintf(stderr, "error: unknown flag %s\n", arg)
+			sayf(stderr, "error: unknown flag %s\n", arg)
 			return "", false, false
 		}
 		if provided {
-			fmt.Fprintf(stderr, "error: at most one profile argument, got %q and %q\n", positional, arg)
+			sayf(stderr, "error: at most one profile argument, got %q and %q\n", positional, arg)
 			return "", false, false
 		}
 		positional = arg
@@ -337,7 +341,7 @@ func validateResolvedProfile(positional string, positionalProvided bool, getenv 
 func confirmAndCreateProfile(profile string, getenv func(string) string, userHome func() (string, error), stdin io.Reader, stderr io.Writer) int {
 	known, err := config.KnownProfiles(getenv, userHome)
 	if err != nil {
-		fmt.Fprintln(stderr, "deck profile:", err)
+		sayln(stderr, "deck profile:", err)
 		return 1
 	}
 	prompt := fmt.Sprintf("deck: no profile %q yet (known: %s). Create it? [y/N]", profile, strings.Join(known, ", "))
@@ -345,10 +349,10 @@ func confirmAndCreateProfile(profile string, getenv func(string) string, userHom
 	if !isFile || !term.IsTerminal(file.Fd()) {
 		// Non-terminal stdin: refuse with the same message, without ever
 		// waiting to read an answer that could never arrive interactively.
-		fmt.Fprintln(stderr, prompt)
+		sayln(stderr, prompt)
 		return 1
 	}
-	fmt.Fprint(stderr, prompt+" ")
+	say(stderr, prompt+" ")
 	answer, _ := bufio.NewReader(stdin).ReadString('\n')
 	// SPEC §3.4: "only y creates it" -- exactly a lowercase y, with only
 	// the line terminator stripped. "Y", "yes", " y" and an empty line are
@@ -357,7 +361,7 @@ func confirmAndCreateProfile(profile string, getenv func(string) string, userHom
 		return 1
 	}
 	if err := config.CreateProfile(getenv, userHome, profile); err != nil {
-		fmt.Fprintln(stderr, "deck profile:", err)
+		sayln(stderr, "deck profile:", err)
 		return 1
 	}
 	return 0
@@ -376,7 +380,7 @@ func confirmAndCreateProfile(profile string, getenv func(string) string, userHom
 // stepped over.
 func preFrameTombstoneSweep(ctx context.Context, db *store.Store, settings config.Settings, stderr io.Writer) {
 	if _, err := db.SweepTombstones(ctx, settings.DeleteGrace, settings.Clock.Now().UnixMilli()); err != nil {
-		fmt.Fprintln(stderr, "deck tombstone sweep:", err)
+		sayln(stderr, "deck tombstone sweep:", err)
 	}
 }
 
@@ -422,7 +426,7 @@ func startClockStepTrigger(clock *config.Clock, stderr io.Writer) func() {
 			select {
 			case <-requests:
 				if _, err := clock.AdvanceShared(); err != nil {
-					fmt.Fprintln(stderr, "deck clock step:", err)
+					sayln(stderr, "deck clock step:", err)
 				}
 			case <-done:
 				return
@@ -471,7 +475,7 @@ func refuseBadHookProfile(getenv func(string) string, userHome func() (string, e
 // stderr line, naming both TMUX_PANE (identifying which pane the hook fired
 // from, empty when unset) and the profile that failed to resolve.
 func reportHookProfileRefusal(stderr io.Writer, getenv func(string) string, profile string, err error) {
-	fmt.Fprintf(stderr, "deck hook: TMUX_PANE=%q profile %q: %v\n", getenv("TMUX_PANE"), profile, err)
+	sayf(stderr, "deck hook: TMUX_PANE=%q profile %q: %v\n", getenv("TMUX_PANE"), profile, err)
 }
 
 // maxHookStdinBytes caps what `deck _hook` reads from stdin. Agents run the
@@ -518,7 +522,7 @@ func (c *cappedHookReader) Read(p []byte) (int, error) {
 // runHook is intentionally selected before opening the normal application
 // store or constructing a tmux client. A late hook must not recreate deleted
 // state or bootstrap a tmux server.
-func runHook(ctx context.Context, settings config.Settings, stdin io.Reader) error {
+func runHook(ctx context.Context, settings config.Settings, stdin io.Reader) (runErr error) {
 	var raw json.RawMessage
 	capped := &cappedHookReader{r: stdin, remaining: maxHookStdinBytes}
 	decoder := json.NewDecoder(capped)
@@ -555,7 +559,11 @@ func runHook(ctx context.Context, settings config.Settings, stdin io.Reader) err
 	if err != nil {
 		return fmt.Errorf("open existing state database: %w", err)
 	}
-	defer db.Close()
+	defer func() {
+		if closeErr := db.Close(); closeErr != nil {
+			runErr = errors.Join(runErr, fmt.Errorf("close state database: %w", closeErr))
+		}
+	}()
 	logger, err := audit.New(settings.Paths, settings.Clock)
 	if err != nil {
 		return fmt.Errorf("open audit log: %w", err)

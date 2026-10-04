@@ -188,13 +188,18 @@ func TestWriteConfigFileFailureLeavesPreviousFileIntact(t *testing.T) {
 	if err := os.Chmod(dir, 0o500); err != nil {
 		t.Fatal(err)
 	}
-	defer os.Chmod(dir, 0o700)
+	restore := func() {
+		if err := os.Chmod(dir, 0o700); err != nil {
+			t.Errorf("restore directory mode: %v", err)
+		}
+	}
+	defer restore()
 
 	if err := WriteConfigFile(path, cfg); err == nil {
-		os.Chmod(dir, 0o700)
+		restore()
 		t.Fatal("write into a read-only directory unexpectedly succeeded")
 	}
-	os.Chmod(dir, 0o700)
+	restore()
 
 	after, err := os.ReadFile(path)
 	if err != nil {

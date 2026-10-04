@@ -62,7 +62,9 @@ func TestR150RowCallbackIgnoresGroupHeaderText(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			frame := "| " + tc.header + " | preview |\r\n| " + tc.row + " | pane |"
 			screen := vt.NewEmulator(100, 5)
-			screen.Write([]byte(frame))
+			if _, err := screen.Write([]byte(frame)); err != nil {
+				t.Fatalf("write frame to emulator: %v", err)
+			}
 			driver := &ScreenDriver{screen: screen}
 			h := &ScenarioHarness{Home: t.TempDir(), namedClients: map[string]*ScreenDriver{"A": driver}}
 			writeSyntheticSessionNames(t, h.Home, "alpha")
@@ -94,7 +96,11 @@ func TestR150LiveGroupedSidebarRowSettleProvesActualStatus(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.Remove(h.Binary)
+	defer func() {
+		if err := os.Remove(h.Binary); err != nil {
+			t.Logf("remove scenario binary: %v", err)
+		}
+	}()
 	defer func() {
 		if err := h.Close(); err != nil {
 			t.Error(err)

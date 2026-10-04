@@ -390,5 +390,6 @@ func logFingerprintAssertionExecution(dirLabel, fpLabel, path string, compareErr
 	if compareErr != nil {
 		outcome = "FAIL: " + compareErr.Error()
 	}
-	fmt.Fprintf(f, "%s dirLabel=%q fpLabel=%q path=%q outcome=%s\n", time.Now().Format(time.RFC3339Nano), dirLabel, fpLabel, path, outcome)
+	// Best-effort diagnostic log, like the open above: a failed append is dropped.
+	_, _ = fmt.Fprintf(f, "%s dirLabel=%q fpLabel=%q path=%q outcome=%s\n", time.Now().Format(time.RFC3339Nano), dirLabel, fpLabel, path, outcome)
 }

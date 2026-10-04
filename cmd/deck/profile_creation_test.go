@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"hash/fnv"
-	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -100,7 +99,7 @@ func launchProfileCreationPTY(t *testing.T, binary, home string) (terminal *os.F
 		t.Fatal(err)
 	}
 	out := newPTYOutput()
-	go io.Copy(out, terminal)
+	go pumpTerminal(out, terminal)
 	doneCh := make(chan error, 1)
 	go func() {
 		doneCh <- cmd.Wait()

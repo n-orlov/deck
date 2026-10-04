@@ -279,7 +279,7 @@ func (s *Store) AcquireLaunchLease(ctx context.Context, sessionID, owner string,
 	if err != nil {
 		return LaunchLeaseResult{}, fmt.Errorf("begin acquire launch lease: %w", err)
 	}
-	defer tx.Rollback()
+	defer rollbackTx(tx)
 
 	var status string
 	var curOwner sql.NullString

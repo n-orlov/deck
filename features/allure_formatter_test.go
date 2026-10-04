@@ -494,7 +494,9 @@ func (f *allureFormatter) Summary() {
 	for _, id := range f.order {
 		f.finish(f.scenarios[id])
 	}
-	fmt.Fprintf(f.out, "allure: %d result(s) written to %s\n", f.written, f.dir)
+	// The godog formatter interface gives Summary no error return, and a closed
+	// stdout leaves nowhere to report to.
+	_, _ = fmt.Fprintf(f.out, "allure: %d result(s) written to %s\n", f.written, f.dir)
 }
 
 func allureDigest(s string) string {

@@ -75,7 +75,7 @@ func newCommentServer(t *testing.T, seed []comment) *commentServer {
 			}
 			w.Header().Set("Content-Type", "application/json")
 			out, _ := json.Marshal(slice)
-			w.Write(out)
+			writeResponse(t, w, out)
 		case http.MethodPost:
 			raw, _ := io.ReadAll(r.Body)
 			var payload struct {
@@ -87,7 +87,7 @@ func newCommentServer(t *testing.T, seed []comment) *commentServer {
 			s.comments = append(s.comments, c)
 			w.Header().Set("Content-Type", "application/json")
 			out, _ := json.Marshal(c)
-			w.Write(out)
+			writeResponse(t, w, out)
 		default:
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		}
@@ -124,7 +124,7 @@ func newCommentServer(t *testing.T, seed []comment) *commentServer {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		out, _ := json.Marshal(comment{ID: id, Body: payload.Body})
-		w.Write(out)
+		writeResponse(t, w, out)
 	})
 
 	srv := httptest.NewServer(mux)
@@ -359,5 +359,15 @@ func TestCommentBodyNamesLinkAndSha(t *testing.T) {
 	}
 	if !strings.Contains(body, "deadbeefcafef00dfeedface1234567890abcde") {
 		t.Errorf("commentBody %q does not name the head sha", body)
+	}
+}
+
+// writeResponse sends body and fails the test if the client connection broke
+// mid-write; a short write would otherwise surface only as a confusing decode
+// error in the code under test.
+func writeResponse(t *testing.T, w http.ResponseWriter, body []byte) {
+	t.Helper()
+	if _, err := w.Write(body); err != nil {
+		t.Errorf("write response: %v", err)
 	}
 }

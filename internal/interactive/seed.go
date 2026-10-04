@@ -286,7 +286,7 @@ func CaptureSeedWithHistory(ctx context.Context, client tmux.Client, target stri
 	}
 	state, body, fallbackErr := client.CapturePaneSeedAtomic(ctx, target, tmux.SeedCaptureOptions())
 	if fallbackErr != nil {
-		return nil, fmt.Errorf("capture seed for %q: history-inclusive capture failed (%v) and the visible-only retry failed too: %w", target, err, fallbackErr)
+		return nil, fmt.Errorf("capture seed for %q: history-inclusive capture failed (%w) and the visible-only retry failed too: %w", target, err, fallbackErr)
 	}
 	return BuildSeed(state, body), nil
 }

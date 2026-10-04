@@ -183,7 +183,7 @@ func (d *Dispatcher) streamLiteralViaLoadBuffer(ctx context.Context, body string
 	}
 	if err := d.Send(ctx, "paste-buffer", "-d", "-b", name); err != nil {
 		if _, delErr := d.client.run(ctx, "delete-buffer", "-b", name); delErr != nil {
-			return fmt.Errorf("paste streamed literal payload (%d bytes) to %q: %w (buffer %q also left behind: delete-buffer failed: %v)", len(body), d.target, err, name, delErr)
+			return fmt.Errorf("paste streamed literal payload (%d bytes) to %q: %w (buffer %q also left behind: delete-buffer failed: %w)", len(body), d.target, err, name, delErr)
 		}
 		return fmt.Errorf("paste streamed literal payload (%d bytes) to %q: %w", len(body), d.target, err)
 	}
@@ -224,7 +224,7 @@ func (d *Dispatcher) SendMultiline(ctx context.Context, payload string) error {
 	}
 	if err := d.Send(ctx, "paste-buffer", "-d", "-p", "-b", name); err != nil {
 		if _, delErr := d.client.run(ctx, "delete-buffer", "-b", name); delErr != nil {
-			return fmt.Errorf("paste multi-line payload (%d bytes) to %q: %w (buffer %q also left behind: delete-buffer failed: %v)", len(payload), d.target, err, name, delErr)
+			return fmt.Errorf("paste multi-line payload (%d bytes) to %q: %w (buffer %q also left behind: delete-buffer failed: %w)", len(payload), d.target, err, name, delErr)
 		}
 		return fmt.Errorf("paste multi-line payload (%d bytes) to %q: %w", len(payload), d.target, err)
 	}

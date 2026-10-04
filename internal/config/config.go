@@ -646,8 +646,10 @@ func CreateProfile(getenv func(string) string, userHome func() (string, error), 
 		}
 		return fmt.Errorf("create profile %q config: %w", profile, err)
 	}
-	defer file.Close()
 	if _, err := file.Write(data); err != nil {
+		return fmt.Errorf("copy default config for profile %q: %w", profile, errors.Join(err, file.Close()))
+	}
+	if err := file.Close(); err != nil {
 		return fmt.Errorf("copy default config for profile %q: %w", profile, err)
 	}
 	return nil
@@ -799,7 +801,7 @@ func (c *Clock) AdvanceShared() (time.Time, error) {
 	if err != nil {
 		return c.Now(), fmt.Errorf("open shared clock lock: %w", err)
 	}
-	defer lock.Close()
+	defer func() { _ = lock.Close() }() // lock handle holds no data; closing releases the flock
 	if err := lockFile(lock); err != nil {
 		return c.Now(), err
 	}

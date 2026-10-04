@@ -95,7 +95,7 @@ func deckSelectionBufferEventuallyContains(ctx context.Context, want string) err
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
-	return fmt.Errorf("deck's own selection buffer (%q on socket %q) never contained %q; last read %q (err=%v)", tmux.SelectionBufferName, h.Socket, want, lastOutput, lastErr)
+	return fmt.Errorf("deck's own selection buffer (%q on socket %q) never contained %q; last read %q (err=%w)", tmux.SelectionBufferName, h.Socket, want, lastOutput, lastErr)
 }
 
 // deckSelectionBufferIsEmpty proves the negative half directly: the

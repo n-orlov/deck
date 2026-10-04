@@ -607,7 +607,7 @@ func privateTMuxSessionShowsTextBeforeOtherText(ctx context.Context, name, first
 			break
 		}
 		if time.Now().After(deadline) {
-			return fmt.Errorf("session %q's private tmux pane never showed both %q and %q; last capture (err=%v):\n%s", name, first, second, err, string(output))
+			return fmt.Errorf("session %q's private tmux pane never showed both %q and %q; last capture (err=%w):\n%s", name, first, second, err, string(output))
 		}
 		time.Sleep(50 * time.Millisecond)
 	}

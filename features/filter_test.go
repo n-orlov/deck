@@ -202,7 +202,7 @@ func clientFilteredSidebarListsExactlyOneSessionRowNamed(ctx context.Context, cl
 		return sidebarListsOnlySessionRow(frame, name) == nil
 	})
 	if err != nil {
-		return fmt.Errorf("deck client %q: %w (last verdict: %v):\n%s", clientName, err, sidebarListsOnlySessionRow(frame, name), frame)
+		return fmt.Errorf("deck client %q: %w (last verdict: %w):\n%s", clientName, err, sidebarListsOnlySessionRow(frame, name), frame)
 	}
 	return nil
 }

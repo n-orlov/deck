@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"io"
 	"runtime"
 	"runtime/debug"
@@ -42,5 +41,5 @@ func printVersion(w io.Writer) {
 			}
 		}
 	}
-	fmt.Fprintf(w, "deck %s %s/%s\n", v, runtime.GOOS, runtime.GOARCH)
+	sayf(w, "deck %s %s/%s\n", v, runtime.GOOS, runtime.GOARCH)
 }

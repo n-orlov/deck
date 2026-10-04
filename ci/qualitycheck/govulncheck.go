@@ -16,6 +16,7 @@ package main
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"go/version"
 	"io/fs"
@@ -50,7 +51,7 @@ func goModMinimum(dir string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }() // read-only handle: Close cannot lose data
 	var toolchain, goLine string
 	sc := bufio.NewScanner(f)
 	for sc.Scan() {
@@ -184,7 +185,8 @@ func runGovulncheckGate(o govulncheckOptions) (ok bool, output string, err error
 	if runErr == nil {
 		return true, text + "what to do: nothing -- no vulnerability is reachable from the code this module calls.\n", nil
 	}
-	if ee, isExit := runErr.(*exec.ExitError); isExit && ee.ExitCode() == 3 {
+	var ee *exec.ExitError
+	if errors.As(runErr, &ee) && ee.ExitCode() == 3 {
 		return false, text + "what to do: bump the named module (or the toolchain, for a standard-library finding) to the " +
 			"\"Fixed in\" version (go get <module>@<fixed> && go mod tidy), or remove the call.\n", nil
 	}

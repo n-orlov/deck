@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -184,7 +183,7 @@ func TestDeckBinaryLaunchTouchesLastUsedMarker(t *testing.T) {
 	}
 	defer terminal.Close()
 	output := newPTYOutput()
-	go io.Copy(output, terminal)
+	go pumpTerminal(output, terminal)
 	done := make(chan error, 1)
 	go func() { done <- cmd.Wait() }()
 

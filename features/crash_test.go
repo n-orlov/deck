@@ -133,7 +133,7 @@ func renderColoredCrashFixture(ctx context.Context, name string) error {
 			return nil
 		}
 		if time.Now().After(deadline) {
-			return fmt.Errorf("pane %q did not render colored crash fixture; plain error=%v escaped error=%v\nplain pane:\n%s", target, plainErr, escapedErr, plain)
+			return fmt.Errorf("pane %q did not render colored crash fixture; plain error=%w escaped error=%w\nplain pane:\n%s", target, plainErr, escapedErr, plain)
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
@@ -158,7 +158,7 @@ func databaseSessionCleanlyStopped(ctx context.Context, name string) error {
 			return nil
 		}
 		if time.Now().After(deadline) {
-			return fmt.Errorf("session %q clean-exit fields = status %q source %q exit=%v tail=%q err=%v", name, status, source, exit, tail, err)
+			return fmt.Errorf("session %q clean-exit fields = status %q source %q exit=%v tail=%q err=%w", name, status, source, exit, tail, err)
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
@@ -203,7 +203,7 @@ func databaseSessionHasCrashArtifact(ctx context.Context, name string) error {
 			break
 		}
 		if time.Now().After(deadline) {
-			return fmt.Errorf("session %q crash artifact did not settle: %#v err=%v", name, got, err)
+			return fmt.Errorf("session %q crash artifact did not settle: %#v err=%w", name, got, err)
 		}
 		time.Sleep(20 * time.Millisecond)
 	}

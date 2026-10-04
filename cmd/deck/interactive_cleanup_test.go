@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -135,7 +134,7 @@ func startDeckInteractiveFixture(t *testing.T, binary, socketPrefix string, extr
 		t.Fatalf("start deck under pty: %v", err)
 	}
 	output := newPTYOutput()
-	go io.Copy(output, terminal)
+	go pumpTerminal(output, terminal)
 	done := make(chan error, 1)
 	go func() { done <- cmd.Wait() }()
 

@@ -181,7 +181,11 @@ func TestNoPrefixSpecialCasingInImplementationIsNonVacuous(t *testing.T) {
 	if err := os.WriteFile(planted, []byte(content), 0o644); err != nil {
 		t.Fatalf("write planted file: %v", err)
 	}
-	defer os.Remove(planted)
+	defer func() {
+		if err := os.Remove(planted); err != nil {
+			t.Errorf("remove planted file (it would break the real guard): %v", err)
+		}
+	}()
 
 	if hit := scanForPrefixSpecialCasing(t, "."); hit == "" {
 		t.Fatalf("scanForPrefixSpecialCasing found nothing against a deliberately planted leader/double-tap-shaped violation -- the guard is vacuous")

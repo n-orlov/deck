@@ -155,7 +155,7 @@ func (s *Store) ListGroups(ctx context.Context) ([]Group, error) {
 	if err != nil {
 		return nil, fmt.Errorf("list groups: %w", err)
 	}
-	defer rows.Close()
+	defer closeRows(rows)
 	var groups []Group
 	for rows.Next() {
 		var g Group

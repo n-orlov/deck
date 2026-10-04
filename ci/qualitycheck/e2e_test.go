@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -73,8 +74,8 @@ func TestQualityShSeededFailingGateExitsNonZero(t *testing.T) {
 	if err == nil {
 		t.Fatalf("ci/quality.sh exited 0, want non-zero (seeded ceiling 0 against an empty profile)\noutput:\n%s", out)
 	}
-	exitErr, isExit := err.(*exec.ExitError)
-	if !isExit {
+	var exitErr *exec.ExitError
+	if !errors.As(err, &exitErr) {
 		t.Fatalf("ci/quality.sh did not run at all: %v\noutput:\n%s", err, out)
 	}
 	if exitErr.ExitCode() == 0 {
