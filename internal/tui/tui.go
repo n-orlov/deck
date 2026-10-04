@@ -9085,104 +9085,43 @@ func (m Model) renderCreateGhost(ghost string) string {
 // it renders before any submit is attempted -- so it takes `dimmed`,
 // matching every other inline explanatory caveat in this dialog.
 func (m Model) styledCreateBody() string {
-	wrap := m.wrapDialogLines
-	var out []string
-
-	colorWhole := func(tok theme.Token, line string) {
-		for _, l := range wrap(line) {
-			out = append(out, m.colorToken(tok, l))
-		}
-	}
-	// colorLabelValue colours one field row's already-wrapped label/value
-	// line. ghost is the plain trailing suffix of plainLine that is a ghost
-	// completion rather than typed text (createCWDGhostSuffix; "" for every
-	// row but the focused cwd one): those bytes take `dimmed` while the typed
-	// part keeps `text`, which is how the ghost stays visibly provisional
-	// now that the suffix itself reaches here uncoloured. The ghost's token
-	// is `dimmed`, as SPEC §11.7 specifies. `dimmed` is below R84's 3.0:1
-	// floor against theme.Selection on cobalt/empire/parchment, so
-	// renderCreateGhost does not compose the ghost over Selection: the
-	// selection band ends at the ghost, which is drawn on theme.Surface,
-	// where internal/theme holds dimmed to the floor on every built-in.
-	colorLabelValue := func(labelPrefix, plainLine, ghost string, focused bool) {
-		lines := wrap(plainLine)
-		// ghostSpan[i] is how many TRAILING bytes of lines[i] belong to the
-		// ghost. Walking the physical lines backwards, consuming the ghost
-		// from its own end, attributes it correctly even when wrapping
-		// splits it across two lines. A line whose tail does not match the
-		// ghost's remaining tail byte for byte (wrapping dropped a space at
-		// the break) stops the walk instead of guessing: the affected line
-		// then renders wholly as `text`, never as a mis-aligned colour span.
-		ghostSpan := make([]int, len(lines))
-		for i, rem := len(lines)-1, ghost; i >= 0 && rem != ""; i-- {
-			n := len(rem)
-			if n > len(lines[i]) {
-				n = len(lines[i])
-			}
-			if !strings.HasSuffix(lines[i], rem[len(rem)-n:]) {
-				break
-			}
-			ghostSpan[i] = n
-			rem = rem[:len(rem)-n]
-		}
-		for i, l := range lines {
-			var segs []settingsRowSegment
-			value := l
-			if strings.HasPrefix(l, labelPrefix) {
-				segs = append(segs, settingsRowSegment{Text: labelPrefix, Tok: theme.Hint})
-				value = strings.TrimPrefix(l, labelPrefix)
-			}
-			// Otherwise this is a physical continuation line (the value
-			// overflowed onto its own line): no label prefix left to split
-			// out, so the whole line is the value's own overflow.
-			n := ghostSpan[i]
-			if n > len(value) {
-				n = len(value)
-			}
-			if typed := value[:len(value)-n]; typed != "" {
-				segs = append(segs, settingsRowSegment{Text: typed, Tok: theme.Text})
-			}
-			ghostText := value[len(value)-n:]
-			if len(segs) == 0 && ghostText == "" {
-				segs = []settingsRowSegment{{Text: l, Tok: theme.Text}}
-			}
-			// The ghost is NOT a segment of the focused row's selection
-			// band: see renderCreateGhost.
-			var rendered string
-			if len(segs) > 0 {
-				rendered = m.renderCreateRowSegments(focused, segs)
-			}
-			out = append(out, rendered+m.renderCreateGhost(ghostText))
-		}
-	}
-	// colorFooterLine colours createBody's already-wrapped footer legend
-	// line word by word (never before wrap: see this function's own doc
-	// comment) -- safe because every createFooterKeyTokens entry and its
-	// one-word meaning ("↑/↓ field", "Enter submits", ...) is
-	// exactly two whitespace-delimited words, so no colour span this adds
-	// ever covers more than one word, and rejoining strings.Fields' output
-	// with single spaces reproduces createBody's own single-space-and-
-	// " · "-separated layout exactly.
-	colorFooterLine := func(line string) {
-		for _, l := range wrap(line) {
-			fields := strings.Fields(l)
-			for i, f := range fields {
-				if createFooterKeyTokens[f] {
-					fields[i] = m.colorToken(theme.Key, f)
-				} else {
-					fields[i] = m.colorToken(theme.Hint, f)
-				}
-			}
-			out = append(out, strings.Join(fields, " "))
-		}
-	}
+	w := &styledCreateWriter{m: m}
 
 	title := "Create session"
 	if m.createAgent == "shell" {
 		title = "Create shell session"
 	}
-	colorWhole(theme.Title, title)
+	w.colorWhole(theme.Title, title)
 
+	w.fieldRows()
+	w.candidateLines()
+	w.colorFooterLine(m.createFooterLine())
+	w.errorLines()
+	return strings.Join(w.out, "\n")
+}
+
+// styledCreateWriter accumulates styledCreateBody's coloured physical lines.
+// It is a value copy of the Model it renders (never mutated), so it carries
+// exactly what the closures in the pre-split styledCreateBody captured.
+type styledCreateWriter struct {
+	m   Model
+	out []string
+}
+
+func (w *styledCreateWriter) wrap(line string) []string {
+	return w.m.wrapDialogLines(line)
+}
+
+func (w *styledCreateWriter) colorWhole(tok theme.Token, line string) {
+	for _, l := range w.wrap(line) {
+		w.out = append(w.out, w.m.colorToken(tok, l))
+	}
+}
+
+// fieldRows renders every field row, its help line and the per-field notes
+// (name-reuse warning under field 0, profile degrade note under field 3).
+func (w *styledCreateWriter) fieldRows() {
+	m := w.m
 	for field, row := range m.createFieldRows() {
 		labelPrefix := m.createFieldLabel(field)
 		// Field 1 is the cwd row (createFieldRows' own order): the one row
@@ -9191,11 +9130,11 @@ func (m Model) styledCreateBody() string {
 		if field == 1 {
 			ghost = m.createCWDGhostView()
 		}
-		colorLabelValue(labelPrefix, labelPrefix+row.value, ghost, field == m.createField)
-		colorWhole(theme.Dimmed, "    "+row.help)
+		w.colorLabelValue(labelPrefix, labelPrefix+row.value, ghost, field == m.createField)
+		w.colorWhole(theme.Dimmed, "    "+row.help)
 		if field == 0 {
 			if warning := m.createNameReuseWarning(); warning != "" {
-				colorWhole(theme.Dimmed, "    "+warning)
+				w.colorWhole(theme.Dimmed, "    "+warning)
 			}
 		}
 		if field == 3 {
@@ -9204,29 +9143,134 @@ func (m Model) styledCreateBody() string {
 			// about a field's value, not an error that blocked a submit --
 			// createError below is what carries those).
 			if note := m.createProfileDegradeNote(); note != "" {
-				colorWhole(theme.Dimmed, "    "+note)
+				w.colorWhole(theme.Dimmed, "    "+note)
 			}
 		}
 	}
-	if len(m.createCWDCandidates) > 0 {
-		colorWhole(theme.Hint, "  candidates (up/down selects, enter or tab accepts, esc closes):")
-		for i, name := range m.createCWDCandidates {
-			marker := "    "
-			if i == m.createCWDCandidateIndex {
-				marker = "  > "
+}
+
+// candidateLines renders the open tab-completion candidate list, if any.
+func (w *styledCreateWriter) candidateLines() {
+	m := w.m
+	if len(m.createCWDCandidates) == 0 {
+		return
+	}
+	w.colorWhole(theme.Hint, "  candidates (up/down selects, enter or tab accepts, esc closes):")
+	for i, name := range m.createCWDCandidates {
+		marker := "    "
+		if i == m.createCWDCandidateIndex {
+			marker = "  > "
+		}
+		w.colorWhole(theme.Text, marker+name+"/")
+	}
+}
+
+// errorLines renders the validation message, if any.
+func (w *styledCreateWriter) errorLines() {
+	m := w.m
+	if m.createError == "" {
+		return
+	}
+	if strings.Contains(m.createError, "collides with existing slug") {
+		w.colorWhole(theme.Error, "Cannot create session: name collides with existing slug.")
+	} else {
+		w.colorWhole(theme.Error, "Cannot create session: "+m.createError)
+	}
+}
+
+// colorLabelValue colours one field row's already-wrapped label/value
+// line. ghost is the plain trailing suffix of plainLine that is a ghost
+// completion rather than typed text (createCWDGhostSuffix; "" for every
+// row but the focused cwd one): those bytes take `dimmed` while the typed
+// part keeps `text`, which is how the ghost stays visibly provisional
+// now that the suffix itself reaches here uncoloured. The ghost's token
+// is `dimmed`, as SPEC §11.7 specifies. `dimmed` is below R84's 3.0:1
+// floor against theme.Selection on cobalt/empire/parchment, so
+// renderCreateGhost does not compose the ghost over Selection: the
+// selection band ends at the ghost, which is drawn on theme.Surface,
+// where internal/theme holds dimmed to the floor on every built-in.
+func (w *styledCreateWriter) colorLabelValue(labelPrefix, plainLine, ghost string, focused bool) {
+	lines := w.wrap(plainLine)
+	ghostSpan := ghostSpans(lines, ghost)
+	for i, l := range lines {
+		w.out = append(w.out, w.labelValueLine(labelPrefix, l, ghostSpan[i], focused))
+	}
+}
+
+// ghostSpans returns, per physical line, how many TRAILING bytes of that line
+// belong to the ghost. Walking the physical lines backwards, consuming the
+// ghost from its own end, attributes it correctly even when wrapping splits it
+// across two lines. A line whose tail does not match the ghost's remaining
+// tail byte for byte (wrapping dropped a space at the break) stops the walk
+// instead of guessing: the affected line then renders wholly as `text`, never
+// as a mis-aligned colour span.
+func ghostSpans(lines []string, ghost string) []int {
+	ghostSpan := make([]int, len(lines))
+	for i, rem := len(lines)-1, ghost; i >= 0 && rem != ""; i-- {
+		n := len(rem)
+		if n > len(lines[i]) {
+			n = len(lines[i])
+		}
+		if !strings.HasSuffix(lines[i], rem[len(rem)-n:]) {
+			break
+		}
+		ghostSpan[i] = n
+		rem = rem[:len(rem)-n]
+	}
+	return ghostSpan
+}
+
+// labelValueLine renders one physical line of a field row, whose last n bytes
+// are the ghost completion.
+func (w *styledCreateWriter) labelValueLine(labelPrefix, l string, n int, focused bool) string {
+	var segs []settingsRowSegment
+	value := l
+	if strings.HasPrefix(l, labelPrefix) {
+		segs = append(segs, settingsRowSegment{Text: labelPrefix, Tok: theme.Hint})
+		value = strings.TrimPrefix(l, labelPrefix)
+	}
+	// Otherwise this is a physical continuation line (the value
+	// overflowed onto its own line): no label prefix left to split
+	// out, so the whole line is the value's own overflow.
+	if n > len(value) {
+		n = len(value)
+	}
+	if typed := value[:len(value)-n]; typed != "" {
+		segs = append(segs, settingsRowSegment{Text: typed, Tok: theme.Text})
+	}
+	ghostText := value[len(value)-n:]
+	if len(segs) == 0 && ghostText == "" {
+		segs = []settingsRowSegment{{Text: l, Tok: theme.Text}}
+	}
+	// The ghost is NOT a segment of the focused row's selection
+	// band: see renderCreateGhost.
+	var rendered string
+	if len(segs) > 0 {
+		rendered = w.m.renderCreateRowSegments(focused, segs)
+	}
+	return rendered + w.m.renderCreateGhost(ghostText)
+}
+
+// colorFooterLine colours createBody's already-wrapped footer legend
+// line word by word (never before wrap: see styledCreateBody's own doc
+// comment) -- safe because every createFooterKeyTokens entry and its
+// one-word meaning ("↑/↓ field", "Enter submits", ...) is
+// exactly two whitespace-delimited words, so no colour span this adds
+// ever covers more than one word, and rejoining strings.Fields' output
+// with single spaces reproduces createBody's own single-space-and-
+// " · "-separated layout exactly.
+func (w *styledCreateWriter) colorFooterLine(line string) {
+	for _, l := range w.wrap(line) {
+		fields := strings.Fields(l)
+		for i, f := range fields {
+			if createFooterKeyTokens[f] {
+				fields[i] = w.m.colorToken(theme.Key, f)
+			} else {
+				fields[i] = w.m.colorToken(theme.Hint, f)
 			}
-			colorWhole(theme.Text, marker+name+"/")
 		}
+		w.out = append(w.out, strings.Join(fields, " "))
 	}
-	colorFooterLine(m.createFooterLine())
-	if m.createError != "" {
-		if strings.Contains(m.createError, "collides with existing slug") {
-			colorWhole(theme.Error, "Cannot create session: name collides with existing slug.")
-		} else {
-			colorWhole(theme.Error, "Cannot create session: "+m.createError)
-		}
-	}
-	return strings.Join(out, "\n")
 }
 
 // createView renders the create modal through framedDialogScrollable
