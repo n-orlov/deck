@@ -212,11 +212,13 @@ test that fails twice in a row fails the check.
   merged features JUnit is converted instead, so a failed pass is never
   missing; the synthetic "aborted" marker is converted either way.
   `ci/allure-report.sh` builds the one report from that directory (a results
-  dir without it falls back to the merged JUnit). `ci/summary.sh` still counts
-  from the merged JUnit; `ci/suitecheck` proves its pass/fail/flaky counts
-  equal the Allure results' on a fixture. A test that fails on every attempt
-  is one failed test in Allure but one failure per attempt in the JUnit
-  count.
+  dir without it falls back to the merged JUnit). `ci/summary.sh` still reads
+  the merged JUnit, but counts it the way the report does: one test per
+  (testsuite, classname, name) with its last attempt's outcome, so a test
+  that failed on every attempt is one failure and a skipped test is a skip
+  (its own row), never a pass. `ci/suitecheck` proves its pass/fail/skip/
+  flaky rows equal the Allure results' on a fixture, and fails when they
+  differ.
 - The features results changed `historyId` (the JUnit-derived id to the
   formatter's digest), so the features trend restarted once when this landed;
   unit trends continue. The root-publish history dir still carries over.
@@ -261,7 +263,7 @@ test that fails twice in a row fails the check.
 - `report` never holds `pages: write`/`id-token: write`; only `publish`
   does, and `publish` runs on `ubuntu-latest` (no self-hosted slot needed to
   make one API call), gated to non-PR events.
-- Every run writes a job summary (pass/fail/flaky counts, the slowest
+- Every run writes a job summary (pass/fail/skip/flaky counts, the slowest
   packages, coverage totals, the report link) and uploads both the raw
   results and the rendered report as workflow artifacts, independent of
   whether the report ever reaches Pages.
