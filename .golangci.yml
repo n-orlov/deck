@@ -1,0 +1,58 @@
+# golangci-lint v2 configuration (R188). The pinned version is the one in
+# ci/Dockerfile. `standard` is errcheck, govet, ineffassign, staticcheck and
+# unused; the rest are added explicitly. gocognit is deliberately NOT enabled:
+# it cannot be report-only inside golangci, and CRAP (ci/crapgate) is the
+# complexity gate.
+version: "2"
+
+run:
+  timeout: 15m
+  tests: true
+
+linters:
+  default: standard
+  enable:
+    - gosec
+    - revive
+    - gocritic
+    - errorlint
+    - misspell
+    - unconvert
+    - unparam
+    - bodyclose
+    - copyloopvar
+    - nolintlint
+  settings:
+    nolintlint:
+      # A //nolint must name its linter and say why; an unused one is a finding.
+      require-specific: true
+      require-explanation: true
+      allow-unused: false
+  exclusions:
+    # No presets, no generated-code or path-wide skips: the only exclusions are
+    # the two explicit rules below, both scoped to _test.go files. Production
+    # code has none.
+    generated: strict
+    presets: []
+    rules:
+      # Test fixtures run subprocesses (G204), read and write temp files
+      # (G304, G306), and create temp dirs/files with ordinary modes (G301,
+      # G302) by design; the inputs are the test's own literals and
+      # t.TempDir() paths, never external input. Test files only.
+      - path: _test\.go$
+        linters:
+          - gosec
+        text: "G(204|304|301|302|306)"
+      # A test-owned handle (a temp file, a test server's response body, a
+      # pipe the test opened) is closed in cleanup or defer, where a Close
+      # error has nowhere useful to go and the test's own assertions already
+      # cover the data. Test files only, and only errcheck on Close.
+      - path: _test\.go$
+        linters:
+          - errcheck
+        text: "Error return value of .*[.]Close.* is not checked"
+
+issues:
+  # Report everything: no per-linter or per-message cap hides a finding.
+  max-issues-per-linter: 0
+  max-same-issues: 0
