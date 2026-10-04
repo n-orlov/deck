@@ -95,7 +95,7 @@ func (s Service) Resume(ctx context.Context, sessionID string) (store.Session, R
 		return s.resumeFailed(ctx, session, err)
 	}
 
-	lease, early := s.acquireResumeLease(ctx, session)
+	lease, early := s.acquireResumeLease(ctx, sessionID, session)
 	if early != nil {
 		return early.unpack()
 	}
@@ -265,21 +265,26 @@ func (s Service) resumeConversationID(session store.Session, caps agent.Caps) (c
 
 // checkResumeCWD rejects a missing or non-directory cwd before the launch
 // lease or tmux is touched.
+//
+// The returned error is a plain message: the stat failure is rendered into
+// its text (%v) and deliberately not wrapped, so errors.Is/As on Resume's
+// error never sees the underlying *fs.PathError.
 func checkResumeCWD(session store.Session) error {
 	info, statErr := os.Stat(session.CWD)
 	if statErr == nil && info.IsDir() {
 		return nil
 	}
+	reason := fmt.Sprintf("resume session %q: cwd %q is missing or not a directory", session.Name, session.CWD)
 	if statErr != nil {
-		return fmt.Errorf("resume session %q: cwd %q is missing or not a directory: %w", session.Name, session.CWD, statErr)
+		reason = fmt.Sprintf("resume session %q: cwd %q is missing or not a directory: %v", session.Name, session.CWD, statErr)
 	}
-	return fmt.Errorf("resume session %q: cwd %q is missing or not a directory", session.Name, session.CWD)
+	return errors.New(reason)
 }
 
 // acquireResumeLease takes the launch lease. A non-nil verdict is Resume's
 // answer: a lost race, a non-leasable row, or a store failure.
-func (s Service) acquireResumeLease(ctx context.Context, session store.Session) (store.LaunchLeaseResult, *resumeVerdict) {
-	lease, err := s.Store.AcquireLaunchLease(ctx, session.ID, store.CurrentLaunchLeaseOwner(), store.DefaultLaunchLeaseTTL, s.Clock.Now().UnixMilli())
+func (s Service) acquireResumeLease(ctx context.Context, sessionID string, session store.Session) (store.LaunchLeaseResult, *resumeVerdict) {
+	lease, err := s.Store.AcquireLaunchLease(ctx, sessionID, store.CurrentLaunchLeaseOwner(), store.DefaultLaunchLeaseTTL, s.Clock.Now().UnixMilli())
 	if err != nil {
 		return lease, &resumeVerdict{session, ResumeStartingElsewhere, fmt.Errorf("acquire launch lease for session %q: %w", session.Name, err)}
 	}
@@ -290,7 +295,7 @@ func (s Service) acquireResumeLease(ctx context.Context, session store.Session) 
 		// The list may have shown a stale stopped row. Return the durable row
 		// instead of misreporting its real verdict as a launch happening in
 		// another client.
-		current, getErr := s.Store.GetSession(ctx, session.ID)
+		current, getErr := s.Store.GetSession(ctx, sessionID)
 		if getErr != nil {
 			return lease, &resumeVerdict{session, ResumeNotLeasable, fmt.Errorf("refresh non-leasable session %q: %w", session.Name, getErr)}
 		}

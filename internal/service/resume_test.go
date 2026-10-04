@@ -2,6 +2,8 @@ package service
 
 import (
 	"context"
+	"errors"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -403,6 +405,11 @@ func TestResumeFailsOnMissingCWD(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "cwd") {
 		t.Fatalf("resume error = %q, want it to name the cwd cause", err.Error())
+	}
+	// Resume's cwd failure is a plain message: the stat error is part of its
+	// text, never a wrapped cause a caller could match with errors.Is.
+	if errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("resume error %q wraps fs.ErrNotExist, want a plain message", err.Error())
 	}
 
 	row, getErr := db.GetSession(context.Background(), created.ID)
