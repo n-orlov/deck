@@ -283,7 +283,7 @@ func renderGoldenMinimumFrame(t *testing.T) string {
 		}
 	}
 
-	assertGoldenFrameIsThemed(t, ctx, client)
+	assertGoldenFrameIsThemed(ctx, t, client)
 
 	if err := client.Send("q"); err != nil {
 		t.Fatalf("send q: %v", err)
@@ -306,7 +306,7 @@ func renderGoldenMinimumFrame(t *testing.T) string {
 // goldenFrameTheme's border_focus token -- exactly, since goldenFrameColorDepth
 // is truecolor and pins away any quantisation step that could otherwise
 // paper over a wrong colour landing close to the right one.
-func assertGoldenFrameIsThemed(t *testing.T, ctx context.Context, client *ScreenDriver) {
+func assertGoldenFrameIsThemed(ctx context.Context, t *testing.T, client *ScreenDriver) {
 	t.Helper()
 	want, err := resolveScenarioTokenHex(ctx, "border_focus")
 	if err != nil {

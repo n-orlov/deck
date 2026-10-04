@@ -301,7 +301,7 @@ func TestThemedDialogTokensClearContrastFloor(t *testing.T) {
 
 	for _, th := range Builtins() {
 		th := th
-		min := math.Inf(1)
+		lowest := math.Inf(1)
 		minLabel := ""
 		t.Run(th.Name, func(t *testing.T) {
 			for _, chk := range checks {
@@ -334,11 +334,11 @@ func TestThemedDialogTokensClearContrastFloor(t *testing.T) {
 				t.Logf("%-8s %-20s hex %s/%s = %.2f:1   quant %s/%s = %.2f:1",
 					th.Name, chk.label, fgHex, bgHex, ratioHex, fgQ, bgQ, ratioQuant)
 
-				if ratioHex < min {
-					min, minLabel = ratioHex, chk.label+" (hex)"
+				if ratioHex < lowest {
+					lowest, minLabel = ratioHex, chk.label+" (hex)"
 				}
-				if ratioQuant < min {
-					min, minLabel = ratioQuant, chk.label+" (quant)"
+				if ratioQuant < lowest {
+					lowest, minLabel = ratioQuant, chk.label+" (quant)"
 				}
 
 				if ratioHex < minContrastRatio {
@@ -351,7 +351,7 @@ func TestThemedDialogTokensClearContrastFloor(t *testing.T) {
 				}
 			}
 		})
-		thinnest[th.Name] = min
+		thinnest[th.Name] = lowest
 		thinnestLabel[th.Name] = minLabel
 	}
 

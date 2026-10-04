@@ -58,7 +58,7 @@ func TestRenameDialogPrefillsSubmitsAndClosesBackToDetail(t *testing.T) {
 	updated := store.Session{ID: "s1", Name: "new-name", Agent: "shell", Status: "running", Slug: "alpha"}
 	model := NewWithShellCreatorAttacherKillerResumerProfileSwitcherResumeModerAgentCreatorRegistryPreviewCapturerEnvSetterRestarterInjectorDeleterRestorerReaperPurgerArchiverAndRenamer(
 		nil, config.Settings{}, "", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
-		func(ctx context.Context, id, newName string) (store.Session, error) {
+		func(_ context.Context, id, newName string) (store.Session, error) {
 			renamedID, renamedTo = id, newName
 			return updated, nil
 		},
@@ -119,7 +119,7 @@ func TestRenameDialogEscCancelsWithoutPersistingAndKeepsDetailOpen(t *testing.T)
 	called := false
 	model := NewWithShellCreatorAttacherKillerResumerProfileSwitcherResumeModerAgentCreatorRegistryPreviewCapturerEnvSetterRestarterInjectorDeleterRestorerReaperPurgerArchiverAndRenamer(
 		nil, config.Settings{}, "", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
-		func(ctx context.Context, id, newName string) (store.Session, error) {
+		func(_ context.Context, _, _ string) (store.Session, error) {
 			called = true
 			return store.Session{}, nil
 		},
@@ -156,7 +156,7 @@ func TestRenameDialogEscCancelsWithoutPersistingAndKeepsDetailOpen(t *testing.T)
 func TestRenameDialogRejectionRetainsCandidateForCorrection(t *testing.T) {
 	model := NewWithShellCreatorAttacherKillerResumerProfileSwitcherResumeModerAgentCreatorRegistryPreviewCapturerEnvSetterRestarterInjectorDeleterRestorerReaperPurgerArchiverAndRenamer(
 		nil, config.Settings{}, "", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
-		func(ctx context.Context, id, newName string) (store.Session, error) {
+		func(_ context.Context, _, _ string) (store.Session, error) {
 			return store.Session{}, errRenameCollisionForTest
 		},
 	)
@@ -221,7 +221,7 @@ func renameEditModel(t *testing.T, name string) (Model, *string) {
 	var renamedTo string
 	model := NewWithShellCreatorAttacherKillerResumerProfileSwitcherResumeModerAgentCreatorRegistryPreviewCapturerEnvSetterRestarterInjectorDeleterRestorerReaperPurgerArchiverAndRenamer(
 		nil, config.Settings{}, "", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
-		func(ctx context.Context, id, newName string) (store.Session, error) {
+		func(_ context.Context, id, newName string) (store.Session, error) {
 			renamedTo = newName
 			return store.Session{ID: id, Name: newName}, nil
 		},

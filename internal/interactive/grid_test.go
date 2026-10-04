@@ -200,7 +200,7 @@ func TestArmingPipeBeforeSeedCaptureDeliversInterstitialBytes(t *testing.T) {
 	client := tmux.Client{Socket: socket, Timeout: 5 * time.Second}
 	ctx := context.Background()
 
-	session, err := Start(ctx, client, "s0", 40, 10, func(ctx context.Context) ([]byte, error) {
+	session, err := Start(ctx, client, "s0", 40, 10, func(_ context.Context) ([]byte, error) {
 		// The seed capture happens here, deliberately AFTER Start has
 		// already armed the pipe (Start's own contract). Emit the
 		// interstitial bytes from inside the seed callback so they land

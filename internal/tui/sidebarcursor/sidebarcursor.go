@@ -63,9 +63,11 @@ func Header(groupID int64) Cursor {
 	return Cursor{kind: kindHeader, groupID: groupID}
 }
 
-// IsHeader and IsRow report which kind of stop c is.
+// IsHeader reports whether c is a group-header stop.
 func (c Cursor) IsHeader() bool { return c.kind == kindHeader }
-func (c Cursor) IsRow() bool    { return c.kind == kindRow }
+
+// IsRow reports whether c is a session-row stop.
+func (c Cursor) IsRow() bool { return c.kind == kindRow }
 
 // SessionIndex resolves c's m.sessions index. ok is false when c is a
 // header cursor: there is deliberately no other way -- from any package --

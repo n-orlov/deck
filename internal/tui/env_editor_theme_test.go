@@ -365,7 +365,7 @@ func TestEnvEditModePagingScrollsAndKeepsTheEditOpen(t *testing.T) {
 	m := task017ManyEnvKeysModel(t)
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	editing := updated.(Model)
-	if max := editing.dialogMaxScroll(editing.envBody()); max == 0 {
+	if maxScroll := editing.dialogMaxScroll(editing.envBody()); maxScroll == 0 {
 		t.Fatalf("the editing body already fits the frame (maxScroll 0) -- this test needs an overflowing list to be non-vacuous")
 	}
 

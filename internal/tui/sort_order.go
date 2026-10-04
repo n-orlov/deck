@@ -87,7 +87,7 @@ func pinnedFirst(less func(a, b store.Session) bool) func(a, b store.Session) bo
 // leaving incoming itself untouched -- exactly sortSessionsByAttention's
 // own no-mutation contract, shared here so every order's entry point gives
 // the same guarantee.
-func sortSessionsStable(previous, incoming []store.Session, less func(a, b store.Session) bool) []store.Session {
+func sortSessionsStable(_, incoming []store.Session, less func(a, b store.Session) bool) []store.Session {
 	sorted := make([]store.Session, len(incoming))
 	copy(sorted, incoming)
 	sort.SliceStable(sorted, func(i, j int) bool {

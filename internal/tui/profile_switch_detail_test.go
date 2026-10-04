@@ -24,7 +24,7 @@ func TestTopLevelPIsUnbound(t *testing.T) {
 	var called bool
 	model := NewWithShellCreatorAttacherKillerResumerAndProfileSwitcher(
 		nil, config.Settings{}, "", nil, nil, nil, nil, nil,
-		func(ctx context.Context, id, profile string) (store.Session, error) {
+		func(_ context.Context, _, _ string) (store.Session, error) {
 			called = true
 			return store.Session{}, nil
 		},
@@ -70,7 +70,7 @@ func TestDetailPOpensProfilePickerAndReturnsToDetail(t *testing.T) {
 		updatedSession := store.Session{ID: "s1", Name: "alpha", Agent: "claude", Status: "running", PermissionProfile: "edits"}
 		model := NewWithShellCreatorAttacherKillerResumerAndProfileSwitcher(
 			nil, config.Settings{AllowYolo: true}, "", nil, nil, nil, nil, nil,
-			func(ctx context.Context, id, profile string) (store.Session, error) {
+			func(_ context.Context, id, profile string) (store.Session, error) {
 				persistedID, persistedProfile = id, profile
 				return updatedSession, nil
 			},
@@ -135,7 +135,7 @@ func TestDetailPOpensProfilePickerAndReturnsToDetail(t *testing.T) {
 	t.Run("esc returns to detail, not the list", func(t *testing.T) {
 		model := NewWithShellCreatorAttacherKillerResumerAndProfileSwitcher(
 			nil, config.Settings{}, "", nil, nil, nil, nil, nil,
-			func(ctx context.Context, id, profile string) (store.Session, error) {
+			func(_ context.Context, _, _ string) (store.Session, error) {
 				return store.Session{}, nil
 			},
 		)
@@ -171,7 +171,7 @@ func TestDetailPOpensProfilePickerAndReturnsToDetail(t *testing.T) {
 	t.Run("ineligible session is refused with canSwitchProfile's message", func(t *testing.T) {
 		model := NewWithShellCreatorAttacherKillerResumerAndProfileSwitcher(
 			nil, config.Settings{}, "", nil, nil, nil, nil, nil,
-			func(ctx context.Context, id, profile string) (store.Session, error) {
+			func(_ context.Context, _, _ string) (store.Session, error) {
 				return store.Session{}, nil
 			},
 		)

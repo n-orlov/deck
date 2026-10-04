@@ -21,7 +21,7 @@ func TestCreateModalShellSubmitPassesPreLaunchThrough(t *testing.T) {
 	before.setCreateText(createFieldPreLaunch, "eval \"$(load-secrets)\"")
 
 	var got service.ShellCreateInput
-	before.create = func(ctx context.Context, in service.ShellCreateInput) (store.Session, error) {
+	before.create = func(_ context.Context, in service.ShellCreateInput) (store.Session, error) {
 		got = in
 		return store.Session{Name: in.Name}, nil
 	}

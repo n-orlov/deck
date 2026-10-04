@@ -256,7 +256,7 @@ func run(args []string, stderr io.Writer) error {
 		return err
 	}
 	if *out == "" || *group == "" || fs.NArg() == 0 {
-		return errors.New("usage: junit2allure -group <name> -o <results dir> <junit.xml>...")
+		return errors.New("usage: junit2allure -group <name> -o <results dir> <junit.xml> [<junit.xml> ...]")
 	}
 	if err := os.MkdirAll(*out, 0o755); err != nil { //nolint:gosec // report input
 		return err

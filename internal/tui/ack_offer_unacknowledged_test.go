@@ -139,10 +139,10 @@ func TestYOnAcknowledgedRowDoesNothingAndStaysInHelp(t *testing.T) {
 		t.Fatalf("test assumption violated: row is not acknowledged: %#v", m.sessions[0])
 	}
 	calls := 0
-	real := m.acknowledge
+	realAck := m.acknowledge
 	m.acknowledge = func(c context.Context, id string) error {
 		calls++
-		return real(c, id)
+		return realAck(c, id)
 	}
 	before, err := db.GetSession(ctx, "waiting")
 	if err != nil {

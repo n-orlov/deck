@@ -127,7 +127,7 @@ func TestSpaceMovesSelectionAndWrapsWithoutTouchingSessionStatus(t *testing.T) {
 		}
 	}
 
-	before := snapshotSessions(t, db, ctx, []string{"running-one", "waiting-one", "idle-one", "error-one"})
+	before := snapshotSessions(ctx, t, db, []string{"running-one", "waiting-one", "idle-one", "error-one"})
 
 	settings := config.Settings{ASCII: true}
 	model := New(db, settings, "")
@@ -180,7 +180,7 @@ func TestSpaceMovesSelectionAndWrapsWithoutTouchingSessionStatus(t *testing.T) {
 		t.Fatalf("after third space (wrap), selected = %q, want %q", got, "waiting-one")
 	}
 
-	after := snapshotSessions(t, db, ctx, []string{"running-one", "waiting-one", "idle-one", "error-one"})
+	after := snapshotSessions(ctx, t, db, []string{"running-one", "waiting-one", "idle-one", "error-one"})
 	if len(before) != len(after) {
 		t.Fatalf("row count changed: before %d, after %d", len(before), len(after))
 	}
@@ -217,7 +217,7 @@ func TestSpaceNoopWhenSelectionAlreadyOnSoleAttentionRow(t *testing.T) {
 // encoding, keyed by ID, so a caller can compare two snapshots byte-for-byte
 // without hand-listing every store.Session field (several of which are
 // slices/maps that reflect.DeepEqual would need special-casing for anyway).
-func snapshotSessions(t *testing.T, db *store.Store, ctx context.Context, ids []string) map[string][]byte {
+func snapshotSessions(ctx context.Context, t *testing.T, db *store.Store, ids []string) map[string][]byte {
 	t.Helper()
 	out := make(map[string][]byte, len(ids))
 	for _, id := range ids {

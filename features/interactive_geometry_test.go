@@ -62,7 +62,7 @@ func deckFitsWindowPaneTo(ctx context.Context, windowTarget, paneTarget string, 
 	return nil
 }
 
-func theFitConvergedInAtMostResizes(ctx context.Context, max int) error {
+func theFitConvergedInAtMostResizes(ctx context.Context, limit int) error {
 	h, err := scenarioHarness(ctx)
 	if err != nil {
 		return err
@@ -70,8 +70,8 @@ func theFitConvergedInAtMostResizes(ctx context.Context, max int) error {
 	if h.lastGeometryFitErr != nil {
 		return fmt.Errorf("fit did not converge: %w", h.lastGeometryFitErr)
 	}
-	if h.lastGeometryFitResizes < 1 || h.lastGeometryFitResizes > max {
-		return fmt.Errorf("fit converged in %d resizes, want between 1 and %d", h.lastGeometryFitResizes, max)
+	if h.lastGeometryFitResizes < 1 || h.lastGeometryFitResizes > limit {
+		return fmt.Errorf("fit converged in %d resizes, want between 1 and %d", h.lastGeometryFitResizes, limit)
 	}
 	return nil
 }

@@ -186,6 +186,7 @@ func (s *Store) DB() *sql.DB { return s.db }
 // Path returns the database location for external diagnostics.
 func (s *Store) Path() string { return s.path }
 
+// Close closes the underlying database handle.
 func (s *Store) Close() error { return s.db.Close() }
 
 // CreateSessionInput is the durable identity supplied when a session is first
@@ -1076,8 +1077,6 @@ func (s *Store) AcknowledgeSession(ctx context.Context, sessionID string) error 
 	return nil
 }
 
-// RecordOrphanEvent preserves a hook event which could not be resolved to a
-// session. NULL (not an empty id) is used so the foreign key remains honest.
 // RecordSessionNote appends one session-scoped "note" event (task 013,
 // SPEC §9.2's fail-open teardown report) without touching any other column
 // on the row: unlike UpdateSessionStatus it never rewrites status, source,
@@ -1101,6 +1100,8 @@ func (s *Store) RecordSessionNote(ctx context.Context, sessionID, reason string,
 	return nil
 }
 
+// RecordOrphanEvent preserves a hook event which could not be resolved to a
+// session. NULL (not an empty id) is used so the foreign key remains honest.
 func (s *Store) RecordOrphanEvent(ctx context.Context, input EventInput) error {
 	if input.At == 0 {
 		return errors.New("event timestamp is required")

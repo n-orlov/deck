@@ -642,7 +642,7 @@ func (m Model) previewContentSize() (width, height int) {
 // the next input event starts from, even when no Update runs in between
 // (the resize / visible-only-reseed case). R133 part 2 (the scrolled-back
 // cue itself) and R135 read that same stored position.
-func (m *Model) interactiveBodyLines(contentWidth, contentHeight int) ([]string, []previewLineOwner) {
+func (m *Model) interactiveBodyLines(_, contentHeight int) ([]string, []previewLineOwner) {
 	snap := m.interactiveGrid.RenderSnapshot(m.interactiveScrollOffset(), contentHeight)
 	// usedOffset is where these rows were composed (it decides live versus
 	// history for the cursor and the notice); the stored scroll position

@@ -37,8 +37,11 @@ type Claude struct{}
 // NewClaude returns the Claude adapter.
 func NewClaude() Claude { return Claude{} }
 
+// Kind returns the registry name of the Claude adapter.
 func (Claude) Kind() string { return "claude" }
 
+// Capabilities declares Claude's profiles and that it accepts a caller-assigned,
+// resumable conversation id with an on-disk transcript.
 func (Claude) Capabilities() Caps {
 	return Caps{
 		Profiles:              claudeProfiles,
@@ -72,6 +75,9 @@ func (Claude) TranscriptPaths(in TranscriptInput) (string, bool) {
 	return path, true
 }
 
+// Launch returns the argv that starts Claude on the caller-assigned
+// conversation id under in.Profile, followed by in.ExtraArgs. An empty
+// ConversationID or an unknown profile is an error.
 func (c Claude) Launch(in LaunchInput) ([]string, error) {
 	if in.ConversationID == "" {
 		return nil, fmt.Errorf("claude: launch requires a caller-assigned conversation id")
@@ -84,6 +90,9 @@ func (c Claude) Launch(in LaunchInput) ([]string, error) {
 	return append(argv, in.ExtraArgs...), nil
 }
 
+// Resume returns the argv that resumes the Claude conversation named by
+// in.ConversationID under in.Profile, followed by in.ExtraArgs. An empty
+// ConversationID or an unknown profile is an error.
 func (c Claude) Resume(in ResumeInput) ([]string, error) {
 	if in.ConversationID == "" {
 		return nil, fmt.Errorf("claude: resume requires a conversation id")
@@ -118,6 +127,9 @@ type claudeHook struct {
 	Command string `json:"command"`
 }
 
+// Probe provides the sampled fallback used when Claude's live hook verdict is stale.
+func (Claude) Probe(pane string) (string, string) { return probe("claude", pane) }
+
 // Instrument supplies Claude's per-process --settings JSON. Claude merges
 // this settings source with user and project settings, so deck adds its hooks
 // without reading or modifying either source. Marshal cannot fail for these
@@ -132,9 +144,6 @@ type claudeHook struct {
 // hook JSON and DECK_LAUNCH_GENERATION, whose absent-when-no-lease
 // semantics (see below) are a Claude-specific hook-routing fact, not a
 // session property, and so are not part of that shared map.
-// Probe provides the sampled fallback used when Claude's live hook verdict is stale.
-func (Claude) Probe(pane string) (string, string) { return probe("claude", pane) }
-
 func (Claude) Instrument(in LaunchInput) ([]string, map[string]string) {
 	command := shellQuote(in.DeckExecutable) + " _hook"
 	hooks := make(map[string][]claudeHookGroup, len(claudeHookEvents))

@@ -62,7 +62,7 @@ const (
 // internal/tmux/tmux_test.go's TestAttachHelper uses) so the "process is
 // killed" step is a genuine SIGKILL against a genuine process rather than
 // something simulated in-process.
-func TestStoreDurabilityCrashHelper(t *testing.T) {
+func TestStoreDurabilityCrashHelper(_ *testing.T) {
 	if os.Getenv(durabilityHelperEnv) != "1" {
 		return
 	}

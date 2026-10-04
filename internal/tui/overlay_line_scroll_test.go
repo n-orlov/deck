@@ -219,8 +219,8 @@ func TestScrollableOverlaysStillPageWithPgDn(t *testing.T) {
 			// What a page step means for this body: the whole content
 			// budget, clamped by the body's own remaining length.
 			wantOffset := m.dialogContentBudget()
-			if max := m.dialogMaxScroll(fixture.body(m)); wantOffset > max {
-				wantOffset = max
+			if maxScroll := m.dialogMaxScroll(fixture.body(m)); wantOffset > maxScroll {
+				wantOffset = maxScroll
 			}
 			if wantOffset < 2 {
 				t.Fatalf("%s: a page step here is only %d lines, so this test could not tell a page from a line -- the fixture needs more content", fixture.name, wantOffset)

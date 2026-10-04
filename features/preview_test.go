@@ -290,7 +290,7 @@ func clientRowContainingIsBorderedAtFullGridWidth(ctx context.Context, name, mar
 // supports (requirement 24). It polls the pane's own capture-pane output
 // (never deck's rendering) for the printed glyph before returning, so the
 // caller's own assertion is never racing the shell's echo.
-func clientFillsSelectedPaneWithWideCharacters(ctx context.Context, name string) error {
+func clientFillsSelectedPaneWithWideCharacters(ctx context.Context, _ string) error {
 	h, err := scenarioHarness(ctx)
 	if err != nil {
 		return err

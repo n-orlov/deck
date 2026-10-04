@@ -9,14 +9,14 @@ func relativeLuminance(hex string) (float64, error) {
 	if err != nil {
 		return 0, err
 	}
-	chan_ := func(c int) float64 {
+	channel := func(c int) float64 {
 		v := float64(c) / 255.0
 		if v <= 0.03928 {
 			return v / 12.92
 		}
 		return math.Pow((v+0.055)/1.055, 2.4)
 	}
-	R, G, B := chan_(r), chan_(g), chan_(b)
+	R, G, B := channel(r), channel(g), channel(b)
 	return 0.2126*R + 0.7152*G + 0.0722*B, nil
 }
 

@@ -28,7 +28,7 @@ func TestPinDialogPersistsPinnedMode(t *testing.T) {
 	updated := store.Session{ID: "s1", Name: "alpha", Agent: "claude", Status: "running", ConversationID: "conv-1", ResumeState: "pinned", ResumePin: "conv-1"}
 	model := NewWithShellCreatorAttacherKillerResumerProfileSwitcherAndResumeModer(
 		nil, config.Settings{}, "", nil, nil, nil, nil, nil, nil,
-		func(ctx context.Context, id, mode string) (store.Session, error) {
+		func(_ context.Context, id, mode string) (store.Session, error) {
 			persistedID, persistedMode = id, mode
 			return updated, nil
 		},
@@ -88,7 +88,7 @@ func TestPinDialogEscCancelsWithoutPersisting(t *testing.T) {
 	called := false
 	model := NewWithShellCreatorAttacherKillerResumerProfileSwitcherAndResumeModer(
 		nil, config.Settings{}, "", nil, nil, nil, nil, nil, nil,
-		func(ctx context.Context, id, mode string) (store.Session, error) {
+		func(_ context.Context, _, _ string) (store.Session, error) {
 			called = true
 			return store.Session{}, nil
 		},
@@ -121,7 +121,7 @@ func TestPinDialogEscCancelsWithoutPersisting(t *testing.T) {
 func TestPinDialogNotOfferedForShell(t *testing.T) {
 	model := NewWithShellCreatorAttacherKillerResumerProfileSwitcherAndResumeModer(
 		nil, config.Settings{}, "", nil, nil, nil, nil, nil, nil,
-		func(ctx context.Context, id, mode string) (store.Session, error) {
+		func(_ context.Context, _, _ string) (store.Session, error) {
 			return store.Session{}, nil
 		},
 	)

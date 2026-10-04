@@ -34,7 +34,7 @@ func envValue(env []string, key string) string {
 func listRelPaths(t *testing.T, root string) []string {
 	t.Helper()
 	var found []string
-	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+	err := filepath.WalkDir(root, func(path string, _ os.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}

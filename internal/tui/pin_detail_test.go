@@ -33,7 +33,7 @@ func TestTopLevelPDoesNotOpenTheLockChooser(t *testing.T) {
 	var called bool
 	model := NewWithShellCreatorAttacherKillerResumerProfileSwitcherAndResumeModer(
 		nil, config.Settings{}, "", nil, nil, nil, nil, nil, nil,
-		func(ctx context.Context, id, mode string) (store.Session, error) {
+		func(_ context.Context, _, _ string) (store.Session, error) {
 			called = true
 			return store.Session{}, nil
 		},
@@ -72,7 +72,7 @@ func TestDetailCLocksConversation(t *testing.T) {
 		updatedSession := store.Session{ID: "s1", Name: "alpha", Agent: "claude", Status: "running", ConversationID: "conv-1", ResumeState: "pinned", ResumePin: "conv-1"}
 		model := NewWithShellCreatorAttacherKillerResumerProfileSwitcherAndResumeModer(
 			nil, config.Settings{}, "", nil, nil, nil, nil, nil, nil,
-			func(ctx context.Context, id, mode string) (store.Session, error) {
+			func(_ context.Context, id, mode string) (store.Session, error) {
 				persistedID, persistedMode = id, mode
 				return updatedSession, nil
 			},
@@ -135,7 +135,7 @@ func TestDetailCLocksConversation(t *testing.T) {
 	t.Run("esc returns to detail, not the list", func(t *testing.T) {
 		model := NewWithShellCreatorAttacherKillerResumerProfileSwitcherAndResumeModer(
 			nil, config.Settings{}, "", nil, nil, nil, nil, nil, nil,
-			func(ctx context.Context, id, mode string) (store.Session, error) {
+			func(_ context.Context, _, _ string) (store.Session, error) {
 				return store.Session{}, nil
 			},
 		)
@@ -171,7 +171,7 @@ func TestDetailCLocksConversation(t *testing.T) {
 	t.Run("ineligible session is refused with canPinResume's message", func(t *testing.T) {
 		model := NewWithShellCreatorAttacherKillerResumerProfileSwitcherAndResumeModer(
 			nil, config.Settings{}, "", nil, nil, nil, nil, nil, nil,
-			func(ctx context.Context, id, mode string) (store.Session, error) {
+			func(_ context.Context, _, _ string) (store.Session, error) {
 				return store.Session{}, nil
 			},
 		)

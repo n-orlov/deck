@@ -62,7 +62,7 @@ func TestSessionNoticesAndClosesDownOnADeadPaneUnderRemainOnExitFailed(t *testin
 	client := tmux.Client{Socket: socket, Timeout: 5 * time.Second}
 	ctx := context.Background()
 
-	session, err := Start(ctx, client, "s0", 40, 10, func(ctx context.Context) ([]byte, error) {
+	session, err := Start(ctx, client, "s0", 40, 10, func(_ context.Context) ([]byte, error) {
 		return rawCapturePane(t, socket, "s0"), nil
 	})
 	if err != nil {
@@ -116,7 +116,7 @@ func TestSessionDeadChannelNeverClosesWithoutAnyDeathAndAPollTick(t *testing.T) 
 	client := tmux.Client{Socket: socket, Timeout: 5 * time.Second}
 	ctx := context.Background()
 
-	session, err := Start(ctx, client, "s0", 40, 10, func(ctx context.Context) ([]byte, error) {
+	session, err := Start(ctx, client, "s0", 40, 10, func(_ context.Context) ([]byte, error) {
 		return rawCapturePane(t, socket, "s0"), nil
 	})
 	if err != nil {

@@ -77,7 +77,7 @@ func findHeader(t *testing.T, m Model, groupName string) (x, y int) {
 // itself adds on top of the border row: the startup banner (none in these
 // tests). The below-minimum notice (SPEC requirement 14) lives on the
 // footer now, not above the stacked panels, so it never shifts this.
-func contentRowY(m Model, layout LayoutResult, contentRow int) int {
+func contentRowY(m Model, _ LayoutResult, contentRow int) int {
 	width, _ := m.frameSize()
 	banner := len(m.startupBanner(width))
 	return banner + contentRow + 1

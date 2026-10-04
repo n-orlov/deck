@@ -15,8 +15,8 @@ import (
 	"time"
 )
 
+// MinimumMajor and MinimumMinor are the oldest supported tmux release.
 const (
-	// MinimumMajor and MinimumMinor are the oldest supported tmux release.
 	MinimumMajor = 3
 	MinimumMinor = 2
 )
@@ -218,9 +218,6 @@ func (c Client) Discover(ctx context.Context) (Version, error) {
 	return version, nil
 }
 
-// Bootstrap creates deck's private server if necessary and configures every
-// contract option in one tmux client invocation. Passing -L on the sole command
-// is deliberate: deck must never initialize or alter the user's default server.
 // Create makes exactly one detached tmux session named deck_<slug>, with one
 // pane in CWD running Command. Environment is passed to that initial process
 // and mirrored into the session for any future pane.
@@ -856,6 +853,9 @@ func pairs(values []string) func(func(string, string) bool) {
 // in docs/reports/phase3b.md.
 const historyLimit = 10000
 
+// Bootstrap creates deck's private server if necessary and configures every
+// contract option in one tmux client invocation. Passing -L on the sole command
+// is deliberate: deck must never initialize or alter the user's default server.
 func (c Client) Bootstrap(ctx context.Context) error {
 	if c.Socket == "" {
 		return errors.New("tmux socket name is required")

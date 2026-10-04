@@ -10,6 +10,8 @@ package theme
 // one or names an extra key is rejected — see Parse.
 type Token string
 
+// The colour tokens: the sixteen general slots followed by the seven §7
+// status tokens.
 const (
 	Background    Token = "background"
 	Surface       Token = "surface"
@@ -28,7 +30,8 @@ const (
 	Badge         Token = "badge"
 	BadgeWarn     Token = "badge_warn"
 
-	// The seven §7 status tokens. If §7 grows a status, this list grows a
+	// Waiting and the six tokens after it are the seven §7 status tokens. If
+	// §7 grows a status, this list grows a
 	// token — see StatusTokens below, which is what task 014 iterates to
 	// keep status->token mapping exhaustive.
 	Waiting  Token = "waiting"

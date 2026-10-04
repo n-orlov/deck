@@ -39,7 +39,7 @@ func pipeDisplacementSocket(name string) string {
 // carries an error, bounded by an overall deadline. This mirrors the drain
 // loop TestPanePipeWasClosedIsTrueBeforeAnyBlockedReadCanObserveOurOwnCloseAsEOF
 // already uses for the self-close case, below in this file.
-func readUntilErrorWithTimeout(t *testing.T, p *PanePipe, timeout time.Duration) (int, error, bool) {
+func readUntilErrorWithTimeout(t *testing.T, p *PanePipe, timeout time.Duration) (int, bool, error) {
 	t.Helper()
 	type result struct {
 		n   int
@@ -60,9 +60,9 @@ func readUntilErrorWithTimeout(t *testing.T, p *PanePipe, timeout time.Duration)
 	}()
 	select {
 	case r := <-ch:
-		return r.n, r.err, true
+		return r.n, true, r.err
 	case <-time.After(timeout):
-		return 0, nil, false
+		return 0, false, nil
 	}
 }
 
@@ -91,7 +91,7 @@ func TestPanePipeReceivesGenuineEOFOnDisplacementWithPanePipeStillOne(t *testing
 		t.Fatalf("arm the displacing pipe-pane: %v", err)
 	}
 
-	n, readErr, done := readUntilErrorWithTimeout(t, pipe, 5*time.Second)
+	n, done, readErr := readUntilErrorWithTimeout(t, pipe, 5*time.Second)
 	if !done {
 		t.Fatalf("displaced reader never returned from Read within 5s -- it should have observed a clean EOF, not stalled")
 	}
@@ -132,7 +132,7 @@ func TestPanePipeReceivesGenuineEOFOnDisableWithPanePipeZero(t *testing.T) {
 		t.Fatalf("bare pipe-pane (disable): %v", err)
 	}
 
-	n, readErr, done := readUntilErrorWithTimeout(t, pipe, 5*time.Second)
+	n, done, readErr := readUntilErrorWithTimeout(t, pipe, 5*time.Second)
 	if !done {
 		t.Fatalf("reader never returned from Read within 5s after disable -- it should have observed a clean EOF, not stalled")
 	}

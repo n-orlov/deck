@@ -69,24 +69,24 @@ func goModMinimum(dir string) (string, error) {
 	if err := sc.Err(); err != nil {
 		return "", err
 	}
-	min := toolchain
-	if min == "" {
-		min = goLine
+	minimum := toolchain
+	if minimum == "" {
+		minimum = goLine
 	}
-	if min == "" {
+	if minimum == "" {
 		return "", fmt.Errorf("%s/go.mod has neither a toolchain nor a go line", dir)
 	}
-	if !version.IsValid(min) {
-		return "", fmt.Errorf("%s/go.mod: %q is not a valid Go version", dir, min)
+	if !version.IsValid(minimum) {
+		return "", fmt.Errorf("%s/go.mod: %q is not a valid Go version", dir, minimum)
 	}
-	return min, nil
+	return minimum, nil
 }
 
 // checkGoNotOlderThanToolchain runs `go version` (GOTOOLCHAIN=local, so
 // the go command cannot swap itself for another toolchain) and returns a
 // problem string when that go is older than go.mod's toolchain line.
 func checkGoNotOlderThanToolchain(o govulncheckOptions) (problem string, err error) {
-	min, err := goModMinimum(o.Target)
+	minimum, err := goModMinimum(o.Target)
 	if err != nil {
 		return "", err
 	}
@@ -105,8 +105,8 @@ func checkGoNotOlderThanToolchain(o govulncheckOptions) (problem string, err err
 	if m == nil || !version.IsValid(m[1]) {
 		return "", fmt.Errorf("cannot read a Go version from %q", strings.TrimSpace(string(out)))
 	}
-	if version.Compare(m[1], min) < 0 {
-		return fmt.Sprintf("the running Go is %s, older than go.mod's toolchain line %s", m[1], min), nil
+	if version.Compare(m[1], minimum) < 0 {
+		return fmt.Sprintf("the running Go is %s, older than go.mod's toolchain line %s", m[1], minimum), nil
 	}
 	return "", nil
 }

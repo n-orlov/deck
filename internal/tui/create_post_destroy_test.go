@@ -93,7 +93,7 @@ func TestCreateModalShellSubmitPassesPostDestroyThrough(t *testing.T) {
 	before.setCreateText(createFieldPostDestroy, "echo teardown >> log")
 
 	var got service.ShellCreateInput
-	before.create = func(ctx context.Context, in service.ShellCreateInput) (store.Session, error) {
+	before.create = func(_ context.Context, in service.ShellCreateInput) (store.Session, error) {
 		got = in
 		return store.Session{Name: in.Name}, nil
 	}
@@ -122,7 +122,7 @@ func TestCreateModalAgentSubmitPassesPostDestroyThrough(t *testing.T) {
 	before.setCreateText(createFieldPostDestroy, "echo teardown >> log")
 
 	var got service.AgentCreateInput
-	before.createAgentSession = func(ctx context.Context, in service.AgentCreateInput) (store.Session, error) {
+	before.createAgentSession = func(_ context.Context, in service.AgentCreateInput) (store.Session, error) {
 		got = in
 		return store.Session{Name: in.Name}, nil
 	}

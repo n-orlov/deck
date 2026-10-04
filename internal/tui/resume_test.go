@@ -21,7 +21,7 @@ func TestResumeKeyRendersAwaitingSignalNeverRunning(t *testing.T) {
 	resumed := store.Session{ID: "s1", Name: "alpha", Agent: "claude", Status: "starting"}
 	model := NewWithShellCreatorAttacherKillerReconcilerAndResumer(
 		nil, config.Settings{}, "", nil, nil, nil, nil,
-		func(ctx context.Context, id string) (store.Session, service.ResumeOutcome, error) {
+		func(_ context.Context, id string) (store.Session, service.ResumeOutcome, error) {
 			if id != "s1" {
 				t.Fatalf("resume called with unexpected id %q", id)
 			}
@@ -74,7 +74,7 @@ func TestResumeKeyRendersAwaitingSignalNeverRunning(t *testing.T) {
 func TestResumeStartingElsewhereIsNotAnError(t *testing.T) {
 	model := NewWithShellCreatorAttacherKillerReconcilerAndResumer(
 		nil, config.Settings{}, "", nil, nil, nil, nil,
-		func(ctx context.Context, id string) (store.Session, service.ResumeOutcome, error) {
+		func(_ context.Context, _ string) (store.Session, service.ResumeOutcome, error) {
 			return store.Session{}, service.ResumeStartingElsewhere, nil
 		},
 	)
@@ -107,7 +107,7 @@ func TestResumeAlreadyRunningIsNotAnError(t *testing.T) {
 	stopped := store.Session{ID: "s1", Name: "alpha", Agent: "claude", Status: "stopped"}
 	model := NewWithShellCreatorAttacherKillerReconcilerAndResumer(
 		nil, config.Settings{}, "", nil, nil, nil, nil,
-		func(ctx context.Context, id string) (store.Session, service.ResumeOutcome, error) {
+		func(_ context.Context, _ string) (store.Session, service.ResumeOutcome, error) {
 			return stopped, service.ResumeAlreadyRunning, nil
 		},
 	)
@@ -139,7 +139,7 @@ func TestResumeNonLeasableRendersActualStatusAndReason(t *testing.T) {
 	}
 	model := NewWithShellCreatorAttacherKillerReconcilerAndResumer(
 		nil, config.Settings{}, "", nil, nil, nil, nil,
-		func(ctx context.Context, id string) (store.Session, service.ResumeOutcome, error) {
+		func(_ context.Context, _ string) (store.Session, service.ResumeOutcome, error) {
 			return actual, service.ResumeNotLeasable, nil
 		},
 	)
@@ -172,7 +172,7 @@ func TestResumeNonLeasableRendersActualStatusAndReason(t *testing.T) {
 func TestResumeFailureRendersAsError(t *testing.T) {
 	model := NewWithShellCreatorAttacherKillerReconcilerAndResumer(
 		nil, config.Settings{}, "", nil, nil, nil, nil,
-		func(ctx context.Context, id string) (store.Session, service.ResumeOutcome, error) {
+		func(_ context.Context, _ string) (store.Session, service.ResumeOutcome, error) {
 			return store.Session{}, service.ResumeStarted, errors.New("boom")
 		},
 	)
@@ -196,7 +196,7 @@ func TestResumeKeyRequiresStoppedRow(t *testing.T) {
 	called := false
 	model := NewWithShellCreatorAttacherKillerReconcilerAndResumer(
 		nil, config.Settings{}, "", nil, nil, nil, nil,
-		func(ctx context.Context, id string) (store.Session, service.ResumeOutcome, error) {
+		func(_ context.Context, _ string) (store.Session, service.ResumeOutcome, error) {
 			called = true
 			return store.Session{}, service.ResumeStarted, nil
 		},

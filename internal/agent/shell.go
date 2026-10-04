@@ -22,8 +22,11 @@ type Shell struct{}
 // NewShell returns the Shell adapter.
 func NewShell() Shell { return Shell{} }
 
+// Kind returns the registry name of the Shell adapter.
 func (Shell) Kind() string { return "shell" }
 
+// Capabilities declares that a shell has no profiles, conversation id,
+// resume or transcript.
 func (Shell) Capabilities() Caps {
 	return Caps{
 		Profiles:              nil,

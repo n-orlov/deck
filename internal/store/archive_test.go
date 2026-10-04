@@ -15,8 +15,8 @@ import (
 func TestArchiveSessionSetsArchivedAtAndHidesFromListSessions(t *testing.T) {
 	st := openTombstoneTestStore(t)
 	ctx := context.Background()
-	kept := createTombstoneTestSession(t, st, ctx, "kept-visible")
-	doomed := createTombstoneTestSession(t, st, ctx, "archived-away")
+	kept := createTombstoneTestSession(ctx, t, st, "kept-visible")
+	doomed := createTombstoneTestSession(ctx, t, st, "archived-away")
 
 	if err := st.ArchiveSession(ctx, doomed.ID, 200); err != nil {
 		t.Fatalf("archive: %v", err)
@@ -61,7 +61,7 @@ func TestArchiveSessionSetsArchivedAtAndHidesFromListSessions(t *testing.T) {
 func TestArchiveSessionLeavesStoppedStatusUnchanged(t *testing.T) {
 	st := openTombstoneTestStore(t)
 	ctx := context.Background()
-	session := createTombstoneTestSession(t, st, ctx, "stopped-then-archived")
+	session := createTombstoneTestSession(ctx, t, st, "stopped-then-archived")
 	if err := st.UpdateSessionStatus(ctx, StatusUpdateInput{
 		SessionID: session.ID, Status: "stopped", Reason: "killed by user", Source: "user", At: 150, EventKind: "killed",
 	}); err != nil {
@@ -104,9 +104,9 @@ func TestArchiveSessionRejectsMissingSession(t *testing.T) {
 func TestListArchivedSessionsIsTheOnlyRouteBackToAnArchivedRow(t *testing.T) {
 	st := openTombstoneTestStore(t)
 	ctx := context.Background()
-	active := createTombstoneTestSession(t, st, ctx, "still-active")
-	archived := createTombstoneTestSession(t, st, ctx, "archived-away")
-	archivedAndDeleted := createTombstoneTestSession(t, st, ctx, "archived-then-deleted")
+	active := createTombstoneTestSession(ctx, t, st, "still-active")
+	archived := createTombstoneTestSession(ctx, t, st, "archived-away")
+	archivedAndDeleted := createTombstoneTestSession(ctx, t, st, "archived-then-deleted")
 
 	if err := st.ArchiveSession(ctx, archived.ID, 200); err != nil {
 		t.Fatalf("archive: %v", err)
@@ -149,7 +149,7 @@ func TestListArchivedSessionsIsTheOnlyRouteBackToAnArchivedRow(t *testing.T) {
 func TestUnarchiveSessionClearsArchivedAtAndReturnsToListSessions(t *testing.T) {
 	st := openTombstoneTestStore(t)
 	ctx := context.Background()
-	session := createTombstoneTestSession(t, st, ctx, "archived-then-back")
+	session := createTombstoneTestSession(ctx, t, st, "archived-then-back")
 	if err := st.UpdateSessionStatus(ctx, StatusUpdateInput{
 		SessionID: session.ID, Status: "stopped", Reason: "killed by user", Source: "user", At: 150, EventKind: "killed",
 	}); err != nil {
@@ -221,10 +221,10 @@ func TestUnarchiveSessionRejectsMissingSession(t *testing.T) {
 func TestListSessionsIncludingArchivedKeepsArchivedAndDropsTombstoned(t *testing.T) {
 	st := openTombstoneTestStore(t)
 	ctx := context.Background()
-	plain := createTombstoneTestSession(t, st, ctx, "plain")
-	archived := createTombstoneTestSession(t, st, ctx, "archived")
-	tombstoned := createTombstoneTestSession(t, st, ctx, "tombstoned")
-	both := createTombstoneTestSession(t, st, ctx, "archived-then-deleted")
+	plain := createTombstoneTestSession(ctx, t, st, "plain")
+	archived := createTombstoneTestSession(ctx, t, st, "archived")
+	tombstoned := createTombstoneTestSession(ctx, t, st, "tombstoned")
+	both := createTombstoneTestSession(ctx, t, st, "archived-then-deleted")
 	if err := st.ArchiveSession(ctx, archived.ID, 200); err != nil {
 		t.Fatal(err)
 	}

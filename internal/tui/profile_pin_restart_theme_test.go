@@ -24,7 +24,7 @@ func task020ProfileModel(t *testing.T) Model {
 	t.Helper()
 	m := NewWithShellCreatorAttacherKillerResumerAndProfileSwitcher(
 		nil, config.Settings{Color: true}, "", nil, nil, nil, nil, nil,
-		func(ctx context.Context, id, profile string) (store.Session, error) {
+		func(_ context.Context, id, profile string) (store.Session, error) {
 			return store.Session{ID: id, PermissionProfile: profile}, nil
 		},
 	)
@@ -43,7 +43,7 @@ func task020PinModel(t *testing.T) Model {
 	t.Helper()
 	m := NewWithShellCreatorAttacherKillerResumerProfileSwitcherAndResumeModer(
 		nil, config.Settings{Color: true}, "", nil, nil, nil, nil, nil, nil,
-		func(ctx context.Context, id, mode string) (store.Session, error) {
+		func(_ context.Context, id, mode string) (store.Session, error) {
 			return store.Session{ID: id, ResumeState: mode}, nil
 		},
 	)
@@ -80,7 +80,7 @@ func TestProfileSwitchStyledBodyMatchesPlainBodyOnceStripped(t *testing.T) {
 		name string
 		mut  func(m *Model)
 	}{
-		{"initial candidate", func(m *Model) {}},
+		{"initial candidate", func(_ *Model) {}},
 		{"cycled candidate", func(m *Model) { m.profileSwitchValue = "yolo" }},
 		{"with a failure note", func(m *Model) { m.profileSwitchNote = "Cannot change permission profile: boom" }},
 	} {
@@ -107,7 +107,7 @@ func TestPinStyledBodyMatchesPlainBodyOnceStripped(t *testing.T) {
 		name string
 		mut  func(m *Model)
 	}{
-		{"initial candidate", func(m *Model) {}},
+		{"initial candidate", func(_ *Model) {}},
 		{"cycled candidate", func(m *Model) { m.pinValue = "fresh-once" }},
 		{"with a failure note", func(m *Model) { m.pinNote = "Cannot change resume mode: boom" }},
 	} {
@@ -134,7 +134,7 @@ func TestRestartChoiceStyledBodyMatchesPlainBodyOnceStripped(t *testing.T) {
 		name string
 		mut  func(m *Model)
 	}{
-		{"initial candidate", func(m *Model) {}},
+		{"initial candidate", func(_ *Model) {}},
 		{"cycled candidate", func(m *Model) { m.restartChoiceValue = "inject" }},
 		{"with a failure note", func(m *Model) { m.restartChoiceNote = "injecting the environment is unavailable" }},
 	} {

@@ -24,11 +24,11 @@ func TestSweepTombstonesReapsExpiredLeavesFresh(t *testing.T) {
 	const now int64 = 1_700_000_000_000
 	cutoff := now - sweepGrace.Milliseconds()
 
-	expired := createTombstoneTestSession(t, st, ctx, "sweep-expired")
+	expired := createTombstoneTestSession(ctx, t, st, "sweep-expired")
 	if err := st.SoftDeleteSession(ctx, expired.ID, cutoff-1); err != nil {
 		t.Fatalf("soft delete expired: %v", err)
 	}
-	fresh := createTombstoneTestSession(t, st, ctx, "sweep-fresh")
+	fresh := createTombstoneTestSession(ctx, t, st, "sweep-fresh")
 	if err := st.SoftDeleteSession(ctx, fresh.ID, cutoff+1); err != nil {
 		t.Fatalf("soft delete fresh: %v", err)
 	}
@@ -78,7 +78,7 @@ func TestSweepTombstonesThrottlesToAtMostOnceAnHour(t *testing.T) {
 	const firstRun int64 = 1_700_000_000_000
 	cutoffAtFirstRun := firstRun - sweepGrace.Milliseconds()
 
-	first := createTombstoneTestSession(t, st, ctx, "sweep-throttle-first")
+	first := createTombstoneTestSession(ctx, t, st, "sweep-throttle-first")
 	if err := st.SoftDeleteSession(ctx, first.ID, cutoffAtFirstRun-1); err != nil {
 		t.Fatalf("soft delete: %v", err)
 	}
@@ -94,7 +94,7 @@ func TestSweepTombstonesThrottlesToAtMostOnceAnHour(t *testing.T) {
 	// throttle must make this a no-op: the row must still be there.
 	secondRun := firstRun + 10*time.Minute.Milliseconds()
 	cutoffAtSecondRun := secondRun - sweepGrace.Milliseconds()
-	second := createTombstoneTestSession(t, st, ctx, "sweep-throttle-second")
+	second := createTombstoneTestSession(ctx, t, st, "sweep-throttle-second")
 	if err := st.SoftDeleteSession(ctx, second.ID, cutoffAtSecondRun-1); err != nil {
 		t.Fatalf("soft delete: %v", err)
 	}
@@ -135,7 +135,7 @@ func TestSweepTombstonesIsCheapNoOpInsideInterval(t *testing.T) {
 	}
 
 	secondRun := firstRun + 30*time.Minute.Milliseconds()
-	expired := createTombstoneTestSession(t, st, ctx, "sweep-noop-expired")
+	expired := createTombstoneTestSession(ctx, t, st, "sweep-noop-expired")
 	if err := st.SoftDeleteSession(ctx, expired.ID, secondRun-sweepGrace.Milliseconds()-1); err != nil {
 		t.Fatalf("soft delete: %v", err)
 	}
@@ -183,7 +183,7 @@ func TestSweepTombstonesHonoursFrozenClock(t *testing.T) {
 		if realNow := time.Now().UnixMilli(); realNow-frozenNow < sweepGrace.Milliseconds() {
 			t.Fatalf("test premise broken: real clock %d is not far enough ahead of the frozen clock %d", realNow, frozenNow)
 		}
-		session := createTombstoneTestSession(t, st, ctx, "sweep-frozen-past")
+		session := createTombstoneTestSession(ctx, t, st, "sweep-frozen-past")
 		deletedAt := frozenNow - sweepGrace.Milliseconds() + 1000 // just inside the grace window
 		if err := st.SoftDeleteSession(ctx, session.ID, deletedAt); err != nil {
 			t.Fatalf("soft delete: %v", err)
@@ -200,7 +200,7 @@ func TestSweepTombstonesHonoursFrozenClock(t *testing.T) {
 		if got.DeletedAt != deletedAt {
 			t.Fatalf("DeletedAt = %d, want unchanged %d", got.DeletedAt, deletedAt)
 		}
-		assertSweepLastRun(t, st, ctx, frozenNow)
+		assertSweepLastRun(ctx, t, st, frozenNow)
 	})
 
 	t.Run("clock frozen in the future reaps a row the real clock would keep", func(t *testing.T) {
@@ -214,7 +214,7 @@ func TestSweepTombstonesHonoursFrozenClock(t *testing.T) {
 		if realNow := time.Now().UnixMilli(); realNow >= frozenNow-sweepGrace.Milliseconds() {
 			t.Fatalf("test premise broken: real clock %d has caught up with the frozen clock %d", realNow, frozenNow)
 		}
-		session := createTombstoneTestSession(t, st, ctx, "sweep-frozen-future")
+		session := createTombstoneTestSession(ctx, t, st, "sweep-frozen-future")
 		deletedAt := frozenNow - sweepGrace.Milliseconds() - 1000 // just outside the grace window
 		if err := st.SoftDeleteSession(ctx, session.ID, deletedAt); err != nil {
 			t.Fatalf("soft delete: %v", err)
@@ -227,14 +227,14 @@ func TestSweepTombstonesHonoursFrozenClock(t *testing.T) {
 		if _, err := st.GetSession(ctx, session.ID); err == nil {
 			t.Fatal("row survived though it is outside the grace window measured against the injected `now` -- a real time.Now() leaked into the age comparison")
 		}
-		assertSweepLastRun(t, st, ctx, frozenNow)
+		assertSweepLastRun(ctx, t, st, frozenNow)
 	})
 }
 
 // assertSweepLastRun checks the persisted throttle stamp is exactly the
 // injected `now`, catching a real-clock leak on the write half of the
 // sweep as well as on its age comparison.
-func assertSweepLastRun(t *testing.T, st *Store, ctx context.Context, want int64) {
+func assertSweepLastRun(ctx context.Context, t *testing.T, st *Store, want int64) {
 	t.Helper()
 	raw, err := st.getUIState(ctx, tombstoneSweepLastRunKey, "0")
 	if err != nil {
@@ -283,7 +283,7 @@ func TestSweepTombstonesReapsOneBoundedBatchPerCall(t *testing.T) {
 	// and must be reaped first.
 	for i := 0; i < expiredCount; i++ {
 		id := "sweep-batch-expired-" + strconv.Itoa(i)
-		s := createTombstoneTestSession(t, st, ctx, id)
+		s := createTombstoneTestSession(ctx, t, st, id)
 		if err := st.SoftDeleteSession(ctx, s.ID, cutoff-int64(i)-1); err != nil {
 			t.Fatalf("soft delete %q: %v", id, err)
 		}
@@ -292,7 +292,7 @@ func TestSweepTombstonesReapsOneBoundedBatchPerCall(t *testing.T) {
 	// itself: every call below (the first bounded batch AND the drain that
 	// follows it) is driven at this SAME now, so one cutoff protects it
 	// throughout the whole open/startup cycle, not just the first pass.
-	fresh := createTombstoneTestSession(t, st, ctx, "sweep-batch-fresh")
+	fresh := createTombstoneTestSession(ctx, t, st, "sweep-batch-fresh")
 	if err := st.SoftDeleteSession(ctx, fresh.ID, cutoff+1); err != nil {
 		t.Fatalf("soft delete fresh: %v", err)
 	}

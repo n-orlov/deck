@@ -258,11 +258,12 @@ func waitForFifoWriter(ctx context.Context, fd int, stillArmed func(context.Cont
 		if n > 0 {
 			return buf[:n], nil
 		}
-		if err == nil {
-			// n == 0, err == nil: no writer connected yet.
-		} else if err == unix.EAGAIN {
+		// n == 0, err == nil means no writer is connected yet: fall through
+		// to the arming/deadline checks below.
+		if err == unix.EAGAIN {
 			return nil, nil
-		} else {
+		}
+		if err != nil {
 			return nil, err
 		}
 		if err := ctx.Err(); err != nil {
