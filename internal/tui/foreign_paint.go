@@ -359,53 +359,87 @@ func applySGR(params string, fg, bg *sgrColor, reverse *bool) {
 	for i := 0; i < len(fields); i++ {
 		f := fields[i]
 		if strings.ContainsRune(f, ':') {
-			// Colon sub-parameter form (38:2::r:g:b) is self-contained:
-			// one field, no lookahead to consume. Treat it as explicit
-			// without resolving it -- an unresolvable explicit colour is
-			// preserved as-is, never fitted, which is the safe direction.
-			switch {
-			case strings.HasPrefix(f, "38:"):
-				*fg = sgrColor{explicit: true}
-			case strings.HasPrefix(f, "48:"):
-				*bg = sgrColor{explicit: true}
-			}
+			applyColonSGR(f, fg, bg)
 			continue
 		}
 		n, ok := atoiSGR(f)
 		if !ok {
 			continue
 		}
-		switch {
-		case n == 0:
-			*fg, *bg, *reverse = sgrColor{}, sgrColor{}, false
-		case n == 7:
-			*reverse = true
-		case n == 27:
-			*reverse = false
-		case n == 39:
-			*fg = sgrColor{}
-		case n == 49:
-			*bg = sgrColor{}
-		case n >= 30 && n <= 37:
-			*fg = sgrColor{explicit: true, hex: theme.ReferencePalette[n-30]}
-		case n >= 90 && n <= 97:
-			*fg = sgrColor{explicit: true, hex: theme.ReferencePalette[n-90+8]}
-		case n >= 40 && n <= 47:
-			*bg = sgrColor{explicit: true, hex: theme.ReferencePalette[n-40]}
-		case n >= 100 && n <= 107:
-			*bg = sgrColor{explicit: true, hex: theme.ReferencePalette[n-100+8]}
-		case n == 38 || n == 48 || n == 58:
-			hex, consumed := extendedColor(fields[i+1:])
-			c := sgrColor{explicit: hex != "", hex: hex}
-			switch n {
-			case 38:
-				*fg = c
-			case 48:
-				*bg = c
-			}
-			i += consumed
-		}
+		i += applySGRCode(n, fields[i+1:], fg, bg, reverse)
 	}
+}
+
+// applyColonSGR handles the colon sub-parameter form (38:2::r:g:b), which
+// is self-contained: one field, no lookahead to consume. It is treated as
+// explicit without resolving it -- an unresolvable explicit colour is
+// preserved as-is, never fitted, which is the safe direction.
+func applyColonSGR(f string, fg, bg *sgrColor) {
+	switch {
+	case strings.HasPrefix(f, "38:"):
+		*fg = sgrColor{explicit: true}
+	case strings.HasPrefix(f, "48:"):
+		*bg = sgrColor{explicit: true}
+	}
+}
+
+// applySGRCode applies one numeric SGR parameter n and returns how many of
+// the following fields (rest) it consumed: only an extended 38/48/58 spec
+// consumes any.
+func applySGRCode(n int, rest []string, fg, bg *sgrColor, reverse *bool) (consumed int) {
+	if applySGRAttribute(n, fg, bg, reverse) || applySGRPalette(n, fg, bg) {
+		return 0
+	}
+	if n != 38 && n != 48 && n != 58 {
+		return 0
+	}
+	hex, consumed := extendedColor(rest)
+	c := sgrColor{explicit: hex != "", hex: hex}
+	switch n {
+	case 38:
+		*fg = c
+	case 48:
+		*bg = c
+	}
+	return consumed
+}
+
+// applySGRAttribute applies the reset, reverse-video and default-colour
+// parameters and reports whether n was one of them.
+func applySGRAttribute(n int, fg, bg *sgrColor, reverse *bool) bool {
+	switch n {
+	case 0:
+		*fg, *bg, *reverse = sgrColor{}, sgrColor{}, false
+	case 7:
+		*reverse = true
+	case 27:
+		*reverse = false
+	case 39:
+		*fg = sgrColor{}
+	case 49:
+		*bg = sgrColor{}
+	default:
+		return false
+	}
+	return true
+}
+
+// applySGRPalette applies the 8 normal and 8 bright ANSI foreground and
+// background parameters and reports whether n was one of them.
+func applySGRPalette(n int, fg, bg *sgrColor) bool {
+	switch {
+	case n >= 30 && n <= 37:
+		*fg = sgrColor{explicit: true, hex: theme.ReferencePalette[n-30]}
+	case n >= 90 && n <= 97:
+		*fg = sgrColor{explicit: true, hex: theme.ReferencePalette[n-90+8]}
+	case n >= 40 && n <= 47:
+		*bg = sgrColor{explicit: true, hex: theme.ReferencePalette[n-40]}
+	case n >= 100 && n <= 107:
+		*bg = sgrColor{explicit: true, hex: theme.ReferencePalette[n-100+8]}
+	default:
+		return false
+	}
+	return true
 }
 
 // extendedColor resolves the sub-parameters following a 38/48/58 and
