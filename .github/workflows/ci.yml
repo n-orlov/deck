@@ -274,6 +274,26 @@ jobs:
             git checkout -q --orphan gh-pages
           fi
 
+      # R196: the formatter's own fixture (features/allure_formatter_fixture_test.go)
+      # run through the pinned Allure's `allure generate`, and the generated
+      # report checked for the fixture's steps and its @gh-61 link, before the
+      # real report is built and published. Steps of this job, not a job of
+      # their own; the fixture needs Go, so it runs in the CI image like the
+      # suite does.
+      - name: Build/refresh the CI image (for the Allure smoke fixture)
+        run: docker build -t deck-ci:local -f ci/Dockerfile ci
+
+      - name: Allure smoke -- write the formatter fixture results
+        run: |
+          set -eu
+          rm -rf allure-smoke
+          mkdir -p allure-smoke/fixture/allure-results
+          DECK_ALLURE_FIXTURE_OUT=allure-smoke/fixture/allure-results \
+            ci/run.sh go test -count=1 -run '^TestAllureFormatterWritesResultsForAFixtureRun$' ./features/
+
+      - name: Allure smoke -- allure generate over the fixture, check steps and the @gh-NN link
+        run: ci/allure-smoke.sh allure-smoke/fixture allure-smoke/report
+
       - name: Generate the Allure report (history carried over on a root publish, if any)
         run: |
           set -eu

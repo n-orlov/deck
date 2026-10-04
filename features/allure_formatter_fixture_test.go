@@ -17,6 +17,10 @@ import (
 	"github.com/cucumber/godog"
 )
 
+// allureFixtureOutEnv, when set, is the directory the fixture test writes its
+// Allure results into instead of a temporary one (it must start empty).
+const allureFixtureOutEnv = "DECK_ALLURE_FIXTURE_OUT"
+
 const allureFixtureFeature = `@claude
 Feature: Allure fixture
   Background:
@@ -161,6 +165,11 @@ func allureResultNamed(t *testing.T, results []map[string]any, name string) []ma
 func TestAllureFormatterWritesResultsForAFixtureRun(t *testing.T) {
 	dir := t.TempDir()
 	results := filepath.Join(dir, "allure-results")
+	if out := os.Getenv(allureFixtureOutEnv); out != "" {
+		// ci/allure-smoke.sh (R196) runs this same fixture and keeps its
+		// results to hand them to the pinned `allure generate`.
+		results = out
+	}
 	feature := filepath.Join(dir, "allure_fixture.feature")
 	if err := os.WriteFile(feature, []byte(allureFixtureFeature), 0o600); err != nil {
 		t.Fatal(err)
