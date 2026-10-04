@@ -143,19 +143,7 @@ func runWithIO(args []string, stdin io.Reader, stdout, stderr io.Writer, getenv 
 		return 0, fmt.Errorf("encode argv: %w", err)
 	}
 
-	// Keep this output deliberately small and deterministic so a real terminal/pane
-	// assertion can prove both that the fixture started and which argv reached it.
-	sayln(stdout, "Fake Claude Code")
-	sayf(stdout, "fake-claude argv: %s\n", encoded)
-	if options.sessionID != "" {
-		sayf(stdout, "fake-claude session-id: %s\n", options.sessionID)
-	}
-	if options.resume != "" {
-		sayf(stdout, "fake-claude resume: %s\n", options.resume)
-	}
-	if options.permissionMode != "" {
-		sayf(stdout, "fake-claude permission-mode: %s\n", options.permissionMode)
-	}
+	announceLaunch(stdout, options, encoded)
 
 	if getenv(commandsEnvironment) == "1" {
 		if err := runCommands(stdin, stdout, stderr, options.settings, getenv(fixtureDirectoryEnvironment)); err != nil {
@@ -173,6 +161,23 @@ func runWithIO(args []string, stdin io.Reader, stdout, stderr io.Writer, getenv 
 	}
 
 	return configuredExitCode(getenv(exitCodeEnvironment))
+}
+
+// announceLaunch prints the fixture's startup banner: deliberately small and
+// deterministic so a real terminal/pane assertion can prove both that the
+// fixture started and which argv reached it.
+func announceLaunch(stdout io.Writer, options options, encodedArgv []byte) {
+	sayln(stdout, "Fake Claude Code")
+	sayf(stdout, "fake-claude argv: %s\n", encodedArgv)
+	if options.sessionID != "" {
+		sayf(stdout, "fake-claude session-id: %s\n", options.sessionID)
+	}
+	if options.resume != "" {
+		sayf(stdout, "fake-claude resume: %s\n", options.resume)
+	}
+	if options.permissionMode != "" {
+		sayf(stdout, "fake-claude permission-mode: %s\n", options.permissionMode)
+	}
 }
 
 // replayAndRecord implements the per-conversation transcript persisted at the real
@@ -410,40 +415,46 @@ func runCommands(input io.Reader, stdout, stderr io.Writer, rawSettings, fixture
 		if err := json.Unmarshal(scanner.Bytes(), &request); err != nil {
 			return fmt.Errorf("decode command: %w", err)
 		}
-		switch request.Command {
-		case "fixture":
-			if err := renderFixture(stdout, fixtureDirectory, request.Name); err != nil {
-				return err
-			}
-		case "hook":
-			if request.Payload == nil {
-				request.Payload = make(map[string]any)
-			}
-			if err := fireHook(stdout, stderr, commands, request.Event, request.Payload); err != nil {
-				return err
-			}
-		case "resume":
-			if err := fireResumePair(stdout, stderr, commands, request); err != nil {
-				return err
-			}
-		case "exit":
-			// Ends this loop (and, via the caller's exec-replaced wrapper
-			// script, this process) with a clean status 0 exit -- the
-			// pane-side control a scenario reaches for when it needs this
-			// fixture's own tmux pane to actually disappear (deck's
-			// remain-on-exit=failed destroys a zero-exit pane and, with it,
-			// the session), rather than merely posing a terminal status
-			// while the pane a real hook subprocess is independent of stays
-			// alive underneath it.
+		done, err := runCommand(stdout, stderr, commands, fixtureDirectory, request)
+		if err != nil {
+			return err
+		}
+		if done {
 			return nil
-		default:
-			return fmt.Errorf("unknown command %q", request.Command)
 		}
 	}
 	if err := scanner.Err(); err != nil {
 		return fmt.Errorf("read command: %w", err)
 	}
 	return nil
+}
+
+// runCommand executes one pane command; done reports that the command was
+// "exit" and the command loop must end with a clean status.
+func runCommand(stdout, stderr io.Writer, commands map[string]string, fixtureDirectory string, request fixtureCommand) (done bool, err error) {
+	switch request.Command {
+	case "fixture":
+		return false, renderFixture(stdout, fixtureDirectory, request.Name)
+	case "hook":
+		if request.Payload == nil {
+			request.Payload = make(map[string]any)
+		}
+		return false, fireHook(stdout, stderr, commands, request.Event, request.Payload)
+	case "resume":
+		return false, fireResumePair(stdout, stderr, commands, request)
+	case "exit":
+		// Ends the command loop (and, via the caller's exec-replaced wrapper
+		// script, this process) with a clean status 0 exit -- the
+		// pane-side control a scenario reaches for when it needs this
+		// fixture's own tmux pane to actually disappear (deck's
+		// remain-on-exit=failed destroys a zero-exit pane and, with it,
+		// the session), rather than merely posing a terminal status
+		// while the pane a real hook subprocess is independent of stays
+		// alive underneath it.
+		return true, nil
+	default:
+		return false, fmt.Errorf("unknown command %q", request.Command)
+	}
 }
 
 // fireResumePair implements the pane-side command that exercises requirement
