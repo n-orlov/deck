@@ -54,7 +54,7 @@ func reverseCellSGR(line string, col int) string {
 	for i := 0; i < len(line); {
 		if line[i] == 0x1b {
 			n := ansiEscapeLen(line, i)
-			if n >= 3 && line[i+1] == '[' && line[i+n-1] == 'm' {
+			if isSGREscape(line[i : i+n]) {
 				applySGR(line[i+2:i+n-1], &fg, &bg, &reverse)
 			}
 			out.WriteString(line[i : i+n])
@@ -64,13 +64,7 @@ func reverseCellSGR(line string, col int) string {
 		r, size := utf8.DecodeRuneInString(line[i:])
 		w := cellWidth(r)
 		if !done && col >= cur && col < cur+max(w, 1) {
-			if reverse {
-				out.WriteString(line[i : i+size])
-			} else {
-				out.WriteString(cursorOpenSGR)
-				out.WriteString(line[i : i+size])
-				out.WriteString(cursorCloseSGR)
-			}
+			out.WriteString(cursorCellSGR(line[i:i+size], reverse))
 			done = true
 		} else {
 			out.WriteString(line[i : i+size])
@@ -79,14 +73,18 @@ func reverseCellSGR(line string, col int) string {
 		i += size
 	}
 	if !done {
-		if col > cur {
-			out.WriteString(strings.Repeat(" ", col-cur))
-		}
-		if reverse {
-			out.WriteString(" ")
-		} else {
-			out.WriteString(cursorOpenSGR + " " + cursorCloseSGR)
-		}
+		out.WriteString(strings.Repeat(" ", max(col-cur, 0)))
+		out.WriteString(cursorCellSGR(" ", reverse))
 	}
 	return out.String()
+}
+
+// cursorCellSGR paints one cursor cell: the glyph wrapped in the cursor
+// SGR pair, or left exactly as painted when the program's own reverse
+// video already covers it.
+func cursorCellSGR(glyph string, reverse bool) string {
+	if reverse {
+		return glyph
+	}
+	return cursorOpenSGR + glyph + cursorCloseSGR
 }
