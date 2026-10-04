@@ -24,6 +24,17 @@ pinned SHA-256 and aborts on a mismatch (changing `ALLURE_VERSION` needs a new
 `checksums.txt` comes from the same release as the binary, so the check catches
 a corrupt download, not tampering.
 
+`.golangci.yml` (golangci-lint v2, the version pinned in `ci/Dockerfile`) is the
+lint configuration (R188): the `standard` linters plus gosec, revive, gocritic,
+errorlint, misspell, unconvert, unparam, bodyclose, copyloopvar and nolintlint
+(`require-specific`, `require-explanation`); gocognit is not enabled, CRAP is the
+complexity gate. Its only exclusions are two `_test.go`-scoped rules (gosec
+G204/G304/G301/G302/G306, and errcheck on `Close`), each with its reason in the
+file; production code has none. `ci/lintcheck/golangci_test.go` runs the real
+binary to prove a seeded unchecked error, a `//nolint` without a linter name or
+a reason, and an empty package list each fail. It is not yet a required gate:
+`ci/lint.sh` does not run it until the tree is at zero findings.
+
 `go.mod` carries a `toolchain go1.25.N` line (matching the `deck-ci` image's
 Go, `ci/Dockerfile`). `actions/setup-go` with `go-version-file: go.mod`
 prefers that line over the `go 1.25.0` language floor, so the `setup-go` steps
