@@ -934,95 +934,56 @@ var interactiveAltNamedKeys = map[string]string{
 // verdict there fails a test rather than quietly re-creating issue #28's
 // silent drop for that one key.
 func interactiveBareNamedKey(keyType tea.KeyType) (string, bool) {
-	switch keyType {
-	case tea.KeyUp:
-		return "Up", true
-	case tea.KeyDown:
-		return "Down", true
-	case tea.KeyLeft:
-		return "Left", true
-	case tea.KeyRight:
-		return "Right", true
-	case tea.KeyHome:
-		return "Home", true
-	case tea.KeyEnd:
-		return "End", true
-	case tea.KeyPgUp:
-		return "PageUp", true
-	case tea.KeyPgDown:
-		return "PageDown", true
-	case tea.KeyCtrlUp:
-		return "C-Up", true
-	case tea.KeyCtrlDown:
-		return "C-Down", true
-	case tea.KeyCtrlLeft:
-		return "C-Left", true
-	case tea.KeyCtrlRight:
-		return "C-Right", true
-	case tea.KeyCtrlHome:
-		return "C-Home", true
-	case tea.KeyCtrlEnd:
-		return "C-End", true
-	case tea.KeyCtrlPgUp:
-		return "C-PgUp", true
-	case tea.KeyCtrlPgDown:
-		return "C-PgDn", true
-	case tea.KeyShiftUp:
-		return "S-Up", true
-	case tea.KeyShiftDown:
-		return "S-Down", true
-	case tea.KeyShiftLeft:
-		return "S-Left", true
-	case tea.KeyShiftRight:
-		return "S-Right", true
-	case tea.KeyShiftHome:
-		return "S-Home", true
-	case tea.KeyShiftEnd:
-		return "S-End", true
-	case tea.KeyCtrlShiftUp:
-		return "C-S-Up", true
-	case tea.KeyCtrlShiftDown:
-		return "C-S-Down", true
-	case tea.KeyCtrlShiftLeft:
-		return "C-S-Left", true
-	case tea.KeyCtrlShiftRight:
-		return "C-S-Right", true
-	case tea.KeyCtrlShiftHome:
-		return "C-S-Home", true
-	case tea.KeyCtrlShiftEnd:
-		return "C-S-End", true
-	case tea.KeyDelete:
-		return "Delete", true
-	case tea.KeyInsert:
-		return "Insert", true
-	case tea.KeyShiftTab:
-		return "BTab", true
-	case tea.KeyF1:
-		return "F1", true
-	case tea.KeyF2:
-		return "F2", true
-	case tea.KeyF3:
-		return "F3", true
-	case tea.KeyF4:
-		return "F4", true
-	case tea.KeyF5:
-		return "F5", true
-	case tea.KeyF6:
-		return "F6", true
-	case tea.KeyF7:
-		return "F7", true
-	case tea.KeyF8:
-		return "F8", true
-	case tea.KeyF9:
-		return "F9", true
-	case tea.KeyF10:
-		return "F10", true
-	case tea.KeyF11:
-		return "F11", true
-	case tea.KeyF12:
-		return "F12", true
-	}
-	return "", false
+	name, ok := interactiveBareNamedKeys[keyType]
+	return name, ok
+}
+
+// interactiveBareNamedKeys is the table interactiveBareNamedKey reads: one entry
+// per KeyType deck forwards by tmux key name.
+var interactiveBareNamedKeys = map[tea.KeyType]string{
+	tea.KeyUp:             "Up",
+	tea.KeyDown:           "Down",
+	tea.KeyLeft:           "Left",
+	tea.KeyRight:          "Right",
+	tea.KeyHome:           "Home",
+	tea.KeyEnd:            "End",
+	tea.KeyPgUp:           "PageUp",
+	tea.KeyPgDown:         "PageDown",
+	tea.KeyCtrlUp:         "C-Up",
+	tea.KeyCtrlDown:       "C-Down",
+	tea.KeyCtrlLeft:       "C-Left",
+	tea.KeyCtrlRight:      "C-Right",
+	tea.KeyCtrlHome:       "C-Home",
+	tea.KeyCtrlEnd:        "C-End",
+	tea.KeyCtrlPgUp:       "C-PgUp",
+	tea.KeyCtrlPgDown:     "C-PgDn",
+	tea.KeyShiftUp:        "S-Up",
+	tea.KeyShiftDown:      "S-Down",
+	tea.KeyShiftLeft:      "S-Left",
+	tea.KeyShiftRight:     "S-Right",
+	tea.KeyShiftHome:      "S-Home",
+	tea.KeyShiftEnd:       "S-End",
+	tea.KeyCtrlShiftUp:    "C-S-Up",
+	tea.KeyCtrlShiftDown:  "C-S-Down",
+	tea.KeyCtrlShiftLeft:  "C-S-Left",
+	tea.KeyCtrlShiftRight: "C-S-Right",
+	tea.KeyCtrlShiftHome:  "C-S-Home",
+	tea.KeyCtrlShiftEnd:   "C-S-End",
+	tea.KeyDelete:         "Delete",
+	tea.KeyInsert:         "Insert",
+	tea.KeyShiftTab:       "BTab",
+	tea.KeyF1:             "F1",
+	tea.KeyF2:             "F2",
+	tea.KeyF3:             "F3",
+	tea.KeyF4:             "F4",
+	tea.KeyF5:             "F5",
+	tea.KeyF6:             "F6",
+	tea.KeyF7:             "F7",
+	tea.KeyF8:             "F8",
+	tea.KeyF9:             "F9",
+	tea.KeyF10:            "F10",
+	tea.KeyF11:            "F11",
+	tea.KeyF12:            "F12",
 }
 
 // interactiveLiteralPayload converts every other KeyMsg into the raw bytes
