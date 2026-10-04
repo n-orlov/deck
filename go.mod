@@ -2,6 +2,8 @@ module github.com/n-orlov/deck
 
 go 1.25.0
 
+toolchain go1.25.14
+
 require (
 	github.com/aymanbagabas/go-osc52/v2 v2.0.1
 	github.com/charmbracelet/bubbletea v1.3.10

@@ -24,6 +24,14 @@ pinned SHA-256 and aborts on a mismatch (changing `ALLURE_VERSION` needs a new
 `checksums.txt` comes from the same release as the binary, so the check catches
 a corrupt download, not tampering.
 
+`go.mod` carries a `toolchain go1.25.N` line (matching the `deck-ci` image's
+Go, `ci/Dockerfile`). `actions/setup-go` with `go-version-file: go.mod`
+prefers that line over the `go 1.25.0` language floor, so the `setup-go` steps
+in `ci.yml` and `release.yml` install the patched toolchain instead of 1.25.0
+(unless `GOTOOLCHAIN=local` is set in the step). `ci/workflowcheck` fails if
+the line is removed or a `ci.yml` `setup-go` step could resolve to 1.25.0;
+bump the line together with the image's Go.
+
 `release.yml` adds one more gate, described under "The release gate" below.
 `pages-pr-publish.yml`, a separate `workflow_run`-triggered workflow, is
 described under "Publishing a PR's own report" below.
