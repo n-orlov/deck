@@ -31,7 +31,7 @@ type profile struct {
 // error -- PRD R187: "zero scored functions fails, an empty or missing
 // profile fails".
 func parseProfile(path string) (*profile, error) {
-	f, err := os.Open(path)
+	f, err := os.Open(path) //nolint:gosec // G304: the coverprofile path is the tool's own command-line argument
 	if err != nil {
 		return nil, fmt.Errorf("coverprofile %q: %w", path, err)
 	}

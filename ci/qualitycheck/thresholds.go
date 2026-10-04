@@ -61,7 +61,7 @@ func loadBaseConfig(repoRoot string) (config, error) {
 		return config{}, err
 	}
 
-	showCmd := exec.Command("git", "show", base+":ci/quality.json")
+	showCmd := exec.Command("git", "show", base+":ci/quality.json") //nolint:gosec // G204: runs git show on the base ref the tool resolved itself from the repository
 	showCmd.Dir = repoRoot
 	data, err := showCmd.Output()
 	if err != nil {

@@ -12,7 +12,7 @@ import (
 // module path.
 func findModule(dir string) (root, modulePath string, err error) {
 	for {
-		data, readErr := os.ReadFile(filepath.Join(dir, "go.mod"))
+		data, readErr := os.ReadFile(filepath.Join(dir, "go.mod")) //nolint:gosec // G304: go.mod is looked up in the directories above the directory the tool was pointed at
 		if readErr == nil {
 			for _, line := range strings.Split(string(data), "\n") {
 				line = strings.TrimSpace(line)

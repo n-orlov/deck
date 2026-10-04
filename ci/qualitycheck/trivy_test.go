@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -30,7 +31,7 @@ func fakeTrivy(t *testing.T, code int) (bin, argvLog string) {
 	argvLog = filepath.Join(dir, "argv")
 	bin = filepath.Join(dir, "trivy")
 	script := "#!/bin/sh\nprintf '%s\\n' \"$@\" > '" + argvLog + "'\necho fake trivy report\nexit " +
-		string(rune('0'+code)) + "\n"
+		strconv.Itoa(code) + "\n"
 	if err := os.WriteFile(bin, []byte(script), 0o755); err != nil {
 		t.Fatal(err)
 	}

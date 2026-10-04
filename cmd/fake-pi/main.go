@@ -261,7 +261,7 @@ func findExistingTranscript(dir, conversationID string) (string, error) {
 // immediately on session creation (observed in the capture recorded in
 // docs/reports/phase3-fake-pi-transcript-provenance.md), before any message exists.
 func createTranscript(dir, conversationID, cwd string) (string, error) {
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return "", fmt.Errorf("create transcript directory: %w", err)
 	}
 	now := time.Now().UTC()
@@ -279,7 +279,7 @@ func createTranscript(dir, conversationID, cwd string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("encode transcript header: %w", err)
 	}
-	if err := os.WriteFile(path, append(encoded, '\n'), 0o644); err != nil {
+	if err := os.WriteFile(path, append(encoded, '\n'), 0o600); err != nil {
 		return "", fmt.Errorf("write transcript header: %w", err)
 	}
 	return path, nil
@@ -290,7 +290,7 @@ type transcriptEntry struct {
 }
 
 func appendMessage(path, message string) (err error) {
-	file, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	file, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644) //nolint:gosec // G304: the transcript path is derived by this fake from its own session id and home
 	if err != nil {
 		return fmt.Errorf("open transcript: %w", err)
 	}
@@ -311,7 +311,7 @@ func appendMessage(path, message string) (err error) {
 }
 
 func lastMessage(path string) (string, error) {
-	file, err := os.Open(path)
+	file, err := os.Open(path) //nolint:gosec // G304: the transcript path is derived by this fake from its own session id and home
 	if errors.Is(err, os.ErrNotExist) {
 		return "", nil
 	}
@@ -385,7 +385,7 @@ func renderFixture(output io.Writer, directory, name string) error {
 	if name == "" || !filepath.IsLocal(name) {
 		return fmt.Errorf("invalid fixture name %q", name)
 	}
-	contents, err := os.ReadFile(filepath.Join(directory, name))
+	contents, err := os.ReadFile(filepath.Join(directory, name)) //nolint:gosec // G304: name is checked filepath.IsLocal just above, so it stays inside the fixture directory
 	if err != nil {
 		return fmt.Errorf("read fixture %q: %w", name, err)
 	}
@@ -592,7 +592,7 @@ func sigwinchCountPath(getenv func(string) string) string {
 // cmd/fake-claude's own copy of this function.
 func recordSigwinchCount(path string, total int64) {
 	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return
 	}
 	tmp, err := os.CreateTemp(dir, ".fake-pi-sigwinch-count-*")
@@ -621,10 +621,10 @@ func recordSize(path string) {
 	if err != nil {
 		return
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
 		return
 	}
-	file, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	file, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644) //nolint:gosec // G304: the size-log path is an environment knob of this test double, set by the test that launches it
 	if err != nil {
 		return
 	}

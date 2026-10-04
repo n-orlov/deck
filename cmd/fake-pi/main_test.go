@@ -345,7 +345,7 @@ func TestRepaintModesProduceDistinguishingObservables(t *testing.T) {
 		stdinReader, stdinWriter := io.Pipe()
 		result := make(chan error, 1)
 		go func() { result <- watchAndRepaint(repaintModeSigwinch, stdinReader, &output, signals) }()
-		t.Cleanup(func() { stdinWriter.Close() })
+		t.Cleanup(func() { _ = stdinWriter.Close() })
 
 		sendSIGWINCH(t)
 		if !waitUntil(time.Second, func() bool { return strings.Contains(output.String(), "repaint #1") }) {
@@ -369,7 +369,7 @@ func TestRepaintModesProduceDistinguishingObservables(t *testing.T) {
 		stdinReader, stdinWriter := io.Pipe()
 		result := make(chan error, 1)
 		go func() { result <- watchAndRepaint(repaintModeKeystroke, stdinReader, &output, signals) }()
-		t.Cleanup(func() { stdinWriter.Close() })
+		t.Cleanup(func() { _ = stdinWriter.Close() })
 
 		if _, err := stdinWriter.Write([]byte("a")); err != nil {
 			t.Fatalf("write keystroke: %v", err)
@@ -400,7 +400,7 @@ func TestRepaintModesProduceDistinguishingObservables(t *testing.T) {
 		stdinReader, stdinWriter := io.Pipe()
 		result := make(chan error, 1)
 		go func() { result <- watchAndRepaint(repaintModeNever, stdinReader, &output, signals) }()
-		t.Cleanup(func() { stdinWriter.Close() })
+		t.Cleanup(func() { _ = stdinWriter.Close() })
 
 		sendSIGWINCH(t)
 		if _, err := stdinWriter.Write([]byte("c")); err != nil {

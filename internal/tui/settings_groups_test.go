@@ -1110,7 +1110,7 @@ func TestSettingsGroupDeleteDBranchOffersPurgeChoiceAndOneUndoStillRestoresTombs
 			if err != nil {
 				t.Fatal(err)
 			}
-			t.Cleanup(func() { db.Close() })
+			t.Cleanup(func() { _ = db.Close() })
 			ctx := context.Background()
 			g, err := db.CreateGroup(ctx, "transcript-group")
 			if err != nil {

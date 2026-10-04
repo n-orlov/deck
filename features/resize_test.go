@@ -3,6 +3,7 @@ package features
 import (
 	"context"
 	"fmt"
+	"math"
 
 	"github.com/cucumber/godog"
 )
@@ -18,12 +19,26 @@ func registerResizeSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^deck client "([^"]+)" frame height is (\d+)$`, clientFrameHeightIs)
 }
 
+// terminalSize validates a scenario-supplied column and row count and narrows
+// them to the uint16 the PTY winsize takes: a step that names a size outside
+// 1..65535 is a feature-file mistake and fails the step instead of wrapping.
+func terminalSize(cols, rows int) (width, height uint16, err error) {
+	if cols < 1 || cols > math.MaxUint16 || rows < 1 || rows > math.MaxUint16 {
+		return 0, 0, fmt.Errorf("terminal size %dx%d is outside 1..%d", cols, rows, math.MaxUint16)
+	}
+	return uint16(cols), uint16(rows), nil
+}
+
 func startNamedClientWithSize(ctx context.Context, name string, cols, rows int) error {
 	h, err := scenarioHarness(ctx)
 	if err != nil {
 		return err
 	}
-	client, err := h.StartNamedClientWithSize(ctx, name, uint16(cols), uint16(rows))
+	width, height, err := terminalSize(cols, rows)
+	if err != nil {
+		return err
+	}
+	client, err := h.StartNamedClientWithSize(ctx, name, width, height)
 	if err != nil {
 		return err
 	}
@@ -45,7 +60,11 @@ func resizeNamedClient(ctx context.Context, name string, cols, rows int) error {
 	if err != nil {
 		return err
 	}
-	return client.ResizeAndAwaitRender(ctx, uint16(cols), uint16(rows))
+	width, height, err := terminalSize(cols, rows)
+	if err != nil {
+		return err
+	}
+	return client.ResizeAndAwaitRender(ctx, width, height)
 }
 
 func clientFrameWidthIs(ctx context.Context, name string, want int) error {

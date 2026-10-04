@@ -53,7 +53,7 @@ func openProfileDatabase(ctx context.Context, h *ScenarioHarness, profile string
 	db.SetMaxOpenConns(1)
 	db.SetMaxIdleConns(1)
 	if _, err := db.ExecContext(ctx, `PRAGMA busy_timeout=5000`); err != nil {
-		db.Close()
+		_ = db.Close()
 		return nil, fmt.Errorf("configure profile %q state database: %w", profile, err)
 	}
 	return db, nil

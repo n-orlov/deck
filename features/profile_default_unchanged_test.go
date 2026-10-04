@@ -210,7 +210,7 @@ func openDefaultInstallDatabase(h *ScenarioHarness) (*sql.DB, error) {
 	db.SetMaxOpenConns(1)
 	db.SetMaxIdleConns(1)
 	if _, err := db.Exec(`PRAGMA busy_timeout=5000`); err != nil {
-		db.Close()
+		_ = db.Close()
 		return nil, fmt.Errorf("configure default install state database: %w", err)
 	}
 	return db, nil

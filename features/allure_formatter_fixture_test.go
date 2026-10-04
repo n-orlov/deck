@@ -100,15 +100,28 @@ func allureFixtureRun(t *testing.T, dir, path string, flakyFails bool) int {
 	return suite.Run()
 }
 
+// openResultsRoot opens dir as an os.Root, so reading a name that a result file
+// itself supplies (an attachment source) can never leave the results directory.
+func openResultsRoot(t *testing.T, dir string) *os.Root {
+	t.Helper()
+	scope, err := os.OpenRoot(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = scope.Close() }) // read-only handle; nothing to flush
+	return scope
+}
+
 func readAllureResults(t *testing.T, dir string) []map[string]any {
 	t.Helper()
 	files, err := filepath.Glob(filepath.Join(dir, "*-result.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
+	scope := openResultsRoot(t, dir)
 	var results []map[string]any
 	for _, file := range files {
-		raw, err := os.ReadFile(file)
+		raw, err := scope.ReadFile(filepath.Base(file))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -253,7 +266,7 @@ func TestAllureFormatterWritesResultsForAFixtureRun(t *testing.T) {
 		bodies := map[string]string{}
 		for _, a := range attachments {
 			att := a.(map[string]any)
-			raw, err := os.ReadFile(filepath.Join(results, att["source"].(string)))
+			raw, err := openResultsRoot(t, results).ReadFile(att["source"].(string))
 			if err != nil {
 				t.Fatalf("attachment %v is referenced but its file is missing: %v", att, err)
 			}
@@ -319,8 +332,9 @@ func TestAllureFormatterWritesResultsForAFixtureRun(t *testing.T) {
 			t.Fatalf("containers = %v, want one per run", files)
 		}
 		children := 0
+		scope := openResultsRoot(t, results)
 		for _, file := range files {
-			raw, _ := os.ReadFile(file)
+			raw, _ := scope.ReadFile(filepath.Base(file))
 			var c struct {
 				Name     string   `json:"name"`
 				Children []string `json:"children"`

@@ -62,7 +62,7 @@ func TestOpenMigratesSupportedVersionZeroFixture(t *testing.T) {
 	if _, err := fixture.Exec(`CREATE TABLE meta (key TEXT PRIMARY KEY, version INTEGER NOT NULL); INSERT INTO meta VALUES ('schema_version', 0)`); err != nil {
 		t.Fatal(err)
 	}
-	fixture.Close()
+	_ = fixture.Close()
 
 	store, err := OpenPath(home, path)
 	if err != nil {

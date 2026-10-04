@@ -218,7 +218,7 @@ func rootElementIs(raw []byte, name string) bool {
 }
 
 func convert(path string, w *writer) error {
-	f, err := os.Open(path)
+	f, err := os.Open(path) //nolint:gosec // G304: the JUnit file is a command-line argument naming the report to convert
 	if err != nil {
 		return err
 	}

@@ -179,7 +179,7 @@ func run(configPath, profilePath string) (report string, exitCode int, err error
 // loadConfig reads and parses path as a config. A missing or malformed
 // file is a usage error (exit 2), never a silent "every gate off".
 func loadConfig(path string) (config, error) {
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(path) //nolint:gosec // G304: the config path is the tool's own command-line argument
 	if err != nil {
 		return config{}, fmt.Errorf("reading %s: %w", path, err)
 	}
@@ -202,7 +202,7 @@ var exitStatusLineRe = regexp.MustCompile(`(?m)^exit status ([0-9]+)\n?`)
 // code (see exitStatusLineRe), stripping go run's own "exit status N" line
 // from the returned text. A failure to start go at all is an error.
 func goRunTool(pkg string, args ...string) (text string, exitCode int, err error) {
-	cmd := exec.Command("go", append([]string{"run", pkg}, args...)...)
+	cmd := exec.Command("go", append([]string{"run", pkg}, args...)...) //nolint:gosec // G204: runs go run on an in-repo tool package with the gate's own fixed arguments
 	out, runErr := cmd.CombinedOutput()
 	text = string(out)
 	if runErr == nil {

@@ -235,7 +235,7 @@ func TestCreateModalRecentCWDCyclesOnCtrlPCtrlN(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { db.Close() })
+	t.Cleanup(func() { _ = db.Close() })
 	ctx := context.Background()
 	if err := db.PromoteRecentCwd(ctx, "/recent/one", 5); err != nil {
 		t.Fatal(err)

@@ -57,7 +57,7 @@ func godogFormat() string {
 	// writes Allure 2 results there, alongside whatever JUnit output is set.
 	// godog needs a file for every "name:path" formatter part, so a small
 	// summary file is created beside the results.
-	if dir := strings.TrimSpace(os.Getenv(allureDirEnv)); dir != "" {
+	if dir := envAbsPath(allureDirEnv); dir != "" {
 		if err := os.MkdirAll(dir, 0o755); err == nil {
 			format += ",allure:" + filepath.Join(dir, "godog-allure-summary.txt")
 		}

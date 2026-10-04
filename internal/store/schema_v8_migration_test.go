@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -112,6 +113,9 @@ func buildSchemaV7PopulatedFixture(t *testing.T, home, path string) [4]string {
 	return ids
 }
 
+// sessionColumnName is the shape of a column name snapshotSessionColumns accepts.
+var sessionColumnName = regexp.MustCompile(`^[a-z_][a-z0-9_]*$`)
+
 // snapshotSessionColumns reads columns (id first) from every row in
 // sessions, ordered by id, scanning each value into a sql.NullString --
 // database/sql's standard int64/float64->string conversion makes this a
@@ -120,7 +124,15 @@ func buildSchemaV7PopulatedFixture(t *testing.T, home, path string) [4]string {
 // INTEGER, TEXT or NULL. Returned keyed by id.
 func snapshotSessionColumns(t *testing.T, db *sql.DB, columns []string) map[string][]sql.NullString {
 	t.Helper()
-	rows, err := db.Query(`SELECT ` + strings.Join(columns, ", ") + ` FROM sessions ORDER BY id`)
+	// Column names are identifiers, which a query parameter cannot carry: every
+	// caller passes literal column names, and each is checked here to be a bare
+	// identifier before it is spliced into the statement.
+	for _, column := range columns {
+		if !sessionColumnName.MatchString(column) {
+			t.Fatalf("snapshot sessions columns: %q is not a bare column name", column)
+		}
+	}
+	rows, err := db.Query(`SELECT ` + strings.Join(columns, ", ") + ` FROM sessions ORDER BY id`) //nolint:gosec // G202: identifiers validated above, they cannot be bound parameters
 	if err != nil {
 		t.Fatalf("snapshot sessions columns: %v", err)
 	}

@@ -122,7 +122,7 @@ func TouchLastUsed(paths Paths) error {
 		return fmt.Errorf("create profile data directory: %w", err)
 	}
 	path := lastUsedMarkerPath(paths)
-	file, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY, 0o600)
+	file, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY, 0o600) //nolint:gosec // G304: the marker path is built from the resolved profile data directory, never from input
 	if err != nil {
 		return fmt.Errorf("touch last_used marker: %w", err)
 	}

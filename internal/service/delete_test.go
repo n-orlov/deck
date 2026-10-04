@@ -97,7 +97,7 @@ func newTombstoneTestService(t *testing.T) Service {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { db.Close() })
+	t.Cleanup(func() { _ = db.Close() })
 	logger, err := audit.New(paths, clock)
 	if err != nil {
 		t.Fatal(err)

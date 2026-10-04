@@ -148,6 +148,18 @@ const agreementFeaturesJUnit = `<?xml version="1.0" encoding="UTF-8"?>
 </testsuites>
 `
 
+// rewriteMergedJUnit replaces the fixture's merged Go JUnit file under outdir.
+// The write goes through an os.Root, so the name can only ever resolve inside
+// the fixture directory.
+func rewriteMergedJUnit(outdir, body string) error {
+	scope, err := os.OpenRoot(outdir)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = scope.Close() }() // nothing is read back through this handle
+	return scope.WriteFile("junit-merged/junit-go.xml", []byte(body), 0o600)
+}
+
 // writeAgreementFixture builds a results directory the way ci/suite.sh leaves
 // one: merged JUnit and flaky lists for ci/summary.sh, and allure-results/
 // with the unit tests converted by the real ci/junit2allure and features/'s
@@ -259,7 +271,7 @@ func TestSummaryAllureCheckSeesASkipCountedAsAPass(t *testing.T) {
 	if stripped == string(raw) {
 		t.Fatal("fixture has no <skipped> element to strip")
 	}
-	if err := os.WriteFile(junit, []byte(stripped), 0o644); err != nil {
+	if err := rewriteMergedJUnit(outdir, stripped); err != nil {
 		t.Fatal(err)
 	}
 	diff := summaryAllureDisagreement(t, root, outdir)
@@ -289,14 +301,14 @@ func TestSummaryAllureCheckSeesAFailurePerAttempt(t *testing.T) {
 		t.Fatal("fixture has no TestFails attempt to repeat")
 	}
 	third := strings.Replace(string(raw), attempt, attempt+attempt, 1)
-	if err := os.WriteFile(junit, []byte(third), 0o644); err != nil {
+	if err := rewriteMergedJUnit(outdir, third); err != nil {
 		t.Fatal(err)
 	}
 	if diff := summaryAllureDisagreement(t, root, outdir); diff != "" {
 		t.Fatalf("a third failed attempt of one test must stay one failure on both sides: %s", diff)
 	}
 	other := strings.Replace(string(raw), attempt, attempt+strings.Replace(attempt, "TestFails", "TestFailsToo", 1), 1)
-	if err := os.WriteFile(junit, []byte(other), 0o644); err != nil {
+	if err := rewriteMergedJUnit(outdir, other); err != nil {
 		t.Fatal(err)
 	}
 	if diff := summaryAllureDisagreement(t, root, outdir); !strings.Contains(diff, "summary says pass=5 fail=3 ") {

@@ -86,7 +86,7 @@ func main() {
 // loadConfig reads the thresholds and rejects a floor that is not in
 // (0, 100]: a zero floor would pass anything.
 func loadConfig(path string) (coverageConfig, error) {
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(path) //nolint:gosec // G304: the config path is the tool's own command-line argument
 	if err != nil {
 		return coverageConfig{}, fmt.Errorf("reading %s: %w", path, err)
 	}

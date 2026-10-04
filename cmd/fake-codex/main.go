@@ -158,10 +158,11 @@ func parse(args []string) (options, error) {
 		argument := args[index]
 
 		if index == 0 && argument == "resume" {
-			if index+1 == len(args) {
+			following := args[index+1:]
+			if len(following) == 0 {
 				return result, errors.New(`"resume" requires a conversation id`)
 			}
-			result.resume = args[index+1]
+			result.resume = following[0]
 			index++
 			continue
 		}
@@ -178,10 +179,11 @@ func parse(args []string) (options, error) {
 		}
 
 		if len(argument) > 1 && argument[0] == '-' {
-			if index+1 == len(args) {
+			following := args[index+1:]
+			if len(following) == 0 {
 				return result, fmt.Errorf("option %q requires a value", argument)
 			}
-			value := args[index+1]
+			value := following[0]
 			index++
 			switch argument {
 			case "-a", "--ask-for-approval":
@@ -290,7 +292,7 @@ func fireHook(stdout, stderr io.Writer, hooks map[string]string, trusted bool, e
 	if err != nil {
 		return fmt.Errorf("encode %s payload: %w", event, err)
 	}
-	process := exec.Command("sh", "-c", command)
+	process := exec.Command("sh", "-c", command) //nolint:gosec // G204: a hook command is the shell line deck itself wrote into the agent's hooks file, run as the real agent would
 	process.Stdin = bytes.NewReader(append(encoded, '\n'))
 	process.Stdout = stdout
 	process.Stderr = stderr
@@ -454,7 +456,7 @@ func writeRolloutSessionMeta(codexHome, id, cwd string) (string, error) {
 	}
 	now := time.Now().UTC()
 	dir := filepath.Join(codexHome, "sessions", now.Format("2006"), now.Format("01"), now.Format("02"))
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return "", fmt.Errorf("create rollout directory: %w", err)
 	}
 	path := filepath.Join(dir, fmt.Sprintf("rollout-%s-%s.jsonl", now.Format(rolloutTimestampLayout), id))
@@ -467,7 +469,7 @@ func writeRolloutSessionMeta(codexHome, id, cwd string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("encode session_meta: %w", err)
 	}
-	if err := os.WriteFile(path, append(encoded, '\n'), 0o644); err != nil {
+	if err := os.WriteFile(path, append(encoded, '\n'), 0o600); err != nil {
 		return "", fmt.Errorf("write rollout transcript: %w", err)
 	}
 	return path, nil

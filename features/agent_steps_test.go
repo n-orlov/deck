@@ -693,7 +693,11 @@ func positionCreateModalOnProfileField(ctx context.Context, clientName, kind, na
 // and cannot emit SessionStart. The opt-in suite runs with an isolated HOME, so
 // this never alters an operator's real configuration.
 func trustRealClaudeScenarioWorkingDirectory(cwd string) error {
-	path := filepath.Join(os.Getenv("HOME"), ".claude.json")
+	home := envAbsPath("HOME")
+	if home == "" {
+		return fmt.Errorf("isolated real Claude HOME=%q is not an absolute path", os.Getenv("HOME"))
+	}
+	path := filepath.Join(home, ".claude.json")
 	state := map[string]any{}
 	if data, err := os.ReadFile(path); err == nil {
 		if err := json.Unmarshal(data, &state); err != nil {
@@ -1858,16 +1862,16 @@ func sessionHasEventOfKindWithReasonContaining(ctx context.Context, name, kind, 
 		for rows.Next() {
 			var reason string
 			if err := rows.Scan(&reason); err != nil {
-				rows.Close()
+				_ = rows.Close()
 				return fmt.Errorf("scan event reason for session %q kind %q: %w", name, kind, err)
 			}
 			if strings.Contains(reason, want) {
-				rows.Close()
+				_ = rows.Close()
 				return nil
 			}
 			reasons = append(reasons, reason)
 		}
-		rows.Close()
+		_ = rows.Close()
 		if time.Now().After(deadline) {
 			return fmt.Errorf("session %q has no event of kind %q with reason containing %q; observed reasons: %#v", name, kind, want, reasons)
 		}

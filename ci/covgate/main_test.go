@@ -280,7 +280,7 @@ func TestDuplicateBlocksCountOnceAndCoveredWins(t *testing.T) {
 	if _, err := f.WriteString(extra); err != nil {
 		t.Fatal(err)
 	}
-	f.Close()
+	_ = f.Close()
 	report, code, err := run(cfg, prof, root)
 	if err != nil || code != 0 || !strings.Contains(report, "internal/a") || !strings.Contains(report, "100.0%") {
 		t.Fatalf("run = (%d, %v), want exit 0 with internal/a at 100.0%%:\n%s", code, err, report)

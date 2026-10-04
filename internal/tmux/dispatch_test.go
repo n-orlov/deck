@@ -342,7 +342,7 @@ func TestNoSendPathBypassesTheDispatcherVerify(t *testing.T) {
 				continue
 			}
 			if dangerous.MatchString(line) && !allowed[name] {
-				file.Close()
+				_ = file.Close()
 				t.Fatalf("%s:%d: literal tmux input-dispatch command found outside the allowlisted pre-existing SendKeys: %q -- route new send primitives through Dispatcher.Send, or widen this test's allowlist deliberately", name, lineNumber, strings.TrimSpace(line))
 			}
 			if dangerous.MatchString(line) && allowed[name] {
@@ -358,16 +358,16 @@ func TestNoSendPathBypassesTheDispatcherVerify(t *testing.T) {
 					// command tokens it is listed for above; any OTHER
 					// dangerous command name appearing there would still
 					// be new and unreviewed.
-					file.Close()
+					_ = file.Close()
 					t.Fatalf("%s:%d: unexpected new tmux input-dispatch command in the allowlisted file: %q", name, lineNumber, strings.TrimSpace(line))
 				}
 			}
 		}
 		if err := scanner.Err(); err != nil {
-			file.Close()
+			_ = file.Close()
 			t.Fatalf("scan %s: %v", path, err)
 		}
-		file.Close()
+		_ = file.Close()
 	}
 }
 

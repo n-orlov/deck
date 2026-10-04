@@ -103,7 +103,7 @@ func TestCreateCWDCtrlPCtrlNReplaceTheWholeTextAndRestoreTheSnapshotCaretInclude
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { db.Close() })
+	t.Cleanup(func() { _ = db.Close() })
 	ctx := context.Background()
 	for _, p := range []string{"/recent/one", "/recent/two"} {
 		if err := db.PromoteRecentCwd(ctx, p, 5); err != nil {
@@ -145,7 +145,7 @@ func TestCreateCWDCycleRestoresAnOfferedPrefillSnapshot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { db.Close() })
+	t.Cleanup(func() { _ = db.Close() })
 	if err := db.PromoteRecentCwd(context.Background(), "/recent/one", 5); err != nil {
 		t.Fatal(err)
 	}

@@ -31,7 +31,14 @@ func TestNoPrivateTextEditingOutsideLineedit(t *testing.T) {
 
 	var found []string
 	scanned := 0
-	err := filepath.WalkDir(".", func(path string, d fs.DirEntry, err error) error {
+	// Reads go through an os.Root so a symlink swapped in mid-walk cannot
+	// make a read land outside the package directory.
+	scope, err := os.OpenRoot(".")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = scope.Close() }() // read-only handle; nothing to flush
+	err = filepath.WalkDir(".", func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
@@ -46,7 +53,7 @@ func TestNoPrivateTextEditingOutsideLineedit(t *testing.T) {
 			return nil
 		}
 		scanned++
-		f, err := os.Open(path)
+		f, err := scope.Open(path)
 		if err != nil {
 			return err
 		}

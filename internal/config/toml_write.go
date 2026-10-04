@@ -63,7 +63,7 @@ type tomlBlock struct {
 // error for a missing file (loadConfigFile's own contract), but does for a
 // file that exists but cannot be read.
 func readBlocks(path string) ([]tomlBlock, error) {
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(path) //nolint:gosec // G304: the config path is the resolved config.toml location (or the profile file the operator named)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return []tomlBlock{{}}, nil

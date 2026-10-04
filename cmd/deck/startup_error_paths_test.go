@@ -79,7 +79,7 @@ func TestRunWithUnresolvableProfileHomeReportsAndExitsZero(t *testing.T) {
 
 func TestRunInvalidConfigurationStopsBeforeAnyStateIsOpened(t *testing.T) {
 	isolateDeckEnv(t)
-	deckHome := os.Getenv("DECK_HOME")
+	deckHome := absoluteEnvPath(t, "DECK_HOME")
 	t.Setenv("DECK_CLOCK", "yesterday-ish") // not RFC3339: LoadFromProfile refuses it
 	for _, tc := range []struct {
 		name string
@@ -112,7 +112,7 @@ func TestRunHookReportsHookFailureAsExitOne(t *testing.T) {
 func TestRunStartupFailuresAreReportedAndNeverStartTheTUI(t *testing.T) {
 	t.Run("last_used marker that cannot be touched is reported and startup continues", func(t *testing.T) {
 		isolateDeckEnv(t)
-		deckHome := os.Getenv("DECK_HOME")
+		deckHome := absoluteEnvPath(t, "DECK_HOME")
 		if err := os.MkdirAll(filepath.Join(deckHome, "last_used"), 0o700); err != nil {
 			t.Fatal(err)
 		}
@@ -133,7 +133,7 @@ func TestRunStartupFailuresAreReportedAndNeverStartTheTUI(t *testing.T) {
 	})
 	t.Run("audit log that cannot open stops startup with exit 0", func(t *testing.T) {
 		isolateDeckEnv(t)
-		deckHome := os.Getenv("DECK_HOME")
+		deckHome := absoluteEnvPath(t, "DECK_HOME")
 		if err := os.MkdirAll(deckHome, 0o700); err != nil {
 			t.Fatal(err)
 		}
@@ -337,7 +337,7 @@ func TestConfirmAndCreateProfileFailureAndRefusalPaths(t *testing.T) {
 		if err != nil {
 			t.Skipf("no pty available: %v", err)
 		}
-		t.Cleanup(func() { master.Close(); slave.Close() })
+		t.Cleanup(func() { _ = master.Close(); _ = slave.Close() })
 		if _, err := master.WriteString(answer); err != nil {
 			t.Fatal(err)
 		}
@@ -549,4 +549,17 @@ func TestShutdownArmedInteractiveClaimWalksWrappersAndIgnoresUnshutdownableModel
 	if shutdowns != 1 {
 		t.Fatalf("a model without ShutdownInteractive caused a shutdown: %d", shutdowns)
 	}
+}
+
+// absoluteEnvPath returns the path an isolated test run exported in the named
+// variable (isolateDeckEnv sets it to a t.TempDir() path) and fails the test
+// when it is not absolute, so a missing or relative value can never make the
+// fixture write outside the temp tree.
+func absoluteEnvPath(t *testing.T, name string) string {
+	t.Helper()
+	p := os.Getenv(name)
+	if !filepath.IsAbs(p) {
+		t.Fatalf("%s=%q, want an absolute path set by isolateDeckEnv", name, p)
+	}
+	return p
 }

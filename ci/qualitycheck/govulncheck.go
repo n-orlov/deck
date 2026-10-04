@@ -47,7 +47,7 @@ var goVersionOutputRe = regexp.MustCompile(`\bgo version (go[0-9][^\s]*)`)
 // the go line when there is no toolchain line, and an error when neither
 // exists or the one found is not a valid Go version.
 func goModMinimum(dir string) (string, error) {
-	f, err := os.Open(filepath.Join(dir, "go.mod"))
+	f, err := os.Open(filepath.Join(dir, "go.mod")) //nolint:gosec // G304: dir is the module directory the gate was configured with; only its go.mod is read
 	if err != nil {
 		return "", err
 	}
@@ -94,7 +94,7 @@ func checkGoNotOlderThanToolchain(o govulncheckOptions) (problem string, err err
 	if goBin == "" {
 		goBin = "go"
 	}
-	cmd := exec.Command(goBin, "version")
+	cmd := exec.Command(goBin, "version") //nolint:gosec // G204: GoBinary is the operator's toolchain override from the gate's own options, default go
 	cmd.Dir = o.Target
 	cmd.Env = append(os.Environ(), "GOTOOLCHAIN=local")
 	out, err := cmd.Output()
@@ -174,7 +174,7 @@ func runGovulncheckGate(o govulncheckOptions) (ok bool, output string, err error
 		args = append(args, "-db", o.DB)
 	}
 	args = append(args, "./...")
-	cmd := exec.Command(bin, args...)
+	cmd := exec.Command(bin, args...) //nolint:gosec // G204: the govulncheck binary and database are the operator's gate options, never external input
 	cmd.Dir = o.Target
 	cmd.Env = append(os.Environ(), "GOTOOLCHAIN=local")
 	if o.CacheDir != "" {

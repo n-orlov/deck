@@ -222,7 +222,11 @@ func clientIsRestartedWithSize(ctx context.Context, name string, cols, rows int)
 		}
 		delete(h.namedClients, name)
 	}
-	client, err := h.StartNamedClientWithSize(ctx, name, uint16(cols), uint16(rows))
+	width, height, err := terminalSize(cols, rows)
+	if err != nil {
+		return err
+	}
+	client, err := h.StartNamedClientWithSize(ctx, name, width, height)
 	if err != nil {
 		return err
 	}

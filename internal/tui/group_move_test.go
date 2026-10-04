@@ -27,7 +27,7 @@ func newGroupMoveTestStore(t *testing.T) (db *store.Store, alphaID, bravoID, def
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { db.Close() })
+	t.Cleanup(func() { _ = db.Close() })
 	ctx := context.Background()
 	alpha, err = db.CreateGroup(ctx, "alpha")
 	if err != nil {

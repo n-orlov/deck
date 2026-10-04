@@ -130,7 +130,7 @@ func ensureUIStateTable(h *ScenarioHarness) (*sql.DB, error) {
 		return nil, err
 	}
 	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS ui_state (key TEXT PRIMARY KEY, value TEXT NOT NULL)`); err != nil {
-		db.Close()
+		_ = db.Close()
 		return nil, fmt.Errorf("ensure ui_state table: %w", err)
 	}
 	return db, nil

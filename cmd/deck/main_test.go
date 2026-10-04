@@ -245,7 +245,7 @@ func TestDeckBinaryShellCreateAndSlugCollisionThroughPTY(t *testing.T) {
 		t.Fatal(err)
 	}
 	rows, err := db.ListSessions(context.Background())
-	db.Close()
+	_ = db.Close()
 	if err != nil || len(rows) != 1 || rows[0].Status != "stopped" {
 		t.Fatalf("rows after x = %#v, %v", rows, err)
 	}

@@ -242,10 +242,10 @@ type transcriptEntry struct {
 }
 
 func appendMessage(path, message string) (err error) {
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
 		return fmt.Errorf("create transcript directory: %w", err)
 	}
-	file, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	file, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600) //nolint:gosec // G304: the transcript path is derived by this fake from its own session id and home
 	if err != nil {
 		return fmt.Errorf("open transcript: %w", err)
 	}
@@ -266,7 +266,7 @@ func appendMessage(path, message string) (err error) {
 }
 
 func lastMessage(path string) (string, error) {
-	file, err := os.Open(path)
+	file, err := os.Open(path) //nolint:gosec // G304: the transcript path is derived by this fake from its own session id and home
 	if errors.Is(err, os.ErrNotExist) {
 		return "", nil
 	}
@@ -497,7 +497,7 @@ func fireHook(stdout, stderr io.Writer, commands map[string]string, event string
 	if err != nil {
 		return fmt.Errorf("encode %s payload: %w", event, err)
 	}
-	process := exec.Command("sh", "-c", command)
+	process := exec.Command("sh", "-c", command) //nolint:gosec // G204: a hook command is the shell line deck itself wrote into the agent's settings, run as the real agent would
 	process.Stdin = bytes.NewReader(append(encoded, '\n'))
 	process.Stdout = stdout
 	process.Stderr = stderr
@@ -517,7 +517,7 @@ func renderFixture(output io.Writer, directory, name string) error {
 	if name == "" || !filepath.IsLocal(name) {
 		return fmt.Errorf("invalid fixture name %q", name)
 	}
-	contents, err := os.ReadFile(filepath.Join(directory, name))
+	contents, err := os.ReadFile(filepath.Join(directory, name)) //nolint:gosec // G304: name is checked filepath.IsLocal just above, so it stays inside the fixture directory
 	if err != nil {
 		return fmt.Errorf("read fixture %q: %w", name, err)
 	}
@@ -746,7 +746,7 @@ func sigwinchCountPath(getenv func(string) string) string {
 // harness, never part of this fixture's observable contract.
 func recordSigwinchCount(path string, total int64) {
 	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return
 	}
 	tmp, err := os.CreateTemp(dir, ".fake-claude-sigwinch-count-*")
@@ -775,10 +775,10 @@ func recordSize(path string) {
 	if err != nil {
 		return
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
 		return
 	}
-	file, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	file, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600) //nolint:gosec // G304: the size-log path is an environment knob of this test double, set by the test that launches it
 	if err != nil {
 		return
 	}

@@ -493,14 +493,25 @@ func TestNoDialogContrastAllowlistRemains(t *testing.T) {
 	banned := "dialogPair" + "Allowlist"
 	root := ".." // internal/, since tests run in their own package dir
 	var hits []string
-	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
+	// Reads go through an os.Root so a symlink swapped in mid-walk cannot
+	// make a read land outside root.
+	scope, err := os.OpenRoot(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = scope.Close() }() // read-only handle; nothing to flush
+	err = filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
 		if info.IsDir() || !strings.HasSuffix(path, ".go") {
 			return nil
 		}
-		b, err := os.ReadFile(path)
+		rel, err := filepath.Rel(root, path)
+		if err != nil {
+			return err
+		}
+		b, err := scope.ReadFile(rel)
 		if err != nil {
 			return err
 		}

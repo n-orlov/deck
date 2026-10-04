@@ -107,7 +107,7 @@ func (s Service) teardownEnv(session store.Session, teardownKind string) []strin
 func (s Service) runOneTeardownHook(ctx context.Context, session store.Session, label, line string, env []string, timeout time.Duration) string {
 	hookCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	cmd := exec.CommandContext(hookCtx, "/bin/sh", "-c", line)
+	cmd := exec.CommandContext(hookCtx, "/bin/sh", "-c", line) //nolint:gosec // G204: line is the session's own configured teardown hook, a user-authored shell command by design
 	cmd.Env = env
 	err := cmd.Run()
 	if err == nil {
