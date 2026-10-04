@@ -87,47 +87,47 @@ func applyDialogContract(msg tea.KeyMsg, c dialogContract) (cmd tea.Cmd, handled
 		}
 		return c.Submit(), true
 	case "down":
-		if c.Fields.Count <= 1 || c.Fields.Index == nil {
-			return nil, false
-		}
-		*c.Fields.Index = (*c.Fields.Index + 1) % c.Fields.Count
-		return nil, true
+		return nil, c.Fields.moveIndex(1)
 	case "up":
-		if c.Fields.Count <= 1 || c.Fields.Index == nil {
-			return nil, false
-		}
-		*c.Fields.Index = (*c.Fields.Index - 1 + c.Fields.Count) % c.Fields.Count
-		return nil, true
+		return nil, c.Fields.moveIndex(-1)
 	case "left":
-		if c.Fields.TextFocused != nil && c.Fields.TextFocused() {
-			return nil, false
-		}
-		if c.Fields.Cycle == nil {
-			return nil, false
-		}
-		c.Fields.Cycle(-1)
-		return nil, true
+		return nil, c.Fields.cycleUnlessTyping(-1, false)
 	case "right":
-		if c.Fields.TextFocused != nil && c.Fields.TextFocused() {
-			return nil, false
-		}
-		if c.Fields.Cycle == nil {
-			return nil, false
-		}
-		c.Fields.Cycle(1)
-		return nil, true
+		return nil, c.Fields.cycleUnlessTyping(1, false)
 	case " ":
-		if c.Fields.TextFocused != nil && c.Fields.TextFocused() {
-			return nil, false
-		}
-		if c.Fields.SpaceTypesText != nil && c.Fields.SpaceTypesText() {
-			return nil, false
-		}
-		if c.Fields.Cycle == nil {
-			return nil, false
-		}
-		c.Fields.Cycle(1)
-		return nil, true
+		return nil, c.Fields.cycleUnlessTyping(1, true)
 	}
 	return nil, false
+}
+
+// moveIndex steps the focused field by delta (+1 down, -1 up), wrapping, and
+// reports whether it handled the key: a dialog with fewer than two fields or
+// no Index is left unhandled.
+func (f dialogFields) moveIndex(delta int) bool {
+	if f.Count <= 1 || f.Index == nil {
+		return false
+	}
+	next := *f.Index + delta
+	if delta < 0 {
+		next += f.Count // keep up's (i-1+n)%n arithmetic exactly
+	}
+	*f.Index = next % f.Count
+	return true
+}
+
+// cycleUnlessTyping cycles the focused selection field by delta and reports
+// whether it handled the key. A focused text field keeps the key for typing
+// (and, when space is true, so does a field whose space types text).
+func (f dialogFields) cycleUnlessTyping(delta int, space bool) bool {
+	if f.TextFocused != nil && f.TextFocused() {
+		return false
+	}
+	if space && f.SpaceTypesText != nil && f.SpaceTypesText() {
+		return false
+	}
+	if f.Cycle == nil {
+		return false
+	}
+	f.Cycle(delta)
+	return true
 }
