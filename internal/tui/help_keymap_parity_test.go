@@ -32,7 +32,7 @@ import (
 // list-mode switch is a plain string literal (or comma-joined list of
 // them) on `msg.String()`, never a type switch or a bare identifier, so
 // this pattern captures every bound key with nothing hand-picked.
-var listModeSwitchCaseRe = regexp.MustCompile(`(?m)^\t\tcase ((?:"[^"]*"(?:, )?)+):`)
+var listModeSwitchCaseRe = regexp.MustCompile(`(?m)^\tcase ((?:"[^"]*"(?:, )?)+):`)
 
 // caseLiteralRe pulls each individual quoted string literal out of a
 // matched case list, e.g. `"q", "ctrl+c"` -> [`"q"`, `"ctrl+c"`]. It is
@@ -53,7 +53,7 @@ var caseLiteralRe = regexp.MustCompile(`"[^"]*"`)
 // in the file -- the create-dialog cwd-field switches at the same tag
 // text further down are a different, narrower keymap for a single field
 // and are correctly excluded by taking the *first* occurrence) and
-// closed by the next `case tea.MouseMsg:`, which is what follows this
+// closed by the end of onKeyMsg (the first "\n}\n" after it), which is what follows this
 // switch's closing brace.
 func listModeBoundKeys(t *testing.T) map[string]bool {
 	t.Helper()
@@ -67,9 +67,9 @@ func listModeBoundKeys(t *testing.T) map[string]bool {
 	if start < 0 {
 		t.Fatalf("could not find the list-mode key switch (`switch msg.String() {`) in tui.go -- extraction is broken, not the source")
 	}
-	relEnd := strings.Index(src[start:], "\n\tcase tea.MouseMsg:")
+	relEnd := strings.Index(src[start:], "\n}\n")
 	if relEnd < 0 {
-		t.Fatalf("could not find the end of the list-mode key switch (`case tea.MouseMsg:`) in tui.go -- extraction is broken, not the source")
+		t.Fatalf("could not find the end of the list-mode key switch (end of onKeyMsg) in tui.go -- extraction is broken, not the source")
 	}
 	block := src[start : start+relEnd]
 

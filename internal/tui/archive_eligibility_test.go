@@ -74,8 +74,8 @@ func TestArchiveKeyOnAnArchivedRowRefusesAndNamesU(t *testing.T) {
 // so an assertion about what the arm CALLS cannot be satisfied by a comment
 // that merely mentions the name. It is anchored exactly the way
 // help_keymap_parity_test.go's listModeBoundKeys anchors the same switch
-// (first `switch msg.String() {`, closed by the following
-// `case tea.MouseMsg:`), so the two never disagree about which switch is
+// (first `switch msg.String() {`, closed by the end of the
+// onKeyMsg function), so the two never disagree about which switch is
 // being read.
 func listModeCaseBlock(t *testing.T, key string) string {
 	t.Helper()
@@ -89,18 +89,18 @@ func listModeCaseBlock(t *testing.T, key string) string {
 	if start < 0 {
 		t.Fatalf("could not find the list-mode key switch (`switch msg.String() {`) in tui.go -- extraction is broken, not the source")
 	}
-	relEnd := strings.Index(src[start:], "\n\tcase tea.MouseMsg:")
+	relEnd := strings.Index(src[start:], "\n}\n")
 	if relEnd < 0 {
-		t.Fatalf("could not find the end of the list-mode key switch (`case tea.MouseMsg:`) in tui.go -- extraction is broken, not the source")
+		t.Fatalf("could not find the end of the list-mode key switch (end of onKeyMsg) in tui.go -- extraction is broken, not the source")
 	}
 	block := src[start : start+relEnd]
 
-	caseStart := strings.Index(block, "\n\t\tcase \""+key+"\":")
+	caseStart := strings.Index(block, "\n\tcase \""+key+"\":")
 	if caseStart < 0 {
 		t.Fatalf("could not find `case %q:` in tui.go's list-mode key switch -- extraction is broken, not the source", key)
 	}
 	arm := block[caseStart+1:]
-	if relNext := strings.Index(arm[1:], "\n\t\tcase "); relNext >= 0 {
+	if relNext := strings.Index(arm[1:], "\n\tcase "); relNext >= 0 {
 		arm = arm[:relNext+1]
 	}
 

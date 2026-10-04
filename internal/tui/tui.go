@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strconv"
 	"strings"
 	"time"
@@ -2593,110 +2594,1627 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	// with a real emulator is installed, so this never snaps an offset
 	// that has nothing real to clamp against.
 	m = m.healInteractiveScrollOffsetFromRender()
-	switch msg := message.(type) {
-	case tea.WindowSizeMsg:
-		m.width, m.height = msg.Width, msg.Height
-		// PRD Part II requirement 48/task 204 (review finding F3's second
-		// half): the floor check in enterInteractive only ever ran AT
-		// ENTRY. previewTitle/previewContentSize recompute the preview
-		// box's inner size on every render, so a terminal shrink WHILE
-		// already interactive was never re-checked against
-		// interactiveMinInnerRows at all -- deck stayed interactive and
-		// simply rendered into a box below the measured floor, the same
-		// degrade-instead-of-refuse defect 201/203 fixed for entry.
-		// Checked here, right after m.width/m.height take the new size and
-		// before anything else looks at them, using the exact same
-		// previewContentSize arithmetic and interactiveMinInnerRows
-		// constant enterInteractive's own floor check uses, so the two can
-		// never disagree about what counts as below the floor.
-		if m.interactive {
-			if width, height := m.previewContentSize(); width <= 0 || height < interactiveMinInnerRows {
-				session, _ := m.interactiveTargetSession()
-				next, cmd := m.exitInteractive()
-				m = next.(Model)
-				// Kept short (task 009/R143, GH #38) for the same reason
-				// enterInteractiveBody's own row-floor message is: the
-				// banner draws this inside the preview panel's own width,
-				// which at the requirement's own 80x9 godog fixture leaves
-				// too little room for the old, longer sentence to survive
-				// centerTruncate's ellipsis without losing the "N inner
-				// rows"/"7-row floor" phrases this package's own tests and
-				// features/interactive_refusals.feature assert on.
-				m.setEntryRefusal(session.ID, entryRefusalShrank, fmt.Sprintf("%d inner rows, below the %d-row floor", height, interactiveMinInnerRows))
-				return m, cmd
+	return m.dispatchMessage(message)
+}
+
+// messageHandler is one entry of the Update dispatch table: the handler
+// for one concrete message type, with the type assertion already done.
+type messageHandler func(Model, tea.Msg) (tea.Model, tea.Cmd)
+
+// handlerFor adapts a typed per-message handler (a Model method expression)
+// to the table's uniform signature.
+func handlerFor[T tea.Msg](handle func(Model, T) (tea.Model, tea.Cmd)) messageHandler {
+	return func(m Model, msg tea.Msg) (tea.Model, tea.Cmd) {
+		return handle(m, msg.(T))
+	}
+}
+
+// messageHandlers maps a message's concrete type to its handler. It is
+// filled in by init, not a package-level initialiser: the handlers reach
+// Update again (a coalesced key replays through it), and an initialiser
+// would make that an initialisation cycle.
+var messageHandlers map[reflect.Type]messageHandler
+
+func init() {
+	messageHandlers = map[reflect.Type]messageHandler{
+		reflect.TypeFor[tea.WindowSizeMsg]():               handlerFor(Model.onWindowSizeMsg),
+		reflect.TypeFor[sessionsLoaded]():                  handlerFor(Model.onSessionsLoaded),
+		reflect.TypeFor[archivedSessionsLoaded]():          handlerFor(Model.onArchivedSessionsLoaded),
+		reflect.TypeFor[eventLogLoaded]():                  handlerFor(Model.onEventLogLoaded),
+		reflect.TypeFor[detailDroppedHookLoaded]():         handlerFor(Model.onDetailDroppedHookLoaded),
+		reflect.TypeFor[shellCreated]():                    handlerFor(Model.onShellCreated),
+		reflect.TypeFor[attachFinished]():                  handlerFor(Model.onAttachFinished),
+		reflect.TypeFor[sessionKilled]():                   handlerFor(Model.onSessionKilled),
+		reflect.TypeFor[undoExpired]():                     handlerFor(Model.onUndoExpired),
+		reflect.TypeFor[sessionsPinned]():                  handlerFor(Model.onSessionsPinned),
+		reflect.TypeFor[sessionAcknowledged]():             handlerFor(Model.onSessionAcknowledged),
+		reflect.TypeFor[sessionArchived]():                 handlerFor(Model.onSessionArchived),
+		reflect.TypeFor[archiveUndoExpired]():              handlerFor(Model.onArchiveUndoExpired),
+		reflect.TypeFor[archiveUndoneRebuildNoteExpired](): handlerFor(Model.onArchiveUndoneRebuildNoteExpired),
+		reflect.TypeFor[teardownHookNoteExpired]():         handlerFor(Model.onTeardownHookNoteExpired),
+		reflect.TypeFor[sessionDeleted]():                  handlerFor(Model.onSessionDeleted),
+		reflect.TypeFor[deleteGraceExpired]():              handlerFor(Model.onDeleteGraceExpired),
+		reflect.TypeFor[sessionRestored]():                 handlerFor(Model.onSessionRestored),
+		reflect.TypeFor[sessionUnarchived]():               handlerFor(Model.onSessionUnarchived),
+		reflect.TypeFor[sessionReaped]():                   handlerFor(Model.onSessionReaped),
+		reflect.TypeFor[sessionsBulkKilled]():              handlerFor(Model.onSessionsBulkKilled),
+		reflect.TypeFor[batchUndoExpired]():                handlerFor(Model.onBatchUndoExpired),
+		reflect.TypeFor[sessionsBulkResumed]():             handlerFor(Model.onSessionsBulkResumed),
+		reflect.TypeFor[sessionsBulkDeleted]():             handlerFor(Model.onSessionsBulkDeleted),
+		reflect.TypeFor[batchDeleteGraceExpired]():         handlerFor(Model.onBatchDeleteGraceExpired),
+		reflect.TypeFor[sessionsBulkReaped]():              handlerFor(Model.onSessionsBulkReaped),
+		reflect.TypeFor[sessionsBulkRestored]():            handlerFor(Model.onSessionsBulkRestored),
+		reflect.TypeFor[uiStatePersisted]():                handlerFor(Model.onUiStatePersisted),
+		reflect.TypeFor[sessionResumed]():                  handlerFor(Model.onSessionResumed),
+		reflect.TypeFor[sessionRestarted]():                handlerFor(Model.onSessionRestarted),
+		reflect.TypeFor[envInjected]():                     handlerFor(Model.onEnvInjected),
+		reflect.TypeFor[profileSwitched]():                 handlerFor(Model.onProfileSwitched),
+		reflect.TypeFor[resumeModeChanged]():               handlerFor(Model.onResumeModeChanged),
+		reflect.TypeFor[sessionRenamed]():                  handlerFor(Model.onSessionRenamed),
+		reflect.TypeFor[launchInputsSaved]():               handlerFor(Model.onLaunchInputsSaved),
+		reflect.TypeFor[sessionGroupMoved]():               handlerFor(Model.onSessionGroupMoved),
+		reflect.TypeFor[envEdited]():                       handlerFor(Model.onEnvEdited),
+		reflect.TypeFor[reconcileTick]():                   handlerFor(Model.onReconcileTick),
+		reflect.TypeFor[previewTick]():                     handlerFor(Model.onPreviewTick),
+		reflect.TypeFor[interactiveDisplacementChecked]():  handlerFor(Model.onInteractiveDisplacementChecked),
+		reflect.TypeFor[previewFitDone]():                  handlerFor(Model.onPreviewFitDone),
+		reflect.TypeFor[entryRefusalHolderRecheckDone]():   handlerFor(Model.onEntryRefusalHolderRecheckDone),
+		reflect.TypeFor[previewCaptured]():                 handlerFor(Model.onPreviewCaptured),
+		reflect.TypeFor[animationTick]():                   handlerFor(Model.onAnimationTick),
+		reflect.TypeFor[tea.KeyMsg]():                      handlerFor(Model.onKeyMsg),
+		reflect.TypeFor[tea.MouseMsg]():                    handlerFor(Model.onMouseMsg),
+	}
+}
+
+// dispatchMessage routes message to the handler registered for its concrete
+// type; a message with none goes straight to updateTail.
+func (m Model) dispatchMessage(message tea.Msg) (tea.Model, tea.Cmd) {
+	if handle, ok := messageHandlers[reflect.TypeOf(message)]; ok {
+		return handle(m, message)
+	}
+	return m.updateTail(message)
+}
+
+// updateTail is what Update does with a message after (or instead of) its
+// own handler: Shift+PgUp/PgDn, which bubbletea reports as an unknown CSI
+// sequence, scroll the interactive scrollback by a page; anything else is
+// ignored.
+func (m Model) updateTail(message tea.Msg) (tea.Model, tea.Cmd) {
+	if dir, ok := shiftPageScrollDir(message); ok {
+		return m.scrollInteractiveByPage(dir)
+	}
+	return m, nil
+}
+
+func (m Model) onWindowSizeMsg(msg tea.WindowSizeMsg) (tea.Model, tea.Cmd) {
+	m.width, m.height = msg.Width, msg.Height
+	// PRD Part II requirement 48/task 204 (review finding F3's second
+	// half): the floor check in enterInteractive only ever ran AT
+	// ENTRY. previewTitle/previewContentSize recompute the preview
+	// box's inner size on every render, so a terminal shrink WHILE
+	// already interactive was never re-checked against
+	// interactiveMinInnerRows at all -- deck stayed interactive and
+	// simply rendered into a box below the measured floor, the same
+	// degrade-instead-of-refuse defect 201/203 fixed for entry.
+	// Checked here, right after m.width/m.height take the new size and
+	// before anything else looks at them, using the exact same
+	// previewContentSize arithmetic and interactiveMinInnerRows
+	// constant enterInteractive's own floor check uses, so the two can
+	// never disagree about what counts as below the floor.
+	if m.interactive {
+		if width, height := m.previewContentSize(); width <= 0 || height < interactiveMinInnerRows {
+			session, _ := m.interactiveTargetSession()
+			next, cmd := m.exitInteractive()
+			m = next.(Model)
+			// Kept short (task 009/R143, GH #38) for the same reason
+			// enterInteractiveBody's own row-floor message is: the
+			// banner draws this inside the preview panel's own width,
+			// which at the requirement's own 80x9 godog fixture leaves
+			// too little room for the old, longer sentence to survive
+			// centerTruncate's ellipsis without losing the "N inner
+			// rows"/"7-row floor" phrases this package's own tests and
+			// features/interactive_refusals.feature assert on.
+			m.setEntryRefusal(session.ID, entryRefusalShrank, fmt.Sprintf("%d inner rows, below the %d-row floor", height, interactiveMinInnerRows))
+			return m, cmd
+		}
+	}
+	return m, nil
+}
+
+func (m Model) onSessionsLoaded(msg sessionsLoaded) (tea.Model, tea.Cmd) {
+	// cure-01-02: applied regardless of msg.err, matching
+	// archivedSessionsLoaded's own error-preserves-the-last-good-frame
+	// convention -- a failed groups read leaves m.allGroups at its
+	// previous value rather than wiping it, and a groups-read failure
+	// never blocks the sessions half of this message from applying.
+	if msg.groupsErr == nil {
+		m.allGroups = msg.groups
+	}
+	// B2: the settings takeover's own Groups panel (m.settingsGroups)
+	// is a live per-render store snapshot (computeAvailableGroups'
+	// own doc comment) recomputed only from the Groups-panel key
+	// paths themselves (create/rename/delete commits) -- the
+	// ORDINARY periodic/on-demand reload that lands here never
+	// touched it, so a create/rename/delete applied from a second
+	// client (the shared-state-db precedent this package already
+	// tests, group_shared_state_db_test.go) stayed invisible in an
+	// already-open Groups panel until the user next pressed n/r/d
+	// themselves. Refreshed here too, gated on the panel actually
+	// being open on the groups category (never unconditionally --
+	// there is no reason to pay a live store.ListGroups() call while
+	// the panel is closed or on some other category), and reselected
+	// by the currently selected row's durable group id (never by
+	// index -- an edit elsewhere in the list must not silently move
+	// the selection off the group the user is looking at). Only on a
+	// successful groups read: msg.groupsErr != nil must leave
+	// m.settingsGroups at its previous value, exactly like
+	// m.allGroups just above -- a transient read failure is not a
+	// reason to blank out an already-open panel. This never touches
+	// m.settingsGroupCreating/Renaming/EditID/EditValue (the n/r
+	// typing sub-mode) or m.settingsEdits (staged scalar edits): the
+	// ordinary reload has never reset either, and this fix keeps it
+	// that way.
+	if msg.groupsErr == nil && m.settingsOpen && m.settingsOnGroupsCategory() {
+		var selectedGroupID int64
+		if g, ok := m.settingsSelectedGroup(); ok {
+			selectedGroupID = g.ID
+		}
+		m.settingsGroups = m.computeAvailableGroups()
+		if selectedGroupID != 0 {
+			m.selectSettingsGroupByID(selectedGroupID)
+		}
+		if m.settingsGroupIndex >= len(m.settingsGroups) && m.settingsGroupIndex > 0 {
+			m.settingsGroupIndex--
+		}
+	}
+	if msg.err != nil {
+		m.sessionsReloadNote = "Cannot read sessions: " + msg.err.Error()
+	} else {
+		m.sessionsReloadNote = ""
+		// cure-01-01-3 (R143/R148, SPEC §11.9): the pre-reload selected
+		// session identity, captured before m.baseSessions/m.sessions/
+		// m.selected are touched below by ANYTHING this branch does --
+		// the sort/resort, the preserve-by-id-then-clamp dance, the
+		// header promotion, and the newly-created-session intent below
+		// all move m.selected through this same reload, and
+		// clearEntryRefusalIfSelectedSessionChanged (entry_refusal.go)
+		// needs the BEFORE value to tell a genuine identity change
+		// (refused alpha's row now selecting freshly-created beta, or
+		// the selected row disappearing outright) apart from a resort
+		// that lands the SAME session at a new index or cursor.
+		prevSelectedSession, prevSelectedOK := m.selectedSession()
+		// SPEC requirements 28/29/30 (task 023's sort, task 024's
+		// grouping): every load renders in attention order, not
+		// store order, so the sidebar's group order itself follows
+		// each group's most urgent member (see SPEC §11's
+		// illustration: "service-a" leads with two waiting rows,
+		// "infra" follows with only an error) exactly as
+		// groupSessions' own "first appearance in m.sessions"
+		// bucketing already promises once m.sessions is in this
+		// order.
+		var selectedID string
+		selectedWasRow := false
+		if idx, ok := m.selected.SessionIndex(); ok {
+			selectedWasRow = true
+			if idx >= 0 && idx < len(m.sessions) {
+				selectedID = m.sessions[idx].ID
 			}
 		}
-	case sessionsLoaded:
-		// cure-01-02: applied regardless of msg.err, matching
-		// archivedSessionsLoaded's own error-preserves-the-last-good-frame
-		// convention -- a failed groups read leaves m.allGroups at its
-		// previous value rather than wiping it, and a groups-read failure
-		// never blocks the sessions half of this message from applying.
-		if msg.groupsErr == nil {
-			m.allGroups = msg.groups
+		// cure-01-05 follow-up (task 022 sweep): fail-before was
+		// cmd/deck's TestDeckBinaryRefreshesAllConcurrentClients timing
+		// out waiting for "resumable" at 2bb61a8 -- a concurrent client
+		// that starts before any session exists has its zero-value
+		// rowCursor(0) promoted to a header cursor by the header-only-
+		// load fix below (cursorNamesVisibleStop/nearestVisibleSelection),
+		// and that header stays selected forever after, even once a
+		// session appears in its own, still-uncollapsed bucket:
+		// cursorNamesVisibleStop trivially returns true for any header
+		// whose bucket still exists, so the transition was never caught.
+		// selectedGroupHadNoRows (group.go) captures that, from the
+		// PRE-reload session list (m.sessions, not yet overwritten
+		// below), BEFORE selectVisibleStopAfterReload gets a chance to
+		// act on it further down.
+		selectedGroupHadNoRows := m.selectedGroupHadNoRows()
+		// cure-01-01-2 (R136/SPEC §11): selectedGroupHadNoRows alone
+		// cannot tell a deliberate navigation stop on an existing,
+		// still-empty header (other groups already have visible rows)
+		// apart from the ONE case the promotion below actually exists
+		// for -- a brand new client whose zero-value cursor got
+		// auto-promoted to a header because there was NOTHING ELSE to
+		// select yet (TestCure0105FirstSessionUnderHeaderOnlyLoadFollowsSelection,
+		// task 022 sweep). hadNoSessionsAtAll captures that distinction
+		// from the SAME pre-reload m.sessions: true only when the WHOLE
+		// sidebar was header-only, never merely this one bucket among
+		// others. A user who pressed g/Down/etc to land on an existing
+		// empty header while other sessions were already on screen
+		// keeps that header across a background arrival with no local
+		// creation intent (TestReview113ExplicitHeaderSurvivesBackgroundArrival).
+		hadNoSessionsAtAll := len(m.sessions) == 0
+		// sortSessionsByAttentionStable, not the plain
+		// sortSessionsByAttention: a genuine tie on both rank and
+		// StatusAt (task 005/I-1's finding -- two co-created sessions
+		// promoted running in the same reconcile pass round to the
+		// same millisecond) must not silently swap two rows' relative
+		// order out from under an in-flight k/m/j idiom just because
+		// their random UUIDs happen to compare the "wrong" way; see
+		// sortSessionsByAttentionStable's own doc comment
+		// (internal/tui/attention.go) and
+		// docs/reports/phase3d-i1-rootcause.md.
+		//
+		// Task 123/I-10: sorted into baseSessions, never m.sessions
+		// directly, so a filter query in force survives the periodic
+		// reconcile tick's own reload instead of being silently
+		// clobbered by it the moment ListSessions' own (archive-free)
+		// result lands.
+		//
+		// Task 305 (R53), REMOVED by task 011 (R129): this used to
+		// compute attentionOrder unconditionally so a non-attention
+		// render could still borrow it for workspace GROUP order via
+		// reorderPreservingGrouping (deleted this task). R129 makes
+		// group order alphabetical, case-insensitive, default always
+		// last (internal/tui/group.go's groupSortsBefore) --
+		// deliberately not attention-ranked -- so attentionOrder is
+		// only ever needed for the order==SortOrderAttention branch
+		// itself now; grouping (when on) buckets whatever m.baseSessions
+		// ends up as here, with each bucket's OWN row order following
+		// that same resolved order untouched (groupSessions' own
+		// first-appearance-within-a-bucket rule).
+		order, _ := m.effectiveSortOrder()
+		switch order {
+		case SortOrderAttention:
+			m.baseSessions = sortSessionsByAttentionStable(m.baseSessions, msg.sessions)
+		default:
+			m.baseSessions = sortSessionsByOrder(m.baseSessions, msg.sessions, order)
 		}
-		// B2: the settings takeover's own Groups panel (m.settingsGroups)
-		// is a live per-render store snapshot (computeAvailableGroups'
-		// own doc comment) recomputed only from the Groups-panel key
-		// paths themselves (create/rename/delete commits) -- the
-		// ORDINARY periodic/on-demand reload that lands here never
-		// touched it, so a create/rename/delete applied from a second
-		// client (the shared-state-db precedent this package already
-		// tests, group_shared_state_db_test.go) stayed invisible in an
-		// already-open Groups panel until the user next pressed n/r/d
-		// themselves. Refreshed here too, gated on the panel actually
-		// being open on the groups category (never unconditionally --
-		// there is no reason to pay a live store.ListGroups() call while
-		// the panel is closed or on some other category), and reselected
-		// by the currently selected row's durable group id (never by
-		// index -- an edit elsewhere in the list must not silently move
-		// the selection off the group the user is looking at). Only on a
-		// successful groups read: msg.groupsErr != nil must leave
-		// m.settingsGroups at its previous value, exactly like
-		// m.allGroups just above -- a transient read failure is not a
-		// reason to blank out an already-open panel. This never touches
-		// m.settingsGroupCreating/Renaming/EditID/EditValue (the n/r
-		// typing sub-mode) or m.settingsEdits (staged scalar edits): the
-		// ordinary reload has never reset either, and this fix keeps it
-		// that way.
-		if msg.groupsErr == nil && m.settingsOpen && m.settingsOnGroupsCategory() {
-			var selectedGroupID int64
-			if g, ok := m.settingsSelectedGroup(); ok {
-				selectedGroupID = g.ID
-			}
-			m.settingsGroups = m.computeAvailableGroups()
-			if selectedGroupID != 0 {
-				m.selectSettingsGroupByID(selectedGroupID)
-			}
-			if m.settingsGroupIndex >= len(m.settingsGroups) && m.settingsGroupIndex > 0 {
-				m.settingsGroupIndex--
+		m.sessions = m.filteredSessions()
+		// A header cursor (task 012/D.1) needs none of this: its own
+		// identity is a durable group id, never an m.sessions index, so
+		// a reload that changes which indices exist never invalidates
+		// it -- this preserve-by-id/clamp dance is a ROW cursor's own
+		// problem exclusively.
+		if selectedWasRow {
+			if idx := indexOfSessionID(m.sessions, selectedID); idx >= 0 {
+				m.selected = rowCursor(idx)
+			} else if idx, _ := m.selected.SessionIndex(); idx >= len(m.sessions) {
+				m.selected = rowCursor(max(0, len(m.sessions)-1))
 			}
 		}
-		if msg.err != nil {
-			m.sessionsReloadNote = "Cannot read sessions: " + msg.err.Error()
+		// cure-01-05 (R137/F6): the preserve-by-id/clamp dance above only
+		// ever produces a row index that is IN BOUNDS -- it says nothing
+		// about whether that row (or an untouched header cursor) is a
+		// stop this reload's own sidebar still renders as visible. A
+		// persisted fold can land a restart's very first reload on a row
+		// hidden by its own collapsed group; a filter query that costs a
+		// selected header its last match removes that header's bucket
+		// entirely; and a header-only load (every group has zero members)
+		// leaves a fresh model's zero-value row cursor naming no row at
+		// all. cursorNamesVisibleStop catches all three, and
+		// nearestVisibleSelection walks onto whatever visible stop -- a
+		// header included -- sits nearest, never a hidden row or an
+		// absent header (SPEC's own "selection never lands on a hidden
+		// row" for §11.8, extended here to a header whose bucket the
+		// filter itself removed), and selectVisibleStopAfterReload
+		// (group.go) also walks a still-valid header cursor onto its own
+		// bucket's first row when selectedGroupHadNoRows says this reload
+		// is the one that just gave that header something to show (task
+		// 022 sweep follow-up above). cure-01-01-3 (R136/R137, SPEC
+		// §11): this promotion exists ONLY for the automatic
+		// zero-value-cursor case
+		// (TestCure0105FirstSessionUnderHeaderOnlyLoadFollowsSelection) --
+		// gated on !m.selectedByUser so a header the user actually walked
+		// onto (g/Down etc, setSelection's own seam) keeps its identity
+		// across a background arrival even when the WHOLE sidebar was
+		// header-only at the time
+		// (TestReview132ExplicitHeaderOnEmptySidebarSurvivesBackgroundArrival,
+		// fail-before 10c5021).
+		m.selectVisibleStopAfterReload(selectedGroupHadNoRows && hadNoSessionsAtAll && !m.selectedByUser)
+		// Requirement 52: the one-shot new-session intent (see
+		// pendingSelectSessionID's doc comment) overrides the
+		// preserved-selection result above whenever the id it is
+		// waiting for has actually arrived in the FILTERED list --
+		// never m.baseSessions -- so a live filter query that hides
+		// the new session leaves the selection (and the query)
+		// untouched instead of yanking the view to a row the filter
+		// itself is hiding. cure-01-01-2 (R137): the new session's own
+		// group may be folded (a create issued while the sidebar has
+		// that group collapsed) -- selecting a row its own fold hides
+		// satisfies neither "selects the newly created session" nor
+		// "exposes its complete row", so the group is unfolded first,
+		// exactly as if the user had pressed Right/c themselves.
+		if m.pendingSelectSessionID != "" {
+			if idx := indexOfSessionID(m.sessions, m.pendingSelectSessionID); idx >= 0 {
+				if gid := sessionGroupID(m.sessions[idx]); m.isGroupCollapsed(gid) {
+					m.setGroupCollapsed(gid, false)
+				}
+				m.selected = rowCursor(idx)
+				m.pendingSelectSessionID = ""
+				// cure-01-03 (R142, SPEC §11): fulfilling this one-shot
+				// new-session selection intent is itself an intentional
+				// selection-follow operation -- SPEC's own "the
+				// newly-created session is selected and visible" rule --
+				// so it ends any wheel drift in force and always brings the
+				// new row into view, rather than deferring to the plain
+				// drift-preserving branch below (which exists for an
+				// ordinary background reload/re-sort that names no new
+				// selection intent at all).
+				m.sidebarScrollDrifted = false
+				m.scrollSessionIntoView(idx)
+			}
+		}
+		// cure-01-05 (R136/SPEC §11: "the viewport follows the
+		// selection"): whatever m.selected ended up as above -- the SAME
+		// row/header the preserve-by-id path kept, the stop
+		// cursorNamesVisibleStop's fallback just normalized onto, or
+		// pendingSelectSessionID's own fresh row -- may have moved to a
+		// different rendered position than it held before this reload
+		// (a rename that changes a header's alphabetical slot is the
+		// clearest case), so the scroll offset a PRIOR render computed is
+		// not assumed to still be valid. followSelectionViewport is a
+		// no-op when the selection is already fully in view.
+		//
+		// R142/GH #40: a live wheel drift is the one exception -- while
+		// m.sidebarScrollDrifted, this reload must keep the wheel's own
+		// offset (only re-clamped to the possibly-changed entry count,
+		// clampDriftedSidebarScroll) rather than snapping the viewport
+		// back onto the selection, which m.selected above already keeps
+		// tracking by id off screen.
+		if m.sidebarScrollDrifted {
+			m.clampDriftedSidebarScroll()
 		} else {
-			m.sessionsReloadNote = ""
-			// cure-01-01-3 (R143/R148, SPEC §11.9): the pre-reload selected
-			// session identity, captured before m.baseSessions/m.sessions/
-			// m.selected are touched below by ANYTHING this branch does --
-			// the sort/resort, the preserve-by-id-then-clamp dance, the
-			// header promotion, and the newly-created-session intent below
-			// all move m.selected through this same reload, and
-			// clearEntryRefusalIfSelectedSessionChanged (entry_refusal.go)
-			// needs the BEFORE value to tell a genuine identity change
-			// (refused alpha's row now selecting freshly-created beta, or
-			// the selected row disappearing outright) apart from a resort
-			// that lands the SAME session at a new index or cursor.
-			prevSelectedSession, prevSelectedOK := m.selectedSession()
-			// SPEC requirements 28/29/30 (task 023's sort, task 024's
-			// grouping): every load renders in attention order, not
-			// store order, so the sidebar's group order itself follows
-			// each group's most urgent member (see SPEC §11's
-			// illustration: "service-a" leads with two waiting rows,
-			// "infra" follows with only an error) exactly as
-			// groupSessions' own "first appearance in m.sessions"
-			// bucketing already promises once m.sessions is in this
-			// order.
+			m.followSelectionViewport()
+		}
+		// SPEC §11.9 (task 008/R143, GH #38): "clears ... when a later
+		// tick finds the reason gone (... the session started)" for the
+		// entryRefusalStopped kind -- read against the JUST-refreshed
+		// m.sessions above, not the pre-reload snapshot.
+		m.clearEntryRefusalIfSessionStarted(msg.generation)
+		// cure-01-01-3 (R143/R148, SPEC §11.9): every other lifetime edge
+		// this reload can cause -- the preserve-by-id dance landing on a
+		// DIFFERENT session (never possible by id, but the clamp-to-last
+		// fallback and the visible-stop normalization above can both
+		// change WHICH session ends up selected), the selected row
+		// disappearing outright (removed mid-refusal, restored later),
+		// and the newly-created-session intent (pendingSelectSessionID)
+		// landing on its own fresh row -- are all just "the selected
+		// session's identity differs from what it was before this
+		// reload" to clearEntryRefusalIfSelectedSessionChanged, compared
+		// against prevSelectedSession/prevSelectedOK captured at the top
+		// of this branch, before any of the above ran. A resort that
+		// preserves the SAME selected session (TestIndependentSameSession
+		// ResortKeepsRefusal) leaves this a no-op, exactly like
+		// setSelection's own c != m.selected guard.
+		m.clearEntryRefusalIfSelectedSessionChanged(prevSelectedSession.ID, prevSelectedOK)
+	}
+	return m, nil
+}
+
+func (m Model) onArchivedSessionsLoaded(msg archivedSessionsLoaded) (tea.Model, tea.Cmd) {
+	// Task 123/I-10: refreshes the filter's archived-side search pool.
+	// A failed fetch leaves the previous pool in place rather than
+	// wiping it to empty, matching sessionsLoaded's own
+	// error-preserves-the-last-good-frame convention elsewhere in
+	// this switch.
+	//
+	// cure-01-01-2 (R136/SPEC §11): this used to only clamp a raw row
+	// index into bounds, which says nothing about whether that index
+	// (or an untouched header cursor) still names a visible stop --
+	// an archive match disappearing can empty a selected header's
+	// bucket entirely, or leave a row cursor's OWN session gone while
+	// the survivor's group is folded. Mirrors sessionsLoaded's own
+	// preserve-by-id-then-normalize dance immediately above; no
+	// pendingSelectSessionID override applies here (an archived-pool
+	// refresh is never a local creation) and no header ever gains a
+	// row from this path, so selectVisibleStopAfterReload's promotion
+	// branch is never armed (false).
+	//
+	// cure-01-01-3 (R143/R148, SPEC §11.9): prevSelectedSession/
+	// prevSelectedOK, captured here before anything below touches
+	// m.sessions/m.selected, is sessionsLoaded's own identical
+	// "before" snapshot for clearEntryRefusalIfSelectedSessionChanged
+	// -- an archived-list refresh is exactly as capable of moving the
+	// selection onto a different session (or off the selected row
+	// entirely) as an ordinary session-list refresh is.
+	prevSelectedSession, prevSelectedOK := m.selectedSession()
+	var selectedID string
+	selectedWasRow := false
+	if idx, ok := m.selected.SessionIndex(); ok {
+		selectedWasRow = true
+		if idx >= 0 && idx < len(m.sessions) {
+			selectedID = m.sessions[idx].ID
+		}
+	}
+	if msg.err == nil {
+		m.archivedSessions = msg.sessions
+	}
+	m.sessions = m.filteredSessions()
+	if selectedWasRow {
+		if idx := indexOfSessionID(m.sessions, selectedID); idx >= 0 {
+			m.selected = rowCursor(idx)
+		} else if idx, _ := m.selected.SessionIndex(); idx >= len(m.sessions) {
+			m.selected = rowCursor(max(0, len(m.sessions)-1))
+		}
+	}
+	m.selectVisibleStopAfterReload(false)
+	// R142/GH #40: an archived-pool refresh is a background reload
+	// too, so a live wheel drift keeps its own (re-clamped) offset
+	// here exactly as it does in sessionsLoaded above.
+	if m.sidebarScrollDrifted {
+		m.clampDriftedSidebarScroll()
+	} else {
+		m.followSelectionViewport()
+	}
+	// cure-01-01-3 (R143/R148, SPEC §11.9): see sessionsLoaded's own
+	// identical call above -- an archived-list refresh clears a
+	// previous entry refusal exactly when the selected session's
+	// identity actually changed, and retains it when the same session
+	// stayed selected across the refresh.
+	m.clearEntryRefusalIfSelectedSessionChanged(prevSelectedSession.ID, prevSelectedOK)
+	return m, nil
+}
+
+func (m Model) onEventLogLoaded(msg eventLogLoaded) (tea.Model, tea.Cmd) {
+	// R61 (steer 3e-001 §6.3): the ONE place loadEventLog's result is
+	// consumed. m.eventLogRows/m.eventLogErr are what eventLogBody
+	// renders; a stale reply arriving after Esc already closed the
+	// dialog is harmless (the fields are simply unused until the next
+	// "E" reopens and resets them again).
+	m.eventLogRows = msg.events
+	m.eventLogErr = msg.err
+	return m, nil
+}
+
+func (m Model) onDetailDroppedHookLoaded(msg detailDroppedHookLoaded) (tea.Model, tea.Cmd) {
+	// R90/task 033, R61: the ONE place loadDetailDroppedHook's result is
+	// consumed. Applied only when msg.sessionID still names the pending
+	// target the "i" key handler set (see detailDroppedHookSessionID's
+	// own comment) -- a mismatch means this reply belongs to a session
+	// the dialog has since moved past, and is discarded rather than
+	// rendered against the wrong row. A read error also leaves
+	// detailDroppedHookFound false: this field is supplementary detail,
+	// not a state the dialog needs to report failing to load the way
+	// eventLogErr does for the whole `E` log.
+	if msg.sessionID == m.detailDroppedHookSessionID && msg.err == nil {
+		m.detailDroppedHookFound = msg.found
+		m.detailDroppedHookEvent = msg.event
+	}
+	return m, nil
+}
+
+func (m Model) onShellCreated(msg shellCreated) (tea.Model, tea.Cmd) {
+	if msg.err != nil {
+		m.createError = msg.err.Error()
+		return m, nil
+	}
+	m.creating, m.createError = false, ""
+	// Requirement 52: record the freshly created session's id as a
+	// one-shot select-this-row intent (see pendingSelectSessionID's
+	// doc comment) -- it does not exist in m.sessions yet, so the
+	// selection itself is applied once loadSessions' own
+	// sessionsLoaded actually contains it, never here.
+	m.pendingSelectSessionID = msg.session.ID
+	// GH #52: the same create also arms the auto-enter intent
+	// (armAutoEnter, auto_enter.go), keyed by the same id, under
+	// [ui] attach_on_new.
+	m.armAutoEnter(msg.session.ID, m.settings.AttachOnNew)
+	// Task 024 (SPEC.md:1364-1367): a create only ever promotes the
+	// default on SUCCESS, never on submit -- this is the one branch
+	// where that already holds (the err != nil branch above returns
+	// before reaching here, and Esc/abandon never produces this msg at
+	// all). msg.session.Agent, not m.createAgent, is what actually got
+	// created -- store.CreateSession/service.CreateAgent are the ones
+	// that set it ("shell" for the shell path, service.shell.go:114),
+	// so this is correct even if the dialog's own fields have since
+	// moved on. Updating m.lastCreateAgent here (not only via the
+	// async persist below) is what lets the very next "n" in this same
+	// run see it without a store round trip in that render path.
+	m.lastCreateAgent = msg.session.Agent
+	cmds := []tea.Cmd{m.loadSessions, m.persistLastCreateAgent(msg.session.Agent)}
+	// R130's counterpart: EVERY successful create updates the remembered
+	// group, including one into the structural default group -- "the last
+	// group created into" means the last one, not the last NAMED one, so a
+	// create into default must leave the next modal (and the next launch)
+	// opening on default rather than on a named group the user has since
+	// moved off. msg.session.GroupID == nil IS default, recorded as id 0
+	// (SetLastCreateGroup's own doc comment: 0 clears the ui_state row,
+	// which GetLastCreateGroup reads back as default). msg.session.GroupID,
+	// not m.createGroupID, is what actually got created, for the same
+	// reason msg.session.Agent is used above.
+	createdGroupID := int64(0)
+	if msg.session.GroupID != nil {
+		createdGroupID = *msg.session.GroupID
+	}
+	m.lastCreateGroupID = createdGroupID
+	cmds = append(cmds, m.persistLastCreateGroup(createdGroupID))
+	return m, tea.Batch(cmds...)
+}
+
+func (m Model) onAttachFinished(msg attachFinished) (tea.Model, tea.Cmd) {
+	if msg.err != nil {
+		m.attachError = "Cannot attach: " + msg.err.Error()
+	}
+	// The attach just resized this window to the departing client's own
+	// terminal (that is the whole point of releaseForeignPreviewPin),
+	// and tmux leaves it there when the client detaches -- so the row
+	// the user comes back to is the one row passive fit's coalescing
+	// would otherwise never re-fit, exactly the case SPEC §11 already
+	// carves out for a relaunch: "a fit already satisfied for the
+	// selected session must not suppress the fit the new pane needs".
+	// Clearing the latch licenses precisely one fit on the next tick.
+	// It is not conditioned on msg.err: a failed ExecProcess may still
+	// have attached, and briefly, before it failed.
+	m.previewFitSessionID = ""
+	// Steer 005: tea.ExecProcess (attachSelected, above) brackets the real
+	// tmux client's attach with bubbletea's own ReleaseTerminal/
+	// RestoreTerminal (ExecProcess doc, tea.go:184-188), which restores only
+	// altScreenWasActive/bpWasActive/reportFocus -- there is no
+	// mouseWasActive field anywhere in bubbletea v1, so mouse reporting
+	// enabled once at startup via tea.WithMouseCellMotion() (cmd/deck/main.go)
+	// never comes back after tmux's own DECRST-on-detach turns it off. Emit
+	// the same tea.EnableMouseCellMotion the startup ProgramOption would have
+	// enabled, gated by the SAME m.settings.Mouse condition so a user who
+	// asked for mouse off ([ui] mouse=false / DECK_MOUSE=0) does not get it
+	// silently switched back on by one attach/detach cycle.
+	if m.settings.Mouse {
+		return m, tea.Batch(m.loadSessions, tea.EnableMouseCellMotion)
+	}
+	return m, m.loadSessions
+}
+
+func (m Model) onSessionKilled(msg sessionKilled) (tea.Model, tea.Cmd) {
+	if msg.err != nil {
+		m.attachError = "Cannot kill: " + msg.err.Error()
+		return m, nil
+	}
+	m.attachError = ""
+	m.undoSessionID = msg.session.ID
+	m.undoSessionName = msg.session.Name
+	m.undoGeneration++
+	generation := m.undoGeneration
+	return m, tea.Batch(m.loadSessions, tea.Tick(m.settings.Undo, func(t time.Time) tea.Msg { return undoExpired(generation) }))
+}
+
+func (m Model) onUndoExpired(msg undoExpired) (tea.Model, tea.Cmd) {
+	if int(msg) == m.undoGeneration {
+		m.undoSessionID, m.undoSessionName = "", ""
+	}
+	return m, nil
+}
+
+func (m Model) onSessionsPinned(msg sessionsPinned) (tea.Model, tea.Cmd) {
+	// task 010 (SPEC §11's pin rule, R159): the store write already
+	// happened inside the tea.Cmd (setSessionsPinnedCmd) that produced
+	// this message -- this case only reports the outcome and reloads,
+	// mirroring sessionAcknowledged just below. A pin/unpin never opens
+	// an undo toast (SPEC names none for it, unlike x/A/dd) -- pressing
+	// p again is its own undo.
+	if msg.err != nil {
+		m.attachError = "Cannot update pin: " + msg.err.Error()
+		return m, nil
+	}
+	m.attachError = ""
+	return m, m.loadSessions
+}
+
+func (m Model) onSessionAcknowledged(msg sessionAcknowledged) (tea.Model, tea.Cmd) {
+	if msg.err != nil {
+		m.attachError = "Cannot acknowledge: " + msg.err.Error()
+		return m, nil
+	}
+	m.attachError = ""
+	return m, m.loadSessions
+}
+
+func (m Model) onSessionArchived(msg sessionArchived) (tea.Model, tea.Cmd) {
+	if msg.err != nil {
+		// R72: a failed submit stays in the dialog and says why, exactly as
+		// sessionDeleted's own failure does with deleteNote -- closing the
+		// dialog on failure would leave the operator with a vanished dialog
+		// and an unarchived row.
+		m.archiveNote = "Cannot archive: " + msg.err.Error()
+		m.attachError = "Cannot archive: " + msg.err.Error()
+		return m, nil
+	}
+	m.archiveConfirming = false
+	m.archiveNote = ""
+	m.attachError = ""
+	// R72 (SPEC.md:752): a successful archive says what happened and offers
+	// `u`, on its own DECK_UNDO_MS window. msg.session is the row the dialog
+	// named, captured before the archive's kill step, so its status here is
+	// the pre-archive one -- "not stopped" is exactly the case where the
+	// archive also killed a live agent, which is what the toast reports.
+	m.archiveUndoSessionID = msg.session.ID
+	m.archiveUndoSessionName = msg.session.Name
+	m.archiveUndoKilled = msg.session.Status != "stopped"
+	// SPEC §9.2: Archive runs the session's own post_destroy and then the
+	// global one, so either being configured means a teardown hook ran for
+	// this archive -- which is what makes the undo's own toast ("the next r
+	// rebuilds") true rather than noise on a session with no hook at all.
+	m.archiveUndoHookRan = msg.session.PostDestroy != "" || m.settings.PostDestroy != ""
+	m.archiveUndoGeneration++
+	archiveGeneration := m.archiveUndoGeneration
+	cmds := []tea.Cmd{m.loadSessions, tea.Tick(m.settings.Undo, func(t time.Time) tea.Msg { return archiveUndoExpired(archiveGeneration) })}
+	if msg.hookMessage != "" {
+		// task 042 (findings §1): the archive itself already committed --
+		// runPostDestroy's own hook failure never blocks or reverses it --
+		// so this toast is purely informational, on its own DECK_UNDO_MS
+		// window, exactly like archiveUndoneRebuildNoteLines above.
+		m.teardownHookNote = msg.hookMessage
+		m.teardownHookNoteGeneration++
+		teardownGeneration := m.teardownHookNoteGeneration
+		cmds = append(cmds, tea.Tick(m.settings.Undo, func(t time.Time) tea.Msg { return teardownHookNoteExpired(teardownGeneration) }))
+	}
+	return m, tea.Batch(cmds...)
+}
+
+func (m Model) onArchiveUndoExpired(msg archiveUndoExpired) (tea.Model, tea.Cmd) {
+	if int(msg) == m.archiveUndoGeneration {
+		m.archiveUndoSessionID, m.archiveUndoSessionName = "", ""
+		m.archiveUndoKilled = false
+		m.archiveUndoHookRan = false
+	}
+	return m, nil
+}
+
+func (m Model) onArchiveUndoneRebuildNoteExpired(msg archiveUndoneRebuildNoteExpired) (tea.Model, tea.Cmd) {
+	if int(msg) == m.archiveUndoneRebuildGeneration {
+		m.archiveUndoneRebuildNote = false
+	}
+	return m, nil
+}
+
+func (m Model) onTeardownHookNoteExpired(msg teardownHookNoteExpired) (tea.Model, tea.Cmd) {
+	if int(msg) == m.teardownHookNoteGeneration {
+		m.teardownHookNote = ""
+	}
+	return m, nil
+}
+
+func (m Model) onSessionDeleted(msg sessionDeleted) (tea.Model, tea.Cmd) {
+	if msg.err != nil {
+		m.deleteNote = "Cannot delete: " + msg.err.Error()
+		return m, nil
+	}
+	m.deleteConfirming = false
+	m.deleteNote = ""
+	m.deletePurgeValue = ""
+	m.deletePurgePath = ""
+	m.deletePurgeOK = false
+	if msg.purgeErr != nil {
+		m.attachError = "Deleted, but purge failed: " + msg.purgeErr.Error()
+	} else {
+		m.attachError = ""
+	}
+	m.deleteUndoSessionID = msg.session.ID
+	m.deleteUndoSessionName = msg.session.Name
+	m.deleteUndoGeneration++
+	generation := m.deleteUndoGeneration
+	// task 012 (M10, kill_delete_undo.feature:75, CI run 36828007039):
+	// SPEC.md:1085 promises the deleted row is "Hidden immediately", but
+	// the only thing that used to make that happen was scheduling
+	// m.loadSessions below as its own tea.Cmd -- a goroutine whose
+	// sessionsLoaded result lands on a LATER Update call. The frame
+	// rendered for THIS message (closing the confirm dialog and raising
+	// the "Deleted — press u to undo" toast) still carried the stale,
+	// pre-delete session list, so a client sampling a frame in that
+	// window could see the undo toast and the deleted row's own
+	// still-"starting" sidebar line together. Remove the just-deleted
+	// session from m.baseSessions/m.sessions synchronously, in the same
+	// Update call, so this frame already reflects the deletion; the
+	// m.loadSessions reload below still runs to pick up any other
+	// concurrent change and remains the authoritative reconciliation.
+	var selectedID string
+	selectedWasRow := false
+	if idx, ok := m.selected.SessionIndex(); ok {
+		selectedWasRow = true
+		if idx >= 0 && idx < len(m.sessions) {
+			selectedID = m.sessions[idx].ID
+		}
+	}
+	filtered := m.baseSessions[:0:0]
+	for _, s := range m.baseSessions {
+		if s.ID != msg.session.ID {
+			filtered = append(filtered, s)
+		}
+	}
+	m.baseSessions = filtered
+	m.sessions = m.filteredSessions()
+	if selectedWasRow {
+		if idx := indexOfSessionID(m.sessions, selectedID); idx >= 0 {
+			m.selected = rowCursor(idx)
+		} else if idx, _ := m.selected.SessionIndex(); idx >= len(m.sessions) {
+			m.selected = rowCursor(max(0, len(m.sessions)-1))
+		}
+	}
+	cmds := []tea.Cmd{m.loadSessions, tea.Tick(m.settings.DeleteGrace, func(t time.Time) tea.Msg { return deleteGraceExpired(generation) })}
+	if msg.hookMessage != "" {
+		// task 042 (findings §1): mirrors the sessionArchived branch above
+		// exactly -- the delete itself already committed, so this toast is
+		// purely informational, on its own DECK_UNDO_MS window (never tied
+		// to DeleteGrace, which reaps the tombstone, not this note).
+		m.teardownHookNote = msg.hookMessage
+		m.teardownHookNoteGeneration++
+		teardownGeneration := m.teardownHookNoteGeneration
+		cmds = append(cmds, tea.Tick(m.settings.Undo, func(t time.Time) tea.Msg { return teardownHookNoteExpired(teardownGeneration) }))
+	}
+	return m, tea.Batch(cmds...)
+}
+
+func (m Model) onDeleteGraceExpired(msg deleteGraceExpired) (tea.Model, tea.Cmd) {
+	if int(msg) != m.deleteUndoGeneration || m.deleteUndoSessionID == "" {
+		return m, nil
+	}
+	sessionID := m.deleteUndoSessionID
+	m.deleteUndoSessionID, m.deleteUndoSessionName = "", ""
+	if m.reapSvc == nil {
+		return m, nil
+	}
+	return m, func() tea.Msg {
+		return sessionReaped{err: m.reapSvc(context.Background(), sessionID)}
+	}
+}
+
+func (m Model) onSessionRestored(msg sessionRestored) (tea.Model, tea.Cmd) {
+	if msg.err != nil {
+		m.attachError = "Cannot restore: " + msg.err.Error()
+		return m, nil
+	}
+	m.attachError = ""
+	return m, m.loadSessions
+}
+
+func (m Model) onSessionUnarchived(msg sessionUnarchived) (tea.Model, tea.Cmd) {
+	if msg.err != nil {
+		m.attachError = "Cannot unarchive: " + msg.err.Error()
+		return m, nil
+	}
+	m.attachError = ""
+	if msg.teardownHookRan {
+		// SPEC.md:508 / help's Hooks section: a post_destroy that ran is not
+		// undone by u -- the row comes back stopped and the next r rebuilds
+		// whatever the hook released. Say so, on its own DECK_UNDO_MS window.
+		m.archiveUndoneRebuildNote = true
+		m.archiveUndoneRebuildGeneration++
+		rebuildGeneration := m.archiveUndoneRebuildGeneration
+		return m, tea.Batch(m.loadSessions, m.loadArchivedSessions, tea.Tick(m.settings.Undo, func(t time.Time) tea.Msg {
+			return archiveUndoneRebuildNoteExpired(rebuildGeneration)
+		}))
+	}
+	// Both loads, not just loadSessions: the row is in m.sessions only
+	// because m.archivedSessions still holds it (requirement 33's
+	// filter pool), so refreshing the default list alone would leave a
+	// stale archived copy behind it -- filteredSessions de-duplicates
+	// by id, keeping the fresh baseSessions row, and the archived pool
+	// drops it on its own reload.
+	return m, tea.Batch(m.loadSessions, m.loadArchivedSessions)
+}
+
+func (m Model) onSessionReaped(msg sessionReaped) (tea.Model, tea.Cmd) {
+	if msg.err != nil {
+		m.attachError = "Cannot reap: " + msg.err.Error()
+	}
+	return m, nil
+}
+
+func (m Model) onSessionsBulkKilled(msg sessionsBulkKilled) (tea.Model, tea.Cmd) {
+	var succeeded []string
+	var firstErr error
+	for i, s := range msg.sessions {
+		if msg.errs[i] != nil {
+			if firstErr == nil {
+				firstErr = msg.errs[i]
+			}
+			continue
+		}
+		succeeded = append(succeeded, s.ID)
+	}
+	if firstErr != nil {
+		m.attachError = "Cannot kill: " + firstErr.Error()
+	} else {
+		m.attachError = ""
+	}
+	if len(succeeded) == 0 {
+		return m, m.loadSessions
+	}
+	m.batchUndoSessionIDs = succeeded
+	m.batchUndoGeneration++
+	generation := m.batchUndoGeneration
+	return m, tea.Batch(m.loadSessions, tea.Tick(m.settings.Undo, func(t time.Time) tea.Msg { return batchUndoExpired(generation) }))
+}
+
+func (m Model) onBatchUndoExpired(msg batchUndoExpired) (tea.Model, tea.Cmd) {
+	if int(msg) == m.batchUndoGeneration {
+		m.batchUndoSessionIDs = nil
+	}
+	return m, nil
+}
+
+func (m Model) onSessionsBulkResumed(msg sessionsBulkResumed) (tea.Model, tea.Cmd) {
+	// R117: mirrors the single-session sessionResumed clear -- only the
+	// sessions this batch actually launched a pane for (ResumeStarted,
+	// no error) are eligible to invalidate the latch, and only when the
+	// latch currently names one of them. This runs BEFORE the error
+	// report and independently of it: a batch `u` can restore some
+	// sessions and fail on others, and the restored ones still created
+	// panes whose geometry the latch would otherwise keep stale.
+	for i, id := range msg.sessionIDs {
+		if i < len(msg.errs) && msg.errs[i] != nil {
+			continue
+		}
+		if i < len(msg.outcomes) && msg.outcomes[i] == service.ResumeStarted && id == m.previewFitSessionID {
+			m.previewFitSessionID = ""
+			break
+		}
+	}
+	m.attachError = ""
+	for _, err := range msg.errs {
+		if err != nil {
+			m.attachError = "Cannot resume: " + err.Error()
+			break
+		}
+	}
+	return m, m.loadSessions
+}
+
+func (m Model) onSessionsBulkDeleted(msg sessionsBulkDeleted) (tea.Model, tea.Cmd) {
+	var succeeded []string
+	var firstErr error
+	// cure-01-05: mirrors firstErr exactly, but for the batch's own purge
+	// outcomes -- only ever populated for a row whose delete succeeded
+	// (msg.purgeErrs' own doc), so this never masks a delete failure the
+	// firstErr branch below already reports.
+	var firstPurgeErr error
+	// task 048: the hook messages are collected for EVERY row, whether
+	// that row's delete errored or not -- runPostDestroy is fail-open
+	// and its message is about the hook, not about the delete, so a row
+	// that failed to delete can still have a hook worth reporting.
+	var hookNotes []string
+	for i, s := range msg.sessions {
+		if i < len(msg.hookMessages) && msg.hookMessages[i] != "" {
+			// Name-prefixed here and bare in the single-row branch: a
+			// bulk dd's note can carry several rows, so which row a
+			// failure belongs to is only recoverable from the prefix.
+			label := s.Name
+			if label == "" {
+				label = s.ID
+			}
+			hookNotes = append(hookNotes, label+": "+msg.hookMessages[i])
+		}
+		if i < len(msg.purgeErrs) && msg.purgeErrs[i] != nil && firstPurgeErr == nil {
+			firstPurgeErr = msg.purgeErrs[i]
+		}
+		if msg.errs[i] != nil {
+			if firstErr == nil {
+				firstErr = msg.errs[i]
+			}
+			continue
+		}
+		succeeded = append(succeeded, s.ID)
+	}
+	m.deleteConfirming = false
+	m.deleteNote = ""
+	switch {
+	case firstErr != nil:
+		m.attachError = "Cannot delete: " + firstErr.Error()
+	case firstPurgeErr != nil:
+		m.attachError = "Deleted, but purge failed: " + firstPurgeErr.Error()
+	default:
+		m.attachError = ""
+	}
+	cmds := []tea.Cmd{m.loadSessions}
+	if len(hookNotes) > 0 {
+		// Same DECK_UNDO_MS window and same generation counter as the
+		// single-row A/dd toasts above (never DeleteGrace, which reaps
+		// the tombstones rather than clearing this note).
+		m.teardownHookNote = strings.Join(hookNotes, "; ")
+		m.teardownHookNoteGeneration++
+		teardownGeneration := m.teardownHookNoteGeneration
+		cmds = append(cmds, tea.Tick(m.settings.Undo, func(t time.Time) tea.Msg { return teardownHookNoteExpired(teardownGeneration) }))
+	}
+	// R131's destructive branch: the batch has now committed, so the
+	// group row settings routed here goes too -- only when every member's
+	// delete actually succeeded, since a group that still holds a live
+	// member must keep its row (a partial failure leaves both the row and
+	// the surviving members alone, with firstErr already on screen).
+	// Cleared unconditionally: this batch is over either way, and a later
+	// ordinary dd must never inherit it.
+	if groupID := m.bulkDeleteGroupID; groupID != 0 {
+		groupName := m.bulkDeleteGroupName
+		m.bulkDeleteGroupID = 0
+		m.bulkDeleteGroupName = ""
+		if firstErr == nil && m.store != nil {
+			if err := m.store.DeleteGroup(context.Background(), groupID); err != nil {
+				m.attachError = "Cannot delete group " + groupName + ": " + err.Error()
+			} else if m.settingsOpen {
+				// Only meaningful if something reopened settings in the
+				// meantime; `,` recomputes this snapshot on open anyway.
+				m.settingsGroups = m.computeAvailableGroups()
+			}
+		}
+	}
+	if len(succeeded) == 0 {
+		return m, tea.Batch(cmds...)
+	}
+	m.batchDeleteUndoSessionIDs = succeeded
+	m.batchDeleteUndoGeneration++
+	generation := m.batchDeleteUndoGeneration
+	cmds = append(cmds, tea.Tick(m.settings.DeleteGrace, func(t time.Time) tea.Msg { return batchDeleteGraceExpired(generation) }))
+	return m, tea.Batch(cmds...)
+}
+
+func (m Model) onBatchDeleteGraceExpired(msg batchDeleteGraceExpired) (tea.Model, tea.Cmd) {
+	if int(msg) != m.batchDeleteUndoGeneration || len(m.batchDeleteUndoSessionIDs) == 0 {
+		return m, nil
+	}
+	ids := m.batchDeleteUndoSessionIDs
+	m.batchDeleteUndoSessionIDs = nil
+	if m.reapSvc == nil {
+		return m, nil
+	}
+	reapSvc := m.reapSvc
+	return m, func() tea.Msg {
+		result := sessionsBulkReaped{}
+		for _, id := range ids {
+			result.errs = append(result.errs, reapSvc(context.Background(), id))
+		}
+		return result
+	}
+}
+
+func (m Model) onSessionsBulkReaped(msg sessionsBulkReaped) (tea.Model, tea.Cmd) {
+	for _, err := range msg.errs {
+		if err != nil {
+			m.attachError = "Cannot reap: " + err.Error()
+			return m, nil
+		}
+	}
+	return m, nil
+}
+
+func (m Model) onSessionsBulkRestored(msg sessionsBulkRestored) (tea.Model, tea.Cmd) {
+	for _, err := range msg.errs {
+		if err != nil {
+			m.attachError = "Cannot restore: " + err.Error()
+			return m, m.loadSessions
+		}
+	}
+	m.attachError = ""
+	return m, m.loadSessions
+}
+
+func (m Model) onUiStatePersisted(msg uiStatePersisted) (tea.Model, tea.Cmd) {
+	// A failed write to ui_state is not load-bearing (SPEC §11.2): the
+	// pin/width already changed in memory and keeps rendering; only the
+	// error note surfaces so a persistent failure is still visible.
+	if msg.err != nil {
+		m.attachError = "Cannot persist layout: " + msg.err.Error()
+	}
+	return m, nil
+}
+
+func (m Model) onSessionResumed(msg sessionResumed) (tea.Model, tea.Cmd) {
+	if msg.err != nil {
+		m.attachError = "Cannot resume: " + msg.err.Error()
+		m.resumeNote = ""
+		return m, nil
+	}
+	m.attachError = ""
+	if msg.outcome == service.ResumeStartingElsewhere {
+		m.resumeNote = "starting elsewhere"
+		return m, nil
+	}
+	if msg.outcome == service.ResumeAlreadyRunning {
+		// Requirement 46: deck already owns this pane. Adopting it as an
+		// honest no-op means refreshing the row from whatever the service
+		// returned (untouched) rather than pretending a launch happened.
+		m.resumeNote = "already running"
+		for i := range m.sessions {
+			if m.sessions[i].ID == msg.session.ID {
+				m.sessions[i] = msg.session
+				break
+			}
+		}
+		return m, nil
+	}
+	m.resumeNote = ""
+	if msg.outcome == service.ResumeNotLeasable {
+		// The resume command was dispatched from a stale stopped frame.
+		// Render the durable status/reason returned by the service rather
+		// than describing it as a launch in another client.
+		for i := range m.sessions {
+			if m.sessions[i].ID == msg.session.ID {
+				m.sessions[i] = msg.session
+				break
+			}
+		}
+		return m, nil
+	}
+	// R117: every outcome above (ResumeStartingElsewhere,
+	// ResumeAlreadyRunning, ResumeNotLeasable) is a no-op that created
+	// no pane, so previewFitSessionID is deliberately left untouched for
+	// each of them -- falling through to here means the outcome is
+	// service.ResumeStarted (the only remaining value), i.e. a pane was
+	// actually (re)created. If that is the session the passive-fit
+	// latch currently names as already settled, the latch is now stale
+	// (the pane it fit, if any, is gone; the new one has never been
+	// measured) and must be cleared so the very next preview tick -- with
+	// no selection change required -- issues a fresh fit for it.
+	// previewFitInFlight is untouched: a relaunch never races an
+	// in-flight passive fit for a DIFFERENT still-latched session, and
+	// if one happened to be in flight for this very session its own
+	// previewFitDone still owns clearing that marker.
+	if msg.session.ID == m.previewFitSessionID {
+		m.previewFitSessionID = ""
+	}
+	// GH #52 (SPEC §9.1): a pane was actually started, so an `r` arms
+	// the auto-enter intent under [ui] attach_on_resume -- the same
+	// intent a create arms (auto_enter.go), waiting for this client's
+	// list to show the row no longer stopped and its pane live.
+	if msg.fromResumeKey {
+		m.armAutoEnter(msg.session.ID, m.settings.AttachOnResume)
+	}
+	return m, m.loadSessions
+}
+
+func (m Model) onSessionRestarted(msg sessionRestarted) (tea.Model, tea.Cmd) {
+	if msg.err != nil {
+		m.attachError = "Cannot restart: " + msg.err.Error()
+		return m, nil
+	}
+	m.attachError = ""
+	if msg.outcome == service.ResumeStartingElsewhere {
+		m.attachError = "Cannot restart: a launch for this session is already starting elsewhere"
+		return m, nil
+	}
+	if msg.outcome == service.ResumeAlreadyRunning {
+		// Requirement 46's already-running honest no-op applies here too:
+		// a concurrent client may have already relaunched the pane between
+		// this restart's kill and its own resume attempt.
+		for i := range m.sessions {
+			if m.sessions[i].ID == msg.session.ID {
+				m.sessions[i] = msg.session
+				break
+			}
+		}
+		return m, nil
+	}
+	if msg.outcome == service.ResumeNotLeasable {
+		for i := range m.sessions {
+			if m.sessions[i].ID == msg.session.ID {
+				m.sessions[i] = msg.session
+				break
+			}
+		}
+		return m, nil
+	}
+	// A successful restart also closes task 023's restart/inject-instead
+	// choice dialog, if that is how this restart was chosen -- a no-op
+	// when R restarted directly (non-shell session, no dialog ever
+	// opened).
+	m.restartChoosing = false
+	m.restartChoiceNote = ""
+	// cure-01-07 (R145): the restarted row itself (env_dirty and
+	// launch_dirty already cleared in the store before Restart
+	// returned) replaces the stale in-memory copy in the SAME update
+	// that closes the dialog, so the first frame without the dialog
+	// never shows the `env*`/`launch*` badge the store has already
+	// cleared -- rather than waiting on the loadSessions below
+	// (TestRestartSuccessDropsEnvBadgeInTheFrameTheDialogCloses).
+	m.replaceSessionByID(msg.session)
+	// R117: mirrors sessionResumed's own clear immediately above -- a
+	// restart that reaches here (every no-pane outcome above already
+	// returned) killed the old pane and created a new one, so the same
+	// staleness applies and the latch is cleared under the same
+	// condition, leaving previewFitInFlight untouched for the same
+	// reason.
+	if msg.session.ID == m.previewFitSessionID {
+		m.previewFitSessionID = ""
+	}
+	// GH #52 (SPEC §9.1): `R` -- directly or through the shell
+	// restart/inject-instead choice, the only two senders of this
+	// message -- arms the same auto-enter intent `r` does, under the
+	// same [ui] attach_on_resume.
+	m.armAutoEnter(msg.session.ID, m.settings.AttachOnResume)
+	return m, m.loadSessions
+}
+
+func (m Model) onEnvInjected(msg envInjected) (tea.Model, tea.Cmd) {
+	// Task 023's inject-instead: unlike Restart, nothing was killed or
+	// relaunched, so a failure leaves the choice dialog open with a note
+	// (mirroring profileSwitched/resumeModeChanged) rather than the
+	// attachError banner sessionRestarted uses -- the dialog is still the
+	// right place to retry or switch to "restart" instead.
+	if msg.err != nil {
+		m.restartChoiceNote = "Cannot inject: " + msg.err.Error()
+		return m, nil
+	}
+	m.restartChoosing = false
+	m.restartChoiceNote = ""
+	// cure-01-07 (R145): same as sessionRestarted's success path --
+	// InjectEnv already cleared env_dirty in the store, so the frame
+	// that closes the dialog must not still show `env*`.
+	m.replaceSessionByID(msg.session)
+	return m, m.loadSessions
+}
+
+func (m Model) onProfileSwitched(msg profileSwitched) (tea.Model, tea.Cmd) {
+	if msg.err != nil {
+		m.profileSwitchNote = "Cannot change permission profile: " + msg.err.Error()
+		return m, nil
+	}
+	m.profileSwitching = false
+	m.profileSwitchNote = ""
+	return m, m.loadSessions
+}
+
+func (m Model) onResumeModeChanged(msg resumeModeChanged) (tea.Model, tea.Cmd) {
+	if msg.err != nil {
+		m.pinNote = "Cannot change resume mode: " + msg.err.Error()
+		return m, nil
+	}
+	m.pinning = false
+	m.pinNote = ""
+	return m, m.loadSessions
+}
+
+func (m Model) onSessionRenamed(msg sessionRenamed) (tea.Model, tea.Cmd) {
+	// Mirrors profileSwitched/resumeModeChanged exactly: a successful
+	// rename closes the rename sub-dialog (m.detail, underneath it,
+	// stays true -- rename is an action inside detail, so submitting
+	// it returns to detailView showing the new name, never all the way
+	// out to the main list).
+	if msg.err != nil {
+		m.renameNote = "Cannot rename: " + msg.err.Error()
+		return m, nil
+	}
+	m.renaming = false
+	m.renameNote = ""
+	return m, m.loadSessions
+}
+
+func (m Model) onLaunchInputsSaved(msg launchInputsSaved) (tea.Model, tea.Cmd) {
+	// Mirrors sessionRenamed exactly: a successful submit closes the
+	// launch-inputs editor (m.detail, underneath it, stays true -- this
+	// dialog is an action inside detail, so submitting it returns to
+	// detailView, never all the way out to the main list).
+	if msg.err != nil {
+		m.launchInputsNote = "Cannot save launch inputs: " + msg.err.Error()
+		return m, nil
+	}
+	m.launchInputsEditing = false
+	m.launchInputsNote = ""
+	return m, m.loadSessions
+}
+
+func (m Model) onSessionGroupMoved(msg sessionGroupMoved) (tea.Model, tea.Cmd) {
+	// Mirrors sessionRenamed/launchInputsSaved exactly: a successful
+	// move closes the group-move picker (m.detail, underneath it,
+	// stays true -- moving is an action inside detail, so submitting
+	// it returns to detailView showing the new group, never all the
+	// way out to the main list).
+	if msg.err != nil {
+		m.moveGroupNote = "Cannot move group: " + msg.err.Error()
+		return m, nil
+	}
+	m.movingGroup = false
+	m.moveGroupNote = ""
+	return m, m.loadSessions
+}
+
+func (m Model) onEnvEdited(msg envEdited) (tea.Model, tea.Cmd) {
+	// Unlike profileSwitched/resumeModeChanged, a committed edit does
+	// NOT close the dialog: SPEC §6.1/§6.3's env editor is a listing of
+	// several keys, and a user editing one is very likely about to edit
+	// another in the same visit. Only esc (already wired in
+	// updateEnvDialog) closes it.
+	if msg.err != nil {
+		m.envNote = "Cannot edit environment: " + msg.err.Error()
+		return m, nil
+	}
+	m.envNote = ""
+	return m, m.loadSessions
+}
+
+func (m Model) onReconcileTick(msg reconcileTick) (tea.Model, tea.Cmd) {
+	loadAfterReconcile := m.loadSessions
+	if m.reconcile != nil {
+		loadAfterReconcile = func() tea.Msg {
+			if err := m.reconcile(context.Background()); err != nil {
+				return sessionsLoaded{err: err}
+			}
+			return m.loadSessions()
+		}
+	}
+	return m, tea.Batch(loadAfterReconcile, tea.Tick(m.settings.Reconcile, func(t time.Time) tea.Msg { return reconcileTick(t) }))
+}
+
+func (m Model) onPreviewTick(msg previewTick) (tea.Model, tea.Cmd) {
+	// The capture engine (task 017, SPEC requirements 21, 22) samples the
+	// selected row's live pane once per tick; rendering it (crop, geometry
+	// line, placeholders) is tasks 018-021, so DECK_PREVIEW_MS's cadence is
+	// already honoured end-to-end even though the panel still shows its
+	// pre-capture placeholder.
+	cmds := []tea.Cmd{tea.Tick(m.settings.Preview, func(t time.Time) tea.Msg { return previewTick(t) })}
+	// GH #52: the auto-enter intent spends its tick budget here, first,
+	// so an entry it fires is already in force for the capture and
+	// passive fit below (previewFit stands down while interactive).
+	var enterCmd tea.Cmd
+	m, enterCmd = m.tickAutoEnter()
+	if enterCmd != nil {
+		cmds = append(cmds, enterCmd)
+	}
+	if cmd := m.capturePreview(); cmd != nil {
+		cmds = append(cmds, cmd)
+	}
+	// steer 018 item 4: the passive-preview fit is coalesced against this
+	// SAME tick, never issued once per row walked while holding an arrow
+	// key (previewFit's own guards decide whether this tick's selection
+	// still needs one at all).
+	if cmd := m.previewFit(); cmd != nil {
+		cmds = append(cmds, cmd)
+	}
+	// SPEC §11.9 (task 008/R143, GH #38): "clears ... when a later tick
+	// finds the reason gone (the holder left...)" for the two
+	// contention refusal kinds -- read entryRefusalHolderCheck's own
+	// doc comment for why the other kinds have nothing to probe here.
+	if cmd := m.entryRefusalHolderCheck(); cmd != nil {
+		cmds = append(cmds, cmd)
+	}
+	// cure-01-06 (R143/SPEC §11.9): the row-floor/shrank half of the
+	// same "a later tick finds the reason gone" clause -- a pure
+	// re-measure of m.previewContentSize() against interactiveMinInnerRows,
+	// so it runs inline here rather than through a tea.Cmd.
+	m.clearEntryRefusalIfRoomGrew()
+	// Task 118: displacement detection rides this same tick, never a
+	// per-keystroke check (updateInteractive gains none at all). The
+	// fast path is checked first and, unlike the backstop below, needs
+	// no tea.Cmd at all -- it is a pure read of the transport's own
+	// Status(), so a hit is handled inline, in this very Update call,
+	// rather than round-tripping through another message.
+	if m.interactive {
+		if m.interactiveDisplacementFastPath() {
+			name := ""
+			if session, ok := m.selectedSession(); ok {
+				name = session.Name
+			}
+			next, cmd := m.raiseLostAttach(name)
+			m = next
+			if cmd != nil {
+				cmds = append(cmds, cmd)
+			}
+		} else if cmd := m.checkInteractiveDisplacementBackstop(); cmd != nil {
+			cmds = append(cmds, cmd)
+		}
+	}
+	return m, tea.Batch(cmds...)
+}
+
+func (m Model) onInteractiveDisplacementChecked(msg interactiveDisplacementChecked) (tea.Model, tea.Cmd) {
+	// Ignored unless interactive mode is both still active AND still
+	// against the exact window this poll was issued against: the fast
+	// path above may already have raised the dialog this same tick, or
+	// Ctrl+Q may have left interactive mode (and possibly re-entered a
+	// different session) before this round trip landed.
+	if msg.paneDead && m.interactive && m.interactiveWindowTarget == msg.windowTarget && m.interactiveGrid != nil {
+		// R185: the dead-pane check rides the backstop's one read.
+		m.interactiveGrid.NotePaneDead()
+	}
+	if msg.displaced && m.interactive && m.interactiveWindowTarget == msg.windowTarget {
+		next, cmd := m.raiseLostAttach(msg.sessionName)
+		return next, cmd
+	}
+	return m, nil
+}
+
+func (m Model) onPreviewFitDone(msg previewFitDone) (tea.Model, tea.Cmd) {
+	// Task 035: a no-live-pane return must NOT latch previewFitSessionID
+	// -- nothing was resized, so this session must stay eligible for a
+	// real fit once its pane later becomes live again while the row
+	// stays (or is re-)selected. Every OTHER return path (the real fit,
+	// and the pre-existing tmux.SessionName failure path, both left
+	// unchanged by this task) keeps latching exactly as before.
+	if !msg.noLivePane && !msg.foreignLiveClaim && !msg.clientAttached {
+		m.previewFitSessionID = msg.sessionID
+	}
+	// Cleared unconditionally, not only when it matches the session
+	// reported: at most one fit is ever outstanding (previewFit refuses
+	// to schedule a second while previewFitInFlight is set), and an
+	// unconditional clear cannot wedge the mechanism even if some future
+	// path ever delivered a previewFitDone the marker did not name. The
+	// reported session may well no longer be selected (the user kept
+	// navigating while the fit ran) -- that is exactly the case the next
+	// tick must be free to fit.
+	m.previewFitInFlight = ""
+	return m, nil
+}
+
+func (m Model) onEntryRefusalHolderRecheckDone(msg entryRefusalHolderRecheckDone) (tea.Model, tea.Cmd) {
+	// SPEC §11.9 (task 008/R143, GH #38): only clears the SAME refusal
+	// this probe was issued against -- a stale reply racing a selection
+	// change (setSelection already clears the refusal outright, so
+	// m.entryRefusal.active would already be false), a fresh refusal that
+	// has since landed on the same session (kind mismatch), or -- review
+	// B1, task 001, R143/R148 -- a fresh refusal of the exact SAME kind
+	// for the exact same session (a holder that left and came back before
+	// this old probe's reply landed) must not clear something this reply
+	// says nothing about. The generation check is what catches that last
+	// case; sessionID+kind alone cannot.
+	if msg.reasonGone && m.entryRefusal.active && m.entryRefusal.sessionID == msg.sessionID && m.entryRefusal.kind == msg.kind && msg.generation == m.entryRefusal.generation {
+		m.clearEntryRefusal()
+	}
+	return m, nil
+}
+
+func (m Model) onPreviewCaptured(msg previewCaptured) (tea.Model, tea.Cmd) {
+	// A session with no live pane reports capture.Live == false and a nil
+	// err (see tmux.CapturePreview); only a genuine tmux/transport failure
+	// reaches err, and even that is not load-bearing — the previous frame
+	// (or, before the first successful capture, the placeholder) keeps
+	// rendering rather than the tick disrupting the view.
+	if msg.err == nil {
+		m.previewSessionID = msg.sessionID
+		m.previewLive = msg.capture.Live
+		m.previewBytes = msg.capture.Bytes
+		m.previewPaneWidth = msg.capture.Width
+		m.previewPaneHeight = msg.capture.Height
+	}
+	// cure-01-01-2 (R143/R148, SPEC §11.9): the no-live-pane refusal's own
+	// "a later tick finds the reason gone" clause -- this tick's capture
+	// (never a selection move or a keypress) is the only way liveness for
+	// the refused session is ever re-observed.
+	m.clearEntryRefusalIfPreviewLive(msg.sessionID, msg.err, msg.capture.Live, msg.refusalGeneration)
+	// GH #52: a live capture of the selected target is what the
+	// auto-enter intent waits for.
+	return m.captureAutoEnter(msg)
+}
+
+func (m Model) onAnimationTick(msg animationTick) (tea.Model, tea.Cmd) {
+	if !m.settings.Animation {
+		return m, nil
+	}
+	return m, tea.Tick(m.settings.Preview, func(t time.Time) tea.Msg { return animationTick(t) })
+}
+
+func (m Model) onKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// GH #52: any key at all cancels a pending auto-enter, before any
+	// layer below gets to act on it (auto_enter.go).
+	m.cancelAutoEnter()
+	m.fieldCopyNote = ""
+	if msg.Type == tea.KeyRunes && len(msg.Runes) > 1 && !msg.Paste {
+		// Bubble Tea's own PTY reader coalesces multiple keystrokes that
+		// land in the same read into a single KeyMsg whose Runes holds
+		// every character (e.g. two quick presses of 'j' and 'x' can
+		// arrive as one KeyMsg{Runes: "jx"}). Every case below (and every
+		// dialog's own update* method) matches msg.String() against a
+		// single key's own string ("j", "x", ...); a coalesced "jx" would
+		// match NONE of them and the whole event would be silently
+		// dropped, leaving neither rune to act (task 118, requirement 51).
+		// Rather than teach every case and every dialog about multi-rune
+		// strings, split the coalesced KeyMsg back into one single-rune
+		// tea.KeyMsg per character and dispatch them through Update in
+		// order, exactly as if they had arrived as separate keystrokes. A
+		// single keypress (len(Runes)==1) is untouched and falls straight
+		// through to the handling below, unchanged.
+		//
+		// A bracketed-paste KeyMsg (msg.Paste) is deliberately exempted:
+		// Key.String() already wraps a paste's runes in "[...]" so it can
+		// never match a single-letter shortcut by accident (bubbletea's own
+		// key.go). Splitting pasted text into individual keystrokes would
+		// turn a paste of, say, "dd" into an actual delete chord -- the
+		// deliberate decision (docs/reports/phase3-findings.md, task 118)
+		// is that a paste into the list is ignored outright, never
+		// dispatched rune by rune.
+		var cmds []tea.Cmd
+		next := tea.Model(m)
+		for _, r := range msg.Runes {
+			var cmd tea.Cmd
+			next, cmd = next.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}, Alt: msg.Alt})
+			cmds = append(cmds, cmd)
+		}
+		return next, tea.Batch(cmds...)
+	}
+	// cure-01-02 (R143/SPEC §11.9): the banner-dismissing Esc has to run
+	// before EVERY other Esc-cleared layer's own dispatch below --
+	// pendingDelete's intercept, help/settings/filtering's own updaters,
+	// deleteConfirming/archiveConfirming and the rest all used to sit
+	// ahead of this check (it lived just above guardSessionScopedKey),
+	// so an Esc pressed while, say, pendingDelete was ALSO armed hit
+	// pendingDelete's own intercept first and never reached here at all
+	// (TestReviewRefusalEscPrecedesPendingDelete, TestReviewRefusalEscPrecedesHelp
+	// at ee7f5a5d3, artifacts/review/reviewer_refusal_test.go). Checking
+	// it first, before any layer's own dispatch, is what makes "the
+	// banner always goes first" true regardless of what else is open;
+	// activeEntryRefusalForSelection already answers false while
+	// m.interactive is true (no banner exists to dismiss there), so this
+	// cannot change interactive's own Esc handling, and every other
+	// layer below is reached completely unchanged on the very next Esc
+	// once the banner (if any) is gone.
+	if msg.String() == "esc" {
+		if _, ok := m.activeEntryRefusalForSelection(); ok {
+			m.clearEntryRefusal()
+			return m, nil
+		}
+	}
+	if m.lostAttach {
+		return m.updateLostAttachView(msg)
+	}
+	if m.interactive {
+		return m.updateInteractive(msg)
+	}
+	if m.creating {
+		return m.updateCreate(msg)
+	}
+	if m.profileSwitching {
+		return m.updateProfileSwitch(msg)
+	}
+	if m.pinning {
+		return m.updatePinDialog(msg)
+	}
+	if m.envEditing {
+		return m.updateEnvDialog(msg)
+	}
+	if m.restartChoosing {
+		return m.updateRestartChoice(msg)
+	}
+	if m.deleteConfirming {
+		return m.updateDeleteConfirm(msg)
+	}
+	// R72 (issue #10): the archive confirm intercepts every key while it
+	// is open, exactly as deleteConfirming above does -- which is what
+	// makes a second `A` inside the dialog a no-op rather than a
+	// re-entrant archive, and what keeps `x`/`dd`/`r` from acting on the
+	// row the dialog is asking about.
+	if m.archiveConfirming {
+		return m.updateArchiveConfirm(msg)
+	}
+	if m.settingsOpen {
+		return m.updateSettings(msg)
+	}
+	if m.themePicking {
+		return m.updateThemePicker(msg)
+	}
+	if m.help {
+		return m.updateHelpView(msg)
+	}
+	if m.renaming {
+		return m.updateRenameDialog(msg)
+	}
+	if m.launchInputsEditing {
+		return m.updateLaunchInputsDialog(msg)
+	}
+	if m.movingGroup {
+		return m.updateMoveGroupDialog(msg)
+	}
+	if m.detail {
+		return m.updateDetailView(msg)
+	}
+	if m.eventLogOpen {
+		return m.updateEventLog(msg)
+	}
+	if m.filtering {
+		return m.updateFilter(msg)
+	}
+	// pendingDelete intercepts the very next key after a lone `d`
+	// (SPEC's dd chord): a second `d` opens the confirm dialog; every
+	// other key -- Esc included -- clears the pending indicator and is
+	// otherwise swallowed, so "d followed by any other key performs no
+	// destructive action" holds without also having to reason about
+	// whatever that other key would normally have done.
+	if m.pendingDelete {
+		m.pendingDelete = false
+		// task cure-01-01 (F1, R137, SPEC §11): the second `d` asks the
+		// ONE shared guard the header question -- for BOTH the batch
+		// path and the single-row path -- before either one opens the
+		// confirm dialog. It cannot run after the guard (this intercept
+		// has to swallow and clear the indicator for every key, guarded
+		// ones included) so it calls the guard itself rather than
+		// carrying a second selectedSession check of its own.
+		//
+		// A non-empty mark set (task 112's batch dd) used to be exempt
+		// from this question entirely -- the confirm opened for the
+		// MARKED set regardless of the cursor. Review found that
+		// exemption wrong (F1): the batch path is exactly as inert on a
+		// header as the single-row path, so it now asks the same guard.
+		if msg.String() == "d" && len(m.sessions) > 0 && !m.guardSessionScopedKey("d") {
+			if len(m.marked) > 0 {
+				m.deleteConfirming = true
+				m.deleteNote = ""
+				m.deleteScroll = 0
+				// cure-01-05: the bulk confirm offers the same
+				// non-default purge choice the single-session dialog
+				// does, just resolved per session at submit time
+				// (transcriptPathFor has no single session to call
+				// eagerly here) -- so only the cycled VALUE resets;
+				// deletePurgePath/OK stay meaningless for a batch and
+				// are left alone.
+				m.bulkDeletePurgeValue = "keep"
+				m.deletePurgeValue = ""
+				m.deletePurgePath = ""
+				m.deletePurgeOK = false
+			} else {
+				// The guard having let this through means the cursor
+				// resolves to a session, so selectedSession is ok here.
+				session, _ := m.selectedSession()
+				if canDelete(session) {
+					m.deleteConfirming = true
+					m.deleteNote = ""
+					m.deleteScroll = 0
+					m.deletePurgeValue = "keep"
+					m.deletePurgePath, m.deletePurgeOK = m.transcriptPathFor(session)
+				}
+			}
+		}
+		return m, nil
+	}
+	// task 013/D.2: the one shared guard every session-scoped binding
+	// below now runs through (session_scoped_guard.go) instead of each
+	// one deciding for itself whether the cursor names a session.
+	// Reverting just this call, leaving guardSessionScopedKey itself in
+	// place, restores the per-site gaps it closed.
+	//
+	// cure-01-02: the refusal-banner Esc used to be checked here (right
+	// before this guard), which put it AFTER pendingDelete's own
+	// intercept and every dialog's own updater above -- see the comment
+	// on the earlier, now sole "esc" check just above the coalesced-rune
+	// split, where it runs before all of those instead.
+	if m.guardSessionScopedKey(msg.String()) {
+		return m, nil
+	}
+	switch msg.String() {
+	case "q", "ctrl+c":
+		return m, tea.Quit
+	case "?":
+		// This switch is only ever reached with m.help == false (task 078:
+		// updateHelpView, dispatched above, now intercepts every key,
+		// including a second "?"/esc, while help is open), so this only
+		// ever opens it; helpScroll resets so a reopen never starts
+		// scrolled from wherever a previous visit left off.
+		m.help = true
+		m.helpScroll = 0
+	case "esc":
+		// detailView has no fields to submit or cycle, so the only §11.4
+		// contract key it binds is esc — shared here through the same
+		// applyDialogContract implementation createView, profileSwitchView
+		// and pinView defer to, rather than a sixth hand-written cancel.
+		// Task 112: a plain top-level Esc also clears the mark set ("the
+		// marks clear on the action and on esc"). Neither m.help nor
+		// m.detail is ever true here (task 013's updateDetailView and
+		// task 078's updateHelpView each intercept every key, including
+		// esc, while their own overlay is open) -- this branch cannot
+		// close either today, but keeps clearing both anyway so a caller
+		// that somehow reaches it with one already true is not left
+		// stuck open.
+		//
+		// Task 027: a filter query left in force by `enter` closing the
+		// `/` text field (m.filtering == false, m.filterQuery != "") is
+		// ALSO only ever reachable here -- filter.go's own updateFilter
+		// intercepts esc itself while the field still has focus, so this
+		// branch never doubles up with that one. It is deliberately an
+		// else, not a second unconditional clear: SPEC's "esc cancels
+		// [one thing]" means a press that lands on a non-empty mark set
+		// clears the marks and leaves the filter (if any) held, exactly
+		// as it leaves every other state alone -- one press never clears
+		// two things at once.
+		hadMarks := len(m.marked) > 0
+		_, _ = applyDialogContract(msg, dialogContract{Cancel: func() {
+			m.help = false
+			m.detail = false
+			m.marked = nil
+		}})
+		// cure-01-01-4 (R136/SPEC §11, binding ruling 002): clearing the
+		// held query used to hand the OLD row index straight to
+		// nearestVisibleSelection, which walks by POSITION, not identity --
+		// unfiltering never removes rows, only adds ones the filter had
+		// hidden, so the same numeric index can now name a different
+		// session entirely (TestReview154HeldFilterEscapePreservesSessionID),
+		// and neither branch ever called followSelectionViewport, so a
+		// selection that survived (by luck of position) could still sit
+		// outside the visible scroll window
+		// (TestReview152ClosedFilterEscapeKeepsSelectionVisible,
+		// TestReview152HeldFilterEscapeKeepsHeaderVisible). A header cursor
+		// carries its own group id rather than a session index, so it never
+		// needs this preserve-by-id step -- unfiltering cannot make a group
+		// id go stale the way it can a row's numeric position.
+		if !hadMarks && m.filterQuery != "" {
 			var selectedID string
 			selectedWasRow := false
 			if idx, ok := m.selected.SessionIndex(); ok {
@@ -2705,2146 +4223,811 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 					selectedID = m.sessions[idx].ID
 				}
 			}
-			// cure-01-05 follow-up (task 022 sweep): fail-before was
-			// cmd/deck's TestDeckBinaryRefreshesAllConcurrentClients timing
-			// out waiting for "resumable" at 2bb61a8 -- a concurrent client
-			// that starts before any session exists has its zero-value
-			// rowCursor(0) promoted to a header cursor by the header-only-
-			// load fix below (cursorNamesVisibleStop/nearestVisibleSelection),
-			// and that header stays selected forever after, even once a
-			// session appears in its own, still-uncollapsed bucket:
-			// cursorNamesVisibleStop trivially returns true for any header
-			// whose bucket still exists, so the transition was never caught.
-			// selectedGroupHadNoRows (group.go) captures that, from the
-			// PRE-reload session list (m.sessions, not yet overwritten
-			// below), BEFORE selectVisibleStopAfterReload gets a chance to
-			// act on it further down.
-			selectedGroupHadNoRows := m.selectedGroupHadNoRows()
-			// cure-01-01-2 (R136/SPEC §11): selectedGroupHadNoRows alone
-			// cannot tell a deliberate navigation stop on an existing,
-			// still-empty header (other groups already have visible rows)
-			// apart from the ONE case the promotion below actually exists
-			// for -- a brand new client whose zero-value cursor got
-			// auto-promoted to a header because there was NOTHING ELSE to
-			// select yet (TestCure0105FirstSessionUnderHeaderOnlyLoadFollowsSelection,
-			// task 022 sweep). hadNoSessionsAtAll captures that distinction
-			// from the SAME pre-reload m.sessions: true only when the WHOLE
-			// sidebar was header-only, never merely this one bucket among
-			// others. A user who pressed g/Down/etc to land on an existing
-			// empty header while other sessions were already on screen
-			// keeps that header across a background arrival with no local
-			// creation intent (TestReview113ExplicitHeaderSurvivesBackgroundArrival).
-			hadNoSessionsAtAll := len(m.sessions) == 0
-			// sortSessionsByAttentionStable, not the plain
-			// sortSessionsByAttention: a genuine tie on both rank and
-			// StatusAt (task 005/I-1's finding -- two co-created sessions
-			// promoted running in the same reconcile pass round to the
-			// same millisecond) must not silently swap two rows' relative
-			// order out from under an in-flight k/m/j idiom just because
-			// their random UUIDs happen to compare the "wrong" way; see
-			// sortSessionsByAttentionStable's own doc comment
-			// (internal/tui/attention.go) and
-			// docs/reports/phase3d-i1-rootcause.md.
-			//
-			// Task 123/I-10: sorted into baseSessions, never m.sessions
-			// directly, so a filter query in force survives the periodic
-			// reconcile tick's own reload instead of being silently
-			// clobbered by it the moment ListSessions' own (archive-free)
-			// result lands.
-			//
-			// Task 305 (R53), REMOVED by task 011 (R129): this used to
-			// compute attentionOrder unconditionally so a non-attention
-			// render could still borrow it for workspace GROUP order via
-			// reorderPreservingGrouping (deleted this task). R129 makes
-			// group order alphabetical, case-insensitive, default always
-			// last (internal/tui/group.go's groupSortsBefore) --
-			// deliberately not attention-ranked -- so attentionOrder is
-			// only ever needed for the order==SortOrderAttention branch
-			// itself now; grouping (when on) buckets whatever m.baseSessions
-			// ends up as here, with each bucket's OWN row order following
-			// that same resolved order untouched (groupSessions' own
-			// first-appearance-within-a-bucket rule).
-			order, _ := m.effectiveSortOrder()
-			switch order {
-			case SortOrderAttention:
-				m.baseSessions = sortSessionsByAttentionStable(m.baseSessions, msg.sessions)
-			default:
-				m.baseSessions = sortSessionsByOrder(m.baseSessions, msg.sessions, order)
-			}
+			m.filterQuery = ""
 			m.sessions = m.filteredSessions()
-			// A header cursor (task 012/D.1) needs none of this: its own
-			// identity is a durable group id, never an m.sessions index, so
-			// a reload that changes which indices exist never invalidates
-			// it -- this preserve-by-id/clamp dance is a ROW cursor's own
-			// problem exclusively.
 			if selectedWasRow {
 				if idx := indexOfSessionID(m.sessions, selectedID); idx >= 0 {
 					m.selected = rowCursor(idx)
-				} else if idx, _ := m.selected.SessionIndex(); idx >= len(m.sessions) {
-					m.selected = rowCursor(max(0, len(m.sessions)-1))
 				}
 			}
-			// cure-01-05 (R137/F6): the preserve-by-id/clamp dance above only
-			// ever produces a row index that is IN BOUNDS -- it says nothing
-			// about whether that row (or an untouched header cursor) is a
-			// stop this reload's own sidebar still renders as visible. A
-			// persisted fold can land a restart's very first reload on a row
-			// hidden by its own collapsed group; a filter query that costs a
-			// selected header its last match removes that header's bucket
-			// entirely; and a header-only load (every group has zero members)
-			// leaves a fresh model's zero-value row cursor naming no row at
-			// all. cursorNamesVisibleStop catches all three, and
-			// nearestVisibleSelection walks onto whatever visible stop -- a
-			// header included -- sits nearest, never a hidden row or an
-			// absent header (SPEC's own "selection never lands on a hidden
-			// row" for §11.8, extended here to a header whose bucket the
-			// filter itself removed), and selectVisibleStopAfterReload
-			// (group.go) also walks a still-valid header cursor onto its own
-			// bucket's first row when selectedGroupHadNoRows says this reload
-			// is the one that just gave that header something to show (task
-			// 022 sweep follow-up above). cure-01-01-3 (R136/R137, SPEC
-			// §11): this promotion exists ONLY for the automatic
-			// zero-value-cursor case
-			// (TestCure0105FirstSessionUnderHeaderOnlyLoadFollowsSelection) --
-			// gated on !m.selectedByUser so a header the user actually walked
-			// onto (g/Down etc, setSelection's own seam) keeps its identity
-			// across a background arrival even when the WHOLE sidebar was
-			// header-only at the time
-			// (TestReview132ExplicitHeaderOnEmptySidebarSurvivesBackgroundArrival,
-			// fail-before 10c5021).
-			m.selectVisibleStopAfterReload(selectedGroupHadNoRows && hadNoSessionsAtAll && !m.selectedByUser)
-			// Requirement 52: the one-shot new-session intent (see
-			// pendingSelectSessionID's doc comment) overrides the
-			// preserved-selection result above whenever the id it is
-			// waiting for has actually arrived in the FILTERED list --
-			// never m.baseSessions -- so a live filter query that hides
-			// the new session leaves the selection (and the query)
-			// untouched instead of yanking the view to a row the filter
-			// itself is hiding. cure-01-01-2 (R137): the new session's own
-			// group may be folded (a create issued while the sidebar has
-			// that group collapsed) -- selecting a row its own fold hides
-			// satisfies neither "selects the newly created session" nor
-			// "exposes its complete row", so the group is unfolded first,
-			// exactly as if the user had pressed Right/c themselves.
-			if m.pendingSelectSessionID != "" {
-				if idx := indexOfSessionID(m.sessions, m.pendingSelectSessionID); idx >= 0 {
-					if gid := sessionGroupID(m.sessions[idx]); m.isGroupCollapsed(gid) {
-						m.setGroupCollapsed(gid, false)
-					}
-					m.selected = rowCursor(idx)
-					m.pendingSelectSessionID = ""
-					// cure-01-03 (R142, SPEC §11): fulfilling this one-shot
-					// new-session selection intent is itself an intentional
-					// selection-follow operation -- SPEC's own "the
-					// newly-created session is selected and visible" rule --
-					// so it ends any wheel drift in force and always brings the
-					// new row into view, rather than deferring to the plain
-					// drift-preserving branch below (which exists for an
-					// ordinary background reload/re-sort that names no new
-					// selection intent at all).
-					m.sidebarScrollDrifted = false
-					m.scrollSessionIntoView(idx)
-				}
+			if !m.cursorNamesVisibleStop(m.selected) {
+				m.selected = m.nearestVisibleSelection(m.selected)
 			}
-			// cure-01-05 (R136/SPEC §11: "the viewport follows the
-			// selection"): whatever m.selected ended up as above -- the SAME
-			// row/header the preserve-by-id path kept, the stop
-			// cursorNamesVisibleStop's fallback just normalized onto, or
-			// pendingSelectSessionID's own fresh row -- may have moved to a
-			// different rendered position than it held before this reload
-			// (a rename that changes a header's alphabetical slot is the
-			// clearest case), so the scroll offset a PRIOR render computed is
-			// not assumed to still be valid. followSelectionViewport is a
-			// no-op when the selection is already fully in view.
-			//
-			// R142/GH #40: a live wheel drift is the one exception -- while
-			// m.sidebarScrollDrifted, this reload must keep the wheel's own
-			// offset (only re-clamped to the possibly-changed entry count,
-			// clampDriftedSidebarScroll) rather than snapping the viewport
-			// back onto the selection, which m.selected above already keeps
-			// tracking by id off screen.
-			if m.sidebarScrollDrifted {
-				m.clampDriftedSidebarScroll()
-			} else {
-				m.followSelectionViewport()
-			}
-			// SPEC §11.9 (task 008/R143, GH #38): "clears ... when a later
-			// tick finds the reason gone (... the session started)" for the
-			// entryRefusalStopped kind -- read against the JUST-refreshed
-			// m.sessions above, not the pre-reload snapshot.
-			m.clearEntryRefusalIfSessionStarted(msg.generation)
-			// cure-01-01-3 (R143/R148, SPEC §11.9): every other lifetime edge
-			// this reload can cause -- the preserve-by-id dance landing on a
-			// DIFFERENT session (never possible by id, but the clamp-to-last
-			// fallback and the visible-stop normalization above can both
-			// change WHICH session ends up selected), the selected row
-			// disappearing outright (removed mid-refusal, restored later),
-			// and the newly-created-session intent (pendingSelectSessionID)
-			// landing on its own fresh row -- are all just "the selected
-			// session's identity differs from what it was before this
-			// reload" to clearEntryRefusalIfSelectedSessionChanged, compared
-			// against prevSelectedSession/prevSelectedOK captured at the top
-			// of this branch, before any of the above ran. A resort that
-			// preserves the SAME selected session (TestIndependentSameSession
-			// ResortKeepsRefusal) leaves this a no-op, exactly like
-			// setSelection's own c != m.selected guard.
-			m.clearEntryRefusalIfSelectedSessionChanged(prevSelectedSession.ID, prevSelectedOK)
-		}
-	case archivedSessionsLoaded:
-		// Task 123/I-10: refreshes the filter's archived-side search pool.
-		// A failed fetch leaves the previous pool in place rather than
-		// wiping it to empty, matching sessionsLoaded's own
-		// error-preserves-the-last-good-frame convention elsewhere in
-		// this switch.
-		//
-		// cure-01-01-2 (R136/SPEC §11): this used to only clamp a raw row
-		// index into bounds, which says nothing about whether that index
-		// (or an untouched header cursor) still names a visible stop --
-		// an archive match disappearing can empty a selected header's
-		// bucket entirely, or leave a row cursor's OWN session gone while
-		// the survivor's group is folded. Mirrors sessionsLoaded's own
-		// preserve-by-id-then-normalize dance immediately above; no
-		// pendingSelectSessionID override applies here (an archived-pool
-		// refresh is never a local creation) and no header ever gains a
-		// row from this path, so selectVisibleStopAfterReload's promotion
-		// branch is never armed (false).
-		//
-		// cure-01-01-3 (R143/R148, SPEC §11.9): prevSelectedSession/
-		// prevSelectedOK, captured here before anything below touches
-		// m.sessions/m.selected, is sessionsLoaded's own identical
-		// "before" snapshot for clearEntryRefusalIfSelectedSessionChanged
-		// -- an archived-list refresh is exactly as capable of moving the
-		// selection onto a different session (or off the selected row
-		// entirely) as an ordinary session-list refresh is.
-		prevSelectedSession, prevSelectedOK := m.selectedSession()
-		var selectedID string
-		selectedWasRow := false
-		if idx, ok := m.selected.SessionIndex(); ok {
-			selectedWasRow = true
-			if idx >= 0 && idx < len(m.sessions) {
-				selectedID = m.sessions[idx].ID
-			}
-		}
-		if msg.err == nil {
-			m.archivedSessions = msg.sessions
-		}
-		m.sessions = m.filteredSessions()
-		if selectedWasRow {
-			if idx := indexOfSessionID(m.sessions, selectedID); idx >= 0 {
-				m.selected = rowCursor(idx)
-			} else if idx, _ := m.selected.SessionIndex(); idx >= len(m.sessions) {
-				m.selected = rowCursor(max(0, len(m.sessions)-1))
-			}
-		}
-		m.selectVisibleStopAfterReload(false)
-		// R142/GH #40: an archived-pool refresh is a background reload
-		// too, so a live wheel drift keeps its own (re-clamped) offset
-		// here exactly as it does in sessionsLoaded above.
-		if m.sidebarScrollDrifted {
-			m.clampDriftedSidebarScroll()
-		} else {
 			m.followSelectionViewport()
 		}
-		// cure-01-01-3 (R143/R148, SPEC §11.9): see sessionsLoaded's own
-		// identical call above -- an archived-list refresh clears a
-		// previous entry refusal exactly when the selected session's
-		// identity actually changed, and retains it when the same session
-		// stayed selected across the refresh.
-		m.clearEntryRefusalIfSelectedSessionChanged(prevSelectedSession.ID, prevSelectedOK)
-	case eventLogLoaded:
-		// R61 (steer 3e-001 §6.3): the ONE place loadEventLog's result is
-		// consumed. m.eventLogRows/m.eventLogErr are what eventLogBody
-		// renders; a stale reply arriving after Esc already closed the
-		// dialog is harmless (the fields are simply unused until the next
-		// "E" reopens and resets them again).
-		m.eventLogRows = msg.events
-		m.eventLogErr = msg.err
-	case detailDroppedHookLoaded:
-		// R90/task 033, R61: the ONE place loadDetailDroppedHook's result is
-		// consumed. Applied only when msg.sessionID still names the pending
-		// target the "i" key handler set (see detailDroppedHookSessionID's
-		// own comment) -- a mismatch means this reply belongs to a session
-		// the dialog has since moved past, and is discarded rather than
-		// rendered against the wrong row. A read error also leaves
-		// detailDroppedHookFound false: this field is supplementary detail,
-		// not a state the dialog needs to report failing to load the way
-		// eventLogErr does for the whole `E` log.
-		if msg.sessionID == m.detailDroppedHookSessionID && msg.err == nil {
-			m.detailDroppedHookFound = msg.found
-			m.detailDroppedHookEvent = msg.event
+	case "i":
+		// m.detail is never true here (task 013's updateDetailView
+		// intercepts every key, including a second "i", while it is), and
+		// m.help is never true here either (task 078's updateHelpView
+		// intercepts every key first), so this only ever opens it;
+		// detailScroll resets for the same reason helpScroll does above.
+		// R90/task 033, R61: whether a hook was recently declined for
+		// THIS session is fetched fresh on every open, as a tea.Cmd
+		// (loadDetailDroppedHook), rather than read from m.store inline
+		// in View() -- the previous visit's result is cleared first so a
+		// slow reply landing after a different session's "i" reopened the
+		// dialog is caught by the session-id mismatch guard in the
+		// detailDroppedHookLoaded case below, never rendered against the
+		// wrong row.
+		// task 013/D.2: guardSessionScopedKey above already refused this
+		// keypress entirely when the cursor has no selected session, so
+		// selectedSession is guaranteed ok here.
+		session, _ := m.selectedSession()
+		m.detail = true
+		m.detailScroll = 0
+		target := session.ID
+		m.detailDroppedHookSessionID = target
+		m.detailDroppedHookFound = false
+		m.detailDroppedHookEvent = store.Event{}
+		return m, m.loadDetailDroppedHook(target)
+	case ",":
+		if !m.help {
+			m.settingsOpen = true
+			m.settingsCategoryIndex = 0
+			m.settingsFieldIndex = 0
+			m.settingsFocus = settingsFocusCategories
+			m.settingsSearchActive = false
+			m.settingsSearchEdit = lineedit.Editor{}
+			m.settingsSearchIndex = 0
+			m.settingsEdits = settingsEditsFromSettings(m.settings)
+			m.settingsSavedEdits = settingsEditsFromSettings(m.settings)
+			m.settingsDiscardConfirm = false
+			m.settingsNote = ""
+			m.settingsEnvOpen = false
+			m.settingsEnvEditing = false
+			m.settingsEnvIndex = 0
+			m.settingsStringEditing = false
+			m.settingsStringEditKey = ""
+			m.settingsStringEdit = lineedit.Editor{}
+			m.settingsGroups = m.computeAvailableGroups()
+			m.settingsGroupIndex = 0
+			m.settingsGroupCreating = false
+			m.settingsGroupRenaming = false
+			m.settingsGroupEditID = 0
+			m.settingsGroupEdit = lineedit.Editor{}
+			m.settingsGroupNote = ""
 		}
-	case shellCreated:
-		if msg.err != nil {
-			m.createError = msg.err.Error()
+	case "t":
+		if !m.help {
+			m = m.openThemePicker()
+		}
+	case "n":
+		if !m.help {
+			m.creating, m.createError, m.createField = true, "", 0
+			m.createScroll = 0
+			m.createEnvReveal = false
+			m.createEdits = [createFieldCount]lineedit.Editor{}
+			prefill, lastUsed := m.prefillCreateCWD()
+			m.createEdits[createFieldCWD], m.createCWDLastUsed = lineedit.NewOffered(prefill), lastUsed
+			m.createCWDRecents, m.createCWDRecentIndex = nil, -1
+			m.createCWDPreCycleEdit = lineedit.Editor{}
+			m.closeCreateCWDCandidates()
+			m.createAvailableAgentKinds = m.computeAvailableAgentKinds()
+			m.createAgent, m.createAgentLastUsed = m.pickCreateAgent()
+			m.createProfile = m.defaultCreateProfile(m.createAgent)
+			m.createProfileTouched, m.createProfileRequested = false, ""
+			m.createLoginShell = false
+			m.createGroups = m.computeAvailableGroups()
+			m.createGroupID, m.createGroupLastUsed = m.pickCreateGroup()
+		}
+	case "up", "k":
+		if next, ok := m.prevVisibleSelection(m.selected); ok {
+			m.setSelection(next)
+		}
+	case "down", "j":
+		if next, ok := m.nextVisibleSelection(m.selected); ok {
+			m.setSelection(next)
+		}
+	case "pgup":
+		// ·11.3 requirement 19: PgUp/PgDn always drive the list, since the
+		// sidebar is the only focusable region and there is no tab panel
+		// cycle to move the page keys onto instead. pageSelection walks
+		// VISUAL rows (002-steering.md), not raw m.sessions index
+		// arithmetic, so a page of hidden/non-adjacent rows can't skew it.
+		m.setSelection(m.pageSelection(-m.sidebarRowsPerPage()))
+	case "pgdown":
+		m.setSelection(m.pageSelection(m.sidebarRowsPerPage()))
+	case "Y":
+		if m.acknowledge == nil {
 			return m, nil
 		}
-		m.creating, m.createError = false, ""
-		// Requirement 52: record the freshly created session's id as a
-		// one-shot select-this-row intent (see pendingSelectSessionID's
-		// doc comment) -- it does not exist in m.sessions yet, so the
-		// selection itself is applied once loadSessions' own
-		// sessionsLoaded actually contains it, never here.
-		m.pendingSelectSessionID = msg.session.ID
-		// GH #52: the same create also arms the auto-enter intent
-		// (armAutoEnter, auto_enter.go), keyed by the same id, under
-		// [ui] attach_on_new.
-		m.armAutoEnter(msg.session.ID, m.settings.AttachOnNew)
-		// Task 024 (SPEC.md:1364-1367): a create only ever promotes the
-		// default on SUCCESS, never on submit -- this is the one branch
-		// where that already holds (the err != nil branch above returns
-		// before reaching here, and Esc/abandon never produces this msg at
-		// all). msg.session.Agent, not m.createAgent, is what actually got
-		// created -- store.CreateSession/service.CreateAgent are the ones
-		// that set it ("shell" for the shell path, service.shell.go:114),
-		// so this is correct even if the dialog's own fields have since
-		// moved on. Updating m.lastCreateAgent here (not only via the
-		// async persist below) is what lets the very next "n" in this same
-		// run see it without a store round trip in that render path.
-		m.lastCreateAgent = msg.session.Agent
-		cmds := []tea.Cmd{m.loadSessions, m.persistLastCreateAgent(msg.session.Agent)}
-		// R130's counterpart: EVERY successful create updates the remembered
-		// group, including one into the structural default group -- "the last
-		// group created into" means the last one, not the last NAMED one, so a
-		// create into default must leave the next modal (and the next launch)
-		// opening on default rather than on a named group the user has since
-		// moved off. msg.session.GroupID == nil IS default, recorded as id 0
-		// (SetLastCreateGroup's own doc comment: 0 clears the ui_state row,
-		// which GetLastCreateGroup reads back as default). msg.session.GroupID,
-		// not m.createGroupID, is what actually got created, for the same
-		// reason msg.session.Agent is used above.
-		createdGroupID := int64(0)
-		if msg.session.GroupID != nil {
-			createdGroupID = *msg.session.GroupID
-		}
-		m.lastCreateGroupID = createdGroupID
-		cmds = append(cmds, m.persistLastCreateGroup(createdGroupID))
-		return m, tea.Batch(cmds...)
-	case attachFinished:
-		if msg.err != nil {
-			m.attachError = "Cannot attach: " + msg.err.Error()
-		}
-		// The attach just resized this window to the departing client's own
-		// terminal (that is the whole point of releaseForeignPreviewPin),
-		// and tmux leaves it there when the client detaches -- so the row
-		// the user comes back to is the one row passive fit's coalescing
-		// would otherwise never re-fit, exactly the case SPEC §11 already
-		// carves out for a relaunch: "a fit already satisfied for the
-		// selected session must not suppress the fit the new pane needs".
-		// Clearing the latch licenses precisely one fit on the next tick.
-		// It is not conditioned on msg.err: a failed ExecProcess may still
-		// have attached, and briefly, before it failed.
-		m.previewFitSessionID = ""
-		// Steer 005: tea.ExecProcess (attachSelected, above) brackets the real
-		// tmux client's attach with bubbletea's own ReleaseTerminal/
-		// RestoreTerminal (ExecProcess doc, tea.go:184-188), which restores only
-		// altScreenWasActive/bpWasActive/reportFocus -- there is no
-		// mouseWasActive field anywhere in bubbletea v1, so mouse reporting
-		// enabled once at startup via tea.WithMouseCellMotion() (cmd/deck/main.go)
-		// never comes back after tmux's own DECRST-on-detach turns it off. Emit
-		// the same tea.EnableMouseCellMotion the startup ProgramOption would have
-		// enabled, gated by the SAME m.settings.Mouse condition so a user who
-		// asked for mouse off ([ui] mouse=false / DECK_MOUSE=0) does not get it
-		// silently switched back on by one attach/detach cycle.
-		if m.settings.Mouse {
-			return m, tea.Batch(m.loadSessions, tea.EnableMouseCellMotion)
-		}
-		return m, m.loadSessions
-	case sessionKilled:
-		if msg.err != nil {
-			m.attachError = "Cannot kill: " + msg.err.Error()
+		// task 013/D.2: the guard above already refused this keypress when
+		// the cursor has no selected session.
+		session, _ := m.selectedSession()
+		if !canAcknowledge(session) {
 			return m, nil
 		}
-		m.attachError = ""
-		m.undoSessionID = msg.session.ID
-		m.undoSessionName = msg.session.Name
-		m.undoGeneration++
-		generation := m.undoGeneration
-		return m, tea.Batch(m.loadSessions, tea.Tick(m.settings.Undo, func(t time.Time) tea.Msg { return undoExpired(generation) }))
-	case undoExpired:
-		if int(msg) == m.undoGeneration {
-			m.undoSessionID, m.undoSessionName = "", ""
-		}
-		return m, nil
-	case sessionsPinned:
-		// task 010 (SPEC §11's pin rule, R159): the store write already
-		// happened inside the tea.Cmd (setSessionsPinnedCmd) that produced
-		// this message -- this case only reports the outcome and reloads,
-		// mirroring sessionAcknowledged just below. A pin/unpin never opens
-		// an undo toast (SPEC names none for it, unlike x/A/dd) -- pressing
-		// p again is its own undo.
-		if msg.err != nil {
-			m.attachError = "Cannot update pin: " + msg.err.Error()
-			return m, nil
-		}
-		m.attachError = ""
-		return m, m.loadSessions
-	case sessionAcknowledged:
-		if msg.err != nil {
-			m.attachError = "Cannot acknowledge: " + msg.err.Error()
-			return m, nil
-		}
-		m.attachError = ""
-		return m, m.loadSessions
-	case sessionArchived:
-		if msg.err != nil {
-			// R72: a failed submit stays in the dialog and says why, exactly as
-			// sessionDeleted's own failure does with deleteNote -- closing the
-			// dialog on failure would leave the operator with a vanished dialog
-			// and an unarchived row.
-			m.archiveNote = "Cannot archive: " + msg.err.Error()
-			m.attachError = "Cannot archive: " + msg.err.Error()
-			return m, nil
-		}
-		m.archiveConfirming = false
-		m.archiveNote = ""
-		m.attachError = ""
-		// R72 (SPEC.md:752): a successful archive says what happened and offers
-		// `u`, on its own DECK_UNDO_MS window. msg.session is the row the dialog
-		// named, captured before the archive's kill step, so its status here is
-		// the pre-archive one -- "not stopped" is exactly the case where the
-		// archive also killed a live agent, which is what the toast reports.
-		m.archiveUndoSessionID = msg.session.ID
-		m.archiveUndoSessionName = msg.session.Name
-		m.archiveUndoKilled = msg.session.Status != "stopped"
-		// SPEC §9.2: Archive runs the session's own post_destroy and then the
-		// global one, so either being configured means a teardown hook ran for
-		// this archive -- which is what makes the undo's own toast ("the next r
-		// rebuilds") true rather than noise on a session with no hook at all.
-		m.archiveUndoHookRan = msg.session.PostDestroy != "" || m.settings.PostDestroy != ""
-		m.archiveUndoGeneration++
-		archiveGeneration := m.archiveUndoGeneration
-		cmds := []tea.Cmd{m.loadSessions, tea.Tick(m.settings.Undo, func(t time.Time) tea.Msg { return archiveUndoExpired(archiveGeneration) })}
-		if msg.hookMessage != "" {
-			// task 042 (findings §1): the archive itself already committed --
-			// runPostDestroy's own hook failure never blocks or reverses it --
-			// so this toast is purely informational, on its own DECK_UNDO_MS
-			// window, exactly like archiveUndoneRebuildNoteLines above.
-			m.teardownHookNote = msg.hookMessage
-			m.teardownHookNoteGeneration++
-			teardownGeneration := m.teardownHookNoteGeneration
-			cmds = append(cmds, tea.Tick(m.settings.Undo, func(t time.Time) tea.Msg { return teardownHookNoteExpired(teardownGeneration) }))
-		}
-		return m, tea.Batch(cmds...)
-	case archiveUndoExpired:
-		if int(msg) == m.archiveUndoGeneration {
-			m.archiveUndoSessionID, m.archiveUndoSessionName = "", ""
-			m.archiveUndoKilled = false
-			m.archiveUndoHookRan = false
-		}
-		return m, nil
-	case archiveUndoneRebuildNoteExpired:
-		if int(msg) == m.archiveUndoneRebuildGeneration {
-			m.archiveUndoneRebuildNote = false
-		}
-		return m, nil
-	case teardownHookNoteExpired:
-		if int(msg) == m.teardownHookNoteGeneration {
-			m.teardownHookNote = ""
-		}
-		return m, nil
-	case sessionDeleted:
-		if msg.err != nil {
-			m.deleteNote = "Cannot delete: " + msg.err.Error()
-			return m, nil
-		}
-		m.deleteConfirming = false
-		m.deleteNote = ""
-		m.deletePurgeValue = ""
-		m.deletePurgePath = ""
-		m.deletePurgeOK = false
-		if msg.purgeErr != nil {
-			m.attachError = "Deleted, but purge failed: " + msg.purgeErr.Error()
-		} else {
-			m.attachError = ""
-		}
-		m.deleteUndoSessionID = msg.session.ID
-		m.deleteUndoSessionName = msg.session.Name
-		m.deleteUndoGeneration++
-		generation := m.deleteUndoGeneration
-		// task 012 (M10, kill_delete_undo.feature:75, CI run 36828007039):
-		// SPEC.md:1085 promises the deleted row is "Hidden immediately", but
-		// the only thing that used to make that happen was scheduling
-		// m.loadSessions below as its own tea.Cmd -- a goroutine whose
-		// sessionsLoaded result lands on a LATER Update call. The frame
-		// rendered for THIS message (closing the confirm dialog and raising
-		// the "Deleted — press u to undo" toast) still carried the stale,
-		// pre-delete session list, so a client sampling a frame in that
-		// window could see the undo toast and the deleted row's own
-		// still-"starting" sidebar line together. Remove the just-deleted
-		// session from m.baseSessions/m.sessions synchronously, in the same
-		// Update call, so this frame already reflects the deletion; the
-		// m.loadSessions reload below still runs to pick up any other
-		// concurrent change and remains the authoritative reconciliation.
-		var selectedID string
-		selectedWasRow := false
-		if idx, ok := m.selected.SessionIndex(); ok {
-			selectedWasRow = true
-			if idx >= 0 && idx < len(m.sessions) {
-				selectedID = m.sessions[idx].ID
-			}
-		}
-		filtered := m.baseSessions[:0:0]
-		for _, s := range m.baseSessions {
-			if s.ID != msg.session.ID {
-				filtered = append(filtered, s)
-			}
-		}
-		m.baseSessions = filtered
-		m.sessions = m.filteredSessions()
-		if selectedWasRow {
-			if idx := indexOfSessionID(m.sessions, selectedID); idx >= 0 {
-				m.selected = rowCursor(idx)
-			} else if idx, _ := m.selected.SessionIndex(); idx >= len(m.sessions) {
-				m.selected = rowCursor(max(0, len(m.sessions)-1))
-			}
-		}
-		cmds := []tea.Cmd{m.loadSessions, tea.Tick(m.settings.DeleteGrace, func(t time.Time) tea.Msg { return deleteGraceExpired(generation) })}
-		if msg.hookMessage != "" {
-			// task 042 (findings §1): mirrors the sessionArchived branch above
-			// exactly -- the delete itself already committed, so this toast is
-			// purely informational, on its own DECK_UNDO_MS window (never tied
-			// to DeleteGrace, which reaps the tombstone, not this note).
-			m.teardownHookNote = msg.hookMessage
-			m.teardownHookNoteGeneration++
-			teardownGeneration := m.teardownHookNoteGeneration
-			cmds = append(cmds, tea.Tick(m.settings.Undo, func(t time.Time) tea.Msg { return teardownHookNoteExpired(teardownGeneration) }))
-		}
-		return m, tea.Batch(cmds...)
-	case deleteGraceExpired:
-		if int(msg) != m.deleteUndoGeneration || m.deleteUndoSessionID == "" {
-			return m, nil
-		}
-		sessionID := m.deleteUndoSessionID
-		m.deleteUndoSessionID, m.deleteUndoSessionName = "", ""
-		if m.reapSvc == nil {
-			return m, nil
-		}
+		sessionID := session.ID
 		return m, func() tea.Msg {
-			return sessionReaped{err: m.reapSvc(context.Background(), sessionID)}
+			return sessionAcknowledged{err: m.acknowledge(context.Background(), sessionID)}
 		}
-	case sessionRestored:
-		if msg.err != nil {
-			m.attachError = "Cannot restore: " + msg.err.Error()
+	case "x":
+		if m.kill == nil {
 			return m, nil
 		}
-		m.attachError = ""
-		return m, m.loadSessions
-	case sessionUnarchived:
-		if msg.err != nil {
-			m.attachError = "Cannot unarchive: " + msg.err.Error()
-			return m, nil
-		}
-		m.attachError = ""
-		if msg.teardownHookRan {
-			// SPEC.md:508 / help's Hooks section: a post_destroy that ran is not
-			// undone by u -- the row comes back stopped and the next r rebuilds
-			// whatever the hook released. Say so, on its own DECK_UNDO_MS window.
-			m.archiveUndoneRebuildNote = true
-			m.archiveUndoneRebuildGeneration++
-			rebuildGeneration := m.archiveUndoneRebuildGeneration
-			return m, tea.Batch(m.loadSessions, m.loadArchivedSessions, tea.Tick(m.settings.Undo, func(t time.Time) tea.Msg {
-				return archiveUndoneRebuildNoteExpired(rebuildGeneration)
-			}))
-		}
-		// Both loads, not just loadSessions: the row is in m.sessions only
-		// because m.archivedSessions still holds it (requirement 33's
-		// filter pool), so refreshing the default list alone would leave a
-		// stale archived copy behind it -- filteredSessions de-duplicates
-		// by id, keeping the fresh baseSessions row, and the archived pool
-		// drops it on its own reload.
-		return m, tea.Batch(m.loadSessions, m.loadArchivedSessions)
-	case sessionReaped:
-		if msg.err != nil {
-			m.attachError = "Cannot reap: " + msg.err.Error()
-		}
-		return m, nil
-	case sessionsBulkKilled:
-		var succeeded []string
-		var firstErr error
-		for i, s := range msg.sessions {
-			if msg.errs[i] != nil {
-				if firstErr == nil {
-					firstErr = msg.errs[i]
-				}
-				continue
-			}
-			succeeded = append(succeeded, s.ID)
-		}
-		if firstErr != nil {
-			m.attachError = "Cannot kill: " + firstErr.Error()
-		} else {
-			m.attachError = ""
-		}
-		if len(succeeded) == 0 {
-			return m, m.loadSessions
-		}
-		m.batchUndoSessionIDs = succeeded
-		m.batchUndoGeneration++
-		generation := m.batchUndoGeneration
-		return m, tea.Batch(m.loadSessions, tea.Tick(m.settings.Undo, func(t time.Time) tea.Msg { return batchUndoExpired(generation) }))
-	case batchUndoExpired:
-		if int(msg) == m.batchUndoGeneration {
-			m.batchUndoSessionIDs = nil
-		}
-		return m, nil
-	case sessionsBulkResumed:
-		// R117: mirrors the single-session sessionResumed clear -- only the
-		// sessions this batch actually launched a pane for (ResumeStarted,
-		// no error) are eligible to invalidate the latch, and only when the
-		// latch currently names one of them. This runs BEFORE the error
-		// report and independently of it: a batch `u` can restore some
-		// sessions and fail on others, and the restored ones still created
-		// panes whose geometry the latch would otherwise keep stale.
-		for i, id := range msg.sessionIDs {
-			if i < len(msg.errs) && msg.errs[i] != nil {
-				continue
-			}
-			if i < len(msg.outcomes) && msg.outcomes[i] == service.ResumeStarted && id == m.previewFitSessionID {
-				m.previewFitSessionID = ""
-				break
-			}
-		}
-		m.attachError = ""
-		for _, err := range msg.errs {
-			if err != nil {
-				m.attachError = "Cannot resume: " + err.Error()
-				break
-			}
-		}
-		return m, m.loadSessions
-	case sessionsBulkDeleted:
-		var succeeded []string
-		var firstErr error
-		// cure-01-05: mirrors firstErr exactly, but for the batch's own purge
-		// outcomes -- only ever populated for a row whose delete succeeded
-		// (msg.purgeErrs' own doc), so this never masks a delete failure the
-		// firstErr branch below already reports.
-		var firstPurgeErr error
-		// task 048: the hook messages are collected for EVERY row, whether
-		// that row's delete errored or not -- runPostDestroy is fail-open
-		// and its message is about the hook, not about the delete, so a row
-		// that failed to delete can still have a hook worth reporting.
-		var hookNotes []string
-		for i, s := range msg.sessions {
-			if i < len(msg.hookMessages) && msg.hookMessages[i] != "" {
-				// Name-prefixed here and bare in the single-row branch: a
-				// bulk dd's note can carry several rows, so which row a
-				// failure belongs to is only recoverable from the prefix.
-				label := s.Name
-				if label == "" {
-					label = s.ID
-				}
-				hookNotes = append(hookNotes, label+": "+msg.hookMessages[i])
-			}
-			if i < len(msg.purgeErrs) && msg.purgeErrs[i] != nil && firstPurgeErr == nil {
-				firstPurgeErr = msg.purgeErrs[i]
-			}
-			if msg.errs[i] != nil {
-				if firstErr == nil {
-					firstErr = msg.errs[i]
-				}
-				continue
-			}
-			succeeded = append(succeeded, s.ID)
-		}
-		m.deleteConfirming = false
-		m.deleteNote = ""
-		switch {
-		case firstErr != nil:
-			m.attachError = "Cannot delete: " + firstErr.Error()
-		case firstPurgeErr != nil:
-			m.attachError = "Deleted, but purge failed: " + firstPurgeErr.Error()
-		default:
-			m.attachError = ""
-		}
-		cmds := []tea.Cmd{m.loadSessions}
-		if len(hookNotes) > 0 {
-			// Same DECK_UNDO_MS window and same generation counter as the
-			// single-row A/dd toasts above (never DeleteGrace, which reaps
-			// the tombstones rather than clearing this note).
-			m.teardownHookNote = strings.Join(hookNotes, "; ")
-			m.teardownHookNoteGeneration++
-			teardownGeneration := m.teardownHookNoteGeneration
-			cmds = append(cmds, tea.Tick(m.settings.Undo, func(t time.Time) tea.Msg { return teardownHookNoteExpired(teardownGeneration) }))
-		}
-		// R131's destructive branch: the batch has now committed, so the
-		// group row settings routed here goes too -- only when every member's
-		// delete actually succeeded, since a group that still holds a live
-		// member must keep its row (a partial failure leaves both the row and
-		// the surviving members alone, with firstErr already on screen).
-		// Cleared unconditionally: this batch is over either way, and a later
-		// ordinary dd must never inherit it.
-		if groupID := m.bulkDeleteGroupID; groupID != 0 {
-			groupName := m.bulkDeleteGroupName
-			m.bulkDeleteGroupID = 0
-			m.bulkDeleteGroupName = ""
-			if firstErr == nil && m.store != nil {
-				if err := m.store.DeleteGroup(context.Background(), groupID); err != nil {
-					m.attachError = "Cannot delete group " + groupName + ": " + err.Error()
-				} else if m.settingsOpen {
-					// Only meaningful if something reopened settings in the
-					// meantime; `,` recomputes this snapshot on open anyway.
-					m.settingsGroups = m.computeAvailableGroups()
-				}
-			}
-		}
-		if len(succeeded) == 0 {
-			return m, tea.Batch(cmds...)
-		}
-		m.batchDeleteUndoSessionIDs = succeeded
-		m.batchDeleteUndoGeneration++
-		generation := m.batchDeleteUndoGeneration
-		cmds = append(cmds, tea.Tick(m.settings.DeleteGrace, func(t time.Time) tea.Msg { return batchDeleteGraceExpired(generation) }))
-		return m, tea.Batch(cmds...)
-	case batchDeleteGraceExpired:
-		if int(msg) != m.batchDeleteUndoGeneration || len(m.batchDeleteUndoSessionIDs) == 0 {
-			return m, nil
-		}
-		ids := m.batchDeleteUndoSessionIDs
-		m.batchDeleteUndoSessionIDs = nil
-		if m.reapSvc == nil {
-			return m, nil
-		}
-		reapSvc := m.reapSvc
-		return m, func() tea.Msg {
-			result := sessionsBulkReaped{}
-			for _, id := range ids {
-				result.errs = append(result.errs, reapSvc(context.Background(), id))
-			}
-			return result
-		}
-	case sessionsBulkReaped:
-		for _, err := range msg.errs {
-			if err != nil {
-				m.attachError = "Cannot reap: " + err.Error()
+		if len(m.marked) > 0 {
+			// Task 112: a non-empty mark set means x acts on the WHOLE
+			// batch instead of just the selected row. An already-stopped
+			// marked row is silently skipped (never an error, unlike the
+			// single-row refusal below) since a batch action naming
+			// rows that need nothing done would be noise, not a
+			// destructive-action guard. Marks clear immediately -- "the
+			// action" here IS pressing x, not waiting for the kills to
+			// finish.
+			sessions := m.markedSessions()
+			m.marked = nil
+			if len(sessions) == 0 {
 				return m, nil
 			}
-		}
-		return m, nil
-	case sessionsBulkRestored:
-		for _, err := range msg.errs {
-			if err != nil {
-				m.attachError = "Cannot restore: " + err.Error()
-				return m, m.loadSessions
-			}
-		}
-		m.attachError = ""
-		return m, m.loadSessions
-	case uiStatePersisted:
-		// A failed write to ui_state is not load-bearing (SPEC §11.2): the
-		// pin/width already changed in memory and keeps rendering; only the
-		// error note surfaces so a persistent failure is still visible.
-		if msg.err != nil {
-			m.attachError = "Cannot persist layout: " + msg.err.Error()
-		}
-		return m, nil
-	case sessionResumed:
-		if msg.err != nil {
-			m.attachError = "Cannot resume: " + msg.err.Error()
-			m.resumeNote = ""
-			return m, nil
-		}
-		m.attachError = ""
-		if msg.outcome == service.ResumeStartingElsewhere {
-			m.resumeNote = "starting elsewhere"
-			return m, nil
-		}
-		if msg.outcome == service.ResumeAlreadyRunning {
-			// Requirement 46: deck already owns this pane. Adopting it as an
-			// honest no-op means refreshing the row from whatever the service
-			// returned (untouched) rather than pretending a launch happened.
-			m.resumeNote = "already running"
-			for i := range m.sessions {
-				if m.sessions[i].ID == msg.session.ID {
-					m.sessions[i] = msg.session
-					break
-				}
-			}
-			return m, nil
-		}
-		m.resumeNote = ""
-		if msg.outcome == service.ResumeNotLeasable {
-			// The resume command was dispatched from a stale stopped frame.
-			// Render the durable status/reason returned by the service rather
-			// than describing it as a launch in another client.
-			for i := range m.sessions {
-				if m.sessions[i].ID == msg.session.ID {
-					m.sessions[i] = msg.session
-					break
-				}
-			}
-			return m, nil
-		}
-		// R117: every outcome above (ResumeStartingElsewhere,
-		// ResumeAlreadyRunning, ResumeNotLeasable) is a no-op that created
-		// no pane, so previewFitSessionID is deliberately left untouched for
-		// each of them -- falling through to here means the outcome is
-		// service.ResumeStarted (the only remaining value), i.e. a pane was
-		// actually (re)created. If that is the session the passive-fit
-		// latch currently names as already settled, the latch is now stale
-		// (the pane it fit, if any, is gone; the new one has never been
-		// measured) and must be cleared so the very next preview tick -- with
-		// no selection change required -- issues a fresh fit for it.
-		// previewFitInFlight is untouched: a relaunch never races an
-		// in-flight passive fit for a DIFFERENT still-latched session, and
-		// if one happened to be in flight for this very session its own
-		// previewFitDone still owns clearing that marker.
-		if msg.session.ID == m.previewFitSessionID {
-			m.previewFitSessionID = ""
-		}
-		// GH #52 (SPEC §9.1): a pane was actually started, so an `r` arms
-		// the auto-enter intent under [ui] attach_on_resume -- the same
-		// intent a create arms (auto_enter.go), waiting for this client's
-		// list to show the row no longer stopped and its pane live.
-		if msg.fromResumeKey {
-			m.armAutoEnter(msg.session.ID, m.settings.AttachOnResume)
-		}
-		return m, m.loadSessions
-	case sessionRestarted:
-		if msg.err != nil {
-			m.attachError = "Cannot restart: " + msg.err.Error()
-			return m, nil
-		}
-		m.attachError = ""
-		if msg.outcome == service.ResumeStartingElsewhere {
-			m.attachError = "Cannot restart: a launch for this session is already starting elsewhere"
-			return m, nil
-		}
-		if msg.outcome == service.ResumeAlreadyRunning {
-			// Requirement 46's already-running honest no-op applies here too:
-			// a concurrent client may have already relaunched the pane between
-			// this restart's kill and its own resume attempt.
-			for i := range m.sessions {
-				if m.sessions[i].ID == msg.session.ID {
-					m.sessions[i] = msg.session
-					break
-				}
-			}
-			return m, nil
-		}
-		if msg.outcome == service.ResumeNotLeasable {
-			for i := range m.sessions {
-				if m.sessions[i].ID == msg.session.ID {
-					m.sessions[i] = msg.session
-					break
-				}
-			}
-			return m, nil
-		}
-		// A successful restart also closes task 023's restart/inject-instead
-		// choice dialog, if that is how this restart was chosen -- a no-op
-		// when R restarted directly (non-shell session, no dialog ever
-		// opened).
-		m.restartChoosing = false
-		m.restartChoiceNote = ""
-		// cure-01-07 (R145): the restarted row itself (env_dirty and
-		// launch_dirty already cleared in the store before Restart
-		// returned) replaces the stale in-memory copy in the SAME update
-		// that closes the dialog, so the first frame without the dialog
-		// never shows the `env*`/`launch*` badge the store has already
-		// cleared -- rather than waiting on the loadSessions below
-		// (TestRestartSuccessDropsEnvBadgeInTheFrameTheDialogCloses).
-		m.replaceSessionByID(msg.session)
-		// R117: mirrors sessionResumed's own clear immediately above -- a
-		// restart that reaches here (every no-pane outcome above already
-		// returned) killed the old pane and created a new one, so the same
-		// staleness applies and the latch is cleared under the same
-		// condition, leaving previewFitInFlight untouched for the same
-		// reason.
-		if msg.session.ID == m.previewFitSessionID {
-			m.previewFitSessionID = ""
-		}
-		// GH #52 (SPEC §9.1): `R` -- directly or through the shell
-		// restart/inject-instead choice, the only two senders of this
-		// message -- arms the same auto-enter intent `r` does, under the
-		// same [ui] attach_on_resume.
-		m.armAutoEnter(msg.session.ID, m.settings.AttachOnResume)
-		return m, m.loadSessions
-	case envInjected:
-		// Task 023's inject-instead: unlike Restart, nothing was killed or
-		// relaunched, so a failure leaves the choice dialog open with a note
-		// (mirroring profileSwitched/resumeModeChanged) rather than the
-		// attachError banner sessionRestarted uses -- the dialog is still the
-		// right place to retry or switch to "restart" instead.
-		if msg.err != nil {
-			m.restartChoiceNote = "Cannot inject: " + msg.err.Error()
-			return m, nil
-		}
-		m.restartChoosing = false
-		m.restartChoiceNote = ""
-		// cure-01-07 (R145): same as sessionRestarted's success path --
-		// InjectEnv already cleared env_dirty in the store, so the frame
-		// that closes the dialog must not still show `env*`.
-		m.replaceSessionByID(msg.session)
-		return m, m.loadSessions
-	case profileSwitched:
-		if msg.err != nil {
-			m.profileSwitchNote = "Cannot change permission profile: " + msg.err.Error()
-			return m, nil
-		}
-		m.profileSwitching = false
-		m.profileSwitchNote = ""
-		return m, m.loadSessions
-	case resumeModeChanged:
-		if msg.err != nil {
-			m.pinNote = "Cannot change resume mode: " + msg.err.Error()
-			return m, nil
-		}
-		m.pinning = false
-		m.pinNote = ""
-		return m, m.loadSessions
-	case sessionRenamed:
-		// Mirrors profileSwitched/resumeModeChanged exactly: a successful
-		// rename closes the rename sub-dialog (m.detail, underneath it,
-		// stays true -- rename is an action inside detail, so submitting
-		// it returns to detailView showing the new name, never all the way
-		// out to the main list).
-		if msg.err != nil {
-			m.renameNote = "Cannot rename: " + msg.err.Error()
-			return m, nil
-		}
-		m.renaming = false
-		m.renameNote = ""
-		return m, m.loadSessions
-	case launchInputsSaved:
-		// Mirrors sessionRenamed exactly: a successful submit closes the
-		// launch-inputs editor (m.detail, underneath it, stays true -- this
-		// dialog is an action inside detail, so submitting it returns to
-		// detailView, never all the way out to the main list).
-		if msg.err != nil {
-			m.launchInputsNote = "Cannot save launch inputs: " + msg.err.Error()
-			return m, nil
-		}
-		m.launchInputsEditing = false
-		m.launchInputsNote = ""
-		return m, m.loadSessions
-	case sessionGroupMoved:
-		// Mirrors sessionRenamed/launchInputsSaved exactly: a successful
-		// move closes the group-move picker (m.detail, underneath it,
-		// stays true -- moving is an action inside detail, so submitting
-		// it returns to detailView showing the new group, never all the
-		// way out to the main list).
-		if msg.err != nil {
-			m.moveGroupNote = "Cannot move group: " + msg.err.Error()
-			return m, nil
-		}
-		m.movingGroup = false
-		m.moveGroupNote = ""
-		return m, m.loadSessions
-	case envEdited:
-		// Unlike profileSwitched/resumeModeChanged, a committed edit does
-		// NOT close the dialog: SPEC §6.1/§6.3's env editor is a listing of
-		// several keys, and a user editing one is very likely about to edit
-		// another in the same visit. Only esc (already wired in
-		// updateEnvDialog) closes it.
-		if msg.err != nil {
-			m.envNote = "Cannot edit environment: " + msg.err.Error()
-			return m, nil
-		}
-		m.envNote = ""
-		return m, m.loadSessions
-	case reconcileTick:
-		loadAfterReconcile := m.loadSessions
-		if m.reconcile != nil {
-			loadAfterReconcile = func() tea.Msg {
-				if err := m.reconcile(context.Background()); err != nil {
-					return sessionsLoaded{err: err}
-				}
-				return m.loadSessions()
-			}
-		}
-		return m, tea.Batch(loadAfterReconcile, tea.Tick(m.settings.Reconcile, func(t time.Time) tea.Msg { return reconcileTick(t) }))
-	case previewTick:
-		// The capture engine (task 017, SPEC requirements 21, 22) samples the
-		// selected row's live pane once per tick; rendering it (crop, geometry
-		// line, placeholders) is tasks 018-021, so DECK_PREVIEW_MS's cadence is
-		// already honoured end-to-end even though the panel still shows its
-		// pre-capture placeholder.
-		cmds := []tea.Cmd{tea.Tick(m.settings.Preview, func(t time.Time) tea.Msg { return previewTick(t) })}
-		// GH #52: the auto-enter intent spends its tick budget here, first,
-		// so an entry it fires is already in force for the capture and
-		// passive fit below (previewFit stands down while interactive).
-		var enterCmd tea.Cmd
-		m, enterCmd = m.tickAutoEnter()
-		if enterCmd != nil {
-			cmds = append(cmds, enterCmd)
-		}
-		if cmd := m.capturePreview(); cmd != nil {
-			cmds = append(cmds, cmd)
-		}
-		// steer 018 item 4: the passive-preview fit is coalesced against this
-		// SAME tick, never issued once per row walked while holding an arrow
-		// key (previewFit's own guards decide whether this tick's selection
-		// still needs one at all).
-		if cmd := m.previewFit(); cmd != nil {
-			cmds = append(cmds, cmd)
-		}
-		// SPEC §11.9 (task 008/R143, GH #38): "clears ... when a later tick
-		// finds the reason gone (the holder left...)" for the two
-		// contention refusal kinds -- read entryRefusalHolderCheck's own
-		// doc comment for why the other kinds have nothing to probe here.
-		if cmd := m.entryRefusalHolderCheck(); cmd != nil {
-			cmds = append(cmds, cmd)
-		}
-		// cure-01-06 (R143/SPEC §11.9): the row-floor/shrank half of the
-		// same "a later tick finds the reason gone" clause -- a pure
-		// re-measure of m.previewContentSize() against interactiveMinInnerRows,
-		// so it runs inline here rather than through a tea.Cmd.
-		m.clearEntryRefusalIfRoomGrew()
-		// Task 118: displacement detection rides this same tick, never a
-		// per-keystroke check (updateInteractive gains none at all). The
-		// fast path is checked first and, unlike the backstop below, needs
-		// no tea.Cmd at all -- it is a pure read of the transport's own
-		// Status(), so a hit is handled inline, in this very Update call,
-		// rather than round-tripping through another message.
-		if m.interactive {
-			if m.interactiveDisplacementFastPath() {
-				name := ""
-				if session, ok := m.selectedSession(); ok {
-					name = session.Name
-				}
-				next, cmd := m.raiseLostAttach(name)
-				m = next
-				if cmd != nil {
-					cmds = append(cmds, cmd)
-				}
-			} else if cmd := m.checkInteractiveDisplacementBackstop(); cmd != nil {
-				cmds = append(cmds, cmd)
-			}
-		}
-		return m, tea.Batch(cmds...)
-	case interactiveDisplacementChecked:
-		// Ignored unless interactive mode is both still active AND still
-		// against the exact window this poll was issued against: the fast
-		// path above may already have raised the dialog this same tick, or
-		// Ctrl+Q may have left interactive mode (and possibly re-entered a
-		// different session) before this round trip landed.
-		if msg.paneDead && m.interactive && m.interactiveWindowTarget == msg.windowTarget && m.interactiveGrid != nil {
-			// R185: the dead-pane check rides the backstop's one read.
-			m.interactiveGrid.NotePaneDead()
-		}
-		if msg.displaced && m.interactive && m.interactiveWindowTarget == msg.windowTarget {
-			next, cmd := m.raiseLostAttach(msg.sessionName)
-			return next, cmd
-		}
-		return m, nil
-	case previewFitDone:
-		// Task 035: a no-live-pane return must NOT latch previewFitSessionID
-		// -- nothing was resized, so this session must stay eligible for a
-		// real fit once its pane later becomes live again while the row
-		// stays (or is re-)selected. Every OTHER return path (the real fit,
-		// and the pre-existing tmux.SessionName failure path, both left
-		// unchanged by this task) keeps latching exactly as before.
-		if !msg.noLivePane && !msg.foreignLiveClaim && !msg.clientAttached {
-			m.previewFitSessionID = msg.sessionID
-		}
-		// Cleared unconditionally, not only when it matches the session
-		// reported: at most one fit is ever outstanding (previewFit refuses
-		// to schedule a second while previewFitInFlight is set), and an
-		// unconditional clear cannot wedge the mechanism even if some future
-		// path ever delivered a previewFitDone the marker did not name. The
-		// reported session may well no longer be selected (the user kept
-		// navigating while the fit ran) -- that is exactly the case the next
-		// tick must be free to fit.
-		m.previewFitInFlight = ""
-		return m, nil
-	case entryRefusalHolderRecheckDone:
-		// SPEC §11.9 (task 008/R143, GH #38): only clears the SAME refusal
-		// this probe was issued against -- a stale reply racing a selection
-		// change (setSelection already clears the refusal outright, so
-		// m.entryRefusal.active would already be false), a fresh refusal that
-		// has since landed on the same session (kind mismatch), or -- review
-		// B1, task 001, R143/R148 -- a fresh refusal of the exact SAME kind
-		// for the exact same session (a holder that left and came back before
-		// this old probe's reply landed) must not clear something this reply
-		// says nothing about. The generation check is what catches that last
-		// case; sessionID+kind alone cannot.
-		if msg.reasonGone && m.entryRefusal.active && m.entryRefusal.sessionID == msg.sessionID && m.entryRefusal.kind == msg.kind && msg.generation == m.entryRefusal.generation {
-			m.clearEntryRefusal()
-		}
-		return m, nil
-	case previewCaptured:
-		// A session with no live pane reports capture.Live == false and a nil
-		// err (see tmux.CapturePreview); only a genuine tmux/transport failure
-		// reaches err, and even that is not load-bearing — the previous frame
-		// (or, before the first successful capture, the placeholder) keeps
-		// rendering rather than the tick disrupting the view.
-		if msg.err == nil {
-			m.previewSessionID = msg.sessionID
-			m.previewLive = msg.capture.Live
-			m.previewBytes = msg.capture.Bytes
-			m.previewPaneWidth = msg.capture.Width
-			m.previewPaneHeight = msg.capture.Height
-		}
-		// cure-01-01-2 (R143/R148, SPEC §11.9): the no-live-pane refusal's own
-		// "a later tick finds the reason gone" clause -- this tick's capture
-		// (never a selection move or a keypress) is the only way liveness for
-		// the refused session is ever re-observed.
-		m.clearEntryRefusalIfPreviewLive(msg.sessionID, msg.err, msg.capture.Live, msg.refusalGeneration)
-		// GH #52: a live capture of the selected target is what the
-		// auto-enter intent waits for.
-		return m.captureAutoEnter(msg)
-	case animationTick:
-		if !m.settings.Animation {
-			return m, nil
-		}
-		return m, tea.Tick(m.settings.Preview, func(t time.Time) tea.Msg { return animationTick(t) })
-	case tea.KeyMsg:
-		// GH #52: any key at all cancels a pending auto-enter, before any
-		// layer below gets to act on it (auto_enter.go).
-		m.cancelAutoEnter()
-		m.fieldCopyNote = ""
-		if msg.Type == tea.KeyRunes && len(msg.Runes) > 1 && !msg.Paste {
-			// Bubble Tea's own PTY reader coalesces multiple keystrokes that
-			// land in the same read into a single KeyMsg whose Runes holds
-			// every character (e.g. two quick presses of 'j' and 'x' can
-			// arrive as one KeyMsg{Runes: "jx"}). Every case below (and every
-			// dialog's own update* method) matches msg.String() against a
-			// single key's own string ("j", "x", ...); a coalesced "jx" would
-			// match NONE of them and the whole event would be silently
-			// dropped, leaving neither rune to act (task 118, requirement 51).
-			// Rather than teach every case and every dialog about multi-rune
-			// strings, split the coalesced KeyMsg back into one single-rune
-			// tea.KeyMsg per character and dispatch them through Update in
-			// order, exactly as if they had arrived as separate keystrokes. A
-			// single keypress (len(Runes)==1) is untouched and falls straight
-			// through to the handling below, unchanged.
-			//
-			// A bracketed-paste KeyMsg (msg.Paste) is deliberately exempted:
-			// Key.String() already wraps a paste's runes in "[...]" so it can
-			// never match a single-letter shortcut by accident (bubbletea's own
-			// key.go). Splitting pasted text into individual keystrokes would
-			// turn a paste of, say, "dd" into an actual delete chord -- the
-			// deliberate decision (docs/reports/phase3-findings.md, task 118)
-			// is that a paste into the list is ignored outright, never
-			// dispatched rune by rune.
-			var cmds []tea.Cmd
-			next := tea.Model(m)
-			for _, r := range msg.Runes {
-				var cmd tea.Cmd
-				next, cmd = next.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}, Alt: msg.Alt})
-				cmds = append(cmds, cmd)
-			}
-			return next, tea.Batch(cmds...)
-		}
-		// cure-01-02 (R143/SPEC §11.9): the banner-dismissing Esc has to run
-		// before EVERY other Esc-cleared layer's own dispatch below --
-		// pendingDelete's intercept, help/settings/filtering's own updaters,
-		// deleteConfirming/archiveConfirming and the rest all used to sit
-		// ahead of this check (it lived just above guardSessionScopedKey),
-		// so an Esc pressed while, say, pendingDelete was ALSO armed hit
-		// pendingDelete's own intercept first and never reached here at all
-		// (TestReviewRefusalEscPrecedesPendingDelete, TestReviewRefusalEscPrecedesHelp
-		// at ee7f5a5d3, artifacts/review/reviewer_refusal_test.go). Checking
-		// it first, before any layer's own dispatch, is what makes "the
-		// banner always goes first" true regardless of what else is open;
-		// activeEntryRefusalForSelection already answers false while
-		// m.interactive is true (no banner exists to dismiss there), so this
-		// cannot change interactive's own Esc handling, and every other
-		// layer below is reached completely unchanged on the very next Esc
-		// once the banner (if any) is gone.
-		if msg.String() == "esc" {
-			if _, ok := m.activeEntryRefusalForSelection(); ok {
-				m.clearEntryRefusal()
-				return m, nil
-			}
-		}
-		if m.lostAttach {
-			return m.updateLostAttachView(msg)
-		}
-		if m.interactive {
-			return m.updateInteractive(msg)
-		}
-		if m.creating {
-			return m.updateCreate(msg)
-		}
-		if m.profileSwitching {
-			return m.updateProfileSwitch(msg)
-		}
-		if m.pinning {
-			return m.updatePinDialog(msg)
-		}
-		if m.envEditing {
-			return m.updateEnvDialog(msg)
-		}
-		if m.restartChoosing {
-			return m.updateRestartChoice(msg)
-		}
-		if m.deleteConfirming {
-			return m.updateDeleteConfirm(msg)
-		}
-		// R72 (issue #10): the archive confirm intercepts every key while it
-		// is open, exactly as deleteConfirming above does -- which is what
-		// makes a second `A` inside the dialog a no-op rather than a
-		// re-entrant archive, and what keeps `x`/`dd`/`r` from acting on the
-		// row the dialog is asking about.
-		if m.archiveConfirming {
-			return m.updateArchiveConfirm(msg)
-		}
-		if m.settingsOpen {
-			return m.updateSettings(msg)
-		}
-		if m.themePicking {
-			return m.updateThemePicker(msg)
-		}
-		if m.help {
-			return m.updateHelpView(msg)
-		}
-		if m.renaming {
-			return m.updateRenameDialog(msg)
-		}
-		if m.launchInputsEditing {
-			return m.updateLaunchInputsDialog(msg)
-		}
-		if m.movingGroup {
-			return m.updateMoveGroupDialog(msg)
-		}
-		if m.detail {
-			return m.updateDetailView(msg)
-		}
-		if m.eventLogOpen {
-			return m.updateEventLog(msg)
-		}
-		if m.filtering {
-			return m.updateFilter(msg)
-		}
-		// pendingDelete intercepts the very next key after a lone `d`
-		// (SPEC's dd chord): a second `d` opens the confirm dialog; every
-		// other key -- Esc included -- clears the pending indicator and is
-		// otherwise swallowed, so "d followed by any other key performs no
-		// destructive action" holds without also having to reason about
-		// whatever that other key would normally have done.
-		if m.pendingDelete {
-			m.pendingDelete = false
-			// task cure-01-01 (F1, R137, SPEC §11): the second `d` asks the
-			// ONE shared guard the header question -- for BOTH the batch
-			// path and the single-row path -- before either one opens the
-			// confirm dialog. It cannot run after the guard (this intercept
-			// has to swallow and clear the indicator for every key, guarded
-			// ones included) so it calls the guard itself rather than
-			// carrying a second selectedSession check of its own.
-			//
-			// A non-empty mark set (task 112's batch dd) used to be exempt
-			// from this question entirely -- the confirm opened for the
-			// MARKED set regardless of the cursor. Review found that
-			// exemption wrong (F1): the batch path is exactly as inert on a
-			// header as the single-row path, so it now asks the same guard.
-			if msg.String() == "d" && len(m.sessions) > 0 && !m.guardSessionScopedKey("d") {
-				if len(m.marked) > 0 {
-					m.deleteConfirming = true
-					m.deleteNote = ""
-					m.deleteScroll = 0
-					// cure-01-05: the bulk confirm offers the same
-					// non-default purge choice the single-session dialog
-					// does, just resolved per session at submit time
-					// (transcriptPathFor has no single session to call
-					// eagerly here) -- so only the cycled VALUE resets;
-					// deletePurgePath/OK stay meaningless for a batch and
-					// are left alone.
-					m.bulkDeletePurgeValue = "keep"
-					m.deletePurgeValue = ""
-					m.deletePurgePath = ""
-					m.deletePurgeOK = false
-				} else {
-					// The guard having let this through means the cursor
-					// resolves to a session, so selectedSession is ok here.
-					session, _ := m.selectedSession()
-					if canDelete(session) {
-						m.deleteConfirming = true
-						m.deleteNote = ""
-						m.deleteScroll = 0
-						m.deletePurgeValue = "keep"
-						m.deletePurgePath, m.deletePurgeOK = m.transcriptPathFor(session)
-					}
-				}
-			}
-			return m, nil
-		}
-		// task 013/D.2: the one shared guard every session-scoped binding
-		// below now runs through (session_scoped_guard.go) instead of each
-		// one deciding for itself whether the cursor names a session.
-		// Reverting just this call, leaving guardSessionScopedKey itself in
-		// place, restores the per-site gaps it closed.
-		//
-		// cure-01-02: the refusal-banner Esc used to be checked here (right
-		// before this guard), which put it AFTER pendingDelete's own
-		// intercept and every dialog's own updater above -- see the comment
-		// on the earlier, now sole "esc" check just above the coalesced-rune
-		// split, where it runs before all of those instead.
-		if m.guardSessionScopedKey(msg.String()) {
-			return m, nil
-		}
-		switch msg.String() {
-		case "q", "ctrl+c":
-			return m, tea.Quit
-		case "?":
-			// This switch is only ever reached with m.help == false (task 078:
-			// updateHelpView, dispatched above, now intercepts every key,
-			// including a second "?"/esc, while help is open), so this only
-			// ever opens it; helpScroll resets so a reopen never starts
-			// scrolled from wherever a previous visit left off.
-			m.help = true
-			m.helpScroll = 0
-		case "esc":
-			// detailView has no fields to submit or cycle, so the only §11.4
-			// contract key it binds is esc — shared here through the same
-			// applyDialogContract implementation createView, profileSwitchView
-			// and pinView defer to, rather than a sixth hand-written cancel.
-			// Task 112: a plain top-level Esc also clears the mark set ("the
-			// marks clear on the action and on esc"). Neither m.help nor
-			// m.detail is ever true here (task 013's updateDetailView and
-			// task 078's updateHelpView each intercept every key, including
-			// esc, while their own overlay is open) -- this branch cannot
-			// close either today, but keeps clearing both anyway so a caller
-			// that somehow reaches it with one already true is not left
-			// stuck open.
-			//
-			// Task 027: a filter query left in force by `enter` closing the
-			// `/` text field (m.filtering == false, m.filterQuery != "") is
-			// ALSO only ever reachable here -- filter.go's own updateFilter
-			// intercepts esc itself while the field still has focus, so this
-			// branch never doubles up with that one. It is deliberately an
-			// else, not a second unconditional clear: SPEC's "esc cancels
-			// [one thing]" means a press that lands on a non-empty mark set
-			// clears the marks and leaves the filter (if any) held, exactly
-			// as it leaves every other state alone -- one press never clears
-			// two things at once.
-			hadMarks := len(m.marked) > 0
-			_, _ = applyDialogContract(msg, dialogContract{Cancel: func() {
-				m.help = false
-				m.detail = false
-				m.marked = nil
-			}})
-			// cure-01-01-4 (R136/SPEC §11, binding ruling 002): clearing the
-			// held query used to hand the OLD row index straight to
-			// nearestVisibleSelection, which walks by POSITION, not identity --
-			// unfiltering never removes rows, only adds ones the filter had
-			// hidden, so the same numeric index can now name a different
-			// session entirely (TestReview154HeldFilterEscapePreservesSessionID),
-			// and neither branch ever called followSelectionViewport, so a
-			// selection that survived (by luck of position) could still sit
-			// outside the visible scroll window
-			// (TestReview152ClosedFilterEscapeKeepsSelectionVisible,
-			// TestReview152HeldFilterEscapeKeepsHeaderVisible). A header cursor
-			// carries its own group id rather than a session index, so it never
-			// needs this preserve-by-id step -- unfiltering cannot make a group
-			// id go stale the way it can a row's numeric position.
-			if !hadMarks && m.filterQuery != "" {
-				var selectedID string
-				selectedWasRow := false
-				if idx, ok := m.selected.SessionIndex(); ok {
-					selectedWasRow = true
-					if idx >= 0 && idx < len(m.sessions) {
-						selectedID = m.sessions[idx].ID
-					}
-				}
-				m.filterQuery = ""
-				m.sessions = m.filteredSessions()
-				if selectedWasRow {
-					if idx := indexOfSessionID(m.sessions, selectedID); idx >= 0 {
-						m.selected = rowCursor(idx)
-					}
-				}
-				if !m.cursorNamesVisibleStop(m.selected) {
-					m.selected = m.nearestVisibleSelection(m.selected)
-				}
-				m.followSelectionViewport()
-			}
-		case "i":
-			// m.detail is never true here (task 013's updateDetailView
-			// intercepts every key, including a second "i", while it is), and
-			// m.help is never true here either (task 078's updateHelpView
-			// intercepts every key first), so this only ever opens it;
-			// detailScroll resets for the same reason helpScroll does above.
-			// R90/task 033, R61: whether a hook was recently declined for
-			// THIS session is fetched fresh on every open, as a tea.Cmd
-			// (loadDetailDroppedHook), rather than read from m.store inline
-			// in View() -- the previous visit's result is cleared first so a
-			// slow reply landing after a different session's "i" reopened the
-			// dialog is caught by the session-id mismatch guard in the
-			// detailDroppedHookLoaded case below, never rendered against the
-			// wrong row.
-			// task 013/D.2: guardSessionScopedKey above already refused this
-			// keypress entirely when the cursor has no selected session, so
-			// selectedSession is guaranteed ok here.
-			session, _ := m.selectedSession()
-			m.detail = true
-			m.detailScroll = 0
-			target := session.ID
-			m.detailDroppedHookSessionID = target
-			m.detailDroppedHookFound = false
-			m.detailDroppedHookEvent = store.Event{}
-			return m, m.loadDetailDroppedHook(target)
-		case ",":
-			if !m.help {
-				m.settingsOpen = true
-				m.settingsCategoryIndex = 0
-				m.settingsFieldIndex = 0
-				m.settingsFocus = settingsFocusCategories
-				m.settingsSearchActive = false
-				m.settingsSearchEdit = lineedit.Editor{}
-				m.settingsSearchIndex = 0
-				m.settingsEdits = settingsEditsFromSettings(m.settings)
-				m.settingsSavedEdits = settingsEditsFromSettings(m.settings)
-				m.settingsDiscardConfirm = false
-				m.settingsNote = ""
-				m.settingsEnvOpen = false
-				m.settingsEnvEditing = false
-				m.settingsEnvIndex = 0
-				m.settingsStringEditing = false
-				m.settingsStringEditKey = ""
-				m.settingsStringEdit = lineedit.Editor{}
-				m.settingsGroups = m.computeAvailableGroups()
-				m.settingsGroupIndex = 0
-				m.settingsGroupCreating = false
-				m.settingsGroupRenaming = false
-				m.settingsGroupEditID = 0
-				m.settingsGroupEdit = lineedit.Editor{}
-				m.settingsGroupNote = ""
-			}
-		case "t":
-			if !m.help {
-				m = m.openThemePicker()
-			}
-		case "n":
-			if !m.help {
-				m.creating, m.createError, m.createField = true, "", 0
-				m.createScroll = 0
-				m.createEnvReveal = false
-				m.createEdits = [createFieldCount]lineedit.Editor{}
-				prefill, lastUsed := m.prefillCreateCWD()
-				m.createEdits[createFieldCWD], m.createCWDLastUsed = lineedit.NewOffered(prefill), lastUsed
-				m.createCWDRecents, m.createCWDRecentIndex = nil, -1
-				m.createCWDPreCycleEdit = lineedit.Editor{}
-				m.closeCreateCWDCandidates()
-				m.createAvailableAgentKinds = m.computeAvailableAgentKinds()
-				m.createAgent, m.createAgentLastUsed = m.pickCreateAgent()
-				m.createProfile = m.defaultCreateProfile(m.createAgent)
-				m.createProfileTouched, m.createProfileRequested = false, ""
-				m.createLoginShell = false
-				m.createGroups = m.computeAvailableGroups()
-				m.createGroupID, m.createGroupLastUsed = m.pickCreateGroup()
-			}
-		case "up", "k":
-			if next, ok := m.prevVisibleSelection(m.selected); ok {
-				m.setSelection(next)
-			}
-		case "down", "j":
-			if next, ok := m.nextVisibleSelection(m.selected); ok {
-				m.setSelection(next)
-			}
-		case "pgup":
-			// ·11.3 requirement 19: PgUp/PgDn always drive the list, since the
-			// sidebar is the only focusable region and there is no tab panel
-			// cycle to move the page keys onto instead. pageSelection walks
-			// VISUAL rows (002-steering.md), not raw m.sessions index
-			// arithmetic, so a page of hidden/non-adjacent rows can't skew it.
-			m.setSelection(m.pageSelection(-m.sidebarRowsPerPage()))
-		case "pgdown":
-			m.setSelection(m.pageSelection(m.sidebarRowsPerPage()))
-		case "Y":
-			if m.acknowledge == nil {
-				return m, nil
-			}
-			// task 013/D.2: the guard above already refused this keypress when
-			// the cursor has no selected session.
-			session, _ := m.selectedSession()
-			if !canAcknowledge(session) {
-				return m, nil
-			}
-			sessionID := session.ID
+			kill := m.kill
 			return m, func() tea.Msg {
-				return sessionAcknowledged{err: m.acknowledge(context.Background(), sessionID)}
-			}
-		case "x":
-			if m.kill == nil {
-				return m, nil
-			}
-			if len(m.marked) > 0 {
-				// Task 112: a non-empty mark set means x acts on the WHOLE
-				// batch instead of just the selected row. An already-stopped
-				// marked row is silently skipped (never an error, unlike the
-				// single-row refusal below) since a batch action naming
-				// rows that need nothing done would be noise, not a
-				// destructive-action guard. Marks clear immediately -- "the
-				// action" here IS pressing x, not waiting for the kills to
-				// finish.
-				sessions := m.markedSessions()
-				m.marked = nil
-				if len(sessions) == 0 {
-					return m, nil
-				}
-				kill := m.kill
-				return m, func() tea.Msg {
-					result := sessionsBulkKilled{}
-					for _, s := range sessions {
-						if !canKill(s) {
-							continue
-						}
-						result.sessions = append(result.sessions, s)
-						result.errs = append(result.errs, kill(context.Background(), s))
-					}
-					return result
-				}
-			}
-			// task 013/D.2 + cure-01-01 (F1): the guard above already refused
-			// this keypress outright when the cursor rests on a header, marks
-			// or no marks -- reaching here (with no marks) means selectedSession
-			// is guaranteed ok.
-			session, _ := m.selectedSession()
-			// Task 807 (review finding 2): the single-row path now consults
-			// the same canKill the footer's x slot already used, instead of
-			// deferring the already-stopped refusal to the service's own
-			// verdict. That deferral existed only because a stopped row
-			// could still be hiding a live tmux pane under `remain-on-exit
-			// failed` (#6); the reconcile side has since closed that gap for
-			// good: reconcile.go's crashed-pane collect-on-sight
-			// (reconcile.go:68-79) collects and kills a dead pane's tmux
-			// session regardless of the stored status, and
-			// repairTerminalRowWithLivePane (SPEC §7, reconcile.go:215-235)
-			// corrects a stopped row -- or an error row that itself already
-			// carries a pane-exit or tmux/user-sourced verdict -- that still has
-			// a genuinely live pane back to a non-terminal status before the row
-			// is ever read here (a hook- or probe-sourced error with no
-			// pane-exit verdict is left alone, finding F40, task 901). So a row canKill reads as stopped has already had its
-			// corpse collected or its status repaired -- there is no longer a
-			// retained corpse for a locally-read Status to miss, and no kill
-			// command needs to reach the service to say so. The wording
-			// matches service.Kill's own refusal (kill.go) so a genuinely
-			// stopped row still shows "Cannot kill: session is already
-			// stopped" via the sessionKilled branch.
-			if !canKill(session) {
-				return m, func() tea.Msg {
-					return sessionKilled{session: session, err: errors.New("session is already stopped")}
-				}
-			}
-			return m, func() tea.Msg {
-				return sessionKilled{session: session, err: m.kill(context.Background(), session)}
-			}
-		case "m":
-			// Task 112, requirement 28: m toggles a mark on the selected row
-			// keyed by session id (never a visual index), so the set
-			// survives a re-sort or re-group untouched -- markedSessions()
-			// re-resolves it through visualOrder() fresh every time it is
-			// consulted rather than caching anything positional.
-			// task 013/D.2: the guard above already refused this keypress
-			// when the cursor has no selected session.
-			session, _ := m.selectedSession()
-			id := session.ID
-			if m.marked == nil {
-				m.marked = map[string]bool{}
-			}
-			if m.marked[id] {
-				delete(m.marked, id)
-			} else {
-				m.marked[id] = true
-			}
-		case "p":
-			// task 010 (SPEC §11's pin rule, R159): the write happens only
-			// in the returned tea.Cmd (setSessionsPinnedCmd) -- this case
-			// itself never calls the store, only decides which ids and
-			// which direction. A non-empty mark set switches the whole
-			// batch to whichever direction the SPEC rule names ("unpins
-			// them all when every marked row is pinned, and pins them all
-			// otherwise") -- mirroring x's own marked-set-vs-single-row
-			// split above, but, unlike x/dd, p never clears m.marked: SPEC
-			// names no such side effect for it, so a mark set survives a
-			// p press exactly as it survives everything but x, dd and esc.
-			if len(m.marked) > 0 {
-				sessions := m.markedSessions()
-				if len(sessions) == 0 {
-					return m, nil
-				}
-				pin := false
+				result := sessionsBulkKilled{}
 				for _, s := range sessions {
-					if s.PinnedAt == 0 {
-						pin = true
-						break
+					if !canKill(s) {
+						continue
 					}
+					result.sessions = append(result.sessions, s)
+					result.errs = append(result.errs, kill(context.Background(), s))
 				}
-				ids := make([]string, len(sessions))
-				for i, s := range sessions {
-					ids[i] = s.ID
-				}
-				return m, m.setSessionsPinnedCmd(ids, pin)
+				return result
 			}
-			// task 013/D.2: the guard above already refused this keypress
-			// when the cursor has no selected session.
-			session, _ := m.selectedSession()
-			return m, m.setSessionsPinnedCmd([]string{session.ID}, session.PinnedAt == 0)
-		case "A":
-			// R72 (issue #10), SPEC.md:752: `A` writes NOTHING on the keypress.
-			// It only opens the confirm dialog below, whose Enter then performs
-			// SPEC requirement 27's archive: on a stopped row that only sets
-			// archived_at; on any other row archiveSvc
-			// (internal/service.Service.Archive) kills the live pane first and
-			// archives in the same action ("kill and archive", §4's invariant)
-			// rather than refusing the keypress the way x refuses an
-			// already-stopped row -- that decision stays archiveSvc's, never
-			// this switch's, and the dialog says so in as many words before
-			// anything is written. `A` is deliberately NOT rebound and grows no
-			// chord here (the operator declined both): the confirm alone is what
-			// stops `A` -- one Shift away from `a`, attach -- from killing a live
-			// agent on a single keystroke.
-			if m.archiveSvc == nil {
-				m.attachError = "Archiving is unavailable"
-				return m, nil
-			}
-			// canArchive is review finding 2/R80's single A eligibility
-			// definition, shared with the footer: a row that is already
-			// archived writes nothing and opens no confirm here, exactly as
-			// the footer already refuses to offer A for it -- and the
-			// refusal names U, the only route back for that row. This is a
-			// call to the footer's own predicate by name, never a local
-			// copy of `ArchivedAt == 0`: archive_eligibility_test.go's
-			// source parse fails if this case stops naming it.
-			//
-			// task 013/D.2: the guard above already refused this keypress
-			// when the cursor has no selected session, so selectedSession is
-			// guaranteed ok here.
-			session, _ := m.selectedSession()
-			if !canArchive(session) {
-				m.attachError = "Cannot archive: session is already archived; press U to unarchive"
-				return m, nil
-			}
-			m.archiveConfirming = true
-			m.archiveNote = ""
-			return m, nil
-		case "U":
-			// R71 (issue #8), SPEC.md:323-332: `A` is reversible, so `U`
-			// clears archived_at on the selected row. It acts on m.sessions --
-			// the DISPLAYED list -- which is exactly what makes it reachable
-			// from inside requirement 33's `/` filter results: an archived row
-			// is absent from the default list entirely and only ever appears
-			// while a query is in force (filteredSessions widens the pool to
-			// m.archivedSessions), and after Enter closes the text field the
-			// freed keymap -- this switch -- acts on that narrowed list. A row
-			// that is not archived is refused here rather than being handed to
-			// the store, so `U` can never record an "unarchived" event for a
-			// row that was never archived.
-			if m.unarchiveSvc == nil {
-				m.attachError = "Unarchiving is unavailable"
-				return m, nil
-			}
-			// task 013/D.2: the guard above already refused this keypress
-			// when the cursor has no selected session, so selectedSession is
-			// guaranteed ok here.
-			session, _ := m.selectedSession()
-			if !canUnarchive(session) {
-				m.attachError = "Cannot unarchive: session is not archived"
-				return m, nil
-			}
+		}
+		// task 013/D.2 + cure-01-01 (F1): the guard above already refused
+		// this keypress outright when the cursor rests on a header, marks
+		// or no marks -- reaching here (with no marks) means selectedSession
+		// is guaranteed ok.
+		session, _ := m.selectedSession()
+		// Task 807 (review finding 2): the single-row path now consults
+		// the same canKill the footer's x slot already used, instead of
+		// deferring the already-stopped refusal to the service's own
+		// verdict. That deferral existed only because a stopped row
+		// could still be hiding a live tmux pane under `remain-on-exit
+		// failed` (#6); the reconcile side has since closed that gap for
+		// good: reconcile.go's crashed-pane collect-on-sight
+		// (reconcile.go:68-79) collects and kills a dead pane's tmux
+		// session regardless of the stored status, and
+		// repairTerminalRowWithLivePane (SPEC §7, reconcile.go:215-235)
+		// corrects a stopped row -- or an error row that itself already
+		// carries a pane-exit or tmux/user-sourced verdict -- that still has
+		// a genuinely live pane back to a non-terminal status before the row
+		// is ever read here (a hook- or probe-sourced error with no
+		// pane-exit verdict is left alone, finding F40, task 901). So a row canKill reads as stopped has already had its
+		// corpse collected or its status repaired -- there is no longer a
+		// retained corpse for a locally-read Status to miss, and no kill
+		// command needs to reach the service to say so. The wording
+		// matches service.Kill's own refusal (kill.go) so a genuinely
+		// stopped row still shows "Cannot kill: session is already
+		// stopped" via the sessionKilled branch.
+		if !canKill(session) {
 			return m, func() tea.Msg {
-				unarchived, err := m.unarchiveSvc(context.Background(), session.ID)
-				return sessionUnarchived{session: unarchived, err: err}
+				return sessionKilled{session: session, err: errors.New("session is already stopped")}
 			}
-		case "d":
-			// First half of task 105's dd chord: a visible pending indicator,
-			// changing nothing in the store. The very next key (handled by
-			// the m.pendingDelete intercept above, on the NEXT tea.KeyMsg) is
-			// either another `d` (opens the confirm dialog) or clears this
-			// with no destructive action.
-			//
-			// task 013/D.2 + cure-01-01 (F1): the shared guard above has
-			// already refused this key outright when the cursor rests on a
-			// header, marks or no marks -- there is no exemption left, so
-			// the indicator can no longer be raised at all for a header
-			// cursor. The len check stays only as a defensive belt for an
-			// empty session list.
-			if len(m.sessions) > 0 {
-				m.pendingDelete = true
+		}
+		return m, func() tea.Msg {
+			return sessionKilled{session: session, err: m.kill(context.Background(), session)}
+		}
+	case "m":
+		// Task 112, requirement 28: m toggles a mark on the selected row
+		// keyed by session id (never a visual index), so the set
+		// survives a re-sort or re-group untouched -- markedSessions()
+		// re-resolves it through visualOrder() fresh every time it is
+		// consulted rather than caching anything positional.
+		// task 013/D.2: the guard above already refused this keypress
+		// when the cursor has no selected session.
+		session, _ := m.selectedSession()
+		id := session.ID
+		if m.marked == nil {
+			m.marked = map[string]bool{}
+		}
+		if m.marked[id] {
+			delete(m.marked, id)
+		} else {
+			m.marked[id] = true
+		}
+	case "p":
+		// task 010 (SPEC §11's pin rule, R159): the write happens only
+		// in the returned tea.Cmd (setSessionsPinnedCmd) -- this case
+		// itself never calls the store, only decides which ids and
+		// which direction. A non-empty mark set switches the whole
+		// batch to whichever direction the SPEC rule names ("unpins
+		// them all when every marked row is pinned, and pins them all
+		// otherwise") -- mirroring x's own marked-set-vs-single-row
+		// split above, but, unlike x/dd, p never clears m.marked: SPEC
+		// names no such side effect for it, so a mark set survives a
+		// p press exactly as it survives everything but x, dd and esc.
+		if len(m.marked) > 0 {
+			sessions := m.markedSessions()
+			if len(sessions) == 0 {
+				return m, nil
 			}
-		case "u":
-			// Requirement 22: u undoes the most recent x, not whatever row
-			// happens to be selected right now -- undoSessionID is only ever
-			// set by a successful kill and cleared by either this key or the
-			// DECK_UNDO_MS expiry tick, so an expired or never-killed state
-			// makes u a no-op exactly as the requirement states. Requirement
-			// 23 (task 106): once the kill-undo trio is empty, u falls back
-			// to undoing the most recent dd delete within its own
-			// DECK_DELETE_GRACE_MS window, tracked by the separate
-			// deleteUndoSessionID trio (never merged with the one above).
-			if m.undoSessionID != "" {
-				if m.resume == nil {
-					return m, nil
-				}
-				sessionID := m.undoSessionID
-				m.undoSessionID, m.undoSessionName = "", ""
-				m.undoGeneration++
-				return m, func() tea.Msg {
-					resumed, outcome, err := m.resume(context.Background(), sessionID)
-					return sessionResumed{session: resumed, outcome: outcome, err: err}
-				}
-			}
-			// Task 112: the batch-kill undo window is checked next, still
-			// ahead of the delete-undo trio below -- a batch x's undo is
-			// "undo the most recent x" too, exactly like the single-session
-			// case just above, just covering N sessions with one keypress.
-			if len(m.batchUndoSessionIDs) > 0 {
-				if m.resume == nil {
-					return m, nil
-				}
-				ids := m.batchUndoSessionIDs
-				m.batchUndoSessionIDs = nil
-				m.batchUndoGeneration++
-				resume := m.resume
-				return m, func() tea.Msg {
-					result := sessionsBulkResumed{}
-					for _, id := range ids {
-						resumed, outcome, err := resume(context.Background(), id)
-						result.sessionIDs = append(result.sessionIDs, resumed.ID)
-						result.outcomes = append(result.outcomes, outcome)
-						result.errs = append(result.errs, err)
-					}
-					return result
+			pin := false
+			for _, s := range sessions {
+				if s.PinnedAt == 0 {
+					pin = true
+					break
 				}
 			}
-			if m.deleteUndoSessionID != "" {
-				if m.restoreSvc == nil {
-					return m, nil
-				}
-				sessionID := m.deleteUndoSessionID
-				m.deleteUndoSessionID, m.deleteUndoSessionName = "", ""
-				m.deleteUndoGeneration++
-				return m, func() tea.Msg {
-					restored, err := m.restoreSvc(context.Background(), sessionID)
-					return sessionRestored{session: restored, err: err}
-				}
+			ids := make([]string, len(sessions))
+			for i, s := range sessions {
+				ids[i] = s.ID
 			}
-			// Task 112: the batch-delete undo window mirrors the single dd
-			// undo case directly above, one shared window restoring every
-			// session a marked-set dd tombstoned.
-			if len(m.batchDeleteUndoSessionIDs) > 0 {
-				if m.restoreSvc == nil {
-					return m, nil
-				}
-				ids := m.batchDeleteUndoSessionIDs
-				m.batchDeleteUndoSessionIDs = nil
-				m.batchDeleteUndoGeneration++
-				restoreSvc := m.restoreSvc
-				return m, func() tea.Msg {
-					result := sessionsBulkRestored{}
-					for _, id := range ids {
-						_, err := restoreSvc(context.Background(), id)
-						result.errs = append(result.errs, err)
-					}
-					return result
-				}
-			}
-			// R72 (issue #10, SPEC.md:752): the archive window is checked LAST,
-			// behind all four kill/delete trios above, so adding it cannot change
-			// what `u` does for any pre-existing window -- an archive undo only
-			// ever runs when no kill and no delete undo is outstanding. Its
-			// reversal is unarchiveSvc (R71's store.UnarchiveSession), the same
-			// service `U` uses, so the row returns to the default list reading
-			// stopped/resumable; `A`'s kill is deliberately NOT resumed here (the
-			// toast says so in as many words), since undoing a hide must never
-			// silently relaunch an agent.
-			if m.archiveUndoSessionID != "" {
-				if m.unarchiveSvc == nil {
-					return m, nil
-				}
-				sessionID := m.archiveUndoSessionID
-				hookRan := m.archiveUndoHookRan
-				m.archiveUndoSessionID, m.archiveUndoSessionName = "", ""
-				m.archiveUndoKilled = false
-				m.archiveUndoHookRan = false
-				m.archiveUndoGeneration++
-				return m, func() tea.Msg {
-					unarchived, err := m.unarchiveSvc(context.Background(), sessionID)
-					return sessionUnarchived{session: unarchived, err: err, teardownHookRan: hookRan}
-				}
-			}
+			return m, m.setSessionsPinnedCmd(ids, pin)
+		}
+		// task 013/D.2: the guard above already refused this keypress
+		// when the cursor has no selected session.
+		session, _ := m.selectedSession()
+		return m, m.setSessionsPinnedCmd([]string{session.ID}, session.PinnedAt == 0)
+	case "A":
+		// R72 (issue #10), SPEC.md:752: `A` writes NOTHING on the keypress.
+		// It only opens the confirm dialog below, whose Enter then performs
+		// SPEC requirement 27's archive: on a stopped row that only sets
+		// archived_at; on any other row archiveSvc
+		// (internal/service.Service.Archive) kills the live pane first and
+		// archives in the same action ("kill and archive", §4's invariant)
+		// rather than refusing the keypress the way x refuses an
+		// already-stopped row -- that decision stays archiveSvc's, never
+		// this switch's, and the dialog says so in as many words before
+		// anything is written. `A` is deliberately NOT rebound and grows no
+		// chord here (the operator declined both): the confirm alone is what
+		// stops `A` -- one Shift away from `a`, attach -- from killing a live
+		// agent on a single keystroke.
+		if m.archiveSvc == nil {
+			m.attachError = "Archiving is unavailable"
 			return m, nil
-		case "r":
+		}
+		// canArchive is review finding 2/R80's single A eligibility
+		// definition, shared with the footer: a row that is already
+		// archived writes nothing and opens no confirm here, exactly as
+		// the footer already refuses to offer A for it -- and the
+		// refusal names U, the only route back for that row. This is a
+		// call to the footer's own predicate by name, never a local
+		// copy of `ArchivedAt == 0`: archive_eligibility_test.go's
+		// source parse fails if this case stops naming it.
+		//
+		// task 013/D.2: the guard above already refused this keypress
+		// when the cursor has no selected session, so selectedSession is
+		// guaranteed ok here.
+		session, _ := m.selectedSession()
+		if !canArchive(session) {
+			m.attachError = "Cannot archive: session is already archived; press U to unarchive"
+			return m, nil
+		}
+		m.archiveConfirming = true
+		m.archiveNote = ""
+		return m, nil
+	case "U":
+		// R71 (issue #8), SPEC.md:323-332: `A` is reversible, so `U`
+		// clears archived_at on the selected row. It acts on m.sessions --
+		// the DISPLAYED list -- which is exactly what makes it reachable
+		// from inside requirement 33's `/` filter results: an archived row
+		// is absent from the default list entirely and only ever appears
+		// while a query is in force (filteredSessions widens the pool to
+		// m.archivedSessions), and after Enter closes the text field the
+		// freed keymap -- this switch -- acts on that narrowed list. A row
+		// that is not archived is refused here rather than being handed to
+		// the store, so `U` can never record an "unarchived" event for a
+		// row that was never archived.
+		if m.unarchiveSvc == nil {
+			m.attachError = "Unarchiving is unavailable"
+			return m, nil
+		}
+		// task 013/D.2: the guard above already refused this keypress
+		// when the cursor has no selected session, so selectedSession is
+		// guaranteed ok here.
+		session, _ := m.selectedSession()
+		if !canUnarchive(session) {
+			m.attachError = "Cannot unarchive: session is not archived"
+			return m, nil
+		}
+		return m, func() tea.Msg {
+			unarchived, err := m.unarchiveSvc(context.Background(), session.ID)
+			return sessionUnarchived{session: unarchived, err: err}
+		}
+	case "d":
+		// First half of task 105's dd chord: a visible pending indicator,
+		// changing nothing in the store. The very next key (handled by
+		// the m.pendingDelete intercept above, on the NEXT tea.KeyMsg) is
+		// either another `d` (opens the confirm dialog) or clears this
+		// with no destructive action.
+		//
+		// task 013/D.2 + cure-01-01 (F1): the shared guard above has
+		// already refused this key outright when the cursor rests on a
+		// header, marks or no marks -- there is no exemption left, so
+		// the indicator can no longer be raised at all for a header
+		// cursor. The len check stays only as a defensive belt for an
+		// empty session list.
+		if len(m.sessions) > 0 {
+			m.pendingDelete = true
+		}
+	case "u":
+		// Requirement 22: u undoes the most recent x, not whatever row
+		// happens to be selected right now -- undoSessionID is only ever
+		// set by a successful kill and cleared by either this key or the
+		// DECK_UNDO_MS expiry tick, so an expired or never-killed state
+		// makes u a no-op exactly as the requirement states. Requirement
+		// 23 (task 106): once the kill-undo trio is empty, u falls back
+		// to undoing the most recent dd delete within its own
+		// DECK_DELETE_GRACE_MS window, tracked by the separate
+		// deleteUndoSessionID trio (never merged with the one above).
+		if m.undoSessionID != "" {
 			if m.resume == nil {
 				return m, nil
 			}
-			// task 013/D.2: the guard above already refused this keypress
-			// when the cursor has no selected session.
-			session, _ := m.selectedSession()
-			if !canResume(session) {
-				m.attachError = "Cannot resume: session is not stopped"
-				return m, nil
-			}
-			if m.resumableWithNoConversationIDYet(session) {
-				m.attachError = "Cannot resume: " + session.Agent + " has not started a conversation yet (no id to resume)"
-				return m, nil
-			}
-			sessionID := session.ID
+			sessionID := m.undoSessionID
+			m.undoSessionID, m.undoSessionName = "", ""
+			m.undoGeneration++
 			return m, func() tea.Msg {
 				resumed, outcome, err := m.resume(context.Background(), sessionID)
-				return sessionResumed{session: resumed, outcome: outcome, err: err, fromResumeKey: true}
+				return sessionResumed{session: resumed, outcome: outcome, err: err}
 			}
-		case "R":
-			if m.restart == nil {
+		}
+		// Task 112: the batch-kill undo window is checked next, still
+		// ahead of the delete-undo trio below -- a batch x's undo is
+		// "undo the most recent x" too, exactly like the single-session
+		// case just above, just covering N sessions with one keypress.
+		if len(m.batchUndoSessionIDs) > 0 {
+			if m.resume == nil {
 				return m, nil
 			}
-			// task 013/D.2: the guard above already refused this keypress
-			// when the cursor has no selected session.
-			session, _ := m.selectedSession()
-			if !canRestart(session) {
-				m.attachError = "Cannot restart: session is not running (use r to resume it)"
-				return m, nil
-			}
-			if m.resumableWithNoConversationIDYet(session) {
-				m.attachError = "Cannot restart: " + session.Agent + " has not started a conversation yet (no id to resume)"
-				return m, nil
-			}
-			if session.Agent == "shell" {
-				// Task 023: a shell session gets the restart/inject-instead
-				// choice instead of restarting immediately -- restarting a
-				// plain shell loses whatever state (cwd, history, running
-				// commands) that shell had, which inject-instead avoids.
-				m.restartChoosing = true
-				m.restartChoiceValue = "restart"
-				m.restartChoiceNote = ""
-				return m, nil
-			}
-			sessionID := session.ID
+			ids := m.batchUndoSessionIDs
+			m.batchUndoSessionIDs = nil
+			m.batchUndoGeneration++
+			resume := m.resume
 			return m, func() tea.Msg {
-				restarted, outcome, err := m.restart(context.Background(), sessionID)
-				return sessionRestarted{session: restarted, outcome: outcome, err: err}
-			}
-		case "e":
-			// SPEC §6.1/§6.3, task 020: opens for any selected session (unlike
-			// `P`/`p`, which gate on adapter capabilities) since every session,
-			// including a plain shell one, has an effective environment worth
-			// showing -- there is no "not applicable here" case to refuse.
-			// task 013/D.2: the guard above already refused this keypress
-			// when the cursor has no selected session, so no local check is
-			// needed here anymore.
-			m.envEditing = true
-			m.envCursor = 0
-			m.envEditKey, m.envEdit, m.envNote = "", lineedit.Editor{}, ""
-			m.envReveal = false
-			m.envScroll = 0
-		case "E":
-			// SPEC §12/requirement 32, task 124: unlike `e`, this is global
-			// -- not gated on a selected session -- since the event log
-			// lists every session's events, not one row's own environment.
-			// eventLogScroll resets (task 078) so a reopen never starts
-			// scrolled from wherever a previous visit left off. R61 (steer
-			// 3e-001 §6.3): the store read itself is dispatched here, once,
-			// as a tea.Cmd (loadEventLog) rather than performed inline in
-			// View() -- eventLogRows/eventLogErr also reset so a reopen
-			// never renders the previous visit's rows before the fresh
-			// fetch lands.
-			m.eventLogOpen = true
-			m.eventLogScroll = 0
-			m.eventLogRows = nil
-			m.eventLogErr = nil
-			return m, m.loadEventLog
-		case "/":
-			// SPEC.md:984/requirement 33, task 123: global like `E` above --
-			// not gated on a selected session, since an empty list is still
-			// worth filtering into (e.g. to prove nothing archived matches).
-			// Reopening with an existing query keeps it rather than clearing
-			// it, mirroring the rename dialog's own prefill convention, so a
-			// second `/` refines an already-applied filter instead of
-			// discarding it.
-			if !m.help {
-				m.filtering = true
-				// A held query is kept, with the caret at its end (not an
-				// offer: a second `/` refines it).
-				m.filterEdit = lineedit.New(m.filterQuery).Fit(m.filterFieldWidth(), m.filterEditStyle())
-				return m, m.loadArchivedSessions
-			}
-		case " ":
-			// SPEC requirements 31, 32: move to the next session needing
-			// attention, wrapping, via the one shared NeedsAttention answer
-			// (internal/tui/attention.go). Nothing needing attention (ok
-			// false) leaves selection — and every session's status —
-			// untouched: this must never behave like §7's attach, which
-			// clears "waiting" on the attached session.
-			if !m.help && len(m.sessions) > 0 {
-				if next, ok := m.nextAttentionSelection(m.selected); ok {
-					m.setSelection(next)
+				result := sessionsBulkResumed{}
+				for _, id := range ids {
+					resumed, outcome, err := resume(context.Background(), id)
+					result.sessionIDs = append(result.sessionIDs, resumed.ID)
+					result.outcomes = append(result.outcomes, outcome)
+					result.errs = append(result.errs, err)
 				}
+				return result
 			}
-		case "c":
-			// SPEC §11.8 gap (requirement 30's collapsible headers had no key):
-			// toggle the group whose HEADER IS UNDER THE CURSOR collapsed/
-			// expanded -- task 014/D.3 re-aimed this from "the selected row's
-			// own group" (true only before task 012/D.1 made a header a cursor
-			// stop in its own right) to cursorGroupID's own resolution: the
-			// cursor's own header id when it rests on one, or the group id of
-			// the session under a row cursor otherwise. Keyed by the group's id
-			// (task 013/R129 part 3, sessionGroupID) rather than its display
-			// name, via the identical helper the mouse header click calls
-			// (toggleGroupCollapse, internal/tui/mouse.go), so neither path is
-			// ever the only way to reach this capability, and the result is
-			// persisted to ui_state's collapsed_groups (SPEC §11: "collapse
-			// state persists in ui_state") the same way `|`/`<`/`>` persist
-			// layout_mode/sidebar_width. A no-op, like every other bare-letter
-			// binding, while help or the `i` detail overlay covers the
-			// sidebar, or when there is no row to resolve a group from.
-			//
-			// Task 119: this was originally bound to `g`, which collides with
-			// SPEC.md:952's own keymap entry "g/G top/bottom" -- `g`/`G` were
-			// never actually wired to anything, so every keypress of `g` was
-			// silently doing collapse instead of the documented top/bottom jump.
-			// `c` (collapse) does not appear anywhere in SPEC §11's keymap list.
-			//
-			// Deliberately NOT gated on len(m.sessions) > 0 (cure-01-04, F2/R137,
-			// same cure-012-01 reasoning as g/G below): a group -- including the
-			// implicit default group (id 0) -- can be entirely empty while still
-			// holding a real, addressable header cursor stop, and that header
-			// must still fold/unfold. cursorGroupID resolves a header cursor's
-			// own id directly, with no m.sessions lookup, so it is already safe
-			// with zero total sessions; only this stale guard blocked it.
-			if !m.help && !m.detail {
-				if groupID, ok := m.cursorGroupID(); ok {
-					m.toggleGroupCollapse(groupID)
-					m.setSelection(m.selected)
-					return m, m.persistCollapsedGroups()
-				}
-			}
-		case "left":
-			// Task 014/D.3's explicit-direction companions to `c` above: left
-			// FOLDS the group under the cursor, right (below) UNFOLDS it --
-			// never toggling, so a repeated left on an already-folded group
-			// (or a repeated right on an already-unfolded one) is a no-op
-			// rather than flipping back. Same guards, same group resolution
-			// (cursorGroupID: the cursor's own header id, or the group id of
-			// the session under a row cursor) and the same ui_state
-			// persistence as `c`. Deliberately NOT gated on len(m.sessions) > 0
-			// (cure-01-04, F2/R137) -- see `c`'s own comment above.
-			if !m.help && !m.detail {
-				if groupID, ok := m.cursorGroupID(); ok {
-					m.setGroupCollapsed(groupID, true)
-					m.setSelection(m.selected)
-					return m, m.persistCollapsedGroups()
-				}
-			}
-		case "right":
-			// Same cure-01-04 reasoning as `c`/left above.
-			if !m.help && !m.detail {
-				if groupID, ok := m.cursorGroupID(); ok {
-					m.setGroupCollapsed(groupID, false)
-					m.setSelection(m.selected)
-					return m, m.persistCollapsedGroups()
-				}
-			}
-		case "g":
-			// SPEC.md:952 "g/G top/bottom": jump to the first visible visual
-			// stop (task 012/D.1: a header counts now, not only a row) --
-			// mirrors up/down's own visualOrder-based navigation, so a
-			// collapsed group's hidden rows are skipped exactly like a
-			// single up/down press would skip them.
-			//
-			// Deliberately NOT gated on len(m.sessions) > 0 (cure-012-01):
-			// since task 012 a header is a visual stop in its own right, so a
-			// sidebar holding only headers (every persisted group empty, or
-			// just the implicit default group's own header) still has a first
-			// and a last stop for g/G to land on. visibleSessionIndices()'s
-			// own emptiness check is the only guard this needs.
-			if !m.help && !m.detail {
-				if visible := m.visibleSessionIndices(); len(visible) > 0 {
-					m.setSelection(visible[0])
-				}
-			}
-		case "G":
-			// SPEC.md:952 "g/G top/bottom": jump to the last visible stop.
-			// Same cure-012-01 reasoning as `g` above: header-only sidebars
-			// have a last stop too, so no len(m.sessions) gate here either.
-			if !m.help && !m.detail {
-				if visible := m.visibleSessionIndices(); len(visible) > 0 {
-					m.setSelection(visible[len(visible)-1])
-				}
-			}
-		case "|":
-			if !m.help {
-				return m.cycleLayoutMode()
-			}
-		case "<":
-			if !m.help {
-				m.sidebarWidth = m.adjustSidebarWidth(-1)
-				return m, m.persistSidebarWidth()
-			}
-		case ">":
-			if !m.help {
-				m.sidebarWidth = m.adjustSidebarWidth(1)
-				return m, m.persistSidebarWidth()
-			}
-		case "enter":
-			return m.enterInteractive()
-		case "F":
-			// SPEC.md §11.9's force-attach: steal the interactive preview over
-			// any existing holder. This is `↵`'s own enterInteractiveBody with
-			// force=true (task 105) -- every refusal in that ladder still
-			// applies except the attached-client one, which is exactly what
-			// force exists to skip; the claim itself is taken via
-			// ForceClaimWindowOwnership (task 101), not ClaimWindowOwnership.
-			return m.enterInteractiveBody(true)
-		case "a":
-			return m.attachSelected()
 		}
-	case tea.MouseMsg:
-		// GH #52: any mouse report -- a click, a drag, a wheel notch --
-		// cancels a pending auto-enter, exactly as any key does.
-		m.cancelAutoEnter()
-		// [ui] mouse / DECK_MOUSE (requirement 3, 37): bubbletea's own input
-		// reader decodes an SGR/X10 mouse report from raw input bytes
-		// unconditionally, regardless of whether tea.WithMouseCellMotion
-		// was passed at startup (that option only controls whether the
-		// *enable* escape sequence is written to the terminal in the first
-		// place) -- a real, compliant terminal simply never emits a mouse
-		// report deck did not ask for, but this second, product-side gate
-		// makes the opt-out authoritative even if one arrives anyway (a
-		// terminal that ignores the missing enable sequence, or a replayed
-		// byte stream), rather than relying solely on a well-behaved
-		// terminal's cooperation.
-		if !m.settings.Mouse {
-			return m, nil
-		}
-		// PRD II-51: the wheel scrolls the interactive grid's own bounded
-		// scrollback while interactive mode owns the keyboard, the one
-		// mouse gesture interactive mode accepts at all -- every other
-		// gesture (press/drag/release/double-click) stays a no-op below,
-		// exactly as the whole of interactive mode already was before this
-		// (a click over a live pane makes no more sense here than it does
-		// over the passive preview in list mode, which also ignores
-		// clicks).
-		if m.interactive {
-			if msg.Button == tea.MouseButtonWheelUp || msg.Button == tea.MouseButtonWheelDown {
-				// R149/GH #47: a wheel over the sidebar while interactive does
-				// exactly what list mode's own scrollSidebar (mouse.go:208)
-				// does -- move the sidebar viewport and arm
-				// m.sidebarScrollDrifted, never the selection, the interactive
-				// target or the grid. A wheel over the preview still scrolls
-				// the interactive scrollback exactly as before.
-				switch hit := m.hitTest(msg.X, msg.Y); hit.panel {
-				case hitPanelSidebar:
-					delta := 1
-					if msg.Button == tea.MouseButtonWheelUp {
-						delta = -1
-					}
-					return m.scrollSidebar(msg, delta), nil
-				case hitPanelPreview:
-					// R183/GH #59: a program that tracks the mouse owns
-					// the notch (interactive_wheel.go); otherwise it
-					// scrolls the grid, as before.
-					if forwarded, handled := m.forwardInteractiveWheel(msg); handled {
-						return forwarded, nil
-					}
-					delta := interactiveWheelStepLines
-					if msg.Button == tea.MouseButtonWheelDown {
-						delta = -delta
-					}
-					return m.scrollInteractiveByLines(delta)
-				}
+		if m.deleteUndoSessionID != "" {
+			if m.restoreSvc == nil {
 				return m, nil
 			}
-			// Task 313/R54, SPEC §11.8: hit-test a left PRESS first, before
-			// ever assuming it is task 216's drag-to-copy gesture -- a press
-			// that resolves to the sidebar is resolved by the SAME shared
-			// resolver list mode's own handleMousePress calls (task 005/#33,
-			// R138): a header press toggles that group's collapse (and
-			// persists it) and a collapsed-strip press restores the previous
-			// non-collapsed mode, byte-identically to list mode; a row hit
-			// re-targets interactive mode onto that session instead (leaving
-			// the current one, restoring its window geometry byte-exact, then
-			// entering the new one; a press on the row that is ALREADY the
-			// interactive target is a no-op: no leave, no re-enter, no
-			// resize). A press over the preview or the seam falls straight
-			// through, unchanged, to the drag-to-copy path below.
-			//
-			// R144/GH #37: a press that resolves to the sidebar but to none
-			// of resolveSidebarPress's three targets (hitTargetNone -- the
-			// blank padding below the last row, or a border row) is list
-			// mode's own no-op (TestClickSidebarPaddingBelowLastRowIsANoOp),
-			// but while interactive mode owns the keyboard there is no row
-			// to fall through to, and letting it reach drag-to-copy below
-			// would silently start a text selection over blank sidebar
-			// space that gesture was never meant to cover. SPEC names
-			// Ctrl+Q as the only deliberate way out; this gives the operator
-			// a second, equally deliberate one -- a press on empty sidebar
-			// space runs the exact same exitInteractive Ctrl+Q itself
-			// calls, never a second, divergent teardown.
-			if msg.Button == tea.MouseButtonLeft && msg.Action == tea.MouseActionPress {
-				if hit := m.hitTest(msg.X, msg.Y); hit.panel == hitPanelSidebar {
-					if updated, cmd, ok := m.resolveSidebarPress(hit, func(mm Model, h hitResult) (tea.Model, tea.Cmd) {
-						return mm.retargetInteractiveSidebarClick(h.sessionIndex)
-					}); ok {
-						return updated, cmd
-					}
-					return m.exitInteractive()
-				}
+			sessionID := m.deleteUndoSessionID
+			m.deleteUndoSessionID, m.deleteUndoSessionName = "", ""
+			m.deleteUndoGeneration++
+			return m, func() tea.Msg {
+				restored, err := m.restoreSvc(context.Background(), sessionID)
+				return sessionRestored{session: restored, err: err}
 			}
-			// Steer 017 item 3/task 216, SPEC §11.8: a left-button drag
-			// beginning inside the interactive preview's own content box
-			// selects text; releasing after a genuine drag copies it. Every
-			// OTHER gesture (a plain click, any button but left, anything
-			// outside the content box) stays the no-op interactive mode
-			// already made every non-wheel gesture before this.
-			if msg.Button == tea.MouseButtonLeft {
-				switch msg.Action {
-				case tea.MouseActionPress:
-					if updated, ok := m.beginInteractiveSelection(msg.X, msg.Y); ok {
-						return updated, nil
-					}
-					return m, nil
-				case tea.MouseActionMotion:
-					if m.interactiveSelecting {
-						return m.updateInteractiveSelection(msg.X, msg.Y), nil
-					}
-					return m, nil
-				case tea.MouseActionRelease:
-					if m.interactiveSelecting {
-						return m.commitInteractiveSelection(), nil
-					}
-					return m, nil
-				}
+		}
+		// Task 112: the batch-delete undo window mirrors the single dd
+		// undo case directly above, one shared window restoring every
+		// session a marked-set dd tombstoned.
+		if len(m.batchDeleteUndoSessionIDs) > 0 {
+			if m.restoreSvc == nil {
+				return m, nil
 			}
+			ids := m.batchDeleteUndoSessionIDs
+			m.batchDeleteUndoSessionIDs = nil
+			m.batchDeleteUndoGeneration++
+			restoreSvc := m.restoreSvc
+			return m, func() tea.Msg {
+				result := sessionsBulkRestored{}
+				for _, id := range ids {
+					_, err := restoreSvc(context.Background(), id)
+					result.errs = append(result.errs, err)
+				}
+				return result
+			}
+		}
+		// R72 (issue #10, SPEC.md:752): the archive window is checked LAST,
+		// behind all four kill/delete trios above, so adding it cannot change
+		// what `u` does for any pre-existing window -- an archive undo only
+		// ever runs when no kill and no delete undo is outstanding. Its
+		// reversal is unarchiveSvc (R71's store.UnarchiveSession), the same
+		// service `U` uses, so the row returns to the default list reading
+		// stopped/resumable; `A`'s kill is deliberately NOT resumed here (the
+		// toast says so in as many words), since undoing a hide must never
+		// silently relaunch an agent.
+		if m.archiveUndoSessionID != "" {
+			if m.unarchiveSvc == nil {
+				return m, nil
+			}
+			sessionID := m.archiveUndoSessionID
+			hookRan := m.archiveUndoHookRan
+			m.archiveUndoSessionID, m.archiveUndoSessionName = "", ""
+			m.archiveUndoKilled = false
+			m.archiveUndoHookRan = false
+			m.archiveUndoGeneration++
+			return m, func() tea.Msg {
+				unarchived, err := m.unarchiveSvc(context.Background(), sessionID)
+				return sessionUnarchived{session: unarchived, err: err, teardownHookRan: hookRan}
+			}
+		}
+		return m, nil
+	case "r":
+		if m.resume == nil {
 			return m, nil
 		}
-		// R73 (issue #7): a wheel notch over one of the three scrollable
-		// overlays scrolls THAT overlay's own viewport, by the same one-line
-		// step up/down and j/k bind. This is tested BEFORE the blanket
-		// suppression below -- "scrollable overlay AND wheel event" and
-		// nothing else -- so the action-suppressing rule underneath stays
-		// exactly as strict as it was for every other gesture: a click, a
-		// drag, a release or any other button still returns early for all
-		// fifteen overlay flags, and a wheel notch over one of the twelve
-		// unscrollable overlays still does nothing either (scrollWheelOverlay
-		// reports false and this falls through to that same return).
-		//
-		// Why no hit test on msg.X/msg.Y: an overlay is modal -- it owns the
-		// keyboard outright and nothing underneath it is reachable while it is
-		// up -- so there is no second thing a wheel notch could have been
-		// meant for, exactly as PgUp/PgDn need no pointer to decide what they
-		// page. (Interactive mode's wheel, handled above, DOES hit-test,
-		// because there the sidebar next to the pane is genuinely live.)
-		//
-		// SPEC.md:1250 is not violated: it forbids the mouse *cancelling or
-		// confirming* a dialog and forbids reaching a dialog action by mouse
-		// alone. Moving a read-only viewport cancels nothing, confirms
-		// nothing, takes no focus and moves no selection -- the same test
-		// §11.8 already applies to drag-to-select over the preview ("selecting
-		// text is reading rather than acting").
-		if msg.Button == tea.MouseButtonWheelUp || msg.Button == tea.MouseButtonWheelDown {
-			dir := 1
-			if msg.Button == tea.MouseButtonWheelUp {
-				dir = -1
-			}
-			if scrolled, ok := m.scrollWheelOverlay(dir); ok {
-				return scrolled, nil
-			}
-		}
-		// SPEC §11.4/§11.8: the mouse can neither cancel nor confirm a dialog,
-		// and no dialog action is reachable by mouse alone, so every overlay
-		// that already makes the bare-letter keymap a no-op ignores the mouse
-		// exactly the same way.
-		if m.help || m.creating || m.profileSwitching || m.pinning || m.detail || m.renaming || m.launchInputsEditing || m.themePicking || m.settingsOpen || m.settingsDiscardConfirm || m.envEditing || m.restartChoosing || m.deleteConfirming || m.archiveConfirming || m.eventLogOpen || m.filtering || m.interactive || m.lostAttach {
+		// task 013/D.2: the guard above already refused this keypress
+		// when the cursor has no selected session.
+		session, _ := m.selectedSession()
+		if !canResume(session) {
+			m.attachError = "Cannot resume: session is not stopped"
 			return m, nil
 		}
-		return m.handleMouse(msg)
-	}
-	if dir, ok := shiftPageScrollDir(message); ok {
-		return m.scrollInteractiveByPage(dir)
+		if m.resumableWithNoConversationIDYet(session) {
+			m.attachError = "Cannot resume: " + session.Agent + " has not started a conversation yet (no id to resume)"
+			return m, nil
+		}
+		sessionID := session.ID
+		return m, func() tea.Msg {
+			resumed, outcome, err := m.resume(context.Background(), sessionID)
+			return sessionResumed{session: resumed, outcome: outcome, err: err, fromResumeKey: true}
+		}
+	case "R":
+		if m.restart == nil {
+			return m, nil
+		}
+		// task 013/D.2: the guard above already refused this keypress
+		// when the cursor has no selected session.
+		session, _ := m.selectedSession()
+		if !canRestart(session) {
+			m.attachError = "Cannot restart: session is not running (use r to resume it)"
+			return m, nil
+		}
+		if m.resumableWithNoConversationIDYet(session) {
+			m.attachError = "Cannot restart: " + session.Agent + " has not started a conversation yet (no id to resume)"
+			return m, nil
+		}
+		if session.Agent == "shell" {
+			// Task 023: a shell session gets the restart/inject-instead
+			// choice instead of restarting immediately -- restarting a
+			// plain shell loses whatever state (cwd, history, running
+			// commands) that shell had, which inject-instead avoids.
+			m.restartChoosing = true
+			m.restartChoiceValue = "restart"
+			m.restartChoiceNote = ""
+			return m, nil
+		}
+		sessionID := session.ID
+		return m, func() tea.Msg {
+			restarted, outcome, err := m.restart(context.Background(), sessionID)
+			return sessionRestarted{session: restarted, outcome: outcome, err: err}
+		}
+	case "e":
+		// SPEC §6.1/§6.3, task 020: opens for any selected session (unlike
+		// `P`/`p`, which gate on adapter capabilities) since every session,
+		// including a plain shell one, has an effective environment worth
+		// showing -- there is no "not applicable here" case to refuse.
+		// task 013/D.2: the guard above already refused this keypress
+		// when the cursor has no selected session, so no local check is
+		// needed here anymore.
+		m.envEditing = true
+		m.envCursor = 0
+		m.envEditKey, m.envEdit, m.envNote = "", lineedit.Editor{}, ""
+		m.envReveal = false
+		m.envScroll = 0
+	case "E":
+		// SPEC §12/requirement 32, task 124: unlike `e`, this is global
+		// -- not gated on a selected session -- since the event log
+		// lists every session's events, not one row's own environment.
+		// eventLogScroll resets (task 078) so a reopen never starts
+		// scrolled from wherever a previous visit left off. R61 (steer
+		// 3e-001 §6.3): the store read itself is dispatched here, once,
+		// as a tea.Cmd (loadEventLog) rather than performed inline in
+		// View() -- eventLogRows/eventLogErr also reset so a reopen
+		// never renders the previous visit's rows before the fresh
+		// fetch lands.
+		m.eventLogOpen = true
+		m.eventLogScroll = 0
+		m.eventLogRows = nil
+		m.eventLogErr = nil
+		return m, m.loadEventLog
+	case "/":
+		// SPEC.md:984/requirement 33, task 123: global like `E` above --
+		// not gated on a selected session, since an empty list is still
+		// worth filtering into (e.g. to prove nothing archived matches).
+		// Reopening with an existing query keeps it rather than clearing
+		// it, mirroring the rename dialog's own prefill convention, so a
+		// second `/` refines an already-applied filter instead of
+		// discarding it.
+		if !m.help {
+			m.filtering = true
+			// A held query is kept, with the caret at its end (not an
+			// offer: a second `/` refines it).
+			m.filterEdit = lineedit.New(m.filterQuery).Fit(m.filterFieldWidth(), m.filterEditStyle())
+			return m, m.loadArchivedSessions
+		}
+	case " ":
+		// SPEC requirements 31, 32: move to the next session needing
+		// attention, wrapping, via the one shared NeedsAttention answer
+		// (internal/tui/attention.go). Nothing needing attention (ok
+		// false) leaves selection — and every session's status —
+		// untouched: this must never behave like §7's attach, which
+		// clears "waiting" on the attached session.
+		if !m.help && len(m.sessions) > 0 {
+			if next, ok := m.nextAttentionSelection(m.selected); ok {
+				m.setSelection(next)
+			}
+		}
+	case "c":
+		// SPEC §11.8 gap (requirement 30's collapsible headers had no key):
+		// toggle the group whose HEADER IS UNDER THE CURSOR collapsed/
+		// expanded -- task 014/D.3 re-aimed this from "the selected row's
+		// own group" (true only before task 012/D.1 made a header a cursor
+		// stop in its own right) to cursorGroupID's own resolution: the
+		// cursor's own header id when it rests on one, or the group id of
+		// the session under a row cursor otherwise. Keyed by the group's id
+		// (task 013/R129 part 3, sessionGroupID) rather than its display
+		// name, via the identical helper the mouse header click calls
+		// (toggleGroupCollapse, internal/tui/mouse.go), so neither path is
+		// ever the only way to reach this capability, and the result is
+		// persisted to ui_state's collapsed_groups (SPEC §11: "collapse
+		// state persists in ui_state") the same way `|`/`<`/`>` persist
+		// layout_mode/sidebar_width. A no-op, like every other bare-letter
+		// binding, while help or the `i` detail overlay covers the
+		// sidebar, or when there is no row to resolve a group from.
+		//
+		// Task 119: this was originally bound to `g`, which collides with
+		// SPEC.md:952's own keymap entry "g/G top/bottom" -- `g`/`G` were
+		// never actually wired to anything, so every keypress of `g` was
+		// silently doing collapse instead of the documented top/bottom jump.
+		// `c` (collapse) does not appear anywhere in SPEC §11's keymap list.
+		//
+		// Deliberately NOT gated on len(m.sessions) > 0 (cure-01-04, F2/R137,
+		// same cure-012-01 reasoning as g/G below): a group -- including the
+		// implicit default group (id 0) -- can be entirely empty while still
+		// holding a real, addressable header cursor stop, and that header
+		// must still fold/unfold. cursorGroupID resolves a header cursor's
+		// own id directly, with no m.sessions lookup, so it is already safe
+		// with zero total sessions; only this stale guard blocked it.
+		if !m.help && !m.detail {
+			if groupID, ok := m.cursorGroupID(); ok {
+				m.toggleGroupCollapse(groupID)
+				m.setSelection(m.selected)
+				return m, m.persistCollapsedGroups()
+			}
+		}
+	case "left":
+		// Task 014/D.3's explicit-direction companions to `c` above: left
+		// FOLDS the group under the cursor, right (below) UNFOLDS it --
+		// never toggling, so a repeated left on an already-folded group
+		// (or a repeated right on an already-unfolded one) is a no-op
+		// rather than flipping back. Same guards, same group resolution
+		// (cursorGroupID: the cursor's own header id, or the group id of
+		// the session under a row cursor) and the same ui_state
+		// persistence as `c`. Deliberately NOT gated on len(m.sessions) > 0
+		// (cure-01-04, F2/R137) -- see `c`'s own comment above.
+		if !m.help && !m.detail {
+			if groupID, ok := m.cursorGroupID(); ok {
+				m.setGroupCollapsed(groupID, true)
+				m.setSelection(m.selected)
+				return m, m.persistCollapsedGroups()
+			}
+		}
+	case "right":
+		// Same cure-01-04 reasoning as `c`/left above.
+		if !m.help && !m.detail {
+			if groupID, ok := m.cursorGroupID(); ok {
+				m.setGroupCollapsed(groupID, false)
+				m.setSelection(m.selected)
+				return m, m.persistCollapsedGroups()
+			}
+		}
+	case "g":
+		// SPEC.md:952 "g/G top/bottom": jump to the first visible visual
+		// stop (task 012/D.1: a header counts now, not only a row) --
+		// mirrors up/down's own visualOrder-based navigation, so a
+		// collapsed group's hidden rows are skipped exactly like a
+		// single up/down press would skip them.
+		//
+		// Deliberately NOT gated on len(m.sessions) > 0 (cure-012-01):
+		// since task 012 a header is a visual stop in its own right, so a
+		// sidebar holding only headers (every persisted group empty, or
+		// just the implicit default group's own header) still has a first
+		// and a last stop for g/G to land on. visibleSessionIndices()'s
+		// own emptiness check is the only guard this needs.
+		if !m.help && !m.detail {
+			if visible := m.visibleSessionIndices(); len(visible) > 0 {
+				m.setSelection(visible[0])
+			}
+		}
+	case "G":
+		// SPEC.md:952 "g/G top/bottom": jump to the last visible stop.
+		// Same cure-012-01 reasoning as `g` above: header-only sidebars
+		// have a last stop too, so no len(m.sessions) gate here either.
+		if !m.help && !m.detail {
+			if visible := m.visibleSessionIndices(); len(visible) > 0 {
+				m.setSelection(visible[len(visible)-1])
+			}
+		}
+	case "|":
+		if !m.help {
+			return m.cycleLayoutMode()
+		}
+	case "<":
+		if !m.help {
+			m.sidebarWidth = m.adjustSidebarWidth(-1)
+			return m, m.persistSidebarWidth()
+		}
+	case ">":
+		if !m.help {
+			m.sidebarWidth = m.adjustSidebarWidth(1)
+			return m, m.persistSidebarWidth()
+		}
+	case "enter":
+		return m.enterInteractive()
+	case "F":
+		// SPEC.md §11.9's force-attach: steal the interactive preview over
+		// any existing holder. This is `↵`'s own enterInteractiveBody with
+		// force=true (task 105) -- every refusal in that ladder still
+		// applies except the attached-client one, which is exactly what
+		// force exists to skip; the claim itself is taken via
+		// ForceClaimWindowOwnership (task 101), not ClaimWindowOwnership.
+		return m.enterInteractiveBody(true)
+	case "a":
+		return m.attachSelected()
 	}
 	return m, nil
+}
+
+func (m Model) onMouseMsg(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
+	// GH #52: any mouse report -- a click, a drag, a wheel notch --
+	// cancels a pending auto-enter, exactly as any key does.
+	m.cancelAutoEnter()
+	// [ui] mouse / DECK_MOUSE (requirement 3, 37): bubbletea's own input
+	// reader decodes an SGR/X10 mouse report from raw input bytes
+	// unconditionally, regardless of whether tea.WithMouseCellMotion
+	// was passed at startup (that option only controls whether the
+	// *enable* escape sequence is written to the terminal in the first
+	// place) -- a real, compliant terminal simply never emits a mouse
+	// report deck did not ask for, but this second, product-side gate
+	// makes the opt-out authoritative even if one arrives anyway (a
+	// terminal that ignores the missing enable sequence, or a replayed
+	// byte stream), rather than relying solely on a well-behaved
+	// terminal's cooperation.
+	if !m.settings.Mouse {
+		return m, nil
+	}
+	// PRD II-51: the wheel scrolls the interactive grid's own bounded
+	// scrollback while interactive mode owns the keyboard, the one
+	// mouse gesture interactive mode accepts at all -- every other
+	// gesture (press/drag/release/double-click) stays a no-op below,
+	// exactly as the whole of interactive mode already was before this
+	// (a click over a live pane makes no more sense here than it does
+	// over the passive preview in list mode, which also ignores
+	// clicks).
+	if m.interactive {
+		if msg.Button == tea.MouseButtonWheelUp || msg.Button == tea.MouseButtonWheelDown {
+			// R149/GH #47: a wheel over the sidebar while interactive does
+			// exactly what list mode's own scrollSidebar (mouse.go:208)
+			// does -- move the sidebar viewport and arm
+			// m.sidebarScrollDrifted, never the selection, the interactive
+			// target or the grid. A wheel over the preview still scrolls
+			// the interactive scrollback exactly as before.
+			switch hit := m.hitTest(msg.X, msg.Y); hit.panel {
+			case hitPanelSidebar:
+				delta := 1
+				if msg.Button == tea.MouseButtonWheelUp {
+					delta = -1
+				}
+				return m.scrollSidebar(msg, delta), nil
+			case hitPanelPreview:
+				// R183/GH #59: a program that tracks the mouse owns
+				// the notch (interactive_wheel.go); otherwise it
+				// scrolls the grid, as before.
+				if forwarded, handled := m.forwardInteractiveWheel(msg); handled {
+					return forwarded, nil
+				}
+				delta := interactiveWheelStepLines
+				if msg.Button == tea.MouseButtonWheelDown {
+					delta = -delta
+				}
+				return m.scrollInteractiveByLines(delta)
+			}
+			return m, nil
+		}
+		// Task 313/R54, SPEC §11.8: hit-test a left PRESS first, before
+		// ever assuming it is task 216's drag-to-copy gesture -- a press
+		// that resolves to the sidebar is resolved by the SAME shared
+		// resolver list mode's own handleMousePress calls (task 005/#33,
+		// R138): a header press toggles that group's collapse (and
+		// persists it) and a collapsed-strip press restores the previous
+		// non-collapsed mode, byte-identically to list mode; a row hit
+		// re-targets interactive mode onto that session instead (leaving
+		// the current one, restoring its window geometry byte-exact, then
+		// entering the new one; a press on the row that is ALREADY the
+		// interactive target is a no-op: no leave, no re-enter, no
+		// resize). A press over the preview or the seam falls straight
+		// through, unchanged, to the drag-to-copy path below.
+		//
+		// R144/GH #37: a press that resolves to the sidebar but to none
+		// of resolveSidebarPress's three targets (hitTargetNone -- the
+		// blank padding below the last row, or a border row) is list
+		// mode's own no-op (TestClickSidebarPaddingBelowLastRowIsANoOp),
+		// but while interactive mode owns the keyboard there is no row
+		// to fall through to, and letting it reach drag-to-copy below
+		// would silently start a text selection over blank sidebar
+		// space that gesture was never meant to cover. SPEC names
+		// Ctrl+Q as the only deliberate way out; this gives the operator
+		// a second, equally deliberate one -- a press on empty sidebar
+		// space runs the exact same exitInteractive Ctrl+Q itself
+		// calls, never a second, divergent teardown.
+		if msg.Button == tea.MouseButtonLeft && msg.Action == tea.MouseActionPress {
+			if hit := m.hitTest(msg.X, msg.Y); hit.panel == hitPanelSidebar {
+				if updated, cmd, ok := m.resolveSidebarPress(hit, func(mm Model, h hitResult) (tea.Model, tea.Cmd) {
+					return mm.retargetInteractiveSidebarClick(h.sessionIndex)
+				}); ok {
+					return updated, cmd
+				}
+				return m.exitInteractive()
+			}
+		}
+		// Steer 017 item 3/task 216, SPEC §11.8: a left-button drag
+		// beginning inside the interactive preview's own content box
+		// selects text; releasing after a genuine drag copies it. Every
+		// OTHER gesture (a plain click, any button but left, anything
+		// outside the content box) stays the no-op interactive mode
+		// already made every non-wheel gesture before this.
+		if msg.Button == tea.MouseButtonLeft {
+			switch msg.Action {
+			case tea.MouseActionPress:
+				if updated, ok := m.beginInteractiveSelection(msg.X, msg.Y); ok {
+					return updated, nil
+				}
+				return m, nil
+			case tea.MouseActionMotion:
+				if m.interactiveSelecting {
+					return m.updateInteractiveSelection(msg.X, msg.Y), nil
+				}
+				return m, nil
+			case tea.MouseActionRelease:
+				if m.interactiveSelecting {
+					return m.commitInteractiveSelection(), nil
+				}
+				return m, nil
+			}
+		}
+		return m, nil
+	}
+	// R73 (issue #7): a wheel notch over one of the three scrollable
+	// overlays scrolls THAT overlay's own viewport, by the same one-line
+	// step up/down and j/k bind. This is tested BEFORE the blanket
+	// suppression below -- "scrollable overlay AND wheel event" and
+	// nothing else -- so the action-suppressing rule underneath stays
+	// exactly as strict as it was for every other gesture: a click, a
+	// drag, a release or any other button still returns early for all
+	// fifteen overlay flags, and a wheel notch over one of the twelve
+	// unscrollable overlays still does nothing either (scrollWheelOverlay
+	// reports false and this falls through to that same return).
+	//
+	// Why no hit test on msg.X/msg.Y: an overlay is modal -- it owns the
+	// keyboard outright and nothing underneath it is reachable while it is
+	// up -- so there is no second thing a wheel notch could have been
+	// meant for, exactly as PgUp/PgDn need no pointer to decide what they
+	// page. (Interactive mode's wheel, handled above, DOES hit-test,
+	// because there the sidebar next to the pane is genuinely live.)
+	//
+	// SPEC.md:1250 is not violated: it forbids the mouse *cancelling or
+	// confirming* a dialog and forbids reaching a dialog action by mouse
+	// alone. Moving a read-only viewport cancels nothing, confirms
+	// nothing, takes no focus and moves no selection -- the same test
+	// §11.8 already applies to drag-to-select over the preview ("selecting
+	// text is reading rather than acting").
+	if msg.Button == tea.MouseButtonWheelUp || msg.Button == tea.MouseButtonWheelDown {
+		dir := 1
+		if msg.Button == tea.MouseButtonWheelUp {
+			dir = -1
+		}
+		if scrolled, ok := m.scrollWheelOverlay(dir); ok {
+			return scrolled, nil
+		}
+	}
+	// SPEC §11.4/§11.8: the mouse can neither cancel nor confirm a dialog,
+	// and no dialog action is reachable by mouse alone, so every overlay
+	// that already makes the bare-letter keymap a no-op ignores the mouse
+	// exactly the same way.
+	if m.help || m.creating || m.profileSwitching || m.pinning || m.detail || m.renaming || m.launchInputsEditing || m.themePicking || m.settingsOpen || m.settingsDiscardConfirm || m.envEditing || m.restartChoosing || m.deleteConfirming || m.archiveConfirming || m.eventLogOpen || m.filtering || m.interactive || m.lostAttach {
+		return m, nil
+	}
+	return m.handleMouse(msg)
 }
 
 // attachSelected is `a`'s job (SPEC §11.9, task 061): the full attach that
