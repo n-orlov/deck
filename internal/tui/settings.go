@@ -484,16 +484,37 @@ func (m *Model) settingsSave() tea.Cmd {
 // settingsFieldEnvOverride for the one map this reuses instead of adding a
 // second notion of "overridden".
 func (m *Model) settingsApplyLiveFields(previous config.FileConfig) tea.Cmd {
+	m.settingsApplyLiveScalars(previous)
+	cmd := m.settingsApplyLiveMouse(previous)
+	m.settingsApplyLiveTheme(previous)
+	m.settingsApplyLiveSortOrder(previous)
+	m.settingsApplyLiveDefaultGroupFirst(previous)
+	return cmd
+}
+
+// settingsLiveChanged reports whether a ScopeGlobal field's saved edit
+// differs from the file value before the save AND its key is not named in
+// overrides: the environment outranks the file, so an overridden field's
+// resolved member is never touched.
+func settingsLiveChanged[T comparable](overrides map[string]string, key string, edited, previous T) bool {
+	_, overridden := overrides[key]
+	return !overridden && edited != previous
+}
+
+// settingsApplyLiveScalars copies the plain ScopeGlobal fields (no side
+// effect beyond the resolved member) whose saved value changed.
+func (m *Model) settingsApplyLiveScalars(previous config.FileConfig) {
+	overrides := m.settings.EnvOverrides
 	if m.settingsEdits.AllowYolo != previous.AllowYolo {
 		m.settings.AllowYolo = m.settingsEdits.AllowYolo
 	}
 	if m.settingsEdits.YoloDefault != previous.YoloDefault {
 		m.settings.YoloDefault = m.settingsEdits.YoloDefault
 	}
-	if _, overridden := m.settings.EnvOverrides["ui.ascii"]; !overridden && m.settingsEdits.ASCII != previous.ASCII {
+	if settingsLiveChanged(overrides, "ui.ascii", m.settingsEdits.ASCII, previous.ASCII) {
 		m.settings.ASCII = m.settingsEdits.ASCII
 	}
-	if _, overridden := m.settings.EnvOverrides["ui.preview_fit"]; !overridden && m.settingsEdits.PreviewFit != previous.PreviewFit {
+	if settingsLiveChanged(overrides, "ui.preview_fit", m.settingsEdits.PreviewFit, previous.PreviewFit) {
 		m.settings.PreviewFit = m.settingsEdits.PreviewFit
 	}
 	// ui.attach_on_new/ui.attach_on_resume (GH #52): the shellCreated and
@@ -502,10 +523,10 @@ func (m *Model) settingsApplyLiveFields(previous config.FileConfig) tea.Cmd {
 	// already follows them. Guarded by EnvOverrides like ui.preview_fit,
 	// whose DECK_PREVIEW_FIT shape DECK_ATTACH_ON_NEW/DECK_ATTACH_ON_RESUME
 	// copy.
-	if _, overridden := m.settings.EnvOverrides["ui.attach_on_new"]; !overridden && m.settingsEdits.AttachOnNew != previous.AttachOnNew {
+	if settingsLiveChanged(overrides, "ui.attach_on_new", m.settingsEdits.AttachOnNew, previous.AttachOnNew) {
 		m.settings.AttachOnNew = m.settingsEdits.AttachOnNew
 	}
-	if _, overridden := m.settings.EnvOverrides["ui.attach_on_resume"]; !overridden && m.settingsEdits.AttachOnResume != previous.AttachOnResume {
+	if settingsLiveChanged(overrides, "ui.attach_on_resume", m.settingsEdits.AttachOnResume, previous.AttachOnResume) {
 		m.settings.AttachOnResume = m.settingsEdits.AttachOnResume
 	}
 	// ui.preview_paint: repaintForeignDefaults reads this member on every
@@ -514,30 +535,45 @@ func (m *Model) settingsApplyLiveFields(previous config.FileConfig) tea.Cmd {
 	// by EnvOverrides like every other ScopeGlobal field, and here the
 	// guard is live rather than theoretical: DECK_PREVIEW_PAINT is a real
 	// override path in config.LoadFrom.
-	if _, overridden := m.settings.EnvOverrides["ui.preview_paint"]; !overridden && m.settingsEdits.PreviewPaint != previous.PreviewPaint {
+	if settingsLiveChanged(overrides, "ui.preview_paint", m.settingsEdits.PreviewPaint, previous.PreviewPaint) {
 		m.settings.PreviewPaint = m.settingsEdits.PreviewPaint
 	}
-	var cmd tea.Cmd
-	if _, overridden := m.settings.EnvOverrides["ui.mouse"]; !overridden && m.settingsEdits.Mouse != previous.Mouse {
-		m.settings.Mouse = m.settingsEdits.Mouse
-		enable := m.settingsEdits.Mouse
-		// EnableMouseCellMotion/DisableMouse are themselves tea.Msg
-		// constructors, not tea.Cmd values (a tea.Cmd is a func() tea.Msg) --
-		// wrap the chosen one so bubbletea's runtime dispatches it as the
-		// program's next message, exactly as WithMouseCellMotion's own
-		// ProgramOption would have if this had been decided at startup.
-		if enable {
-			cmd = tea.EnableMouseCellMotion
-		} else {
-			cmd = tea.DisableMouse
-		}
+}
+
+// settingsApplyLiveMouse refreshes the resolved Mouse member and returns
+// the tea.Cmd that tells the terminal to start or stop mouse reporting,
+// exactly when Mouse's live value changed (nil otherwise).
+func (m *Model) settingsApplyLiveMouse(previous config.FileConfig) tea.Cmd {
+	if !settingsLiveChanged(m.settings.EnvOverrides, "ui.mouse", m.settingsEdits.Mouse, previous.Mouse) {
+		return nil
 	}
-	if m.settingsEdits.Theme != previous.Theme {
-		userThemes, userErrs := theme.DiscoverUserThemes(m.settings.ThemesDir)
-		resolved, reason := theme.Resolve(userThemes, userErrs, m.settingsEdits.Theme)
-		m.settings.Theme = resolved
-		m.settings.ThemeReason = reason
+	m.settings.Mouse = m.settingsEdits.Mouse
+	// EnableMouseCellMotion/DisableMouse are themselves tea.Msg
+	// constructors, not tea.Cmd values (a tea.Cmd is a func() tea.Msg) --
+	// wrap the chosen one so bubbletea's runtime dispatches it as the
+	// program's next message, exactly as WithMouseCellMotion's own
+	// ProgramOption would have if this had been decided at startup.
+	if m.settingsEdits.Mouse {
+		return tea.EnableMouseCellMotion
 	}
+	return tea.DisableMouse
+}
+
+// settingsApplyLiveTheme re-resolves the theme from its saved raw name when
+// it changed.
+func (m *Model) settingsApplyLiveTheme(previous config.FileConfig) {
+	if m.settingsEdits.Theme == previous.Theme {
+		return
+	}
+	userThemes, userErrs := theme.DiscoverUserThemes(m.settings.ThemesDir)
+	resolved, reason := theme.Resolve(userThemes, userErrs, m.settingsEdits.Theme)
+	m.settings.Theme = resolved
+	m.settings.ThemeReason = reason
+}
+
+// settingsApplyLiveSortOrder applies a changed sort_order and re-sorts the
+// loaded sessions.
+func (m *Model) settingsApplyLiveSortOrder(previous config.FileConfig) {
 	// requirement R53/task 306: sort_order's schema.go comment names this
 	// exact code path as its live-apply consumer. Guarded by EnvOverrides
 	// the same way ui.mouse/ui.preview_fit are above -- config.LoadFrom
@@ -545,10 +581,15 @@ func (m *Model) settingsApplyLiveFields(previous config.FileConfig) tea.Cmd {
 	// never actually skipped in practice, but the guard is kept for the
 	// same reason every other ScopeGlobal field carries it: an override
 	// path added later must not have to remember to add this check too.
-	if _, overridden := m.settings.EnvOverrides["ui.sort_order"]; !overridden && m.settingsEdits.SortOrder != previous.SortOrder {
+	if settingsLiveChanged(m.settings.EnvOverrides, "ui.sort_order", m.settingsEdits.SortOrder, previous.SortOrder) {
 		m.settings.SortOrder = m.settingsEdits.SortOrder
 		m.resortSessionsLive()
 	}
+}
+
+// settingsApplyLiveDefaultGroupFirst applies a changed default_group_first
+// and re-clamps or re-follows the sidebar viewport.
+func (m *Model) settingsApplyLiveDefaultGroupFirst(previous config.FileConfig) {
 	// task 003 (schema.go's ui.default_group_first row names this exact
 	// code path as its live-apply consumer, mirroring ui.sort_order's own
 	// comment immediately above): groupSessions() (internal/tui/group.go)
@@ -584,7 +625,7 @@ func (m *Model) settingsApplyLiveFields(previous config.FileConfig) tea.Cmd {
 	// (clampDriftedSidebarScroll), exactly as sessionsLoaded and
 	// resortSessionsLive already do -- the selection keeps following its
 	// session by identity off screen.
-	if _, overridden := m.settings.EnvOverrides["ui.default_group_first"]; !overridden && m.settingsEdits.DefaultGroupFirst != previous.DefaultGroupFirst {
+	if settingsLiveChanged(m.settings.EnvOverrides, "ui.default_group_first", m.settingsEdits.DefaultGroupFirst, previous.DefaultGroupFirst) {
 		m.settings.DefaultGroupFirst = m.settingsEdits.DefaultGroupFirst
 		if m.sidebarScrollDrifted {
 			m.clampDriftedSidebarScroll()
@@ -592,7 +633,6 @@ func (m *Model) settingsApplyLiveFields(previous config.FileConfig) tea.Cmd {
 			m.followSelectionViewport()
 		}
 	}
-	return cmd
 }
 
 // settingsCloneFileConfig deep-copies cfg's Env map (settingsCloneEnv
