@@ -1219,23 +1219,7 @@ func (m Model) updateSettingsEnvList(msg tea.KeyMsg) (Model, tea.Cmd) {
 	case "down", "j":
 		m.settingsEnvIndex = (m.settingsEnvIndex + 1) % n
 	case "enter", " ":
-		switch {
-		case m.settingsEnvIndex == len(keys):
-			m.settingsEnvKeyEdit = lineedit.Editor{}
-			m.settingsEnvValueEdit = lineedit.Editor{}
-			m.settingsEnvEditOriginalKey = ""
-			m.settingsEnvEditingKeyPart = true
-			m.settingsEnvEditing = true
-		case m.settingsEnvIndex >= 0 && m.settingsEnvIndex < len(keys):
-			key := keys[m.settingsEnvIndex]
-			// The value opens as an offered value (§11.11), so a small
-			// correction to a long value never requires retyping it.
-			m.settingsEnvEditOriginalKey = key
-			m.settingsEnvEditingKeyPart = false
-			m.settingsEnvKeyEdit = lineedit.New(key).Fit(m.settingsEnvFieldWidth(true), m.settingsEditStyle())
-			m.settingsEnvValueEdit = lineedit.NewOffered(m.settingsEdits.Env[key]).Fit(m.settingsEnvFieldWidth(false), m.settingsEditStyle())
-			m.settingsEnvEditing = true
-		}
+		m.settingsEnvOpenSelected(keys)
 	case "-", "_":
 		m.settingsEnvDeleteSelected()
 	case "r":
@@ -1243,6 +1227,29 @@ func (m Model) updateSettingsEnvList(msg tea.KeyMsg) (Model, tea.Cmd) {
 		m.settingsEnvReveal = !m.settingsEnvReveal
 	}
 	return m, nil
+}
+
+// settingsEnvOpenSelected opens the entries list's selected entry for editing,
+// or a blank one for the trailing "add entry" row; an index outside both
+// leaves the list as it was.
+func (m *Model) settingsEnvOpenSelected(keys []string) {
+	switch {
+	case m.settingsEnvIndex == len(keys):
+		m.settingsEnvKeyEdit = lineedit.Editor{}
+		m.settingsEnvValueEdit = lineedit.Editor{}
+		m.settingsEnvEditOriginalKey = ""
+		m.settingsEnvEditingKeyPart = true
+		m.settingsEnvEditing = true
+	case m.settingsEnvIndex >= 0 && m.settingsEnvIndex < len(keys):
+		key := keys[m.settingsEnvIndex]
+		// The value opens as an offered value (§11.11), so a small
+		// correction to a long value never requires retyping it.
+		m.settingsEnvEditOriginalKey = key
+		m.settingsEnvEditingKeyPart = false
+		m.settingsEnvKeyEdit = lineedit.New(key).Fit(m.settingsEnvFieldWidth(true), m.settingsEditStyle())
+		m.settingsEnvValueEdit = lineedit.NewOffered(m.settingsEdits.Env[key]).Fit(m.settingsEnvFieldWidth(false), m.settingsEditStyle())
+		m.settingsEnvEditing = true
+	}
 }
 
 // settingsEnvDeleteSelected removes the entries list's currently selected
