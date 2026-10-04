@@ -111,7 +111,13 @@ func (e Editor) Update(msg tea.KeyMsg) (Editor, bool) {
 		}
 		return e.Insert(string(msg.Runes)), true
 	}
-	switch msg.String() {
+	return e.updateNamed(msg.String())
+}
+
+// updateNamed applies a named key (navigation and deletion, by its key
+// string); handled is false for a key the §11.11 table does not list.
+func (e Editor) updateNamed(key string) (Editor, bool) {
+	switch key {
 	case "left", "ctrl+b":
 		return e.accept().moveTo(e.prevBoundary()), true
 	case "right", "ctrl+f":
