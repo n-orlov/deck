@@ -6045,6 +6045,40 @@ func (m Model) sidebarGutterBar(selected, marked bool) (string, string) {
 		m.canvasBackground(barTok, m.colorToken(theme.Background, glyph2))
 }
 
+// statusTokenOrText is status's own colour token, or theme.Text for a status
+// that has none.
+func statusTokenOrText(status string) theme.Token {
+	if t, ok := statusToken(status); ok {
+		return t
+	}
+	return theme.Text
+}
+
+// sidebarBadgeParts is line 1's badge run after the name: the unseen marker,
+// the status-source quality, the status word and the archived flag.
+func (m Model) sidebarBadgeParts(session store.Session, statusTok theme.Token) []settingsRowSegment {
+	var parts []settingsRowSegment
+	if !session.Acknowledged && (session.Status == "waiting" || session.Status == "error") {
+		unseen := m.glyph("●", "!")
+		parts = append(parts, settingsRowSegment{Text: unseen, Tok: statusTok})
+	}
+	if quality := statusSourceQuality(session.StatusSource); quality != "" {
+		parts = append(parts, settingsRowSegment{Text: quality, Tok: theme.Dimmed})
+	}
+	parts = append(parts, settingsRowSegment{Text: session.Status, Tok: statusTok})
+	// SPEC requirement 27: archived_at is a FLAG, never a status -- the
+	// ▣ glyph is rendered from that flag directly, never from any
+	// notion of session.Status == "archived" (there is no such status;
+	// the six SPEC-enumerated ones are untouched by this task, see
+	// attention.go). An archived row keeps whatever status word it
+	// already had above, so this is an ADDITIONAL badge, not a
+	// replacement.
+	if session.ArchivedAt != 0 {
+		parts = append(parts, settingsRowSegment{Text: m.glyph("\u25a3", "[archived]"), Tok: theme.Archived})
+	}
+	return parts
+}
+
 // sidebarRowLines is one session's two-line row: its status glyph, the
 // pin marker on a pinned row (R160), name, its unseen glyph and
 // status/quality badges on the first line (SPEC §11.3, task 012 — no reason text), and its bare creation age plus its
@@ -6134,39 +6168,14 @@ func (m Model) sidebarRowLines(index int, session store.Session, stripe bool) ([
 	// status's own token) always leads the row text, so the shape of the
 	// list is readable before any text is, and the marker slots between
 	// it and the name.
-	statusTok := theme.Text
-	if t, ok := statusToken(session.Status); ok {
-		statusTok = t
-	}
+	statusTok := statusTokenOrText(session.Status)
 	segs := make([]settingsRowSegment, 0, 4)
 	segs = append(segs, settingsRowSegment{Text: m.sidebarStatusGlyph(session.Status) + " ", Tok: statusTok})
 	if session.PinnedAt != 0 {
 		segs = append(segs, settingsRowSegment{Text: m.glyph("\u2726", "*") + " ", Tok: theme.Accent})
 	}
 	segs = append(segs, settingsRowSegment{Text: session.Name + " ", Tok: nameTok})
-	var parts []settingsRowSegment
-	if !session.Acknowledged && (session.Status == "waiting" || session.Status == "error") {
-		unseen := m.glyph("●", "!")
-		tok := theme.Text
-		if t, ok := statusToken(session.Status); ok {
-			tok = t
-		}
-		parts = append(parts, settingsRowSegment{Text: unseen, Tok: tok})
-	}
-	if quality := statusSourceQuality(session.StatusSource); quality != "" {
-		parts = append(parts, settingsRowSegment{Text: quality, Tok: theme.Dimmed})
-	}
-	parts = append(parts, settingsRowSegment{Text: session.Status, Tok: statusTok})
-	// SPEC requirement 27: archived_at is a FLAG, never a status -- the
-	// ▣ glyph is rendered from that flag directly, never from any
-	// notion of session.Status == "archived" (there is no such status;
-	// the six SPEC-enumerated ones are untouched by this task, see
-	// attention.go). An archived row keeps whatever status word it
-	// already had above, so this is an ADDITIONAL badge, not a
-	// replacement.
-	if session.ArchivedAt != 0 {
-		parts = append(parts, settingsRowSegment{Text: m.glyph("\u25a3", "[archived]"), Tok: theme.Archived})
-	}
+	parts := m.sidebarBadgeParts(session, statusTok)
 	// R119: the `\u2713 marked` text badge used to be appended to line 1's
 	// badge run here (task 112) -- the last segment there, and therefore
 	// the first thing padTrunc dropped on a narrow sidebar, which lost the
