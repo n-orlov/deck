@@ -366,40 +366,7 @@ func (m Model) styledEnvBody() string {
 // between "esc closes the list" and "esc closes the whole modal".
 func (m Model) updateEnvDialog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if m.envEditKey != "" {
-		switch msg.String() {
-		case "esc":
-			m.envEditKey, m.envEdit, m.envNote = "", lineedit.Editor{}, ""
-			return m, nil
-		case "enter":
-			cmd := m.submitEnvEdit()
-			return m, cmd
-		case "pgup", "pgdown":
-			// An edit in progress does not consume the paging keys: the
-			// list it was opened from is scroll-bounded (this task), so a
-			// typist who wants to re-read a row further up must be able to
-			// page there without abandoning the edit. Before this, the
-			// whole edit-mode branch returned early and PgUp/PgDn were
-			// silent no-ops for as long as a row stayed open.
-			dir := -1
-			if msg.String() == "pgdown" {
-				dir = 1
-			}
-			m.envScroll = m.dialogScrollByPage(m.envScroll, m.envBody(), dir)
-			return m, nil
-		}
-		// Every editing key, a typed rune and a bracketed paste belong to the
-		// shared line editor (§11.11): the opening value is an offered value, so
-		// a printable key or a paste replaces it and a caret or editing key
-		// accepts it and edits it in place. A key the editor does not own is
-		// left alone.
-		if isFieldCopyKey(msg) {
-			masked := isSecretShapedKey(m.envEditKey) && !m.envReveal
-			return m.copyFieldText(m.envEdit.Value(), masked), nil
-		}
-		if edited, ok := m.envEdit.Update(msg); ok {
-			m.envEdit = edited.Fit(m.envFieldWidth(), m.envEditStyle())
-		}
-		return m, nil
+		return m.updateEnvEdit(msg)
 	}
 	if cmd, handled := applyDialogContract(msg, dialogContract{
 		Cancel: func() {
@@ -409,6 +376,49 @@ func (m Model) updateEnvDialog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}); handled {
 		return m, cmd
 	}
+	return m.updateEnvBrowse(msg)
+}
+
+// updateEnvEdit handles keys while a row's value is open for editing.
+func (m Model) updateEnvEdit(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "esc":
+		m.envEditKey, m.envEdit, m.envNote = "", lineedit.Editor{}, ""
+		return m, nil
+	case "enter":
+		cmd := m.submitEnvEdit()
+		return m, cmd
+	case "pgup", "pgdown":
+		// An edit in progress does not consume the paging keys: the
+		// list it was opened from is scroll-bounded (this task), so a
+		// typist who wants to re-read a row further up must be able to
+		// page there without abandoning the edit. Before this, the
+		// whole edit-mode branch returned early and PgUp/PgDn were
+		// silent no-ops for as long as a row stayed open.
+		dir := -1
+		if msg.String() == "pgdown" {
+			dir = 1
+		}
+		m.envScroll = m.dialogScrollByPage(m.envScroll, m.envBody(), dir)
+		return m, nil
+	}
+	// Every editing key, a typed rune and a bracketed paste belong to the
+	// shared line editor (§11.11): the opening value is an offered value, so
+	// a printable key or a paste replaces it and a caret or editing key
+	// accepts it and edits it in place. A key the editor does not own is
+	// left alone.
+	if isFieldCopyKey(msg) {
+		masked := isSecretShapedKey(m.envEditKey) && !m.envReveal
+		return m.copyFieldText(m.envEdit.Value(), masked), nil
+	}
+	if edited, ok := m.envEdit.Update(msg); ok {
+		m.envEdit = edited.Fit(m.envFieldWidth(), m.envEditStyle())
+	}
+	return m, nil
+}
+
+// updateEnvBrowse handles keys while browsing the env rows.
+func (m Model) updateEnvBrowse(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	session, _ := m.selectedSession()
 	rows := m.sessionEnvRows(session)
 	switch msg.String() {
@@ -433,8 +443,8 @@ func (m Model) updateEnvDialog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "r":
 		// SPEC §6.4/requirement 21: the explicit per-view reveal toggle.
 		// Only meaningful while browsing -- while a value is being typed
-		// (m.envEditKey != "") this branch is unreachable, since that
-		// case returns earlier in this function.
+		// (m.envEditKey != "") this branch is unreachable, since
+		// updateEnvDialog routes that state to updateEnvEdit instead.
 		m.envReveal = !m.envReveal
 	case "pgup":
 		// Task 017: the env editor moved onto framedDialogScrollable (task
