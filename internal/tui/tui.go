@@ -4234,52 +4234,43 @@ func (m Model) loadDetailDroppedHook(sessionID string) tea.Cmd {
 	}
 }
 
+// viewScreen is one full-screen view View can show: active says whether the
+// model is in that mode, render draws it.
+type viewScreen struct {
+	active func(Model) bool
+	render func(Model) string
+}
+
+// hasSessions reports whether any session row exists; every row-bound modal
+// below only opens over a non-empty list.
+func (m Model) hasSessions() bool { return len(m.sessions) > 0 }
+
+// viewScreens lists View's screens in precedence order: the first active one
+// wins, and mainView is the fallback when none is.
+var viewScreens = []viewScreen{
+	{func(m Model) bool { return m.lostAttach }, Model.lostAttachView},
+	{func(m Model) bool { return m.help }, Model.helpView},
+	{func(m Model) bool { return m.creating }, Model.createView},
+	{func(m Model) bool { return m.profileSwitching && m.hasSessions() }, Model.profileSwitchView},
+	{func(m Model) bool { return m.pinning && m.hasSessions() }, Model.pinView},
+	{func(m Model) bool { return m.envEditing && m.hasSessions() }, Model.envView},
+	{func(m Model) bool { return m.restartChoosing && m.hasSessions() }, Model.restartChoiceView},
+	{func(m Model) bool { return m.deleteConfirming && m.hasSessions() }, Model.deleteConfirmView},
+	{func(m Model) bool { return m.archiveConfirming && m.hasSessions() }, Model.archiveConfirmView},
+	{func(m Model) bool { return m.settingsOpen }, Model.settingsView},
+	{func(m Model) bool { return m.renaming && m.hasSessions() }, Model.renameView},
+	{func(m Model) bool { return m.launchInputsEditing && m.hasSessions() }, Model.launchInputsView},
+	{func(m Model) bool { return m.movingGroup && m.hasSessions() }, Model.moveGroupView},
+	{func(m Model) bool { return m.detail && m.hasSessions() }, Model.detailView},
+	{func(m Model) bool { return m.eventLogOpen }, Model.eventLogView},
+}
+
 // View implements tea.Model: it renders the current screen.
 func (m Model) View() string {
-	if m.lostAttach {
-		return m.lostAttachView()
-	}
-	if m.help {
-		return m.helpView()
-	}
-	if m.creating {
-		return m.createView()
-	}
-	if m.profileSwitching && len(m.sessions) > 0 {
-		return m.profileSwitchView()
-	}
-	if m.pinning && len(m.sessions) > 0 {
-		return m.pinView()
-	}
-	if m.envEditing && len(m.sessions) > 0 {
-		return m.envView()
-	}
-	if m.restartChoosing && len(m.sessions) > 0 {
-		return m.restartChoiceView()
-	}
-	if m.deleteConfirming && len(m.sessions) > 0 {
-		return m.deleteConfirmView()
-	}
-	if m.archiveConfirming && len(m.sessions) > 0 {
-		return m.archiveConfirmView()
-	}
-	if m.settingsOpen {
-		return m.settingsView()
-	}
-	if m.renaming && len(m.sessions) > 0 {
-		return m.renameView()
-	}
-	if m.launchInputsEditing && len(m.sessions) > 0 {
-		return m.launchInputsView()
-	}
-	if m.movingGroup && len(m.sessions) > 0 {
-		return m.moveGroupView()
-	}
-	if m.detail && len(m.sessions) > 0 {
-		return m.detailView()
-	}
-	if m.eventLogOpen {
-		return m.eventLogView()
+	for _, screen := range viewScreens {
+		if screen.active(m) {
+			return screen.render(m)
+		}
 	}
 	return m.mainView()
 }
