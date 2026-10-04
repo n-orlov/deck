@@ -70,17 +70,30 @@ type inputCountingModel struct {
 func (m *inputCountingModel) Unwrap() tea.Model { return m.Model }
 
 func (m *inputCountingModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	if key, ok := msg.(tea.KeyMsg); ok {
-		weight := int64(1)
-		if !key.Paste && len(key.Runes) > 0 {
-			weight = int64(len(key.Runes))
-		}
-		total := atomic.AddInt64(&m.total, weight)
-		writeInputCount(m.path, total)
-	}
+	m.countKey(msg)
 	inner, cmd := m.Model.Update(msg)
 	m.Model = inner
 	return m, cmd
+}
+
+// countKey adds a key message's weight to the running total and records it;
+// any other message is not counted.
+func (m *inputCountingModel) countKey(msg tea.Msg) {
+	key, ok := msg.(tea.KeyMsg)
+	if !ok {
+		return
+	}
+	total := atomic.AddInt64(&m.total, keyWeight(key))
+	writeInputCount(m.path, total)
+}
+
+// keyWeight is how many typed characters a key message stands for: its rune
+// count, or one for a paste, a named key or an empty rune list.
+func keyWeight(key tea.KeyMsg) int64 {
+	if key.Paste || len(key.Runes) == 0 {
+		return 1
+	}
+	return int64(len(key.Runes))
 }
 
 // writeInputCount overwrites path with total as a bare decimal integer,
@@ -111,11 +124,17 @@ func writeInputCountTemp(dir string, total int64) (name string, ok bool) {
 		return "", false
 	}
 	name = tmp.Name()
-	_, writeErr := fmt.Fprint(tmp, strconv.FormatInt(total, 10))
-	closeErr := tmp.Close()
-	if writeErr != nil || closeErr != nil {
+	if !writeAndClose(tmp, total) {
 		os.Remove(name)
 		return "", false
 	}
 	return name, true
+}
+
+// writeAndClose writes total into tmp and closes it, reporting whether both
+// steps succeeded (the close always runs).
+func writeAndClose(tmp *os.File, total int64) bool {
+	_, writeErr := fmt.Fprint(tmp, strconv.FormatInt(total, 10))
+	closeErr := tmp.Close()
+	return writeErr == nil && closeErr == nil
 }
