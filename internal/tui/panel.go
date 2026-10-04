@@ -1334,9 +1334,7 @@ func (m Model) wheelScrollableOverlay() scrollableOverlayKind {
 	// Every overlay that intercepts keys AHEAD of the three scrollable
 	// ones; none of them scrolls, so the wheel stays the no-op the
 	// blanket action guard already made it.
-	if m.interactive || m.creating || m.profileSwitching || m.pinning || m.envEditing ||
-		m.restartChoosing || m.deleteConfirming || m.archiveConfirming ||
-		m.settingsOpen || m.settingsDiscardConfirm || m.themePicking || m.launchInputsEditing {
+	if m.keysInterceptedAheadOfScrollables() {
 		return overlayScrollNone
 	}
 	switch {
@@ -1359,6 +1357,23 @@ func (m Model) wheelScrollableOverlay() scrollableOverlayKind {
 	// m.filtering falls through to here: it is dispatched after the three
 	// above and renders no scrollable viewport either.
 	return overlayScrollNone
+}
+
+// keysInterceptedAheadOfScrollables reports whether any overlay that Update's
+// KeyMsg dispatch serves AHEAD of help, rename, group-move, detail and event
+// log is open. None of them scrolls, so wheelScrollableOverlay answers
+// overlayScrollNone for all of them.
+func (m Model) keysInterceptedAheadOfScrollables() bool {
+	return m.interactive || m.creating || m.profileSwitching || m.pinning || m.envEditing ||
+		m.restartChoosing || m.confirmOrSettingsOverlayOpen()
+}
+
+// confirmOrSettingsOverlayOpen is the second half of
+// keysInterceptedAheadOfScrollables: the confirm, settings, theme-picker and
+// launch-input dialogs.
+func (m Model) confirmOrSettingsOverlayOpen() bool {
+	return m.deleteConfirming || m.archiveConfirming ||
+		m.settingsOpen || m.settingsDiscardConfirm || m.themePicking || m.launchInputsEditing
 }
 
 // scrollWheelOverlay applies one wheel notch (dir<0 up, dir>0 down) to
