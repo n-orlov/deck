@@ -66,12 +66,15 @@ func TestStoreDurabilityCrashHelper(_ *testing.T) {
 	if os.Getenv(durabilityHelperEnv) != "1" {
 		return
 	}
-	dbPath := os.Getenv(durabilityHelperDBEnv)
+	// The parent starts the helper with its working directory set to the
+	// database's directory (runCrashHelper), so only the file name crosses the
+	// environment boundary and the helper opens it relative to that directory.
+	dbName := filepath.Base(os.Getenv(durabilityHelperDBEnv))
 	sessionID := os.Getenv(durabilityHelperSessEnv)
 	mode := os.Getenv(durabilityHelperModeEnv)
 	readyPath := helperReadyPath()
 
-	st, err := OpenPath(filepath.Dir(dbPath), dbPath)
+	st, err := OpenPath(".", dbName)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "helper: open:", err)
 		os.Exit(2)
@@ -180,6 +183,7 @@ func runCrashHelper(t *testing.T, dbPath, sessionID, mode string) {
 		durabilityHelperModeEnv+"="+mode,
 		durabilityHelperRdyEnv+"="+readyPath,
 	)
+	cmd.Dir = filepath.Dir(dbPath) // the helper opens the database by file name, relative to here
 	cmd.Stderr = os.Stderr
 	if err := cmd.Start(); err != nil {
 		t.Fatalf("start crash helper (%s): %v", mode, err)
