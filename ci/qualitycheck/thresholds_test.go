@@ -26,7 +26,7 @@ func marshalConfig(t *testing.T, cfg config) string {
 func baselineConfig() config {
 	return config{
 		Coverage: coverageConfig{Enabled: true, TotalFloor: 85, PackageFloor: 80, FixtureFloor: 50},
-		Crap:     crapConfig{Enabled: true, Ceiling: 20, FixtureCeiling: 20},
+		Crap:     crapConfig{Enabled: true, Ceiling: 15, FixtureCeiling: 15},
 		Trivy:    trivyConfig{Enabled: true, Severity: "HIGH,CRITICAL"},
 	}
 }
@@ -90,7 +90,7 @@ func TestThresholdsNotLoosened_SeededLoosenedFloorFails(t *testing.T) {
 func TestThresholdsNotLoosened_SeededRaisedCeilingFails(t *testing.T) {
 	base := baselineConfig()
 	loosened := base
-	loosened.Crap.Ceiling = 25 // was 20: a higher ceiling is looser.
+	loosened.Crap.Ceiling = 20 // was 15: a higher ceiling is looser.
 	currentPath := marshalConfig(t, loosened)
 
 	err := checkThresholdsNotLoosened(currentPath, func() (config, error) { return base, nil })
@@ -121,7 +121,7 @@ func TestThresholdsNotLoosened_SeededTightenedCopyPasses(t *testing.T) {
 	base := baselineConfig()
 	tightened := config{
 		Coverage: coverageConfig{Enabled: true, TotalFloor: 90, PackageFloor: 85, FixtureFloor: 55},
-		Crap:     crapConfig{Enabled: true, Ceiling: 15, FixtureCeiling: 15},
+		Crap:     crapConfig{Enabled: true, Ceiling: 10, FixtureCeiling: 10},
 		Trivy:    trivyConfig{Enabled: true, Severity: "MEDIUM,HIGH,CRITICAL"},
 	}
 	currentPath := marshalConfig(t, tightened)
@@ -154,5 +154,36 @@ func TestThresholdsNotLoosened_MissingCurrentFileFails(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("want an error when the current ci/quality.json is missing, got nil")
+	}
+}
+
+// crapCeilingConfig is baselineConfig with the CRAP ceiling and fixture
+// ceiling both set to n.
+func crapCeilingConfig(n float64) config {
+	c := baselineConfig()
+	c.Crap.Ceiling = n
+	c.Crap.FixtureCeiling = n
+	return c
+}
+
+// TestThresholdsNotLoosened_CrapTwentyToFifteenPasses: the R193 stage, a
+// base at 20 and a checked-in copy at 15 is a tightening and passes.
+func TestThresholdsNotLoosened_CrapTwentyToFifteenPasses(t *testing.T) {
+	base := crapCeilingConfig(20)
+	currentPath := marshalConfig(t, crapCeilingConfig(15))
+
+	if err := checkThresholdsNotLoosened(currentPath, func() (config, error) { return base, nil }); err != nil {
+		t.Fatalf("tightening the CRAP ceiling 20 -> 15 must pass, got %v", err)
+	}
+}
+
+// TestThresholdsNotLoosened_CrapFifteenToTwentyFails: the reverse move, a
+// base at 15 and a copy back at 20, is a loosening and must fail.
+func TestThresholdsNotLoosened_CrapFifteenToTwentyFails(t *testing.T) {
+	base := crapCeilingConfig(15)
+	currentPath := marshalConfig(t, crapCeilingConfig(20))
+
+	if err := checkThresholdsNotLoosened(currentPath, func() (config, error) { return base, nil }); err == nil {
+		t.Fatal("loosening the CRAP ceiling 15 -> 20 must fail, got nil")
 	}
 }
