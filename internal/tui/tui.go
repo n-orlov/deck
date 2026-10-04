@@ -2260,17 +2260,19 @@ func (m Model) capturePreview() tea.Cmd {
 	}
 }
 
+// previewFitApplies reports whether passive preview fit is on and has
+// something to act on at all: not interactive, a tmux socket configured, a
+// selected session, and a preview panel actually shown.
+func (m *Model) previewFitApplies() bool {
+	return m.settings.PreviewFit && !m.interactive && m.tmuxClient.Socket != "" &&
+		m.hasSelectedSession() && m.computeLayout().PreviewShown
+}
+
 // previewFitCandidate is previewFit's eligibility guard: it reports the
 // selected session and the preview panel's content size when a passive fit
 // should be scheduled for it now, and ok=false when any precondition fails.
 func (m *Model) previewFitCandidate() (session store.Session, width, height int, ok bool) {
-	if !m.settings.PreviewFit || m.interactive || m.tmuxClient.Socket == "" {
-		return store.Session{}, 0, 0, false
-	}
-	if !m.hasSelectedSession() {
-		return store.Session{}, 0, 0, false
-	}
-	if !m.computeLayout().PreviewShown {
+	if !m.previewFitApplies() {
 		return store.Session{}, 0, 0, false
 	}
 	session, _ = m.selectedSession()
