@@ -8615,33 +8615,8 @@ func (m *Model) updateCreateExtraKey(msg tea.KeyMsg) bool {
 			m.createEnvReveal = !m.createEnvReveal
 			return true
 		}
-	case "ctrl+p":
-		// §11.7's second declared per-field key set on the cwd field (task
-		// 009, moved off up/down onto Ctrl+P/Ctrl+N by task 025 once ↑/↓
-		// became the dialog's own field-navigation keys): shell-history-style
-		// cycling through recent_cwds, older with each press -- readline's
-		// own "previous history" binding. Only field 1 (cwd) binds it --
-		// every other field's Ctrl+P/Ctrl+N stays a no-op here.
-		if m.createField == 1 {
-			m.cycleCreateCWDRecent(1)
-			return true
-		}
-	case "ctrl+n":
-		// readline's "next history": newer, eventually exiting the cycle
-		// back to whatever the field held before it started.
-		if m.createField == 1 {
-			m.cycleCreateCWDRecent(-1)
-			return true
-		}
-	case "end", "right":
-		// The ghost completion's two declared acceptance keys (task 010),
-		// right and end. Only field 1 (cwd) ever has a ghost, and only with the
-		// caret at the end of the field (§11.7); with no ghost showing they are
-		// §11.11's caret keys and nothing more, so they fall through to the
-		// editor below.
-		if m.createField == 1 && m.acceptCWDGhost() {
-			return true
-		}
+	case "ctrl+p", "ctrl+n", "end", "right":
+		return m.updateCreateCWDFieldKey(msg.String())
 	case "pgup":
 		// Task 016: the create modal moved onto framedDialogScrollable
 		// (its field set + candidate list + footer/error lines can wrap
@@ -8656,6 +8631,37 @@ func (m *Model) updateCreateExtraKey(msg tea.KeyMsg) bool {
 		return true
 	}
 	return false
+}
+
+// updateCreateCWDFieldKey handles the keys that only mean something on the
+// cwd field (field 1): Ctrl+P/Ctrl+N recent_cwds cycling and the ghost
+// completion's acceptance keys. Every other field leaves them to the editor.
+func (m *Model) updateCreateCWDFieldKey(key string) bool {
+	if m.createField != 1 {
+		return false
+	}
+	switch key {
+	case "ctrl+p":
+		// §11.7's second declared per-field key set on the cwd field (task
+		// 009, moved off up/down onto Ctrl+P/Ctrl+N by task 025 once ↑/↓
+		// became the dialog's own field-navigation keys): shell-history-style
+		// cycling through recent_cwds, older with each press -- readline's
+		// own "previous history" binding. Only field 1 (cwd) binds it --
+		// every other field's Ctrl+P/Ctrl+N stays a no-op here.
+		m.cycleCreateCWDRecent(1)
+		return true
+	case "ctrl+n":
+		// readline's "next history": newer, eventually exiting the cycle
+		// back to whatever the field held before it started.
+		m.cycleCreateCWDRecent(-1)
+		return true
+	}
+	// "end"/"right": the ghost completion's two declared acceptance keys
+	// (task 010). Only field 1 (cwd) ever has a ghost, and only with the
+	// caret at the end of the field (§11.7); with no ghost showing they are
+	// §11.11's caret keys and nothing more, so they fall through to the
+	// editor.
+	return m.acceptCWDGhost()
 }
 
 // editCreateField hands a key to the shared line editor on a text field of the
