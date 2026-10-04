@@ -1,6 +1,7 @@
 package main
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -72,5 +73,17 @@ func TestRun_MissingConfigPathIsUsageError(t *testing.T) {
 	}
 	if exitCode != 2 {
 		t.Errorf("exitCode = %d, want 2 (usage error)", exitCode)
+	}
+}
+
+// TestCheckedInConfigTurnsCrapOnAtThirty: the CRAP gate is on in the real
+// ci/quality.json, at 30 for product and for the cmd/fake-* fixtures.
+func TestCheckedInConfigTurnsCrapOnAtThirty(t *testing.T) {
+	cfg, err := loadConfig(filepath.Join(repoRoot(t), "ci", "quality.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.Crap.Enabled || cfg.Crap.Ceiling != 30 || cfg.Crap.FixtureCeiling != 30 {
+		t.Errorf("crap config = %+v, want enabled with ceiling 30 and fixture_ceiling 30", cfg.Crap)
 	}
 }

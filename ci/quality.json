@@ -6,7 +6,7 @@
         "fixture_floor": 50
     },
     "crap": {
-        "enabled": false,
+        "enabled": true,
         "ceiling": 30,
         "fixture_ceiling": 30
     },
