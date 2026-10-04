@@ -547,41 +547,61 @@ func (c *cappedHookReader) Read(p []byte) (int, error) {
 	return n, err
 }
 
-// runHook is intentionally selected before opening the normal application
-// store or constructing a tmux client. A late hook must not recreate deleted
-// state or bootstrap a tmux server.
-func runHook(ctx context.Context, settings config.Settings, stdin io.Reader) (runErr error) {
+// readHookPayload reads exactly one JSON object from stdin (capped at
+// maxHookStdinBytes) and returns it with surrounding whitespace trimmed.
+func readHookPayload(stdin io.Reader) ([]byte, error) {
 	var raw json.RawMessage
 	capped := &cappedHookReader{r: stdin, remaining: maxHookStdinBytes}
 	decoder := json.NewDecoder(capped)
 	if err := decoder.Decode(&raw); err != nil {
 		if capped.exceeded {
-			return errHookPayloadTooLarge
+			return nil, errHookPayloadTooLarge
 		}
-		return fmt.Errorf("read one JSON object: %w", err)
+		return nil, fmt.Errorf("read one JSON object: %w", err)
 	}
 	trimmed := bytes.TrimSpace(raw)
 	if len(trimmed) == 0 || trimmed[0] != '{' {
-		return errors.New("stdin must contain one JSON object")
+		return nil, errors.New("stdin must contain one JSON object")
 	}
 	var extra json.RawMessage
 	if err := decoder.Decode(&extra); err != io.EOF {
 		if err == nil {
-			return errors.New("stdin contains more than one JSON value")
+			return nil, errors.New("stdin contains more than one JSON value")
 		}
 		if capped.exceeded {
-			return errHookPayloadTooLarge
+			return nil, errHookPayloadTooLarge
 		}
-		return fmt.Errorf("reject trailing stdin: %w", err)
+		return nil, fmt.Errorf("reject trailing stdin: %w", err)
 	}
+	return trimmed, nil
+}
 
-	if info, err := os.Stat(settings.Paths.StateDB); err != nil {
+// requireStateDatabase refuses a hook when the state database is missing or
+// not a regular file: a late hook must never create it.
+func requireStateDatabase(path string) error {
+	info, err := os.Stat(path)
+	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return fmt.Errorf("state database does not exist: %s", settings.Paths.StateDB)
+			return fmt.Errorf("state database does not exist: %s", path)
 		}
 		return fmt.Errorf("inspect state database: %w", err)
-	} else if !info.Mode().IsRegular() {
-		return fmt.Errorf("state database is not a regular file: %s", settings.Paths.StateDB)
+	}
+	if !info.Mode().IsRegular() {
+		return fmt.Errorf("state database is not a regular file: %s", path)
+	}
+	return nil
+}
+
+// runHook is intentionally selected before opening the normal application
+// store or constructing a tmux client. A late hook must not recreate deleted
+// state or bootstrap a tmux server.
+func runHook(ctx context.Context, settings config.Settings, stdin io.Reader) (runErr error) {
+	trimmed, err := readHookPayload(stdin)
+	if err != nil {
+		return err
+	}
+	if err := requireStateDatabase(settings.Paths.StateDB); err != nil {
+		return err
 	}
 	db, err := store.Open(settings.Paths)
 	if err != nil {
