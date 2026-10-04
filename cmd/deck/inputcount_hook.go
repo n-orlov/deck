@@ -93,19 +93,29 @@ func (m *inputCountingModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 // harness, never part of deck's own observable contract, and must never
 // turn an otherwise-working process into a crash.
 func writeInputCount(path string, total int64) {
-	dir := filepath.Dir(path)
-	tmp, err := os.CreateTemp(dir, ".deck-input-count-*")
-	if err != nil {
-		return
-	}
-	name := tmp.Name()
-	_, writeErr := fmt.Fprint(tmp, strconv.FormatInt(total, 10))
-	closeErr := tmp.Close()
-	if writeErr != nil || closeErr != nil {
-		os.Remove(name)
+	name, ok := writeInputCountTemp(filepath.Dir(path), total)
+	if !ok {
 		return
 	}
 	if err := os.Rename(name, path); err != nil {
 		os.Remove(name)
 	}
+}
+
+// writeInputCountTemp writes total as a bare decimal integer into a fresh
+// temp file in dir and returns its name; ok is false (with the temp file
+// already removed) when the file could not be created, written or closed.
+func writeInputCountTemp(dir string, total int64) (name string, ok bool) {
+	tmp, err := os.CreateTemp(dir, ".deck-input-count-*")
+	if err != nil {
+		return "", false
+	}
+	name = tmp.Name()
+	_, writeErr := fmt.Fprint(tmp, strconv.FormatInt(total, 10))
+	closeErr := tmp.Close()
+	if writeErr != nil || closeErr != nil {
+		os.Remove(name)
+		return "", false
+	}
+	return name, true
 }
