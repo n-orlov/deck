@@ -79,7 +79,7 @@ jobs:
       - name: Build/refresh the CI image
         run: docker build -t deck-ci:local -f ci/Dockerfile ci
 
-      - name: Lint (gofmt -l, go vet, go mod tidy diff) -- fails fast, before the suite
+      - name: Lint (gofmt -l, go vet, go mod tidy diff, golangci-lint) -- fails fast, before the suite
         run: ci/run.sh ci/lint.sh
 
   suite:

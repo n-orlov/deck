@@ -46,6 +46,17 @@ fi
 exit 0
 `
 
+// golangciLintStub records the shared golangci-lint invocation and can be
+// told to report findings.
+const golangciLintStub = `#!/bin/sh
+echo "golangci-lint $*" >> "$LINTPROBE_LOG"
+if [ -n "${LINTPROBE_GOLANGCI_FAIL:-}" ]; then
+    echo "stub golangci-lint: findings" >&2
+    exit 1
+fi
+exit 0
+`
+
 const originalGoMod = "module example.com/lintprobe\n\ngo 1.25\n"
 
 func repositoryRoot() (string, error) {
@@ -87,6 +98,10 @@ func runLintScript(t *testing.T, switches ...string) lintRun {
 	if err != nil {
 		t.Fatalf("read ci/lint.sh: %v", err)
 	}
+	shared, err := os.ReadFile(filepath.Join(root, "ci", "golangci.sh"))
+	if err != nil {
+		t.Fatalf("read ci/golangci.sh: %v", err)
+	}
 
 	scratch := t.TempDir()
 	repo := filepath.Join(scratch, "repo")
@@ -101,13 +116,15 @@ func runLintScript(t *testing.T, switches ...string) lintRun {
 		content string
 		mode    os.FileMode
 	}{
-		filepath.Join(repo, "ci", "lint.sh"): {string(script), 0o755},
-		filepath.Join(repo, "a.go"):          {"package lintprobe\n", 0o644},
-		filepath.Join(repo, "go.mod"):        {originalGoMod, 0o644},
-		filepath.Join(repo, "go.sum"):        {"", 0o644},
-		filepath.Join(stubs, "go"):           {goStub, 0o755},
-		filepath.Join(stubs, "gofmt"):        {gofmtStub, 0o755},
-		logPath:                              {"", 0o644},
+		filepath.Join(repo, "ci", "lint.sh"):     {string(script), 0o755},
+		filepath.Join(repo, "ci", "golangci.sh"): {string(shared), 0o755},
+		filepath.Join(repo, "a.go"):              {"package lintprobe\n", 0o644},
+		filepath.Join(repo, "go.mod"):            {originalGoMod, 0o644},
+		filepath.Join(repo, "go.sum"):            {"", 0o644},
+		filepath.Join(stubs, "go"):               {goStub, 0o755},
+		filepath.Join(stubs, "gofmt"):            {gofmtStub, 0o755},
+		filepath.Join(stubs, "golangci-lint"):    {golangciLintStub, 0o755},
+		logPath:                                  {"", 0o644},
 	}
 	for path, f := range files {
 		if err := os.WriteFile(path, []byte(f.content), f.mode); err != nil {
@@ -119,7 +136,7 @@ func runLintScript(t *testing.T, switches ...string) lintRun {
 	if err != nil {
 		t.Fatalf("git not on PATH: %v", err)
 	}
-	for _, args := range [][]string{{"init", "-q"}, {"add", "a.go", "go.mod", "go.sum", "ci/lint.sh"}} {
+	for _, args := range [][]string{{"init", "-q"}, {"add", "a.go", "go.mod", "go.sum", "ci/lint.sh", "ci/golangci.sh"}} {
 		cmd := exec.Command(gitPath, args...)
 		cmd.Dir = repo
 		if out, err := cmd.CombinedOutput(); err != nil {
@@ -162,13 +179,15 @@ func runLintScript(t *testing.T, switches ...string) lintRun {
 	return result
 }
 
-// TestLintScriptRunsAllThreeStagesFailFastAndExitsOnDrift is the probe for
-// task 013's ci/lint.sh. By executing the script against recording stubs it
-// requires that:
+// TestLintScriptRunsAllStagesFailFastAndExitsOnDrift is the probe for
+// task 013's ci/lint.sh (golangci-lint added by R188). By executing the
+// script against recording stubs it requires that:
 //
 //   - clean tree: `gofmt -l <tracked .go files>`, then `go vet ./...`, then
-//     `go mod tidy` are all actually invoked, in that order, and the script
+//     `go mod tidy`, then `golangci-lint run ./...` (the shared ci/golangci.sh
+//     invocation) are all actually invoked, in that order, and the script
 //     exits 0;
+//   - golangci-lint findings: the script exits non-zero;
 //   - gofmt drift: the script exits non-zero and neither vet nor tidy runs;
 //   - vet failure: the script exits non-zero and tidy never runs;
 //   - go mod tidy drift: the script exits non-zero and restores go.mod.
@@ -177,10 +196,11 @@ func runLintScript(t *testing.T, switches ...string) lintRun {
 // ci/lint.sh -- the executable `go vet ./...` line alone deleted (its
 // progress echo left in place), and each drift branch's `exit 1` deleted:
 // see /run/ralphd/artifacts/probes/tier3/013-*.log.
-func TestLintScriptRunsAllThreeStagesFailFastAndExitsOnDrift(t *testing.T) {
+func TestLintScriptRunsAllStagesFailFastAndExitsOnDrift(t *testing.T) {
 	gofmtCall := "gofmt -l a.go"
 	vetCall := "go vet ./..."
 	tidyCall := "go mod tidy"
+	lintCall := "golangci-lint run ./..."
 
 	cases := []struct {
 		name      string
@@ -188,10 +208,11 @@ func TestLintScriptRunsAllThreeStagesFailFastAndExitsOnDrift(t *testing.T) {
 		wantFail  bool
 		wantCalls []string
 	}{
-		{"clean tree runs gofmt then vet then tidy and passes", nil, false, []string{gofmtCall, vetCall, tidyCall}},
+		{"clean tree runs gofmt then vet then tidy and passes", nil, false, []string{gofmtCall, vetCall, tidyCall, lintCall}},
 		{"gofmt drift fails before vet and tidy", []string{"LINTPROBE_GOFMT_DRIFT"}, true, []string{gofmtCall}},
 		{"vet failure fails before tidy", []string{"LINTPROBE_VET_FAIL"}, true, []string{gofmtCall, vetCall}},
-		{"go mod tidy drift fails", []string{"LINTPROBE_TIDY_DRIFT"}, true, []string{gofmtCall, vetCall, tidyCall}},
+		{"go mod tidy drift fails before golangci-lint", []string{"LINTPROBE_TIDY_DRIFT"}, true, []string{gofmtCall, vetCall, tidyCall}},
+		{"golangci-lint findings fail", []string{"LINTPROBE_GOLANGCI_FAIL"}, true, []string{gofmtCall, vetCall, tidyCall, lintCall}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

@@ -134,6 +134,10 @@ func looserThresholds(base, current config) []string {
 		problems = append(problems, "govulncheck.enabled: switched off (base had it on)")
 	}
 
+	if base.Golangci.Enabled && !current.Golangci.Enabled {
+		problems = append(problems, "golangci.enabled: switched off (base had it on)")
+	}
+
 	return problems
 }
 
