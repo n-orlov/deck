@@ -16,5 +16,8 @@
     },
     "govulncheck": {
         "enabled": true
+    },
+    "golangci": {
+        "enabled": true
     }
 }

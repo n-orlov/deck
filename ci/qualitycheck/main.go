@@ -61,6 +61,7 @@ type config struct {
 	Trivy    trivyConfig    `json:"trivy"`
 
 	Govulncheck govulncheckConfig `json:"govulncheck"`
+	Golangci    golangciConfig    `json:"golangci"`
 }
 
 // trivyBase carries the trivy gate's flag-supplied options (binary,
@@ -72,6 +73,9 @@ var trivyBase = trivyOptions{Target: ".", IgnoreFile: ".trivyignore", CacheDir: 
 // govulncheckBase carries the govulncheck gate's flag-supplied options.
 var govulncheckBase = govulncheckOptions{Target: "."}
 
+// golangciBase carries the golangci gate's flag-supplied options.
+var golangciBase = golangciOptions{Target: "."}
+
 func main() {
 	configPath := flag.String("config", "", "path to ci/quality.json (required)")
 	profilePath := flag.String("profile", "", "path to the merged coverage profile (required if an on gate needs it)")
@@ -82,6 +86,8 @@ func main() {
 	flag.StringVar(&govulncheckBase.Binary, "govulncheck-bin", "govulncheck", "govulncheck executable")
 	flag.StringVar(&govulncheckBase.Target, "govulncheck-target", ".", "module root the govulncheck gate scans")
 	flag.StringVar(&govulncheckBase.CacheDir, "govulncheck-cache", "", "XDG_CACHE_HOME for govulncheck (its vuln DB cache); empty inherits")
+	flag.StringVar(&golangciBase.Script, "golangci-script", "", "the shared golangci-lint invocation (default ci/golangci.sh under -golangci-target)")
+	flag.StringVar(&golangciBase.Target, "golangci-target", ".", "repository root the golangci gate runs from")
 	flag.Parse()
 
 	report, exitCode, err := run(*configPath, *profilePath)
@@ -152,6 +158,15 @@ func run(configPath, profilePath string) (report string, exitCode int, err error
 			return "", 2, rerr
 		}
 		results = append(results, gateResult{name: "govulncheck", ok: ok, output: out})
+	}
+
+	if cfg.Golangci.Enabled {
+		anyEnabled = true
+		ok, out, rerr := runGolangciGate(golangciBase)
+		if rerr != nil {
+			return "", 2, rerr
+		}
+		results = append(results, gateResult{name: "golangci", ok: ok, output: out})
 	}
 
 	var b strings.Builder

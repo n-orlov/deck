@@ -1,8 +1,11 @@
 #!/bin/sh
-# ci/lint.sh — fail-fast Go lint gate (R145): `gofmt -l` over every tracked
-# Go file, then `go vet ./...`, then a `go mod tidy` drift check on
-# go.mod/go.sum, in that order, stopping at the first failure so CI reports
-# the earliest, cheapest signal rather than piling up unrelated ones.
+# ci/lint.sh — fail-fast Go lint gate (R145, R188): `gofmt -l` over every
+# tracked Go file, then `go vet ./...`, then a `go mod tidy` drift check on
+# go.mod/go.sum, then golangci-lint (ci/golangci.sh, the same invocation
+# ci/quality.sh's golangci gate runs), in that order, stopping at the first
+# failure so CI reports the earliest, cheapest signal rather than piling up
+# unrelated ones. gofmt, vet and tidy live only here; golangci-lint's own
+# formatters are not enabled, so nothing is checked twice.
 #
 # Assumes `go` (and its bundled `gofmt`) are already on PATH -- true both in
 # a GitHub Actions runner (task C.5, .github/workflows/ci.yml) and inside the
@@ -54,4 +57,7 @@ if [ "$drift" -ne 0 ]; then
     exit 1
 fi
 
-echo "ci/lint.sh: clean (gofmt, go vet, go mod tidy all pass)"
+echo "ci/lint.sh: golangci-lint"
+sh ci/golangci.sh
+
+echo "ci/lint.sh: clean (gofmt, go vet, go mod tidy, golangci-lint all pass)"

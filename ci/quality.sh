@@ -13,9 +13,9 @@
 #   ci/run.sh ci/quality.sh ci-results        # same, explicit
 #   ci/run.sh ci/quality.sh /tmp/out my.json  # a test's own outdir + config
 #
-# Every gate in the checked-in ci/quality.json starts OFF (R187's "no
-# gate on yet"): a later task flips one on only after the product passes
-# it locally. With every gate off this script still runs, prints that
+# Every gate in ci/quality.json is flipped on only after the product passes
+# it locally; the golangci gate (R188) runs ci/golangci.sh, the same single
+# invocation ci/lint.sh runs. With every gate off this script still runs, prints that
 # nothing is enabled, and exits 0 -- so it is safe to wire into ci.yml
 # (task 086) before any gate is live.
 set -eu

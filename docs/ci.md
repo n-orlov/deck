@@ -11,8 +11,8 @@ look at the Actions run itself, found by its head sha.
 
 | job | runs on | purpose |
 |---|---|---|
-| `lint` | self-hosted `[self-hosted, linux, x64, deck]` | `gofmt -l`, `go vet ./...`, `go mod tidy` drift check, in that order, via `ci/lint.sh`. Fails fast, before the suite. |
-| `suite` | self-hosted `[self-hosted, linux, x64, deck]`, `needs: lint` | Builds/refreshes the `deck-ci:local` image, runs `ci/run.sh ci/suite.sh` (the whole `go test -p=1 -count=1 ./...` matrix), then, on `schedule`/`workflow_dispatch` only, drops the cached trivy and govulncheck databases (R190's nightly rescan: both scanners then run through `ci/quality.sh` on fresh data, and a newly disclosed vulnerability fails the job, which `notify` reports), then `ci/run.sh ci/quality.sh` (R187's quality gates; the trivy and govulncheck gates are on, the rest `enabled: false` until a later task flips them on), and on `schedule`/`workflow_dispatch` also runs `ci/stability.sh 3` (three clean-state repetitions) with `-race` enabled. The job fails if the suite, the quality gates, or (nightly) stability failed. Writes the job summary and uploads raw results as a workflow artifact. |
+| `lint` | self-hosted `[self-hosted, linux, x64, deck]` | `gofmt -l`, `go vet ./...`, `go mod tidy` drift check, then golangci-lint (R188), in that order, via `ci/lint.sh`. Fails fast, before the suite. |
+| `suite` | self-hosted `[self-hosted, linux, x64, deck]`, `needs: lint` | Builds/refreshes the `deck-ci:local` image, runs `ci/run.sh ci/suite.sh` (the whole `go test -p=1 -count=1 ./...` matrix), then, on `schedule`/`workflow_dispatch` only, drops the cached trivy and govulncheck databases (R190's nightly rescan: both scanners then run through `ci/quality.sh` on fresh data, and a newly disclosed vulnerability fails the job, which `notify` reports), then `ci/run.sh ci/quality.sh` (R187's quality gates; coverage, trivy, govulncheck and golangci are on, the rest `enabled: false` until a later task flips them on), and on `schedule`/`workflow_dispatch` also runs `ci/stability.sh 3` (three clean-state repetitions) with `-race` enabled. The job fails if the suite, the quality gates, or (nightly) stability failed. Writes the job summary and uploads raw results as a workflow artifact. |
 | `report (Allure)` | self-hosted, `needs: [lint, suite]` | Turns the JUnit `suite` produced into an Allure report, merges it into the persisted `gh-pages` site tree, uploads the rendered report as a workflow artifact, and stages the merged tree as a Pages artifact. Holds no `pages:`/`id-token:` permission -- it stages, it never deploys. |
 | `publish (Pages)` | `ubuntu-latest`, `needs: report` | Deploys the root-triggered (`push`/`schedule`/`workflow_dispatch`) Pages artifact. Holds `pages: write`/`id-token: write`. Gated to `push`/`schedule`/`workflow_dispatch` only -- never `pull_request` (a PR-branch deploy is rejected server-side by the repo's `github-pages` environment's branch policy regardless; see "Publishing a PR's own report" below for how a PR's own report still gets published). |
 | `pr-comment` | `ubuntu-latest`, `needs: report` | Runs `go run ./ci/prcomment`, which pages through every existing PR comment and creates or updates the one comment (keyed on an HTML marker) carrying the PR's own `/pr/<n>/` Allure link and its head sha. Only for `pull_request` events whose head repo is this repository. |
@@ -34,8 +34,14 @@ file; production code has none, and golangci's default skip of files with a
 "generated" header is turned off (`exclusions.generated: disable`).
 `ci/lintcheck/golangci_test.go` runs the real binary to prove a seeded unchecked
 error (also under a generated-file header), a `//nolint` without a linter name or
-a reason, and an empty package list each fail. It is not yet a required gate:
-`ci/lint.sh` does not run it until the tree is at zero findings.
+a reason, and an empty package list each fail. It is a required gate at zero
+findings: `ci/golangci.sh` is the one invocation (`golangci-lint run ./...`
+from the repository root, tests included), run by `ci/lint.sh` (the `lint` job,
+before the suite) and by `ci/quality.sh`'s `golangci` gate, so the two cannot
+disagree. `gofmt`, `go vet` and `go mod tidy` stay only in `ci/lint.sh`
+(golangci's formatters are off). `ci/workflowcheck/lintgate_test.go` fails if
+the lint job stops reaching the linter, the quality gate is off, or those three
+checks appear in a second place.
 
 `go.mod` carries a `toolchain go1.25.N` line (matching the `deck-ci` image's
 Go, `ci/Dockerfile`). `actions/setup-go` with `go-version-file: go.mod`
@@ -541,6 +547,9 @@ threshold from here and nowhere else:
     },
     "govulncheck": {
         "enabled": true
+    },
+    "golangci": {
+        "enabled": true
     }
 }
 ```
@@ -588,6 +597,10 @@ threshold from here and nowhere else:
   tests (`ci/qualitycheck/govulncheck_test.go`) run the real govulncheck
   against a vendored vulnerable-module fixture with a local `file://`
   database, so they need no network.
+- `golangci` (R188) runs `ci/golangci.sh`, the same single invocation as
+  `ci/lint.sh`'s last stage, and has no threshold: any finding, a missing
+  script or a linter that cannot run fails it. Switching it off is a loosening
+  the threshold test rejects (`ci/qualitycheck/golangci_test.go`).
 - The other gates start `enabled: false` (R187: "no gate on yet"). A later
   task flips one on only once the product passes it locally.
 
