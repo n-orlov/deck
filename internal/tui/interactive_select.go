@@ -78,14 +78,17 @@ func (m Model) previewCellAtSideBySide(layout LayoutResult, x, y int) (col, row 
 	}
 	contentWidth, contentHeight := m.previewContentSize()
 	contentRow := y - 1
-	if contentRow < 0 || contentRow >= contentHeight {
-		return 0, 0, false
-	}
 	contentCol := x - sw - 2
-	if contentCol < 0 || contentCol >= contentWidth {
+	if !withinBox(contentCol, contentRow, contentWidth, contentHeight) {
 		return 0, 0, false
 	}
 	return contentCol, contentRow, true
+}
+
+// withinBox reports whether the cell (col, row) lies inside a width x
+// height box anchored at (0, 0).
+func withinBox(col, row, width, height int) bool {
+	return col >= 0 && col < width && row >= 0 && row < height
 }
 
 // previewCellAtStacked mirrors hitTestStacked's own accounting: the
@@ -105,7 +108,7 @@ func (m Model) previewCellAtStacked(layout LayoutResult, x, y int) (col, row int
 	contentWidth, contentHeight := m.previewContentSize()
 	contentCol := x - 2
 	contentRow := y - 1
-	if contentCol < 0 || contentCol >= contentWidth || contentRow < 0 || contentRow >= contentHeight {
+	if !withinBox(contentCol, contentRow, contentWidth, contentHeight) {
 		return 0, 0, false
 	}
 	return contentCol, contentRow, true
