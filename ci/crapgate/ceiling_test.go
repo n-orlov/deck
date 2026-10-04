@@ -28,15 +28,15 @@ func checkedInCrap(t *testing.T) (enabled bool, ceiling, fixtureCeiling float64)
 	return cfg.Crap.Enabled, cfg.Crap.Ceiling, cfg.Crap.FixtureCeiling
 }
 
-// TestCheckedInCrapGateIsOnAtThirty: R191's first stage -- the gate is on,
-// at 30 for product and for the cmd/fake-* fixtures alike.
-func TestCheckedInCrapGateIsOnAtThirty(t *testing.T) {
+// TestCheckedInCrapGateIsOnAtTwenty: R192's stage -- the gate is on,
+// at 20 for product and for the cmd/fake-* fixtures alike.
+func TestCheckedInCrapGateIsOnAtTwenty(t *testing.T) {
 	enabled, ceiling, fixtureCeiling := checkedInCrap(t)
 	if !enabled {
 		t.Error("ci/quality.json: crap.enabled is false, want the gate on")
 	}
-	if ceiling != 30 || fixtureCeiling != 30 {
-		t.Errorf("ci/quality.json: crap ceiling=%v fixture_ceiling=%v, want 30 and 30", ceiling, fixtureCeiling)
+	if ceiling != 20 || fixtureCeiling != 20 {
+		t.Errorf("ci/quality.json: crap ceiling=%v fixture_ceiling=%v, want 20 and 20", ceiling, fixtureCeiling)
 	}
 }
 

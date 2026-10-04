@@ -540,7 +540,7 @@ threshold from here and nowhere else:
         "enabled": true, "total_floor": 85, "package_floor": 80, "fixture_floor": 50
     },
     "crap": {
-        "enabled": true, "ceiling": 30, "fixture_ceiling": 30
+        "enabled": true, "ceiling": 20, "fixture_ceiling": 20
     },
     "trivy": {
         "enabled": true, "severity": "HIGH,CRITICAL"
@@ -558,9 +558,9 @@ threshold from here and nowhere else:
   ci/quality.json -profile <outdir>/coverage-merged.out`. See "The coverage
   gate" below for what it scores. Floors never go down (the loosening test
   covers the three floors and the flag).
-- `crap` (R191) is on at ceiling 30 for product and `cmd/fake-*` alike, with no
-  allow-list and no exempted function: `ci/quality.sh` runs `go run ./ci/crapgate
-  -profile <outdir>/coverage-merged.out -max 30` over the whole module. The gate
+- `crap` (R191; 30 until R192 tightened it to 20) is on at ceiling 20 for
+  product and `cmd/fake-*` alike, with no allow-list and no exempted function: `ci/quality.sh` runs `go run ./ci/crapgate
+  -profile <outdir>/coverage-merged.out -max 20` over the whole module. The gate
   is only valid on the merged unit + features profile (a unit-only profile
   scores every feature-covered function low). Its own tests seed a function
   over the checked-in ceiling and require the gate to fail and name it.
