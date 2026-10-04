@@ -3541,6 +3541,17 @@ func (m Model) onSessionsBulkDeleted(msg sessionsBulkDeleted) (tea.Model, tea.Cm
 	return m, tea.Batch(cmds...)
 }
 
+// bulkHookNote is one bulk row's hook message, name-prefixed here and bare in
+// the single-row branch: a bulk dd's note can carry several rows, so which
+// row a failure belongs to is only recoverable from the prefix.
+func bulkHookNote(s store.Session, message string) string {
+	label := s.Name
+	if label == "" {
+		label = s.ID
+	}
+	return label + ": " + message
+}
+
 // summariseBulkDelete folds a bulk delete's per-row results into the ids that
 // were deleted, the first delete error, the first purge error and the
 // teardown-hook notes.
@@ -3564,14 +3575,7 @@ func summariseBulkDelete(msg sessionsBulkDeleted) bulkDeleteSummary {
 	// that failed to delete can still have a hook worth reporting.
 	for i, s := range msg.sessions {
 		if i < len(msg.hookMessages) && msg.hookMessages[i] != "" {
-			// Name-prefixed here and bare in the single-row branch: a
-			// bulk dd's note can carry several rows, so which row a
-			// failure belongs to is only recoverable from the prefix.
-			label := s.Name
-			if label == "" {
-				label = s.ID
-			}
-			sum.hookNotes = append(sum.hookNotes, label+": "+msg.hookMessages[i])
+			sum.hookNotes = append(sum.hookNotes, bulkHookNote(s, msg.hookMessages[i]))
 		}
 		if i < len(msg.purgeErrs) && msg.purgeErrs[i] != nil && sum.firstPurgeErr == nil {
 			sum.firstPurgeErr = msg.purgeErrs[i]
