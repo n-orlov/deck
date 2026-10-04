@@ -186,24 +186,38 @@ func writeCells(b *strings.Builder, its []item, caret int, st Style, offered boo
 	inSel := false
 	for i, it := range its {
 		isCaret := i == caret && !st.Blurred
-		want := offered && it.text != "" && !isCaret
-		if want && !inSel {
-			b.WriteString(st.Selection)
-			inSel = true
-		} else if !want && inSel {
-			b.WriteString(sgrDefaultBgOff)
-			inSel = false
-		}
-		switch {
-		case isCaret && it.text == "":
-			b.WriteString(sgrReverse + " " + sgrReverseOff)
-		case isCaret:
-			b.WriteString(sgrReverse + it.text + sgrReverseOff)
-		default:
-			b.WriteString(it.text)
-		}
+		inSel = writeSelectionEdge(b, st, inSel, offered && it.text != "" && !isCaret)
+		writeCell(b, it, isCaret)
 	}
 	if inSel {
 		b.WriteString(sgrDefaultBgOff)
+	}
+}
+
+// writeSelectionEdge opens the selection background when the next cell wants
+// it and none is open, closes it when the next cell does not, and returns
+// whether the background is open afterwards.
+func writeSelectionEdge(b *strings.Builder, st Style, inSel, want bool) bool {
+	if want && !inSel {
+		b.WriteString(st.Selection)
+		return true
+	}
+	if !want && inSel {
+		b.WriteString(sgrDefaultBgOff)
+		return false
+	}
+	return inSel
+}
+
+// writeCell writes one item, reversed when it is the caret cell (the end
+// cell, which has no text, as a reversed space).
+func writeCell(b *strings.Builder, it item, isCaret bool) {
+	switch {
+	case isCaret && it.text == "":
+		b.WriteString(sgrReverse + " " + sgrReverseOff)
+	case isCaret:
+		b.WriteString(sgrReverse + it.text + sgrReverseOff)
+	default:
+		b.WriteString(it.text)
 	}
 }
