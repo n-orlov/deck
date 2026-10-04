@@ -933,18 +933,7 @@ func (m Model) cropPreviewBottomLeft(raw []byte, contentWidth, contentHeight, re
 	}
 	rows := splitPreviewLines(raw)
 	cropped := realWidth > contentWidth || realHeight > contentHeight
-	avail := contentHeight
-	if cropped {
-		avail--
-	}
-	if avail < 0 {
-		avail = 0
-	}
-	start := 0
-	if len(rows) > avail {
-		start = len(rows) - avail
-	}
-	visible := rows[start:]
+	visible := bottomRows(rows, previewRowsAvailable(contentHeight, cropped))
 	lines := make([]string, 0, contentHeight)
 	owners := make([]previewLineOwner, 0, contentHeight)
 	if cropped {
@@ -962,6 +951,26 @@ func (m Model) cropPreviewBottomLeft(raw []byte, contentWidth, contentHeight, re
 		owners = append(owners, previewLineDeckOwned)
 	}
 	return lines, owners
+}
+
+// previewRowsAvailable is how many captured rows fit under the contentHeight
+// window: all of it, less the one geometry line a cropped preview spends,
+// never below zero.
+func previewRowsAvailable(contentHeight int, cropped bool) int {
+	avail := contentHeight
+	if cropped {
+		avail--
+	}
+	return max(avail, 0)
+}
+
+// bottomRows is the last n rows (all of them when there are fewer): the
+// bottom-left crop keeps the pane's newest output.
+func bottomRows(rows []string, n int) []string {
+	if len(rows) > n {
+		return rows[len(rows)-n:]
+	}
+	return rows
 }
 
 // paintForeignFill closes whatever SGR state a foreign captured row's own
