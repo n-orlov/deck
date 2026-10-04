@@ -1293,6 +1293,23 @@ func (s *Store) SetSessionEnvValue(ctx context.Context, sessionID, key, value, s
 		return fmt.Errorf("begin set session env: %w", err)
 	}
 	defer rollbackTx(tx)
+	if err := writeSessionEnvKeyTx(ctx, tx, sessionID, key, value); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO events (session_id, at, kind, reason, payload) VALUES (?, ?, ?, ?, ?)`,
+		sessionID, at, "set_env", source, key); err != nil {
+		return fmt.Errorf("record set session %q env event: %w", sessionID, err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit set session %q env: %w", sessionID, err)
+	}
+	return nil
+}
+
+// writeSessionEnvKeyTx reads the row's env map inside tx, sets one key and
+// writes the map back with env_dirty = 1; SetSessionEnvValue records the
+// event and commits afterwards.
+func writeSessionEnvKeyTx(ctx context.Context, tx *sql.Tx, sessionID, key, value string) error {
 	var envJSON string
 	if err := tx.QueryRowContext(ctx, `SELECT env FROM sessions WHERE id = ?`, sessionID).Scan(&envJSON); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -1321,13 +1338,6 @@ func (s *Store) SetSessionEnvValue(ctx context.Context, sessionID, key, value, s
 	}
 	if affected != 1 {
 		return fmt.Errorf("session %q not found", sessionID)
-	}
-	if _, err := tx.ExecContext(ctx, `INSERT INTO events (session_id, at, kind, reason, payload) VALUES (?, ?, ?, ?, ?)`,
-		sessionID, at, "set_env", source, key); err != nil {
-		return fmt.Errorf("record set session %q env event: %w", sessionID, err)
-	}
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("commit set session %q env: %w", sessionID, err)
 	}
 	return nil
 }
