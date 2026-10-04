@@ -342,67 +342,91 @@ func runCommands(input io.Reader, stdout, stderr io.Writer, hooks map[string]str
 	// same literal the "state" pane command renders, so this is one
 	// template, not a duplicated rule.
 	say(stdout, codexPaneStates["starting"])
-	var session *codexSession
+	runner := &commandRunner{
+		stdout:    stdout,
+		stderr:    stderr,
+		hooks:     hooks,
+		trusted:   trusted,
+		resumeID:  resumeID,
+		codexHome: codexHome,
+	}
 	scanner := bufio.NewScanner(input)
 	for scanner.Scan() {
-		var request struct {
-			Command  string         `json:"command"`
-			Event    string         `json:"event"`
-			Payload  map[string]any `json:"payload"`
-			Text     string         `json:"text"`
-			ToolName string         `json:"tool_name"`
-			Message  string         `json:"message"`
-			Name     string         `json:"name"`
-		}
+		var request paneRequest
 		if err := json.Unmarshal(scanner.Bytes(), &request); err != nil {
 			return fmt.Errorf("decode command: %w", err)
 		}
-		switch request.Command {
-		case "hook":
-			if err := fireHook(stdout, stderr, hooks, trusted, request.Event, request.Payload); err != nil {
-				return err
-			}
-		case "prompt":
-			var err error
-			session, err = submitPrompt(stdout, stderr, hooks, trusted, session, resumeID, codexHome, request.Text)
-			if err != nil {
-				return err
-			}
-		case "permission":
-			if err := requestPermission(stdout, stderr, hooks, trusted, session, request.ToolName); err != nil {
-				return err
-			}
-		case "stop":
-			if err := stopTurn(stdout, stderr, hooks, trusted, session, request.Message); err != nil {
-				return err
-			}
-		case "state":
-			if err := renderPaneState(stdout, request.Name); err != nil {
-				return err
-			}
-		case "exit":
-			// A clean exit fires SessionEnd first, exactly like a real
-			// `/quit` -- but only when a session actually started (task
-			// 020's own "hook"-only tests never call "prompt", so session
-			// is nil there and this is skipped, preserving their behaviour
-			// unchanged) and only when SessionEnd was actually injected via
-			// -c, exactly like every other event fired here.
-			if session != nil {
-				if _, injected := hooks["SessionEnd"]; injected {
-					if err := fireHook(stdout, stderr, hooks, trusted, "SessionEnd", session.payload(map[string]any{"reason": "other"})); err != nil {
-						return err
-					}
-				}
-			}
+		done, err := runner.run(request)
+		if err != nil {
+			return err
+		}
+		if done {
 			return nil
-		default:
-			return fmt.Errorf("unknown command %q", request.Command)
 		}
 	}
 	if err := scanner.Err(); err != nil {
 		return fmt.Errorf("read command: %w", err)
 	}
 	return nil
+}
+
+// paneRequest is one decoded input line of the pane-side control surface.
+type paneRequest struct {
+	Command  string         `json:"command"`
+	Event    string         `json:"event"`
+	Payload  map[string]any `json:"payload"`
+	Text     string         `json:"text"`
+	ToolName string         `json:"tool_name"`
+	Message  string         `json:"message"`
+	Name     string         `json:"name"`
+}
+
+// commandRunner carries the invocation-wide state every pane command needs,
+// including the session that the first "prompt" command mints.
+type commandRunner struct {
+	stdout, stderr io.Writer
+	hooks          map[string]string
+	trusted        bool
+	resumeID       string
+	codexHome      string
+	session        *codexSession
+}
+
+// run executes one pane command; done is true once a clean "exit" ended the
+// command loop.
+func (r *commandRunner) run(request paneRequest) (done bool, err error) {
+	switch request.Command {
+	case "hook":
+		return false, fireHook(r.stdout, r.stderr, r.hooks, r.trusted, request.Event, request.Payload)
+	case "prompt":
+		r.session, err = submitPrompt(r.stdout, r.stderr, r.hooks, r.trusted, r.session, r.resumeID, r.codexHome, request.Text)
+		return false, err
+	case "permission":
+		return false, requestPermission(r.stdout, r.stderr, r.hooks, r.trusted, r.session, request.ToolName)
+	case "stop":
+		return false, stopTurn(r.stdout, r.stderr, r.hooks, r.trusted, r.session, request.Message)
+	case "state":
+		return false, renderPaneState(r.stdout, request.Name)
+	case "exit":
+		return true, r.fireSessionEnd()
+	default:
+		return false, fmt.Errorf("unknown command %q", request.Command)
+	}
+}
+
+// fireSessionEnd: a clean exit fires SessionEnd first, exactly like a real
+// `/quit` -- but only when a session actually started (task 020's own
+// "hook"-only tests never call "prompt", so session is nil there and this is
+// skipped, preserving their behaviour unchanged) and only when SessionEnd was
+// actually injected via -c, exactly like every other event fired here.
+func (r *commandRunner) fireSessionEnd() error {
+	if r.session == nil {
+		return nil
+	}
+	if _, injected := r.hooks["SessionEnd"]; !injected {
+		return nil
+	}
+	return fireHook(r.stdout, r.stderr, r.hooks, r.trusted, "SessionEnd", r.session.payload(map[string]any{"reason": "other"}))
 }
 
 // codexSession is the one CLI-minted (or, on `resume <id>`, reused)
