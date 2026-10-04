@@ -102,29 +102,8 @@ func skipDirName(name string) bool {
 // "an optional package or <pkg-dir>:<file,...> filter").
 func resolveSourceFiles(moduleRoot, filter string) ([]string, error) {
 	dir, explicitFiles, whole := parseFilter(filter)
-
 	if whole {
-		var files []string
-		walkErr := filepath.Walk(moduleRoot, func(path string, info os.FileInfo, err error) error {
-			if err != nil {
-				return err
-			}
-			if info.IsDir() {
-				if path != moduleRoot && skipDirName(info.Name()) {
-					return filepath.SkipDir
-				}
-				return nil
-			}
-			if strings.HasSuffix(path, ".go") && !strings.HasSuffix(path, "_test.go") {
-				files = append(files, path)
-			}
-			return nil
-		})
-		if walkErr != nil {
-			return nil, walkErr
-		}
-		sort.Strings(files)
-		return files, nil
+		return walkSourceFiles(moduleRoot)
 	}
 
 	absDir := filepath.Join(moduleRoot, filepath.FromSlash(dir))
@@ -137,29 +116,66 @@ func resolveSourceFiles(moduleRoot, filter string) ([]string, error) {
 	}
 
 	if explicitFiles != nil {
-		files := make([]string, 0, len(explicitFiles))
-		for _, f := range explicitFiles {
-			p := filepath.Join(absDir, f)
-			if _, statErr := os.Stat(p); statErr != nil {
-				return nil, fmt.Errorf("filter file %q: %w", p, statErr)
-			}
-			files = append(files, p)
-		}
-		return files, nil
+		return explicitSourceFiles(absDir, explicitFiles)
 	}
+	return dirSourceFiles(absDir)
+}
 
+// isSourceFile reports whether name is a non-test Go source file.
+func isSourceFile(name string) bool {
+	return strings.HasSuffix(name, ".go") && !strings.HasSuffix(name, "_test.go")
+}
+
+// walkSourceFiles returns every non-test Go file under moduleRoot, sorted,
+// never descending into a skipDirName directory below the root.
+func walkSourceFiles(moduleRoot string) ([]string, error) {
+	var files []string
+	walkErr := filepath.Walk(moduleRoot, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if info.IsDir() {
+			if path != moduleRoot && skipDirName(info.Name()) {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if isSourceFile(path) {
+			files = append(files, path)
+		}
+		return nil
+	})
+	if walkErr != nil {
+		return nil, walkErr
+	}
+	sort.Strings(files)
+	return files, nil
+}
+
+// explicitSourceFiles joins each named file onto absDir, failing on the
+// first one that does not exist.
+func explicitSourceFiles(absDir string, names []string) ([]string, error) {
+	files := make([]string, 0, len(names))
+	for _, f := range names {
+		p := filepath.Join(absDir, f)
+		if _, statErr := os.Stat(p); statErr != nil {
+			return nil, fmt.Errorf("filter file %q: %w", p, statErr)
+		}
+		files = append(files, p)
+	}
+	return files, nil
+}
+
+// dirSourceFiles returns the non-test Go files directly in absDir, sorted.
+func dirSourceFiles(absDir string) ([]string, error) {
 	entries, err := os.ReadDir(absDir)
 	if err != nil {
 		return nil, err
 	}
 	var files []string
 	for _, e := range entries {
-		if e.IsDir() {
-			continue
-		}
-		name := e.Name()
-		if strings.HasSuffix(name, ".go") && !strings.HasSuffix(name, "_test.go") {
-			files = append(files, filepath.Join(absDir, name))
+		if !e.IsDir() && isSourceFile(e.Name()) {
+			files = append(files, filepath.Join(absDir, e.Name()))
 		}
 	}
 	sort.Strings(files)
