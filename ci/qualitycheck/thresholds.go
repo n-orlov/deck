@@ -82,62 +82,66 @@ func loadBaseConfig(repoRoot string) (config, error) {
 // is the passing case -- tightening is always allowed.
 func looserThresholds(base, current config) []string {
 	var problems []string
+	problems = append(problems, looserCoverage(base.Coverage, current.Coverage)...)
+	problems = append(problems, looserCrap(base.Crap, current.Crap)...)
+	problems = append(problems, looserTrivy(base.Trivy, current.Trivy)...)
+	problems = append(problems, switchedOff("govulncheck", base.Govulncheck.Enabled, current.Govulncheck.Enabled)...)
+	problems = append(problems, switchedOff("golangci", base.Golangci.Enabled, current.Golangci.Enabled)...)
+	return problems
+}
 
-	if base.Coverage.Enabled && !current.Coverage.Enabled {
-		problems = append(problems, "coverage.enabled: switched off (base had it on)")
+// switchedOff reports a gate base had on that current has off.
+func switchedOff(gate string, base, current bool) []string {
+	if base && !current {
+		return []string{gate + ".enabled: switched off (base had it on)"}
 	}
-	if current.Coverage.TotalFloor < base.Coverage.TotalFloor {
-		problems = append(problems, fmt.Sprintf(
-			"coverage.total_floor: %v < base %v (a floor must never go down)",
-			current.Coverage.TotalFloor, base.Coverage.TotalFloor))
-	}
-	if current.Coverage.PackageFloor < base.Coverage.PackageFloor {
-		problems = append(problems, fmt.Sprintf(
-			"coverage.package_floor: %v < base %v (a floor must never go down)",
-			current.Coverage.PackageFloor, base.Coverage.PackageFloor))
-	}
-	if current.Coverage.FixtureFloor < base.Coverage.FixtureFloor {
-		problems = append(problems, fmt.Sprintf(
-			"coverage.fixture_floor: %v < base %v (a floor must never go down)",
-			current.Coverage.FixtureFloor, base.Coverage.FixtureFloor))
-	}
+	return nil
+}
 
-	if base.Crap.Enabled && !current.Crap.Enabled {
-		problems = append(problems, "crap.enabled: switched off (base had it on)")
+// lowerFloor reports a coverage floor that went down.
+func lowerFloor(name string, base, current float64) []string {
+	if current < base {
+		return []string{fmt.Sprintf("coverage.%s: %v < base %v (a floor must never go down)", name, current, base)}
 	}
-	if current.Crap.Ceiling > base.Crap.Ceiling {
-		problems = append(problems, fmt.Sprintf(
-			"crap.ceiling: %v > base %v (a ceiling must never go up)",
-			current.Crap.Ceiling, base.Crap.Ceiling))
-	}
-	if current.Crap.FixtureCeiling > base.Crap.FixtureCeiling {
-		problems = append(problems, fmt.Sprintf(
-			"crap.fixture_ceiling: %v > base %v (a ceiling must never go up)",
-			current.Crap.FixtureCeiling, base.Crap.FixtureCeiling))
-	}
+	return nil
+}
 
-	if base.Trivy.Enabled && !current.Trivy.Enabled {
-		problems = append(problems, "trivy.enabled: switched off (base had it on)")
+// raisedCeiling reports a CRAP ceiling that went up.
+func raisedCeiling(name string, base, current float64) []string {
+	if current > base {
+		return []string{fmt.Sprintf("crap.%s: %v > base %v (a ceiling must never go up)", name, current, base)}
 	}
-	if base.Trivy.Enabled {
-		have := severitySet(current.Trivy.Severity)
-		for s := range severitySet(base.Trivy.Severity) {
-			if !have[s] {
-				problems = append(problems, fmt.Sprintf(
-					"trivy.severity: %q no longer covers %s (base %q; a severity must never be dropped)",
-					current.Trivy.Severity, s, base.Trivy.Severity))
-			}
+	return nil
+}
+
+func looserCoverage(base, current coverageConfig) []string {
+	problems := switchedOff("coverage", base.Enabled, current.Enabled)
+	problems = append(problems, lowerFloor("total_floor", base.TotalFloor, current.TotalFloor)...)
+	problems = append(problems, lowerFloor("package_floor", base.PackageFloor, current.PackageFloor)...)
+	problems = append(problems, lowerFloor("fixture_floor", base.FixtureFloor, current.FixtureFloor)...)
+	return problems
+}
+
+func looserCrap(base, current crapConfig) []string {
+	problems := switchedOff("crap", base.Enabled, current.Enabled)
+	problems = append(problems, raisedCeiling("ceiling", base.Ceiling, current.Ceiling)...)
+	problems = append(problems, raisedCeiling("fixture_ceiling", base.FixtureCeiling, current.FixtureCeiling)...)
+	return problems
+}
+
+func looserTrivy(base, current trivyConfig) []string {
+	problems := switchedOff("trivy", base.Enabled, current.Enabled)
+	if !base.Enabled {
+		return problems
+	}
+	have := severitySet(current.Severity)
+	for s := range severitySet(base.Severity) {
+		if !have[s] {
+			problems = append(problems, fmt.Sprintf(
+				"trivy.severity: %q no longer covers %s (base %q; a severity must never be dropped)",
+				current.Severity, s, base.Severity))
 		}
 	}
-
-	if base.Govulncheck.Enabled && !current.Govulncheck.Enabled {
-		problems = append(problems, "govulncheck.enabled: switched off (base had it on)")
-	}
-
-	if base.Golangci.Enabled && !current.Golangci.Enabled {
-		problems = append(problems, "golangci.enabled: switched off (base had it on)")
-	}
-
 	return problems
 }
 
