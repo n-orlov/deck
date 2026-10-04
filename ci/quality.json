@@ -1,6 +1,6 @@
 {
     "coverage": {
-        "enabled": false,
+        "enabled": true,
         "total_floor": 85,
         "package_floor": 80,
         "fixture_floor": 50

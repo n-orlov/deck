@@ -125,19 +125,11 @@ func run(configPath, profilePath string) (report string, exitCode int, err error
 
 	if cfg.Coverage.Enabled {
 		anyEnabled = true
-		// R189 (task 022) adds the real coverage scorer (ci/covgate).
-		// Until it lands, an enabled coverage gate fails loudly rather
-		// than passing vacuously -- the checked-in ci/quality.json
-		// always carries "enabled": false, so this branch is dead code
-		// in the committed state, but a mis-edited config must never
-		// silently pass just because nothing implements the gate yet.
-		results = append(results, gateResult{
-			name: "coverage",
-			ok:   false,
-			output: "coverage gate: enabled in " + configPath + " but not yet implemented " +
-				"(R189/task 022 adds ci/covgate)\nwhat to do: set coverage.enabled back to " +
-				"false until ci/covgate lands, or implement it before enabling this gate.\n",
-		})
+		ok, out, rerr := runCoverageGate(configPath, profilePath)
+		if rerr != nil {
+			return "", 2, rerr
+		}
+		results = append(results, gateResult{name: "coverage", ok: ok, output: out})
 	}
 
 	if cfg.Trivy.Enabled {
@@ -205,6 +197,50 @@ func loadConfig(path string) (config, error) {
 // usage/input error) rather than treating every failure as a gate loss.
 var exitStatusLineRe = regexp.MustCompile(`(?m)^exit status ([0-9]+)\n?`)
 
+// goRunTool runs `go run <pkg> <args...>` and recovers the tool's real exit
+// code (see exitStatusLineRe), stripping go run's own "exit status N" line
+// from the returned text. A failure to start go at all is an error.
+func goRunTool(pkg string, args ...string) (text string, exitCode int, err error) {
+	cmd := exec.Command("go", append([]string{"run", pkg}, args...)...)
+	out, runErr := cmd.CombinedOutput()
+	text = string(out)
+	if runErr == nil {
+		return text, 0, nil
+	}
+	if _, isExit := runErr.(*exec.ExitError); !isExit {
+		return text, 0, fmt.Errorf("running %s: %w", pkg, runErr)
+	}
+	exitCode = 1
+	if m := exitStatusLineRe.FindStringSubmatch(text); m != nil {
+		if n, convErr := strconv.Atoi(m[1]); convErr == nil {
+			exitCode = n
+		}
+		text = exitStatusLineRe.ReplaceAllString(text, "")
+	}
+	return text, exitCode, nil
+}
+
+// runCoverageGate shells out to ci/covgate, which reads the thresholds from
+// the same config file and scores the merged profile.
+func runCoverageGate(configPath, profilePath string) (ok bool, output string, err error) {
+	if profilePath == "" {
+		return false, "", fmt.Errorf("-profile is required when the coverage gate is enabled")
+	}
+	text, exitCode, err := goRunTool("./ci/covgate", "-config", configPath, "-profile", profilePath)
+	if err != nil {
+		return false, text, err
+	}
+	switch exitCode {
+	case 0:
+		return true, text + "what to do: nothing -- every coverage floor is met (act on any tighten prompt above).\n", nil
+	case 1:
+		return false, text + "what to do: add behaviour tests (error paths, edge cases) for the named package(s); " +
+			"never lower a floor in ci/quality.json or list a measured package as excluded.\n", nil
+	default:
+		return false, text, fmt.Errorf("ci/covgate exited %d (usage/input error): %s", exitCode, text)
+	}
+}
+
 // runCrapGate shells out to ci/crapgate over the whole module (no
 // -filter): R187's fixture rule gives cmd/fake-* the SAME CRAP ceiling
 // as product ("the same CRAP ceiling as product"), so one whole-tree
@@ -215,28 +251,11 @@ func runCrapGate(profilePath string, ceiling float64) (ok bool, output string, e
 	if profilePath == "" {
 		return false, "", fmt.Errorf("-profile is required when the crap gate is enabled")
 	}
-	cmd := exec.Command("go", "run", "./ci/crapgate",
+	text, exitCode, err := goRunTool("./ci/crapgate",
 		"-profile", profilePath,
 		"-max", strconv.FormatFloat(ceiling, 'f', -1, 64))
-	out, runErr := cmd.CombinedOutput()
-	text := string(out)
-
-	exitCode := 0
-	if runErr != nil {
-		if _, isExit := runErr.(*exec.ExitError); !isExit {
-			return false, text, fmt.Errorf("running ci/crapgate: %w", runErr)
-		}
-		// go run's own exit code is always 1 here; recover crapgate's real
-		// one from the "exit status N" line it appends, and strip that
-		// line out of the report -- it is go run's own diagnostic noise,
-		// not part of crapgate's report.
-		exitCode = 1
-		if m := exitStatusLineRe.FindStringSubmatch(text); m != nil {
-			if n, convErr := strconv.Atoi(m[1]); convErr == nil {
-				exitCode = n
-			}
-			text = exitStatusLineRe.ReplaceAllString(text, "")
-		}
+	if err != nil {
+		return false, text, err
 	}
 
 	switch exitCode {

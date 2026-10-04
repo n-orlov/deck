@@ -433,8 +433,8 @@ comparison vs. widen the bound), not in whether they consult it at all.
   under a `#### coverage` heading) and the uploaded raw results artifact
   (`ci-results-<run>`, which carries the whole results directory --
   `coverage-summary.txt`, both per-pass legacy-format profiles and `coverage-merged.out` included). The
-  Allure report does not display it. There is no coverage threshold gating
-  anything.
+  Allure report does not display it. The coverage gate (`ci/covgate`, R189,
+  below) is what gates on it.
 
 ## CRAP scoring (`ci/crapgate`, R187)
 
@@ -470,6 +470,37 @@ own table tests (`ci/run.sh go test -count=1 ./ci/crapgate/`):
   scored functions (a typo'd `-filter` must never read as a clean bill of
   health).
 
+## The coverage gate (`ci/covgate`, R189)
+
+`go run ./ci/covgate -config <ci/quality.json> -profile <merged coverprofile>`
+is a stdlib-only scorer over the merged unit + features profile
+(`coverage-merged.out`), counting statements (a block listed twice counts once,
+covered if any run covered it):
+
+- the **product total** must reach `coverage.total_floor` (85) and **every
+  product package** must reach `coverage.package_floor` (80). The `ci/*` Go
+  tools count as product; the `cmd/fake-*` fixtures are left out of the product
+  total and each must reach `coverage.fixture_floor` (50) instead;
+- a package is a directory with a non-test `.go` file (hidden and `_` dirs,
+  `vendor`, `testdata`, `ci-results` and nested modules are not part of the
+  set). A package with no statements in the profile fails -- a package that
+  was never built under the profile must never read as covered -- unless it is
+  named, by exact path, in `zeroStatementPackages` in `ci/covgate/main.go`.
+  That commented list holds `internal/racebuild` (constants only) and the
+  doc-only `internal/notify`, `internal/search`, `internal/unit`. Naming a
+  package that does have statements, or whose source is gone, fails too, so
+  the list cannot become a hiding place; it is never a glob;
+- a package (or the total) that beats its floor by 1 pp or more is named in a
+  `tighten:` prompt: raise that floor in `ci/quality.json`;
+- exit codes: `0` every floor met, `1` a floor missed (each miss named with its
+  percentage and statement counts), `2` bad input -- a missing, empty or
+  mode-only profile, a floor outside (0, 100], or a profile with no product
+  statements.
+
+`ci/covgate`'s own tests seed a 79% package, an 84% total and an empty profile
+and require each to fail; `ci/qualitycheck`'s tests drive the on gate over this
+repository's real package set.
+
 ## The quality gates (`ci/quality.sh`, `ci/quality.json`, R187)
 
 `ci/quality.sh [<suite-outdir>] [<config-path>]` is the one entry point for
@@ -487,7 +518,7 @@ threshold from here and nowhere else:
 ```json
 {
     "coverage": {
-        "enabled": false, "total_floor": 85, "package_floor": 80, "fixture_floor": 50
+        "enabled": true, "total_floor": 85, "package_floor": 80, "fixture_floor": 50
     },
     "crap": {
         "enabled": false, "ceiling": 30, "fixture_ceiling": 30
@@ -501,11 +532,10 @@ threshold from here and nowhere else:
 }
 ```
 
-- `coverage.total_floor`/`package_floor` are R189's eventual gate (total
-  >= 85%, every product package >= 80%); `coverage.fixture_floor` is the
-  `cmd/fake-*` fixtures' own, lower floor (R187). The scorer behind this
-  gate (`ci/covgate`) is added by a later task; until it exists, switching
-  `coverage.enabled` on fails loudly rather than passing vacuously.
+- `coverage` (R189) is on: `ci/quality.sh` runs `go run ./ci/covgate -config
+  ci/quality.json -profile <outdir>/coverage-merged.out`. See "The coverage
+  gate" below for what it scores. Floors never go down (the loosening test
+  covers the three floors and the flag).
 - `crap.ceiling` is the CRAP gate's ceiling (`ci/crapgate -max`), ratcheted
   30 -> 20 -> 15 -> 10 by R191-R193. `crap.fixture_ceiling` is carried as
   its own field even though R187 sets it equal to `ceiling` ("the same CRAP
