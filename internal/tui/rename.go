@@ -56,11 +56,26 @@ func (m Model) updateDetailView(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}); handled {
 		return m, cmd
 	}
-	switch msg.String() {
+	switch key := msg.String(); key {
 	case "q", "ctrl+c":
 		return m, tea.Quit
 	case "i":
 		m.detail = false
+	case "p":
+		return m, m.detailTogglePin()
+	default:
+		if !m.detailOpenKey(key) {
+			m.detailScrollKey(key)
+		}
+	}
+	return m, nil
+}
+
+// detailOpenKey is detail's sub-dialog openers: r rename, l launch inputs,
+// g group move, P profile switch, c pin chooser. It reports whether key was
+// one of them.
+func (m *Model) detailOpenKey(key string) bool {
+	switch key {
 	case "r":
 		m.detailOpenRename()
 	case "l":
@@ -71,8 +86,15 @@ func (m Model) updateDetailView(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.detailOpenProfileSwitch()
 	case "c":
 		m.detailOpenPinChooser()
-	case "p":
-		return m, m.detailTogglePin()
+	default:
+		return false
+	}
+	return true
+}
+
+// detailScrollKey is detail's scroll keys.
+func (m *Model) detailScrollKey(key string) {
+	switch key {
 	case "pgup":
 		// Task 078 (requirement 39 residual): the whole dialog scrolls
 		// uniformly via detailBody's own content, never a per-field bound.
@@ -86,7 +108,6 @@ func (m Model) updateDetailView(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "down", "j":
 		m.detailScroll = m.dialogScrollByLines(m.detailScroll, m.detailBody(), 1)
 	}
-	return m, nil
 }
 
 // detailOpenRename is detail's "r": it opens the rename sub-dialog on the
