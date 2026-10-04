@@ -3484,18 +3484,50 @@ func (m Model) onSessionsBulkResumed(msg sessionsBulkResumed) (tea.Model, tea.Cm
 }
 
 func (m Model) onSessionsBulkDeleted(msg sessionsBulkDeleted) (tea.Model, tea.Cmd) {
-	var succeeded []string
-	var firstErr error
+	succeeded, firstErr, firstPurgeErr, hookNotes := summariseBulkDelete(msg)
+	m.deleteConfirming = false
+	m.deleteNote = ""
+	m.attachError = bulkDeleteAttachError(firstErr, firstPurgeErr)
+	cmds := []tea.Cmd{m.loadSessions}
+	if len(hookNotes) > 0 {
+		// Same DECK_UNDO_MS window and same generation counter as the
+		// single-row A/dd toasts above (never DeleteGrace, which reaps
+		// the tombstones rather than clearing this note).
+		m.teardownHookNote = strings.Join(hookNotes, "; ")
+		m.teardownHookNoteGeneration++
+		teardownGeneration := m.teardownHookNoteGeneration
+		cmds = append(cmds, tea.Tick(m.settings.Undo, func(_ time.Time) tea.Msg { return teardownHookNoteExpired(teardownGeneration) }))
+	}
+	// R131's destructive branch: the batch has now committed, so the
+	// group row settings routed here goes too -- only when every member's
+	// delete actually succeeded, since a group that still holds a live
+	// member must keep its row (a partial failure leaves both the row and
+	// the surviving members alone, with firstErr already on screen).
+	// Cleared unconditionally: this batch is over either way, and a later
+	// ordinary dd must never inherit it.
+	m.deleteBulkGroup(firstErr)
+	if len(succeeded) == 0 {
+		return m, tea.Batch(cmds...)
+	}
+	m.batchDeleteUndoSessionIDs = succeeded
+	m.batchDeleteUndoGeneration++
+	generation := m.batchDeleteUndoGeneration
+	cmds = append(cmds, tea.Tick(m.settings.DeleteGrace, func(_ time.Time) tea.Msg { return batchDeleteGraceExpired(generation) }))
+	return m, tea.Batch(cmds...)
+}
+
+// summariseBulkDelete folds a bulk delete's per-row results into the ids that
+// were deleted, the first delete error, the first purge error and the
+// teardown-hook notes.
+func summariseBulkDelete(msg sessionsBulkDeleted) (succeeded []string, firstErr, firstPurgeErr error, hookNotes []string) {
 	// cure-01-05: mirrors firstErr exactly, but for the batch's own purge
 	// outcomes -- only ever populated for a row whose delete succeeded
 	// (msg.purgeErrs' own doc), so this never masks a delete failure the
 	// firstErr branch below already reports.
-	var firstPurgeErr error
 	// task 048: the hook messages are collected for EVERY row, whether
 	// that row's delete errored or not -- runPostDestroy is fail-open
 	// and its message is about the hook, not about the delete, so a row
 	// that failed to delete can still have a hook worth reporting.
-	var hookNotes []string
 	for i, s := range msg.sessions {
 		if i < len(msg.hookMessages) && msg.hookMessages[i] != "" {
 			// Name-prefixed here and bare in the single-row branch: a
@@ -3518,55 +3550,40 @@ func (m Model) onSessionsBulkDeleted(msg sessionsBulkDeleted) (tea.Model, tea.Cm
 		}
 		succeeded = append(succeeded, s.ID)
 	}
-	m.deleteConfirming = false
-	m.deleteNote = ""
+	return succeeded, firstErr, firstPurgeErr, hookNotes
+}
+
+// bulkDeleteAttachError is the attach-error line for a finished bulk delete.
+func bulkDeleteAttachError(firstErr, firstPurgeErr error) string {
 	switch {
 	case firstErr != nil:
-		m.attachError = "Cannot delete: " + firstErr.Error()
+		return "Cannot delete: " + firstErr.Error()
 	case firstPurgeErr != nil:
-		m.attachError = "Deleted, but purge failed: " + firstPurgeErr.Error()
+		return "Deleted, but purge failed: " + firstPurgeErr.Error()
 	default:
-		m.attachError = ""
+		return ""
 	}
-	cmds := []tea.Cmd{m.loadSessions}
-	if len(hookNotes) > 0 {
-		// Same DECK_UNDO_MS window and same generation counter as the
-		// single-row A/dd toasts above (never DeleteGrace, which reaps
-		// the tombstones rather than clearing this note).
-		m.teardownHookNote = strings.Join(hookNotes, "; ")
-		m.teardownHookNoteGeneration++
-		teardownGeneration := m.teardownHookNoteGeneration
-		cmds = append(cmds, tea.Tick(m.settings.Undo, func(_ time.Time) tea.Msg { return teardownHookNoteExpired(teardownGeneration) }))
+}
+
+// deleteBulkGroup finishes a settings-routed group delete (R131's destructive
+// branch): the group row goes once every member's delete succeeded.
+func (m *Model) deleteBulkGroup(firstErr error) {
+	groupID := m.bulkDeleteGroupID
+	if groupID == 0 {
+		return
 	}
-	// R131's destructive branch: the batch has now committed, so the
-	// group row settings routed here goes too -- only when every member's
-	// delete actually succeeded, since a group that still holds a live
-	// member must keep its row (a partial failure leaves both the row and
-	// the surviving members alone, with firstErr already on screen).
-	// Cleared unconditionally: this batch is over either way, and a later
-	// ordinary dd must never inherit it.
-	if groupID := m.bulkDeleteGroupID; groupID != 0 {
-		groupName := m.bulkDeleteGroupName
-		m.bulkDeleteGroupID = 0
-		m.bulkDeleteGroupName = ""
-		if firstErr == nil && m.store != nil {
-			if err := m.store.DeleteGroup(context.Background(), groupID); err != nil {
-				m.attachError = "Cannot delete group " + groupName + ": " + err.Error()
-			} else if m.settingsOpen {
-				// Only meaningful if something reopened settings in the
-				// meantime; `,` recomputes this snapshot on open anyway.
-				m.settingsGroups = m.computeAvailableGroups()
-			}
+	groupName := m.bulkDeleteGroupName
+	m.bulkDeleteGroupID = 0
+	m.bulkDeleteGroupName = ""
+	if firstErr == nil && m.store != nil {
+		if err := m.store.DeleteGroup(context.Background(), groupID); err != nil {
+			m.attachError = "Cannot delete group " + groupName + ": " + err.Error()
+		} else if m.settingsOpen {
+			// Only meaningful if something reopened settings in the
+			// meantime; `,` recomputes this snapshot on open anyway.
+			m.settingsGroups = m.computeAvailableGroups()
 		}
 	}
-	if len(succeeded) == 0 {
-		return m, tea.Batch(cmds...)
-	}
-	m.batchDeleteUndoSessionIDs = succeeded
-	m.batchDeleteUndoGeneration++
-	generation := m.batchDeleteUndoGeneration
-	cmds = append(cmds, tea.Tick(m.settings.DeleteGrace, func(_ time.Time) tea.Msg { return batchDeleteGraceExpired(generation) }))
-	return m, tea.Batch(cmds...)
 }
 
 func (m Model) onBatchDeleteGraceExpired(msg batchDeleteGraceExpired) (tea.Model, tea.Cmd) {
