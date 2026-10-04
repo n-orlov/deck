@@ -417,29 +417,43 @@ func (m Model) updateEnvEdit(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+// envCursorStep moves the env browse cursor one row up (dir -1) or down
+// (dir 1), wrapping at either end; an empty list leaves it where it was.
+func envCursorStep(cursor, rows, dir int) int {
+	switch {
+	case rows == 0:
+		return cursor
+	case dir < 0:
+		return (cursor - 1 + rows) % rows
+	default:
+		return (cursor + 1) % rows
+	}
+}
+
+// openEnvRowForEdit is Enter while browsing: the field opens on the cursor
+// row's current value as an offered value (§11.11), so a small correction
+// to a long value never requires retyping it in full. A cursor outside rows
+// does nothing.
+func (m *Model) openEnvRowForEdit(rows []envRow) {
+	if m.envCursor < 0 || m.envCursor >= len(rows) {
+		return
+	}
+	row := rows[m.envCursor]
+	m.envEditKey, m.envNote = row.Key, ""
+	m.envEdit = lineedit.NewOffered(row.Value).Fit(m.envFieldWidth(), m.envEditStyle())
+}
+
 // updateEnvBrowse handles keys while browsing the env rows.
 func (m Model) updateEnvBrowse(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	session, _ := m.selectedSession()
 	rows := m.sessionEnvRows(session)
 	switch msg.String() {
 	case "up", "k":
-		if len(rows) > 0 {
-			m.envCursor = (m.envCursor - 1 + len(rows)) % len(rows)
-		}
+		m.envCursor = envCursorStep(m.envCursor, len(rows), -1)
 	case "down", "j":
-		if len(rows) > 0 {
-			m.envCursor = (m.envCursor + 1) % len(rows)
-		}
+		m.envCursor = envCursorStep(m.envCursor, len(rows), 1)
 	case "enter":
-		if m.envCursor < 0 || m.envCursor >= len(rows) {
-			return m, nil
-		}
-		row := rows[m.envCursor]
-		// The field opens on the row's current value as an offered value
-		// (§11.11), so a small correction to a long value never requires
-		// retyping it in full.
-		m.envEditKey, m.envNote = row.Key, ""
-		m.envEdit = lineedit.NewOffered(row.Value).Fit(m.envFieldWidth(), m.envEditStyle())
+		m.openEnvRowForEdit(rows)
 	case "r":
 		// SPEC §6.4/requirement 21: the explicit per-view reveal toggle.
 		// Only meaningful while browsing -- while a value is being typed
