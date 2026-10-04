@@ -3484,16 +3484,16 @@ func (m Model) onSessionsBulkResumed(msg sessionsBulkResumed) (tea.Model, tea.Cm
 }
 
 func (m Model) onSessionsBulkDeleted(msg sessionsBulkDeleted) (tea.Model, tea.Cmd) {
-	succeeded, firstErr, firstPurgeErr, hookNotes := summariseBulkDelete(msg)
+	sum := summariseBulkDelete(msg)
 	m.deleteConfirming = false
 	m.deleteNote = ""
-	m.attachError = bulkDeleteAttachError(firstErr, firstPurgeErr)
+	m.attachError = bulkDeleteAttachError(sum.firstErr, sum.firstPurgeErr)
 	cmds := []tea.Cmd{m.loadSessions}
-	if len(hookNotes) > 0 {
+	if len(sum.hookNotes) > 0 {
 		// Same DECK_UNDO_MS window and same generation counter as the
 		// single-row A/dd toasts above (never DeleteGrace, which reaps
 		// the tombstones rather than clearing this note).
-		m.teardownHookNote = strings.Join(hookNotes, "; ")
+		m.teardownHookNote = strings.Join(sum.hookNotes, "; ")
 		m.teardownHookNoteGeneration++
 		teardownGeneration := m.teardownHookNoteGeneration
 		cmds = append(cmds, tea.Tick(m.settings.Undo, func(_ time.Time) tea.Msg { return teardownHookNoteExpired(teardownGeneration) }))
@@ -3505,11 +3505,11 @@ func (m Model) onSessionsBulkDeleted(msg sessionsBulkDeleted) (tea.Model, tea.Cm
 	// the surviving members alone, with firstErr already on screen).
 	// Cleared unconditionally: this batch is over either way, and a later
 	// ordinary dd must never inherit it.
-	m.deleteBulkGroup(firstErr)
-	if len(succeeded) == 0 {
+	m.deleteBulkGroup(sum.firstErr)
+	if len(sum.succeeded) == 0 {
 		return m, tea.Batch(cmds...)
 	}
-	m.batchDeleteUndoSessionIDs = succeeded
+	m.batchDeleteUndoSessionIDs = sum.succeeded
 	m.batchDeleteUndoGeneration++
 	generation := m.batchDeleteUndoGeneration
 	cmds = append(cmds, tea.Tick(m.settings.DeleteGrace, func(_ time.Time) tea.Msg { return batchDeleteGraceExpired(generation) }))
@@ -3519,7 +3519,16 @@ func (m Model) onSessionsBulkDeleted(msg sessionsBulkDeleted) (tea.Model, tea.Cm
 // summariseBulkDelete folds a bulk delete's per-row results into the ids that
 // were deleted, the first delete error, the first purge error and the
 // teardown-hook notes.
-func summariseBulkDelete(msg sessionsBulkDeleted) (succeeded []string, firstErr, firstPurgeErr error, hookNotes []string) {
+// bulkDeleteSummary is a bulk delete's per-row results folded together.
+type bulkDeleteSummary struct {
+	succeeded     []string
+	firstErr      error
+	firstPurgeErr error
+	hookNotes     []string
+}
+
+func summariseBulkDelete(msg sessionsBulkDeleted) bulkDeleteSummary {
+	var sum bulkDeleteSummary
 	// cure-01-05: mirrors firstErr exactly, but for the batch's own purge
 	// outcomes -- only ever populated for a row whose delete succeeded
 	// (msg.purgeErrs' own doc), so this never masks a delete failure the
@@ -3537,20 +3546,20 @@ func summariseBulkDelete(msg sessionsBulkDeleted) (succeeded []string, firstErr,
 			if label == "" {
 				label = s.ID
 			}
-			hookNotes = append(hookNotes, label+": "+msg.hookMessages[i])
+			sum.hookNotes = append(sum.hookNotes, label+": "+msg.hookMessages[i])
 		}
-		if i < len(msg.purgeErrs) && msg.purgeErrs[i] != nil && firstPurgeErr == nil {
-			firstPurgeErr = msg.purgeErrs[i]
+		if i < len(msg.purgeErrs) && msg.purgeErrs[i] != nil && sum.firstPurgeErr == nil {
+			sum.firstPurgeErr = msg.purgeErrs[i]
 		}
 		if msg.errs[i] != nil {
-			if firstErr == nil {
-				firstErr = msg.errs[i]
+			if sum.firstErr == nil {
+				sum.firstErr = msg.errs[i]
 			}
 			continue
 		}
-		succeeded = append(succeeded, s.ID)
+		sum.succeeded = append(sum.succeeded, s.ID)
 	}
-	return succeeded, firstErr, firstPurgeErr, hookNotes
+	return sum
 }
 
 // bulkDeleteAttachError is the attach-error line for a finished bulk delete.
@@ -8425,8 +8434,8 @@ func (m Model) updateCreate(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.closeCreateCWDCandidates()
 	}
 	if m.createField == 1 {
-		if cmd, handled := m.updateCreateCWDKey(msg); handled {
-			return m, cmd
+		if m.updateCreateCWDKey(msg) {
+			return m, nil
 		}
 	}
 	if cmd, handled := applyDialogContract(msg, dialogContract{
@@ -8453,7 +8462,7 @@ func (m Model) updateCreate(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 // is focused: the tab-completion candidate list's own keys (task 012). It
 // reports handled=false for every key the list does not claim, which then
 // fall through to applyDialogContract exactly as before.
-func (m *Model) updateCreateCWDKey(msg tea.KeyMsg) (tea.Cmd, bool) {
+func (m *Model) updateCreateCWDKey(msg tea.KeyMsg) bool {
 	switch msg.String() {
 	case "tab":
 		// §11.7's bash-completion-contract key (task 012), and (task 025,
@@ -8468,9 +8477,9 @@ func (m *Model) updateCreateCWDKey(msg tea.KeyMsg) (tea.Cmd, bool) {
 		// falling out of this switch with no return means tab simply does
 		// nothing and focus stays exactly where it was.
 		if m.tabCompleteCreateCWD() {
-			return nil, true
+			return true
 		}
-		return nil, true
+		return true
 	case "esc":
 		// esc closes an open candidate list without changing the field
 		// or the value, one step short of applyDialogContract's own esc
@@ -8479,7 +8488,7 @@ func (m *Model) updateCreateCWDKey(msg tea.KeyMsg) (tea.Cmd, bool) {
 		// modal in the same keystroke.
 		if len(m.createCWDCandidates) > 0 {
 			m.closeCreateCWDCandidates()
-			return nil, true
+			return true
 		}
 	case "enter":
 		// enter selects the highlighted candidate into the field rather
@@ -8487,7 +8496,7 @@ func (m *Model) updateCreateCWDKey(msg tea.KeyMsg) (tea.Cmd, bool) {
 		// applyDialogContract's own enter -- exactly like esc above.
 		if len(m.createCWDCandidates) > 0 {
 			m.acceptCWDCandidate(m.createCWDCandidates[m.createCWDCandidateIndex])
-			return nil, true
+			return true
 		}
 	case "up":
 		// While the list is open, up/down move the highlighted entry
@@ -8497,15 +8506,15 @@ func (m *Model) updateCreateCWDKey(msg tea.KeyMsg) (tea.Cmd, bool) {
 		// labels already are.
 		if len(m.createCWDCandidates) > 0 {
 			m.createCWDCandidateIndex = (m.createCWDCandidateIndex - 1 + len(m.createCWDCandidates)) % len(m.createCWDCandidates)
-			return nil, true
+			return true
 		}
 	case "down":
 		if len(m.createCWDCandidates) > 0 {
 			m.createCWDCandidateIndex = (m.createCWDCandidateIndex + 1) % len(m.createCWDCandidates)
-			return nil, true
+			return true
 		}
 	}
-	return nil, false
+	return false
 }
 
 // updateCreateExtraKey is updateCreate's pass over the keys applyDialogContract
