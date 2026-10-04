@@ -77,19 +77,16 @@ func window(its []item, s, width int, mw int) int {
 	}
 	end := s
 	used := 0
-	rest := 0 // cells the items from end onward need, drawn without a right mark
-	for _, it := range its[s:] {
-		rest += it.width
-	}
+	rest := itemsWidth(its[s:]) // cells the items from end onward need, drawn without a right mark
 	for end < len(its) {
 		if rest <= avail-used {
 			return len(its) // everything left fits: no right mark is needed
 		}
-		w := its[end].width
 		room := avail - used
 		if end+1 < len(its) {
 			room -= mw // a right mark will be needed unless this is the last
 		}
+		w := its[end].width
 		if w > room {
 			// The last item may still fit without a right mark.
 			if end == len(its)-1 && w <= avail-used {
@@ -105,6 +102,15 @@ func window(its []item, s, width int, mw int) int {
 		end = s + 1 // never draw an empty window: the item overflows its cell
 	}
 	return end
+}
+
+// itemsWidth is the total cell width of its.
+func itemsWidth(its []item) int {
+	total := 0
+	for _, it := range its {
+		total += it.width
+	}
+	return total
 }
 
 // Fit returns the editor with its horizontal scroll adjusted so the caret is
