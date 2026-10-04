@@ -72,7 +72,16 @@ var helpKeycapTokens = map[string]bool{
 // but handled defensively) returns ("", line): the caller renders it
 // unstyled rather than guessing where prose starts.
 func splitLeadingKeyPhrase(line string) (phrase, rest string) {
-	fields := strings.Fields(line)
+	n := leadingKeycapTokens(strings.Fields(line))
+	if n == 0 {
+		return "", line
+	}
+	idx := endOfNthToken(line, n)
+	return line[:idx], line[idx:]
+}
+
+// leadingKeycapTokens counts the leading fields that are keycap tokens.
+func leadingKeycapTokens(fields []string) int {
 	n := 0
 	for _, f := range fields {
 		if !helpKeycapTokens[f] {
@@ -80,10 +89,12 @@ func splitLeadingKeyPhrase(line string) (phrase, rest string) {
 		}
 		n++
 	}
-	if n == 0 {
-		return "", line
-	}
-	idx := 0
+	return n
+}
+
+// endOfNthToken is the byte offset just past the n-th space-separated
+// token of line (0 when line holds fewer than n tokens).
+func endOfNthToken(line string, n int) int {
 	count := 0
 	for i := 0; i < len(line); {
 		for i < len(line) && line[i] == ' ' {
@@ -98,11 +109,10 @@ func splitLeadingKeyPhrase(line string) (phrase, rest string) {
 		}
 		count++
 		if count == n {
-			idx = i
-			break
+			return i
 		}
 	}
-	return line[:idx], line[idx:]
+	return 0
 }
 
 // styledHelpText renders helpText's structured (but unstyled) content
