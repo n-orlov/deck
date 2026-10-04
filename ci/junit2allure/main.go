@@ -163,35 +163,7 @@ func (w *writer) suite(s testSuite, parent string) error {
 		name = parent
 	}
 	for _, tc := range s.Cases {
-		// Earlier failed attempts first: ci/junitflaky folded them into this case.
-		attempt := 0
-		for _, p := range tc.RerunFailure {
-			attempt++
-			if err := w.emit(name, tc, attempt, "failed", detailsOf(p), 0); err != nil {
-				return err
-			}
-		}
-		for _, p := range tc.RerunError {
-			attempt++
-			if err := w.emit(name, tc, attempt, "broken", detailsOf(p), 0); err != nil {
-				return err
-			}
-		}
-		status, d := "passed", (*details)(nil)
-		switch {
-		case tc.Failure != nil:
-			status, d = "failed", detailsOf(tc.Failure)
-		case tc.Error != nil:
-			status, d = "broken", detailsOf(tc.Error)
-		case tc.Skipped != nil:
-			status, d = "skipped", detailsOf(tc.Skipped)
-		}
-		if attempt > 0 && status == "passed" {
-			// The JUnit plugin's own convention for a test that passed after
-			// failed attempts: flagged flaky, on top of the retries it shows.
-			d = &details{Flaky: true}
-		}
-		if err := w.emit(name, tc, attempt+1, status, d, millis(tc.Time)); err != nil {
+		if err := w.testCase(name, tc); err != nil {
 			return err
 		}
 	}
@@ -201,6 +173,44 @@ func (w *writer) suite(s testSuite, parent string) error {
 		}
 	}
 	return nil
+}
+
+// testCase emits one JUnit case: its earlier failed attempts first (ci/junitflaky
+// folded them into the case), then the final attempt.
+func (w *writer) testCase(suiteName string, tc testCase) error {
+	attempt := 0
+	for _, p := range tc.RerunFailure {
+		attempt++
+		if err := w.emit(suiteName, tc, attempt, "failed", detailsOf(p), 0); err != nil {
+			return err
+		}
+	}
+	for _, p := range tc.RerunError {
+		attempt++
+		if err := w.emit(suiteName, tc, attempt, "broken", detailsOf(p), 0); err != nil {
+			return err
+		}
+	}
+	status, d := caseOutcome(tc)
+	if attempt > 0 && status == "passed" {
+		// The JUnit plugin's own convention for a test that passed after
+		// failed attempts: flagged flaky, on top of the retries it shows.
+		d = &details{Flaky: true}
+	}
+	return w.emit(suiteName, tc, attempt+1, status, d, millis(tc.Time))
+}
+
+// caseOutcome is the final attempt's Allure status and details.
+func caseOutcome(tc testCase) (status string, d *details) {
+	switch {
+	case tc.Failure != nil:
+		return "failed", detailsOf(tc.Failure)
+	case tc.Error != nil:
+		return "broken", detailsOf(tc.Error)
+	case tc.Skipped != nil:
+		return "skipped", detailsOf(tc.Skipped)
+	}
+	return "passed", nil
 }
 
 // rootElementIs reports whether the document's first element is named name.
