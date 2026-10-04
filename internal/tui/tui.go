@@ -3753,21 +3753,11 @@ func (m Model) onSessionRestarted(msg sessionRestarted) (tea.Model, tea.Cmd) {
 		// Requirement 46's already-running honest no-op applies here too:
 		// a concurrent client may have already relaunched the pane between
 		// this restart's kill and its own resume attempt.
-		for i := range m.sessions {
-			if m.sessions[i].ID == msg.session.ID {
-				m.sessions[i] = msg.session
-				break
-			}
-		}
+		m.replaceListedSession(msg.session)
 		return m, nil
 	}
 	if msg.outcome == service.ResumeNotLeasable {
-		for i := range m.sessions {
-			if m.sessions[i].ID == msg.session.ID {
-				m.sessions[i] = msg.session
-				break
-			}
-		}
+		m.replaceListedSession(msg.session)
 		return m, nil
 	}
 	// A successful restart also closes task 023's restart/inject-instead
