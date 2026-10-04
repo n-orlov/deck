@@ -117,36 +117,48 @@ func (e Editor) Update(msg tea.KeyMsg) (Editor, bool) {
 // updateNamed applies a named key (navigation and deletion, by its key
 // string); handled is false for a key the §11.11 table does not list.
 func (e Editor) updateNamed(key string) (Editor, bool) {
+	if to, ok := e.moveTarget(key); ok {
+		return e.accept().moveTo(to), true
+	}
+	return e.updateDeletion(key)
+}
+
+// moveTarget is the caret offset a navigation key moves to; ok is false for a
+// key that is not a navigation key.
+func (e Editor) moveTarget(key string) (int, bool) {
 	switch key {
 	case "left", "ctrl+b":
-		return e.accept().moveTo(e.prevBoundary()), true
+		return e.prevBoundary(), true
 	case "right", "ctrl+f":
-		return e.accept().moveTo(e.nextBoundary()), true
+		return e.nextBoundary(), true
 	case "home", "ctrl+a":
-		return e.accept().moveTo(0), true
+		return 0, true
 	case "end", "ctrl+e":
-		return e.accept().moveTo(len(e.text)), true
+		return len(e.text), true
 	case "ctrl+left":
-		return e.accept().moveTo(e.wordLeft()), true
+		return e.wordLeft(), true
 	case "ctrl+right":
-		return e.accept().moveTo(e.wordRight()), true
+		return e.wordRight(), true
+	}
+	return 0, false
+}
+
+// updateDeletion applies a deletion key; handled is false for a key that is
+// not one.
+func (e Editor) updateDeletion(key string) (Editor, bool) {
+	a := e.accept()
+	switch key {
 	case "backspace", "ctrl+h":
-		a := e.accept()
 		return a.deleteRange(a.prevBoundary(), a.caret), true
 	case "delete", "ctrl+d":
-		a := e.accept()
 		return a.deleteRange(a.caret, a.nextBoundary()), true
 	case "ctrl+w":
-		a := e.accept()
 		return a.deleteRange(a.whitespaceLeft(), a.caret), true
 	case "alt+backspace":
-		a := e.accept()
 		return a.deleteRange(a.wordLeft(), a.caret), true
 	case "ctrl+u":
-		a := e.accept()
 		return a.deleteRange(0, a.caret), true
 	case "ctrl+k":
-		a := e.accept()
 		return a.deleteRange(a.caret, len(a.text)), true
 	}
 	return e, false
