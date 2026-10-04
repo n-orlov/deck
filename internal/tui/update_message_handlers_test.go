@@ -132,6 +132,24 @@ func TestBatchDeleteGraceExpiryReapsEverySessionOfTheCurrentGeneration(t *testin
 	}
 }
 
+func TestBulkReapResultReportsTheFirstFailureAndLeavesSuccessSilent(t *testing.T) {
+	m := New(nil, config.Settings{}, "")
+
+	next, cmd := m.Update(sessionsBulkReaped{errs: []error{nil, errors.New("boom"), errors.New("later")}})
+	if cmd != nil {
+		t.Fatalf("a bulk reap result returned a command")
+	}
+	if got := next.(Model).attachError; got != "Cannot reap: boom" {
+		t.Fatalf("attachError after a failed reap = %q, want the first failure", got)
+	}
+
+	m.attachError = "unrelated"
+	next, _ = m.Update(sessionsBulkReaped{errs: []error{nil, nil}})
+	if got := next.(Model).attachError; got != "unrelated" {
+		t.Fatalf("attachError after a clean reap = %q, want it untouched", got)
+	}
+}
+
 func TestMouseReportsAreIgnoredWhenTheMouseIsOff(t *testing.T) {
 	m := New(nil, config.Settings{}, "")
 	m.settings.Mouse = false
