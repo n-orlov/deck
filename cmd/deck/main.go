@@ -474,13 +474,58 @@ func reportHookProfileRefusal(stderr io.Writer, getenv func(string) string, prof
 	fmt.Fprintf(stderr, "deck hook: TMUX_PANE=%q profile %q: %v\n", getenv("TMUX_PANE"), profile, err)
 }
 
+// maxHookStdinBytes caps what `deck _hook` reads from stdin. Agents run the
+// hook with one JSON object that can carry a whole prompt or tool input, so
+// the cap is generous (the largest payload in the repo's hook fixtures and
+// fake agents is a few KiB); its only job is that a runaway or hostile
+// writer on the pipe cannot grow the hook process's memory, or the stored
+// event, without bound.
+const maxHookStdinBytes = 16 << 20
+
+var errHookPayloadTooLarge = fmt.Errorf("stdin payload exceeds the %d byte hook limit", maxHookStdinBytes)
+
+// cappedHookReader hands out at most `remaining` bytes of r. The first byte
+// past the cap is never requested beyond one extra read byte: it flips
+// `exceeded` and reports an error, so no further bytes are pulled.
+type cappedHookReader struct {
+	r         io.Reader
+	remaining int64
+	exceeded  bool
+}
+
+func (c *cappedHookReader) Read(p []byte) (int, error) {
+	if c.exceeded {
+		return 0, errHookPayloadTooLarge
+	}
+	if c.remaining <= 0 {
+		// Probe a single byte: EOF here means the payload fit exactly.
+		var one [1]byte
+		n, err := c.r.Read(one[:])
+		if n > 0 {
+			c.exceeded = true
+			return 0, errHookPayloadTooLarge
+		}
+		return 0, err
+	}
+	if int64(len(p)) > c.remaining {
+		p = p[:c.remaining]
+	}
+	n, err := c.r.Read(p)
+	c.remaining -= int64(n)
+	return n, err
+}
+
 // runHook is intentionally selected before opening the normal application
 // store or constructing a tmux client. A late hook must not recreate deleted
 // state or bootstrap a tmux server.
 func runHook(ctx context.Context, settings config.Settings, stdin io.Reader) error {
 	var raw json.RawMessage
-	decoder := json.NewDecoder(stdin)
+	capped := &cappedHookReader{r: stdin, remaining: maxHookStdinBytes}
+	decoder := json.NewDecoder(capped)
 	if err := decoder.Decode(&raw); err != nil {
+		if capped.exceeded {
+			return errHookPayloadTooLarge
+		}
 		return fmt.Errorf("read one JSON object: %w", err)
 	}
 	trimmed := bytes.TrimSpace(raw)
@@ -491,6 +536,9 @@ func runHook(ctx context.Context, settings config.Settings, stdin io.Reader) err
 	if err := decoder.Decode(&extra); err != io.EOF {
 		if err == nil {
 			return errors.New("stdin contains more than one JSON value")
+		}
+		if capped.exceeded {
+			return errHookPayloadTooLarge
 		}
 		return fmt.Errorf("reject trailing stdin: %w", err)
 	}
