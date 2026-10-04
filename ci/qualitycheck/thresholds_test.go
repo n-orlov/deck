@@ -27,6 +27,7 @@ func baselineConfig() config {
 	return config{
 		Coverage: coverageConfig{Enabled: true, TotalFloor: 85, PackageFloor: 80, FixtureFloor: 50},
 		Crap:     crapConfig{Enabled: true, Ceiling: 30, FixtureCeiling: 30},
+		Trivy:    trivyConfig{Enabled: true, Severity: "HIGH,CRITICAL"},
 	}
 }
 
@@ -121,6 +122,7 @@ func TestThresholdsNotLoosened_SeededTightenedCopyPasses(t *testing.T) {
 	tightened := config{
 		Coverage: coverageConfig{Enabled: true, TotalFloor: 90, PackageFloor: 85, FixtureFloor: 55},
 		Crap:     crapConfig{Enabled: true, Ceiling: 20, FixtureCeiling: 20},
+		Trivy:    trivyConfig{Enabled: true, Severity: "MEDIUM,HIGH,CRITICAL"},
 	}
 	currentPath := marshalConfig(t, tightened)
 

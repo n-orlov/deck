@@ -117,7 +117,32 @@ func looserThresholds(base, current config) []string {
 			current.Crap.FixtureCeiling, base.Crap.FixtureCeiling))
 	}
 
+	if base.Trivy.Enabled && !current.Trivy.Enabled {
+		problems = append(problems, "trivy.enabled: switched off (base had it on)")
+	}
+	if base.Trivy.Enabled {
+		have := severitySet(current.Trivy.Severity)
+		for s := range severitySet(base.Trivy.Severity) {
+			if !have[s] {
+				problems = append(problems, fmt.Sprintf(
+					"trivy.severity: %q no longer covers %s (base %q; a severity must never be dropped)",
+					current.Trivy.Severity, s, base.Trivy.Severity))
+			}
+		}
+	}
+
 	return problems
+}
+
+// severitySet splits a comma-separated Trivy severity list.
+func severitySet(list string) map[string]bool {
+	set := map[string]bool{}
+	for _, s := range strings.Split(list, ",") {
+		if s = strings.TrimSpace(s); s != "" {
+			set[s] = true
+		}
+	}
+	return set
 }
 
 // checkThresholdsNotLoosened is TestThresholdsNotLoosened's testable
