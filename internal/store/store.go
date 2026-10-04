@@ -1074,20 +1074,11 @@ func (s *Store) RecordAttachment(ctx context.Context, sessionID string, at int64
 		return fmt.Errorf("read attachment status: %w", err)
 	}
 
-	switch status {
-	case "waiting":
-		if _, err := tx.ExecContext(ctx, `UPDATE sessions SET
-			status = 'running', status_reason = '', status_source = 'user', status_at = ?,
-			acknowledged = 1, notify_epoch = notify_epoch + 1
-			WHERE id = ? AND status = 'waiting'`, at, sessionID); err != nil {
-			return fmt.Errorf("answer waiting attachment: %w", err)
-		}
-	case "error":
-		if _, err := tx.ExecContext(ctx, `UPDATE sessions SET acknowledged = 1
-			WHERE id = ? AND status = 'error'`, sessionID); err != nil {
-			return fmt.Errorf("acknowledge error attachment: %w", err)
-		}
-	default:
+	applied, err := applyAttachmentToStatusTx(ctx, tx, sessionID, status, at)
+	if err != nil {
+		return err
+	}
+	if !applied {
 		return nil
 	}
 
@@ -1099,6 +1090,30 @@ func (s *Store) RecordAttachment(ctx context.Context, sessionID string, at int64
 		return fmt.Errorf("commit attachment: %w", err)
 	}
 	return nil
+}
+
+// applyAttachmentToStatusTx writes RecordAttachment's status-side effect for
+// the row's current status: a waiting row is answered, an error row is
+// acknowledged, and any other status changes nothing (applied is false and the
+// caller records no event).
+func applyAttachmentToStatusTx(ctx context.Context, tx *sql.Tx, sessionID, status string, at int64) (applied bool, err error) {
+	switch status {
+	case "waiting":
+		if _, err := tx.ExecContext(ctx, `UPDATE sessions SET
+			status = 'running', status_reason = '', status_source = 'user', status_at = ?,
+			acknowledged = 1, notify_epoch = notify_epoch + 1
+			WHERE id = ? AND status = 'waiting'`, at, sessionID); err != nil {
+			return false, fmt.Errorf("answer waiting attachment: %w", err)
+		}
+	case "error":
+		if _, err := tx.ExecContext(ctx, `UPDATE sessions SET acknowledged = 1
+			WHERE id = ? AND status = 'error'`, sessionID); err != nil {
+			return false, fmt.Errorf("acknowledge error attachment: %w", err)
+		}
+	default:
+		return false, nil
+	}
+	return true, nil
 }
 
 // AcknowledgeSession durably clears the selected row's unseen marker without
