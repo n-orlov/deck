@@ -386,17 +386,30 @@ func (c Client) List(ctx context.Context) ([]Session, error) {
 		// an empty liveness view, not a reason to start a replacement server.
 		// A live server holding no session answers `list-panes -a` with "no
 		// current target": it too is an empty view.
-		message := err.Error()
-		if strings.Contains(message, "no server running") || strings.Contains(message, "no sessions") ||
-			strings.Contains(message, "no current target") ||
-			strings.Contains(message, "error connecting to") && strings.Contains(message, "No such file or directory") {
+		if isEmptyServerView(err) {
 			return []Session{}, nil
 		}
 		return nil, err
 	}
+	return groupPanesBySession(string(output))
+}
+
+// isEmptyServerView reports whether a failed `list-panes -a` means "no
+// sessions" rather than a real failure: no server, no session, no current
+// target, or a socket nobody listens on.
+func isEmptyServerView(err error) bool {
+	message := err.Error()
+	return strings.Contains(message, "no server running") || strings.Contains(message, "no sessions") ||
+		strings.Contains(message, "no current target") ||
+		strings.Contains(message, "error connecting to") && strings.Contains(message, "No such file or directory")
+}
+
+// groupPanesBySession parses List's `session_name|pane facts` lines into
+// deck-owned sessions, in the order tmux first reports each session.
+func groupPanesBySession(output string) ([]Session, error) {
 	var sessions []Session
 	index := map[string]int{}
-	for _, line := range strings.Split(string(output), "\n") {
+	for _, line := range strings.Split(output, "\n") {
 		if strings.TrimSpace(line) == "" {
 			continue
 		}
