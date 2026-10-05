@@ -2374,10 +2374,11 @@ reading output in: **a drag beginning inside the preview selects, and releasing 
 gesture is tmux's, deliberately — a manager whose own view is the primary one cannot ask
 the user to leave it to copy a line. The selection is over the cells deck drew, which in
 §11.9's interactive mode includes the grid's own scrollback. **An in-progress selection is
-visible.** From the press until the release, the selected cells are marked with the
+visible.** From the first motion after the press until the release, the selected cells are marked with the
 `selection` token — the same treatment a selected sidebar row carries (§11.3) — and the
 marking clears when the release commits the copy. A selection the user cannot see is a
-selection they cannot aim: the gesture is tmux's, and so is the feedback. **The marking is
+selection they cannot aim: the gesture is tmux's, and so is the feedback. **A click is not a selection:** a press released without
+motion marks nothing and copies nothing, and the press alone draws no marking — only a drag selects. **The marking is
 linear, not rectangular**, because the copy is: it covers exactly the run `SelectedText`
 would return for the same anchor and current cell, so what is highlighted and what is
 copied can never disagree. The copy is written to a **tmux
