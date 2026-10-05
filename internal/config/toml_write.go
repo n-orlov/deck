@@ -98,20 +98,13 @@ func readBlocks(path string) ([]tomlBlock, error) {
 // does not recognise as a Schema field -- an unknown key, a comment, a
 // blank line -- are left exactly as they were.
 func applyFlatFields(blocks []tomlBlock, cfg FileConfig) []tomlBlock {
-	fieldsBySection := map[string][]Field{}
-	for _, field := range Schema {
-		if field.Key == "" {
-			continue // the [env] whole-table field; handled separately
-		}
-		fieldsBySection[field.Section] = append(fieldsBySection[field.Section], field)
-	}
+	fieldsBySection := flatFieldsBySection()
 
 	for _, section := range []string{"", "ui"} {
 		fields := fieldsBySection[section]
 		if len(fields) == 0 {
 			continue
 		}
-		seen := map[string]bool{}
 		blockIdx := blockIndexForSection(blocks, section)
 		if blockIdx == -1 {
 			// No existing [ui] table (top-level "" always exists as the
@@ -120,26 +113,7 @@ func applyFlatFields(blocks []tomlBlock, cfg FileConfig) []tomlBlock {
 			blockIdx = len(blocks) - 1
 		}
 		block := &blocks[blockIdx]
-		for i, raw := range block.lines {
-			text := strings.TrimSpace(stripComment(raw))
-			if text == "" || strings.HasPrefix(text, "[") {
-				continue
-			}
-			key, _, err := parseKeyValue(text)
-			if err != nil {
-				continue
-			}
-			fullKey := key
-			if section != "" {
-				fullKey = section + "." + key
-			}
-			field, ok := FieldByFullKey(fullKey)
-			if !ok {
-				continue // unknown key: leave the line untouched
-			}
-			block.lines[i] = key + " = " + serializeFieldValue(field, cfg)
-			seen[fullKey] = true
-		}
+		seen := rewriteKnownLines(block, section, cfg)
 		for _, field := range fields {
 			if seen[field.FullKey()] {
 				continue
@@ -148,6 +122,48 @@ func applyFlatFields(blocks []tomlBlock, cfg FileConfig) []tomlBlock {
 		}
 	}
 	return blocks
+}
+
+// flatFieldsBySection groups the Schema's flat (non-[env]) fields by the
+// section they live in.
+func flatFieldsBySection() map[string][]Field {
+	fieldsBySection := map[string][]Field{}
+	for _, field := range Schema {
+		if field.Key == "" {
+			continue // the [env] whole-table field; handled separately
+		}
+		fieldsBySection[field.Section] = append(fieldsBySection[field.Section], field)
+	}
+	return fieldsBySection
+}
+
+// rewriteKnownLines rewrites, in place, every line of block that names a
+// Schema field with the value cfg holds for it, and returns the set of
+// full keys it rewrote. A line it does not recognise -- an unknown key, a
+// comment, a blank line -- is left untouched.
+func rewriteKnownLines(block *tomlBlock, section string, cfg FileConfig) map[string]bool {
+	seen := map[string]bool{}
+	for i, raw := range block.lines {
+		text := strings.TrimSpace(stripComment(raw))
+		if text == "" || strings.HasPrefix(text, "[") {
+			continue
+		}
+		key, _, err := parseKeyValue(text)
+		if err != nil {
+			continue
+		}
+		fullKey := key
+		if section != "" {
+			fullKey = section + "." + key
+		}
+		field, ok := FieldByFullKey(fullKey)
+		if !ok {
+			continue // unknown key: leave the line untouched
+		}
+		block.lines[i] = key + " = " + serializeFieldValue(field, cfg)
+		seen[fullKey] = true
+	}
+	return seen
 }
 
 // applyEnvFields rewrites the [env] table to exactly match cfg.Env: an
