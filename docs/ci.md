@@ -389,7 +389,7 @@ only, never on the `-race` build". The nightly/`workflow_dispatch` path
 above is the only path that ever runs with `-race` (`DECK_CI_GO_EXTRA_FLAGS`
 is set to `-race` only for `schedule`/`workflow_dispatch`; `ci/suite.sh`
 switches its `-covermode` to `atomic` automatically whenever that variable
-mentions `-race`) -- so any test asserting a wall-clock budget has to know,
+mentions `-race`, and hands the same mode to the features pass as `DECK_FEATURES_COVERMODE` so the black-box deck binary is built with a matching `-covermode`; mixed `set`/`atomic` covdata cannot be merged into `coverage-merged.out`) -- so any test asserting a wall-clock budget has to know,
 from inside the test binary itself, whether it is presently running under
 `-race`, without CI having to pass it anything extra.
 

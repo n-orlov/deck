@@ -289,10 +289,15 @@ mkdir -p "$covdir"
 # including its "--- Failed steps:" summary, verbatim in the log. Every
 # NAME=value goes through env(1) rather than a prefix assignment on the
 # function call, whose export to child processes POSIX leaves unspecified.
+# DECK_FEATURES_COVERMODE carries the unit pass's covermode to the features
+# harness: it builds the black-box deck binary with `-cover`, and with -race
+# on the unit pass (atomic counters) a `set`-mode binary leaves covdata that
+# `go tool covdata textfmt` refuses to merge ("counter mode clash"), which
+# emptied the nightly's merged profile and failed its quality gate.
 run_test_features() {
     junit=$1
     shift
-    env "$@" go run "$gotestsum_pkg" \
+    env "DECK_FEATURES_COVERMODE=$covermode" "$@" go run "$gotestsum_pkg" \
         --format standard-verbose \
         --junitfile "$junit" \
         --packages ./features/ \
