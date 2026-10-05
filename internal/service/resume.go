@@ -319,9 +319,9 @@ func (s Service) releaseResumeLease(ctx context.Context, sessionID, heldBy strin
 	}
 }
 
-// buildResumeLaunch resolves the pane command and environment of the resumed
-// launch; every error is the launch-failure cause Resume records.
-func (s Service) buildResumeLaunch(session store.Session, adapter agent.Adapter, caps agent.Caps, launchInput agent.LaunchInput, freshOnce bool) ([]string, map[string]string, error) {
+// resumeArgv builds the argv of the resumed launch: the adapter's launch
+// (fresh-once) or resume command, resolved through paneArgv.
+func (s Service) resumeArgv(session store.Session, adapter agent.Adapter, caps agent.Caps, launchInput agent.LaunchInput, freshOnce bool) ([]string, error) {
 	var argv []string
 	var err error
 	if freshOnce {
@@ -332,7 +332,7 @@ func (s Service) buildResumeLaunch(session store.Session, adapter agent.Adapter,
 		})
 	}
 	if err != nil {
-		return nil, nil, fmt.Errorf("build resume argv for session %q: %w", session.Name, err)
+		return nil, fmt.Errorf("build resume argv for session %q: %w", session.Name, err)
 	}
 	// An adapter that declares no executable (`shell`) names no argv[0] of
 	// its own, so the launcher supplies the shell it resolves for the pane --
@@ -341,7 +341,17 @@ func (s Service) buildResumeLaunch(session store.Session, adapter agent.Adapter,
 	// disagree with its own create about which shell it runs.
 	argv, err = s.paneArgv(caps, argv)
 	if err != nil {
-		return nil, nil, fmt.Errorf("resolve resume argv for session %q: %w", session.Name, err)
+		return nil, fmt.Errorf("resolve resume argv for session %q: %w", session.Name, err)
+	}
+	return argv, nil
+}
+
+// buildResumeLaunch resolves the pane command and environment of the resumed
+// launch; every error is the launch-failure cause Resume records.
+func (s Service) buildResumeLaunch(session store.Session, adapter agent.Adapter, caps agent.Caps, launchInput agent.LaunchInput, freshOnce bool) ([]string, map[string]string, error) {
+	argv, err := s.resumeArgv(session, adapter, caps, launchInput, freshOnce)
+	if err != nil {
+		return nil, nil, err
 	}
 
 	// login_shell=1 is mutually exclusive with relying on captured_path, as
@@ -374,12 +384,22 @@ func (s Service) buildResumeLaunch(session store.Session, adapter agent.Adapter,
 	// A login shell resolves its own PATH via its own profile/rc scripts
 	// (that is the point of login_shell=1, SPEC §6.4), so deck cannot judge
 	// PATH membership for it and must not fail resume on that basis.
-	if !session.LoginShell {
-		if lookErr := lookPathIn(argv[0], launchEnv["PATH"]); lookErr != nil {
-			return nil, nil, fmt.Errorf("resume session %q: agent binary %q not found on PATH: %w", session.Name, argv[0], lookErr)
-		}
+	if err = checkResumeBinary(session, argv, launchEnv); err != nil {
+		return nil, nil, err
 	}
 	return paneCommand, launchEnv, nil
+}
+
+// checkResumeBinary fails a resume whose agent binary is not on the launch
+// PATH; a login shell is exempt, as it resolves its own PATH.
+func checkResumeBinary(session store.Session, argv []string, launchEnv map[string]string) error {
+	if session.LoginShell {
+		return nil
+	}
+	if lookErr := lookPathIn(argv[0], launchEnv["PATH"]); lookErr != nil {
+		return fmt.Errorf("resume session %q: agent binary %q not found on PATH: %w", session.Name, argv[0], lookErr)
+	}
+	return nil
 }
 
 // startResumePane creates the pane and records the launch as ready; every
