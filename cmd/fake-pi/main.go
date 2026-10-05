@@ -171,27 +171,9 @@ func replayAndRecord(opts options, getenv func(string) string, getwd func() (str
 		return nil
 	}
 
-	path, err := findExistingTranscript(dir, opts.sessionID)
+	path, err := resumeOrCreateTranscript(dir, opts.sessionID, getwd, stdout)
 	if err != nil {
 		return err
-	}
-	if path != "" {
-		last, err := lastMessage(path)
-		if err != nil {
-			return err
-		}
-		if last != "" {
-			sayf(stdout, "fake-pi replay: %s\n", last)
-		}
-	} else {
-		cwd, err := getwd()
-		if err != nil {
-			return fmt.Errorf("resolve cwd: %w", err)
-		}
-		path, err = createTranscript(dir, opts.sessionID, cwd)
-		if err != nil {
-			return err
-		}
 	}
 
 	if opts.message != "" {
@@ -200,6 +182,31 @@ func replayAndRecord(opts options, getenv func(string) string, getwd func() (str
 		}
 	}
 	return nil
+}
+
+// resumeOrCreateTranscript returns the conversation's transcript path: an
+// existing transcript has its last message replayed to stdout, otherwise a new
+// one is created (header only) for the current working directory.
+func resumeOrCreateTranscript(dir, conversationID string, getwd func() (string, error), stdout io.Writer) (string, error) {
+	path, err := findExistingTranscript(dir, conversationID)
+	if err != nil {
+		return "", err
+	}
+	if path != "" {
+		last, err := lastMessage(path)
+		if err != nil {
+			return "", err
+		}
+		if last != "" {
+			sayf(stdout, "fake-pi replay: %s\n", last)
+		}
+		return path, nil
+	}
+	cwd, err := getwd()
+	if err != nil {
+		return "", fmt.Errorf("resolve cwd: %w", err)
+	}
+	return createTranscript(dir, conversationID, cwd)
 }
 
 // transcriptDir returns pi's own session-storage directory for the current
