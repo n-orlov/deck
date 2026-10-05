@@ -511,13 +511,7 @@ func parse(args []string) (options, error) {
 		}
 		message = append(message, argument)
 	}
-	_ = message
-	if len(message) > 0 {
-		result.message = message[0]
-		for _, part := range message[1:] {
-			result.message += " " + part
-		}
-	}
+	result.message = strings.Join(message, " ")
 	return result, nil
 }
 
