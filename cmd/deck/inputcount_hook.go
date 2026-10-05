@@ -90,10 +90,17 @@ func (m *inputCountingModel) countKey(msg tea.Msg) {
 // keyWeight is how many typed characters a key message stands for: its rune
 // count, or one for a paste, a named key or an empty rune list.
 func keyWeight(key tea.KeyMsg) int64 {
-	if key.Paste || len(key.Runes) == 0 {
+	if isSingleKeystroke(key) {
 		return 1
 	}
 	return int64(len(key.Runes))
+}
+
+// isSingleKeystroke reports whether a key message stands for exactly one
+// keystroke: a bracketed paste (one input event however many runes it
+// carries) or a message with no runes (a named key).
+func isSingleKeystroke(key tea.KeyMsg) bool {
+	return key.Paste || len(key.Runes) == 0
 }
 
 // writeInputCount overwrites path with total as a bare decimal integer,
