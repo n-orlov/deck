@@ -191,10 +191,7 @@ func announceLaunch(stdout io.Writer, options options, encodedArgv []byte) {
 // recorded message before appending anything new, and on either --session-id or --resume
 // with trailing prompt text it appends that text as a new message keyed to that id.
 func replayAndRecord(options options, getenv func(string) string, getwd func() (string, error), stdout io.Writer) error {
-	conversationID := options.sessionID
-	if conversationID == "" {
-		conversationID = options.resume
-	}
+	conversationID := options.conversationID()
 	if conversationID == "" {
 		return nil
 	}
@@ -208,12 +205,8 @@ func replayAndRecord(options options, getenv func(string) string, getwd func() (
 	}
 
 	if options.resume != "" {
-		last, err := lastMessage(path)
-		if err != nil {
+		if err := replayLastMessage(stdout, path); err != nil {
 			return err
-		}
-		if last != "" {
-			sayf(stdout, "fake-claude replay: %s\n", last)
 		}
 	}
 
@@ -223,6 +216,26 @@ func replayAndRecord(options options, getenv func(string) string, getwd func() (
 		}
 	}
 
+	return nil
+}
+
+// conversationID is the id the transcript is keyed to: --session-id wins over --resume.
+func (o options) conversationID() string {
+	if o.sessionID != "" {
+		return o.sessionID
+	}
+	return o.resume
+}
+
+// replayLastMessage prints ("replays") the transcript's last recorded message, if any.
+func replayLastMessage(stdout io.Writer, path string) error {
+	last, err := lastMessage(path)
+	if err != nil {
+		return err
+	}
+	if last != "" {
+		sayf(stdout, "fake-claude replay: %s\n", last)
+	}
 	return nil
 }
 
