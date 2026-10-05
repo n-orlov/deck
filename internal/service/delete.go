@@ -31,27 +31,8 @@ func (s Service) Delete(ctx context.Context, session store.Session) (string, err
 	if session.ID == "" {
 		return "", errors.New("session delete requires a durable session id")
 	}
-	if session.Status != "stopped" {
-		if session.Slug == "" {
-			return "", errors.New("session delete requires a durable slug to kill a live pane")
-		}
-		if err := s.TMux.Kill(ctx, session.Slug); err != nil {
-			return "", fmt.Errorf("kill tmux session %q: %w", session.Name, err)
-		}
-		if err := s.Store.UpdateSessionStatus(ctx, store.StatusUpdateInput{
-			SessionID:    session.ID,
-			Status:       "stopped",
-			Reason:       "killed by user",
-			Source:       "user",
-			At:           s.Clock.Now().UnixMilli(),
-			EventKind:    "killed",
-			KilledByUser: true,
-		}); err != nil {
-			return "", fmt.Errorf("record killed session %q: %w", session.Name, err)
-		}
-		if err := s.Audit.Transition(session.ID, "killed"); err != nil {
-			return "", fmt.Errorf("audit killed session %q: %w", session.Name, err)
-		}
+	if err := s.killLiveForTeardown(ctx, session, "delete"); err != nil {
+		return "", err
 	}
 	at := s.Clock.Now().UnixMilli()
 	if err := s.Store.SoftDeleteSession(ctx, session.ID, at); err != nil {
