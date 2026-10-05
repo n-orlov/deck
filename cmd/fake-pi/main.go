@@ -110,20 +110,7 @@ func runWithIO(args []string, stdin io.Reader, stdout io.Writer, getenv func(str
 		return 0, fmt.Errorf("encode argv: %w", err)
 	}
 
-	// Keep this output deliberately small and deterministic so a real
-	// terminal/pane assertion can prove both that the fixture started and
-	// which argv reached it.
-	sayln(stdout, "Fake pi")
-	sayf(stdout, "fake-pi argv: %s\n", encoded)
-	if opts.sessionID != "" {
-		// pi uses the same --session-id flag for both launch and resume: the
-		// id is caller-assigned, and pi creates the conversation if it does
-		// not already exist.
-		sayf(stdout, "fake-pi session-id: %s\n", opts.sessionID)
-	}
-	if opts.approve {
-		sayln(stdout, "fake-pi approve: true")
-	}
+	announceLaunch(stdout, opts, encoded)
 
 	if getenv(commandsEnvironment) == "1" {
 		if err := runCommands(stdin, stdout, getenv(fixtureDirectoryEnvironment)); err != nil {
@@ -141,6 +128,24 @@ func runWithIO(args []string, stdin io.Reader, stdout io.Writer, getenv func(str
 	}
 
 	return configuredExitCode(getenv(exitCodeEnvironment))
+}
+
+// announceLaunch prints the fixture's startup banner.
+func announceLaunch(stdout io.Writer, opts options, encodedArgv []byte) {
+	// Keep this output deliberately small and deterministic so a real
+	// terminal/pane assertion can prove both that the fixture started and
+	// which argv reached it.
+	sayln(stdout, "Fake pi")
+	sayf(stdout, "fake-pi argv: %s\n", encodedArgv)
+	if opts.sessionID != "" {
+		// pi uses the same --session-id flag for both launch and resume: the
+		// id is caller-assigned, and pi creates the conversation if it does
+		// not already exist.
+		sayf(stdout, "fake-pi session-id: %s\n", opts.sessionID)
+	}
+	if opts.approve {
+		sayln(stdout, "fake-pi approve: true")
+	}
 }
 
 // replayAndRecord implements the per-conversation transcript persisted at the
