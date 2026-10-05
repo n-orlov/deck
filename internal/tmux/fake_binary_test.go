@@ -18,3 +18,13 @@ func fakeTmuxClient(t *testing.T, body string) Client {
 	}
 	return Client{Binary: path, Socket: "fake-socket", Timeout: 5 * time.Second}
 }
+
+// readFakeSent returns what a fake tmux script appended to "$0.sent".
+func readFakeSent(t *testing.T, client Client) string {
+	t.Helper()
+	data, err := os.ReadFile(client.Binary + ".sent")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(data)
+}
