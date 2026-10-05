@@ -643,6 +643,13 @@ func recordSize(path string) {
 	if err != nil {
 		return
 	}
+	appendSizeLine(path, rows, cols)
+}
+
+// appendSizeLine appends one "COLSxROWS" line to path, creating its directory
+// and the file as needed; recordSize's best-effort contract applies, so every
+// failure is swallowed.
+func appendSizeLine(path string, rows, cols int) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
 		return
 	}
