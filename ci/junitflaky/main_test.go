@@ -240,3 +240,33 @@ func TestRunWritesAReparseableMergedFile(t *testing.T) {
 		t.Fatalf("run without -o succeeded, want a usage error")
 	}
 }
+
+// outcomeOf: a child element decides first (failure, then error, then
+// skipped); with no child element, godog's status attribute decides.
+func TestOutcomeOfReadsChildElementsThenTheStatusAttribute(t *testing.T) {
+	cases := []struct {
+		name, xml string
+		want      outcome
+	}{
+		{"failure child", `<testcase name="T"><failure message="m"/></testcase>`, failed},
+		{"error child", `<testcase name="T"><error message="m"/></testcase>`, errored},
+		{"skipped child", `<testcase name="T"><skipped/></testcase>`, skipped},
+		{"failure beats error", `<testcase name="T"><error/><failure/></testcase>`, failed},
+		{"child beats status", `<testcase name="T" status="passed"><failure/></testcase>`, failed},
+		{"status failed", `<testcase name="T" status="failed"/>`, failed},
+		{"status undefined", `<testcase name="T" status="undefined"/>`, errored},
+		{"status pending", `<testcase name="T" status="pending"/>`, errored},
+		{"status ambiguous", `<testcase name="T" status="ambiguous"/>`, errored},
+		{"status skipped", `<testcase name="T" status="skipped"/>`, skipped},
+		{"status passed", `<testcase name="T" status="passed"/>`, passed},
+		{"no status", `<testcase name="T"/>`, passed},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			root := mustParse(t, "o.xml", `<testsuite name="s">`+c.xml+`</testsuite>`)
+			if got := outcomeOf(root.Nodes[0].Nodes[0]); got != c.want {
+				t.Fatalf("outcomeOf = %v, want %v", got, c.want)
+			}
+		})
+	}
+}
