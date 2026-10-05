@@ -69,3 +69,27 @@ func TestTouchLastUsedBestEffortReportsButNeverStopsTheLaunch(t *testing.T) {
 		t.Fatalf("unwritable data root reported %q, want a \"deck last used:\" line", loud.String())
 	}
 }
+
+// TestReclaimLeakedPipesBestEffortReportsButNeverStopsTheLaunch pins the
+// startup reclaim's best-effort shape: an empty temp root reclaims nothing
+// and says nothing, a temp root that cannot be scanned (here a regular
+// file) is reported on stderr.
+func TestReclaimLeakedPipesBestEffortReportsButNeverStopsTheLaunch(t *testing.T) {
+	t.Setenv("TMPDIR", t.TempDir())
+	var quiet bytes.Buffer
+	reclaimLeakedPipesBestEffort(&quiet)
+	if quiet.Len() != 0 {
+		t.Fatalf("empty temp root reported %q, want silence", quiet.String())
+	}
+
+	file := filepath.Join(t.TempDir(), "not-a-dir")
+	if err := os.WriteFile(file, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("TMPDIR", file)
+	var loud bytes.Buffer
+	reclaimLeakedPipesBestEffort(&loud)
+	if !strings.HasPrefix(loud.String(), "deck interactive pipe reclaim: ") {
+		t.Fatalf("unscannable temp root reported %q, want a \"deck interactive pipe reclaim:\" line", loud.String())
+	}
+}

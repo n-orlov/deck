@@ -134,9 +134,7 @@ func runTUI(settings config.Settings, stderr io.Writer) int {
 	// dir. Same best-effort shape as the tombstone sweep just below: a
 	// failure here must never stop deck from starting, since this is a
 	// backlog catch-up, not part of any promise made at open time.
-	if _, err := tmux.ReclaimLeakedInteractivePipes(context.Background()); err != nil {
-		sayln(stderr, "deck interactive pipe reclaim:", err)
-	}
+	reclaimLeakedPipesBestEffort(stderr)
 	registry := agent.NewRegistry()
 	registry.Register(agent.NewShell())
 	registry.Register(agent.NewClaude())
@@ -189,6 +187,14 @@ func runTUI(settings config.Settings, stderr io.Writer) int {
 func touchLastUsedBestEffort(settings config.Settings, stderr io.Writer) {
 	if err := config.TouchLastUsed(settings.Paths); err != nil {
 		sayln(stderr, "deck last used:", err)
+	}
+}
+
+// reclaimLeakedPipesBestEffort reclaims interactive pipes a prior deck
+// process leaked and reports a failure on stderr without stopping the launch.
+func reclaimLeakedPipesBestEffort(stderr io.Writer) {
+	if _, err := tmux.ReclaimLeakedInteractivePipes(context.Background()); err != nil {
+		sayln(stderr, "deck interactive pipe reclaim:", err)
 	}
 }
 
