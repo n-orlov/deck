@@ -34,7 +34,7 @@ func clickSelectModel(t *testing.T, name string) (Model, string, int) {
 	}
 	t.Cleanup(func() { _ = sess.Close() })
 
-	m := New(nil, config.Settings{Mouse: true, Color: true}, "")
+	m := New(nil, config.Settings{Mouse: true, Color: true, SelectOnDrag: true}, "")
 	m.sessions = []store.Session{{ID: "a1", Name: "a1", CWD: "/work/infra"}}
 	m.width, m.height = 100, 30
 	m.interactive = true

@@ -88,7 +88,7 @@ func TestInProgressSelectionHighlightSurvivesColoredPaneContent(t *testing.T) {
 	oscClipboardWriter = io.Discard
 	defer func() { oscClipboardWriter = previous }()
 
-	m := New(nil, config.Settings{Mouse: true, Color: true}, "")
+	m := New(nil, config.Settings{Mouse: true, Color: true, SelectOnDrag: true}, "")
 	m.sessions = []store.Session{{ID: "a1", Name: "a1", CWD: "/work/infra"}}
 	m.attach = func(context.Context, string) (*exec.Cmd, error) { return exec.Command("true"), nil }
 	m.width, m.height = 100, 30

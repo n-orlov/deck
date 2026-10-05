@@ -1173,6 +1173,10 @@ type Model struct {
 	interactiveSelectAnchorRow  int
 	interactiveSelectCurrentCol int
 	interactiveSelectCurrentRow int
+	// interactiveForwardingDrag is true from a left press forwarded to the
+	// pane program ([ui] select_on_drag false) until its release: the motion
+	// and release that follow are forwarded too (interactive_drag_forward.go).
+	interactiveForwardingDrag bool
 	// lostAttach is SPEC §11.9's dialog raised when a client is displaced
 	// out of interactive mode -- its own claim stolen by `F`, or a full
 	// attach arriving and re-expressing its own size (task 118 wires the

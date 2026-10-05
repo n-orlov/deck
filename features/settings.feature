@@ -410,9 +410,11 @@ Feature: The `,` settings takeover (requirement 48)
     # flag instead of clearing the history. GH #52 then added
     # `[ui] attach_on_new` and `[ui] attach_on_resume` after
     # default_group_first, making it TEN. GH #62 then added
-    # `[ui] attach_on_click` beside them, making it ELEVEN. Grep this
+    # `[ui] attach_on_click` beside them, making it ELEVEN. GH #67 then
+    # added `[ui] select_on_drag` after it, making it TWELVE. Grep this
     # feature file before adding any future ui.* schema field or
     # settings-only entry.
+    And deck client "A" sends "j"
     And deck client "A" sends "j"
     And deck client "A" sends "j"
     And deck client "A" sends "j"
