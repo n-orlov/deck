@@ -69,18 +69,24 @@ func main() {
 	profilePath := flag.String("profile", "", "path to the merged coverprofile (required)")
 	flag.Parse()
 
-	wd, err := os.Getwd()
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "covgate:", err)
-		os.Exit(2)
-	}
-	report, code, err := run(*configPath, *profilePath, wd)
+	report, code, err := runInWorkingDir(*configPath, *profilePath)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "covgate:", err)
 		os.Exit(code)
 	}
 	fmt.Print(report)
 	os.Exit(code)
+}
+
+// runInWorkingDir is main's testable core: it resolves the working
+// directory (the module root the gate scores) and hands over to run, so
+// main itself holds no branch beyond the shared report/exit step.
+func runInWorkingDir(configPath, profilePath string) (report string, code int, err error) {
+	wd, err := os.Getwd()
+	if err != nil {
+		return "", 2, err
+	}
+	return run(configPath, profilePath, wd)
 }
 
 // loadConfig reads the thresholds and rejects a floor that is not in
