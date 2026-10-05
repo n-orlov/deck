@@ -176,15 +176,10 @@ func parse(args []string) (options, error) {
 		}
 
 		if len(argument) > 1 && argument[0] == '-' {
-			following := args[index+1:]
-			if len(following) == 0 {
-				return result, fmt.Errorf("option %q requires a value", argument)
-			}
-			value := following[0]
-			index++
-			if err := applyValuedOption(&result, argument, value); err != nil {
+			if err := takeValuedOption(&result, args, index); err != nil {
 				return result, err
 			}
+			index++
 			continue
 		}
 
@@ -192,6 +187,16 @@ func parse(args []string) (options, error) {
 	}
 	result.message = strings.Join(message, " ")
 	return result, nil
+}
+
+// takeValuedOption applies the option at args[index] to its value, the
+// argument right after it; the caller then skips that value.
+func takeValuedOption(result *options, args []string, index int) error {
+	following := args[index+1:]
+	if len(following) == 0 {
+		return fmt.Errorf("option %q requires a value", args[index])
+	}
+	return applyValuedOption(result, args[index], following[0])
 }
 
 // rejectedFlag reports the two Claude-shaped flags codex-cli 0.154.0 does
