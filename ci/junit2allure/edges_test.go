@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -217,5 +218,24 @@ func TestRunReportsAWriteFailure(t *testing.T) {
 	}
 	if err := run([]string{"-group", "unit", "-o", out, in}, &bytes.Buffer{}); err == nil {
 		t.Fatal("run into a read-only output directory must fail, not report success")
+	}
+}
+
+// failingWriter is a stderr that rejects every write.
+type failingWriter struct{}
+
+func (failingWriter) Write([]byte) (int, error) { return 0, errors.New("stderr closed") }
+
+// The result-count line is the only confirmation a run prints; losing it
+// is an error, not a silent success.
+func TestRunReportsAFailureToPrintTheResultCount(t *testing.T) {
+	dir := t.TempDir()
+	in := filepath.Join(dir, "j.xml")
+	if err := os.WriteFile(in, []byte(`<testsuites><testsuite name="s"><testcase classname="p" name="T"></testcase></testsuite></testsuites>`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	err := run([]string{"-group", "unit", "-o", filepath.Join(dir, "out"), in}, failingWriter{})
+	if err == nil || !strings.Contains(err.Error(), "report result count") || !strings.Contains(err.Error(), "stderr closed") {
+		t.Fatalf("run = %v, want an error naming the result-count report and the write failure", err)
 	}
 }
