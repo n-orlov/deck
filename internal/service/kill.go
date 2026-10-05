@@ -20,6 +20,14 @@ func (s Service) Kill(ctx context.Context, session store.Session) error {
 	if session.ID == "" || session.Slug == "" {
 		return errors.New("session kill requires a durable session id and slug")
 	}
+	if err := s.ensureKillable(ctx, session); err != nil {
+		return err
+	}
+	return s.killAndRecord(ctx, session)
+}
+
+// ensureKillable refuses a kill of a session that is already stopped AND gone.
+func (s Service) ensureKillable(ctx context.Context, session store.Session) error {
 	if session.Status == "stopped" {
 		// "Already stopped" must mean stopped AND gone: under deck's
 		// server-wide `remain-on-exit failed` a non-zero exit RETAINS the
@@ -40,6 +48,12 @@ func (s Service) Kill(ctx context.Context, session store.Session) error {
 			return errors.New("session is already stopped")
 		}
 	}
+	return nil
+}
+
+// killAndRecord kills the session's tmux session and records the durable
+// "killed" event and its audit transition.
+func (s Service) killAndRecord(ctx context.Context, session store.Session) error {
 	if err := s.TMux.Kill(ctx, session.Slug); err != nil {
 		return fmt.Errorf("kill tmux session %q: %w", session.Name, err)
 	}
