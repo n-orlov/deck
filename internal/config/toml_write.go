@@ -279,6 +279,7 @@ var fieldRenderers = map[string]func(FileConfig) string{
 	"ui.default_group_first": func(c FileConfig) string { return strconv.FormatBool(c.DefaultGroupFirst) },
 	"ui.preview_fit":         func(c FileConfig) string { return strconv.FormatBool(c.PreviewFit) },
 	"ui.attach_on_new":       func(c FileConfig) string { return strconv.FormatBool(c.AttachOnNew) },
+	"ui.attach_on_click":     func(c FileConfig) string { return strconv.FormatBool(c.AttachOnClick) },
 	"ui.attach_on_resume":    func(c FileConfig) string { return strconv.FormatBool(c.AttachOnResume) },
 	"ui.sort_order":          func(c FileConfig) string { return strconv.Quote(c.SortOrder) },
 	"ui.preview_paint":       func(c FileConfig) string { return strconv.Quote(c.PreviewPaint) },

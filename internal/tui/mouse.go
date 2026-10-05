@@ -313,6 +313,14 @@ func (m Model) resolveSidebarPress(hit hitResult, onRow func(Model, hitResult) (
 // the WHOLE terminal and Ctrl+Q cannot undo it.
 func (m Model) clickSidebarRow(index int, _ tea.MouseMsg) (tea.Model, tea.Cmd) {
 	m.selected = rowCursor(index)
+	// [ui] attach_on_click / DECK_ATTACH_ON_CLICK (GH #62): off, the press
+	// only selects -- the list keeps keyboard focus, the preview stays
+	// passive and no entry, ownership claim or fit happens. A double-click
+	// is two of these presses (no separate handler exists), so this one
+	// check governs both.
+	if !m.settings.AttachOnClick {
+		return m, nil
+	}
 	return m.enterInteractive()
 }
 

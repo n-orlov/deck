@@ -164,6 +164,12 @@ type Settings struct {
 	// DECK_ATTACH_ON_NEW overrides the file when set, the same shape
 	// PreviewFit has.
 	AttachOnNew bool
+	// AttachOnClick mirrors config.toml's [ui] attach_on_click key (default
+	// true, SPEC §11.8, GH #62): whether a click or double-click on a
+	// sidebar session row goes on to enter the interactive preview (§11.9)
+	// on it, rather than only selecting it. DECK_ATTACH_ON_CLICK overrides
+	// the file when set, the same shape DECK_ATTACH_ON_NEW has.
+	AttachOnClick bool
 	// AttachOnResume mirrors config.toml's [ui] attach_on_resume key
 	// (default false, SPEC §9.1, GH #52): the same auto-entry, armed by a
 	// successful `r` resume or `R` restart in the client that pressed the
@@ -379,6 +385,7 @@ func applyFileConfig(settings *Settings, fileCfg FileConfig) {
 	settings.Mouse = fileCfg.Mouse
 	settings.PreviewFit = fileCfg.PreviewFit
 	settings.AttachOnNew = fileCfg.AttachOnNew
+	settings.AttachOnClick = fileCfg.AttachOnClick
 	settings.AttachOnResume = fileCfg.AttachOnResume
 	settings.PreviewPaint = fileCfg.PreviewPaint
 	settings.TmuxMouse = fileCfg.TmuxMouse
@@ -445,6 +452,7 @@ var envOverrideSteps = []envOverrideStep{
 	boolOverrideStep("DECK_MOUSE", "ui.mouse", func(s *Settings) *bool { return &s.Mouse }),
 	boolOverrideStep("DECK_PREVIEW_FIT", "ui.preview_fit", func(s *Settings) *bool { return &s.PreviewFit }),
 	boolOverrideStep("DECK_ATTACH_ON_NEW", "ui.attach_on_new", func(s *Settings) *bool { return &s.AttachOnNew }),
+	boolOverrideStep("DECK_ATTACH_ON_CLICK", "ui.attach_on_click", func(s *Settings) *bool { return &s.AttachOnClick }),
 	boolOverrideStep("DECK_ATTACH_ON_RESUME", "ui.attach_on_resume", func(s *Settings) *bool { return &s.AttachOnResume }),
 	previewPaintOverride,
 	boolOverrideStep("DECK_TMUX_MOUSE", "tmux_mouse", func(s *Settings) *bool { return &s.TmuxMouse }),

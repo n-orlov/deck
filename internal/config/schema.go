@@ -611,6 +611,26 @@ var Schema = []Field{
 	},
 	{
 		Section: "ui",
+		Key:     "attach_on_click",
+		Kind:    KindToggle,
+		Default: true,
+		Description: "When true, a click or double-click on a sidebar session row " +
+			"selects it and enters the interactive preview on it, exactly as if " +
+			"enter had been pressed on it (SPEC §11.8, §11.9). false only selects " +
+			"the row: the list keeps keyboard focus, the preview stays passive, " +
+			"and no entry, ownership claim or fit happens; enter still enters. " +
+			"A group-header click, a click on the passive preview or the collapsed " +
+			"strip, re-targeting a sidebar click while already interactive and " +
+			"Ctrl+Q are unchanged. On by default. DECK_ATTACH_ON_CLICK overrides " +
+			"the file when set.",
+		// requirement 19: clickSidebarRow (internal/tui) reads
+		// m.settings.AttachOnClick fresh on every click, and
+		// settingsApplyLiveFields copies a saved change into it -- the same
+		// live-read shape ui.attach_on_new above has.
+		Scope: ScopeGlobal,
+	},
+	{
+		Section: "ui",
 		Key:     "attach_on_resume",
 		Kind:    KindToggle,
 		Default: false,
