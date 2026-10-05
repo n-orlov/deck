@@ -214,6 +214,9 @@ func (s Service) launchAgent(ctx context.Context, input AgentCreateInput, plan a
 		_ = s.TMux.Kill(ctx, session.Slug)
 		return s.launchFailed(ctx, session, fmt.Errorf("audit agent launch %q: %w", session.Name, err))
 	}
+	if err := s.recordHookExecutable(ctx, &session, plan.adapter, s.hookProbeInput(session)); err != nil {
+		return s.launchFailed(ctx, session, err)
+	}
 	if err := s.recordAgentReady(ctx, session); err != nil {
 		return s.launchFailed(ctx, session, err)
 	}
@@ -405,4 +408,30 @@ func (s Service) resolveLaunchEnv(capturedPath string, sessionEnv map[string]str
 		merged[key] = value
 	}
 	return merged
+}
+
+// recordHookExecutable persists the deck binary this launch's hook command is
+// bound to (R204c): the session's agent keeps that path for as long as it
+// runs, and the TUI compares it with its own to hint at a stale binding. It
+// runs once the pane is up, so a launch that failed never overwrites the
+// binding of the agent still running, and only for an adapter that
+// instruments hooks at all (a shell or Pi launch binds nothing, so it has
+// nothing to go stale). The in-memory row is updated too, so the caller
+// returns the row the store now holds.
+func (s Service) recordHookExecutable(ctx context.Context, session *store.Session, adapter agent.Adapter, launch agent.LaunchInput) error {
+	if instrumentArgv, instrumentEnv := adapter.Instrument(launch); len(instrumentArgv) == 0 && len(instrumentEnv) == 0 {
+		return nil
+	}
+	if err := s.Store.SetHookExecutable(ctx, session.ID, s.DeckExecutable); err != nil {
+		return err
+	}
+	session.HookExecutable = s.DeckExecutable
+	return nil
+}
+
+// hookProbeInput is the launch input launchAgent hands recordHookExecutable:
+// the deck-owned facts an adapter's Instrument reads, which are the same for
+// every launch of the row (a created row has no lease generation yet).
+func (s Service) hookProbeInput(session store.Session) agent.LaunchInput {
+	return agent.LaunchInput{CWD: session.CWD, DeckExecutable: s.DeckExecutable, DeckSessionID: session.ID, DeckHome: s.DeckHome}
 }

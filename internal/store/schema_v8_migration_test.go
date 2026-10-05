@@ -189,8 +189,8 @@ func TestSchemaV8MigratesPopulatedV7Database(t *testing.T) {
 	if err := st.DB().QueryRow(`SELECT version FROM meta WHERE key = 'schema_version'`).Scan(&version); err != nil || version != SchemaVersion {
 		t.Fatalf("migrated version = %d, %v; want %d", version, err, SchemaVersion)
 	}
-	if SchemaVersion != 8 {
-		t.Fatalf("SchemaVersion = %d, want 8", SchemaVersion)
+	if SchemaVersion < 8 {
+		t.Fatalf("SchemaVersion = %d, want at least 8 (schemaV8 is one rung of the ladder)", SchemaVersion)
 	}
 
 	cols := tableColumnSet(t, st.DB(), "sessions")
@@ -257,8 +257,8 @@ func TestSchemaV8ReopenIsNoOp(t *testing.T) {
 		t.Fatalf("first open (v7 -> v8 migration): %v", err)
 	}
 	var versionAfterFirstOpen int
-	if err := first.DB().QueryRow(`SELECT version FROM meta WHERE key = 'schema_version'`).Scan(&versionAfterFirstOpen); err != nil || versionAfterFirstOpen != 8 {
-		t.Fatalf("version after first open = %d, %v; want 8", versionAfterFirstOpen, err)
+	if err := first.DB().QueryRow(`SELECT version FROM meta WHERE key = 'schema_version'`).Scan(&versionAfterFirstOpen); err != nil || versionAfterFirstOpen != SchemaVersion {
+		t.Fatalf("version after first open = %d, %v; want %d", versionAfterFirstOpen, err, SchemaVersion)
 	}
 	// Set a non-zero pinned_at on one row directly, outside any pin
 	// feature code (task 002 lands the column, not the pin action), so
@@ -280,8 +280,8 @@ func TestSchemaV8ReopenIsNoOp(t *testing.T) {
 	defer second.Close()
 
 	var versionAfterSecondOpen int
-	if err := second.DB().QueryRow(`SELECT version FROM meta WHERE key = 'schema_version'`).Scan(&versionAfterSecondOpen); err != nil || versionAfterSecondOpen != 8 {
-		t.Fatalf("version after second open = %d, %v; want 8", versionAfterSecondOpen, err)
+	if err := second.DB().QueryRow(`SELECT version FROM meta WHERE key = 'schema_version'`).Scan(&versionAfterSecondOpen); err != nil || versionAfterSecondOpen != SchemaVersion {
+		t.Fatalf("version after second open = %d, %v; want %d", versionAfterSecondOpen, err, SchemaVersion)
 	}
 
 	afterSecondOpen := snapshotSessionColumns(t, second.DB(), allColumnsPostV8)

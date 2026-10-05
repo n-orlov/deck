@@ -402,6 +402,7 @@ CREATE TABLE sessions (
   last_attached_at   INTEGER NOT NULL DEFAULT 0,
   archived_at        INTEGER NOT NULL DEFAULT 0,
   pinned_at          INTEGER NOT NULL DEFAULT 0, -- sidebar pin (§11); 0 = not pinned, else when it was pinned
+  hook_executable    TEXT,                      -- absolute path of the deck binary the agent's hook command was last launched with (§11.4); NULL = none recorded
   deleted_at         INTEGER NOT NULL DEFAULT 0  -- tombstone; purged after grace (§9.2)
 );
 
@@ -2047,6 +2048,19 @@ detail) ·
 snooze duration · theme picker (§11.6) · event log · health view ·
 find (§12) · **lost attach (§11.9)** · help overlay. Settings is deliberately *not* a dialog
 — see below.
+
+**A session bound to an older deck binary gets a hint, never an error.** An agent keeps the hook
+command of the deck that launched it (§3.1), so after deck is upgraded, moved or removed a running
+agent still calls the old path. Every launch of an agent that installs hooks (create, resume,
+restart; Claude and Codex — Pi and shell launch no hook command) records the launching deck's
+absolute path in `sessions.hook_executable` once its pane is up. When that path differs from the
+running deck's, or the file no longer exists, the `i` detail dialog shows
+`hooks: bound to <path> — restart (R) to refresh` (`-` for the dash under `ascii`), and the
+footer's status reason for the row ends with the same text after a ` · `, so it is visible
+without opening `i`. It is a hint on a healthy row: the row's status, source and stored reason
+are untouched and it is never an error state. It stays until a restart or resume relaunches the
+agent under the running deck, which records that path and clears it. A row that recorded no
+path (created before schema 9, Pi, a shell) shows no hint.
 
 **The `i` detail dialog's `Hook declined` line is an alarm, so it is shown only for a decline
 that is not expected.** A hook declined because it came from a replaced launch (§9.3) is

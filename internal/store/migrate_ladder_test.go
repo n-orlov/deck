@@ -68,7 +68,7 @@ func TestMigrateFromScratchRecordsTheCurrentVersion(t *testing.T) {
 // the ladder in turn: the error must name that rung, and nothing the earlier
 // rungs of the same call created may survive (one transaction).
 func TestMigrateNamesTheFailingRungAndRollsEverythingBack(t *testing.T) {
-	ladder := []*[]string{&schemaV1, &schemaV2, &schemaV3, &schemaV4, &schemaV5, &schemaV6, &schemaV7, &schemaV8}
+	ladder := []*[]string{&schemaV1, &schemaV2, &schemaV3, &schemaV4, &schemaV5, &schemaV6, &schemaV7, &schemaV8, &schemaV9}
 	for rung, steps := range ladder {
 		version := rung + 1
 		t.Run(fmt.Sprintf("v%d", version), func(t *testing.T) {
@@ -111,9 +111,9 @@ func TestMigrateFromAMidVersionRunsOnlyTheLaterRungs(t *testing.T) {
 }
 
 func TestMigrateReportsAFailedVersionRecord(t *testing.T) {
-	original := schemaV8
-	schemaV8 = append(append([]string{}, original...), `DROP TABLE meta`)
-	t.Cleanup(func() { schemaV8 = original })
+	original := schemaV9
+	schemaV9 = append(append([]string{}, original...), `DROP TABLE meta`)
+	t.Cleanup(func() { schemaV9 = original })
 
 	s := openRawLadderDB(t)
 	err := s.migrate(0)
@@ -127,13 +127,13 @@ func TestMigrateReportsAFailedVersionRecord(t *testing.T) {
 }
 
 func TestMigrateReportsAFailedCommit(t *testing.T) {
-	original := schemaV8
+	original := schemaV9
 	// A deferred foreign-key violation only surfaces at COMMIT.
-	schemaV8 = append(append([]string{}, original...),
+	schemaV9 = append(append([]string{}, original...),
 		`CREATE TABLE ladder_parent (id INTEGER PRIMARY KEY)`,
 		`CREATE TABLE ladder_child (p INTEGER REFERENCES ladder_parent(id) DEFERRABLE INITIALLY DEFERRED)`,
 		`INSERT INTO ladder_child (p) VALUES (99)`)
-	t.Cleanup(func() { schemaV8 = original })
+	t.Cleanup(func() { schemaV9 = original })
 
 	s := openRawLadderDB(t)
 	err := s.migrate(0)
