@@ -76,14 +76,14 @@ func TestRun_MissingConfigPathIsUsageError(t *testing.T) {
 	}
 }
 
-// TestCheckedInConfigHoldsCrapAtFifteen: the CRAP gate is on in the real
-// ci/quality.json, at 15 for product and for the cmd/fake-* fixtures.
-func TestCheckedInConfigHoldsCrapAtFifteen(t *testing.T) {
+// TestCheckedInConfigHoldsCrapAtTen: the CRAP gate is on in the real
+// ci/quality.json, at 10 for product and for the cmd/fake-* fixtures.
+func TestCheckedInConfigHoldsCrapAtTen(t *testing.T) {
 	cfg, err := loadConfig(filepath.Join(repoRoot(t), "ci", "quality.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !cfg.Crap.Enabled || cfg.Crap.Ceiling != 15 || cfg.Crap.FixtureCeiling != 15 {
-		t.Errorf("crap config = %+v, want enabled with ceiling 15 and fixture_ceiling 15", cfg.Crap)
+	if !cfg.Crap.Enabled || cfg.Crap.Ceiling != 10 || cfg.Crap.FixtureCeiling != 10 {
+		t.Errorf("crap config = %+v, want enabled with ceiling 10 and fixture_ceiling 10", cfg.Crap)
 	}
 }

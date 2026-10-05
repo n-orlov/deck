@@ -26,7 +26,7 @@ func marshalConfig(t *testing.T, cfg config) string {
 func baselineConfig() config {
 	return config{
 		Coverage: coverageConfig{Enabled: true, TotalFloor: 85, PackageFloor: 80, FixtureFloor: 50},
-		Crap:     crapConfig{Enabled: true, Ceiling: 15, FixtureCeiling: 15},
+		Crap:     crapConfig{Enabled: true, Ceiling: 10, FixtureCeiling: 10},
 		Trivy:    trivyConfig{Enabled: true, Severity: "HIGH,CRITICAL"},
 	}
 }
@@ -90,7 +90,7 @@ func TestThresholdsNotLoosened_SeededLoosenedFloorFails(t *testing.T) {
 func TestThresholdsNotLoosened_SeededRaisedCeilingFails(t *testing.T) {
 	base := baselineConfig()
 	loosened := base
-	loosened.Crap.Ceiling = 20 // was 15: a higher ceiling is looser.
+	loosened.Crap.Ceiling = 20 // was 10: a higher ceiling is looser.
 	currentPath := marshalConfig(t, loosened)
 
 	err := checkThresholdsNotLoosened(currentPath, func() (config, error) { return base, nil })
@@ -185,5 +185,27 @@ func TestThresholdsNotLoosened_CrapFifteenToTwentyFails(t *testing.T) {
 
 	if err := checkThresholdsNotLoosened(currentPath, func() (config, error) { return base, nil }); err == nil {
 		t.Fatal("loosening the CRAP ceiling 15 -> 20 must fail, got nil")
+	}
+}
+
+// TestThresholdsNotLoosened_CrapFifteenToTenPasses: the final R193 stage, a
+// base at 15 and a checked-in copy at 10 is a tightening and passes.
+func TestThresholdsNotLoosened_CrapFifteenToTenPasses(t *testing.T) {
+	base := crapCeilingConfig(15)
+	currentPath := marshalConfig(t, crapCeilingConfig(10))
+
+	if err := checkThresholdsNotLoosened(currentPath, func() (config, error) { return base, nil }); err != nil {
+		t.Fatalf("tightening the CRAP ceiling 15 -> 10 must pass, got %v", err)
+	}
+}
+
+// TestThresholdsNotLoosened_CrapTenToFifteenFails: the reverse move, a base
+// at 10 and a copy back at 15, is a loosening and must fail.
+func TestThresholdsNotLoosened_CrapTenToFifteenFails(t *testing.T) {
+	base := crapCeilingConfig(10)
+	currentPath := marshalConfig(t, crapCeilingConfig(15))
+
+	if err := checkThresholdsNotLoosened(currentPath, func() (config, error) { return base, nil }); err == nil {
+		t.Fatal("loosening the CRAP ceiling 10 -> 15 must fail, got nil")
 	}
 }

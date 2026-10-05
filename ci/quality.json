@@ -7,8 +7,8 @@
     },
     "crap": {
         "enabled": true,
-        "ceiling": 15,
-        "fixture_ceiling": 15
+        "ceiling": 10,
+        "fixture_ceiling": 10
     },
     "trivy": {
         "enabled": true,
