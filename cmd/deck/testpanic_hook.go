@@ -42,9 +42,16 @@ type panicOnKeyModel struct {
 func (m panicOnKeyModel) Unwrap() tea.Model { return m.Model }
 
 func (m panicOnKeyModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	if k, ok := msg.(tea.KeyMsg); ok && k.String() == m.key {
+	if m.isPanicKey(msg) {
 		panic("deliberate test panic (DECK_TEST_PANIC_KEY=" + m.key + ") for requirement 36's disable-on-panic proof")
 	}
 	inner, cmd := m.Model.Update(msg)
 	return panicOnKeyModel{Model: inner, key: m.key}, cmd
+}
+
+// isPanicKey reports whether msg is the key press this model was configured
+// to panic on.
+func (m panicOnKeyModel) isPanicKey(msg tea.Msg) bool {
+	k, ok := msg.(tea.KeyMsg)
+	return ok && k.String() == m.key
 }
