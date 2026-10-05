@@ -383,3 +383,29 @@ func TestCountGoFilesSkipsVendorTestdataAndHiddenBelowTheTarget(t *testing.T) {
 		t.Fatalf("countGoFiles(missing) = %d, want 0", got)
 	}
 }
+
+func TestGovulncheckCommandBuildsTheInvocationFromTheOptions(t *testing.T) {
+	def := govulncheckCommand(govulncheckOptions{Target: "/t"})
+	if def.Args[0] != "govulncheck" || strings.Join(def.Args[1:], " ") != "./..." || def.Dir != "/t" {
+		t.Errorf("defaults: args=%q dir=%q", def.Args, def.Dir)
+	}
+	if !containsEnv(def.Env, "GOTOOLCHAIN=local") {
+		t.Error("defaults: GOTOOLCHAIN=local missing from the environment")
+	}
+	full := govulncheckCommand(govulncheckOptions{Binary: "/bin/gv", Target: "/t", DB: "file:///db", CacheDir: "/cache"})
+	if full.Args[0] != "/bin/gv" || strings.Join(full.Args[1:], " ") != "-db file:///db ./..." {
+		t.Errorf("overrides: args=%q", full.Args)
+	}
+	if !containsEnv(full.Env, "XDG_CACHE_HOME=/cache") || !containsEnv(full.Env, "GOTOOLCHAIN=local") {
+		t.Errorf("overrides: env lacks the cache dir or the local toolchain")
+	}
+}
+
+func containsEnv(env []string, kv string) bool {
+	for _, e := range env {
+		if e == kv {
+			return true
+		}
+	}
+	return false
+}
