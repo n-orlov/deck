@@ -241,26 +241,41 @@ func (s Service) resumeEligibility(ctx context.Context, sessionID string) (store
 // ids with none on the row is the SPEC-named unknown/rejected conversation id
 // failure, rejected before ever touching the launch lease or tmux.
 func (s Service) resumeConversationID(session store.Session, caps agent.Caps) (conversationID string, freshOnce bool, err error) {
-	resumeState := session.ResumeState
-	if resumeState == "" {
-		resumeState = "auto"
-	}
-	freshOnce = resumeState == "fresh-once"
-	conversationID = session.ConversationID
-	if resumeState == "pinned" && session.ResumePin != "" {
-		conversationID = session.ResumePin
-	}
+	conversationID, freshOnce = baseResumeConversation(session)
 	if freshOnce && caps.AssignsConversationID {
-		freshID, idErr := s.IDs.UUID()
-		if idErr != nil {
-			return "", freshOnce, fmt.Errorf("assign fresh conversation id for session %q: %w", session.Name, idErr)
+		conversationID, err = s.freshConversationID(session)
+		if err != nil {
+			return "", freshOnce, err
 		}
-		conversationID = freshID
 	}
 	if !freshOnce && caps.AssignsConversationID && conversationID == "" {
 		return "", freshOnce, fmt.Errorf("resume session %q: no conversation id is assigned to resume (unknown/rejected conversation id)", session.Name)
 	}
 	return conversationID, freshOnce, nil
+}
+
+// baseResumeConversation is the conversation id the session's resume_state
+// selects (the pin for "pinned", the row's own id otherwise) and whether the
+// state is "fresh-once".
+func baseResumeConversation(session store.Session) (conversationID string, freshOnce bool) {
+	resumeState := session.ResumeState
+	if resumeState == "" {
+		resumeState = "auto"
+	}
+	conversationID = session.ConversationID
+	if resumeState == "pinned" && session.ResumePin != "" {
+		conversationID = session.ResumePin
+	}
+	return conversationID, resumeState == "fresh-once"
+}
+
+// freshConversationID mints the conversation id a fresh-once launch uses.
+func (s Service) freshConversationID(session store.Session) (string, error) {
+	freshID, err := s.IDs.UUID()
+	if err != nil {
+		return "", fmt.Errorf("assign fresh conversation id for session %q: %w", session.Name, err)
+	}
+	return freshID, nil
 }
 
 // checkResumeCWD rejects a missing or non-directory cwd before the launch
