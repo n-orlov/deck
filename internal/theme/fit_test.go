@@ -227,3 +227,12 @@ func TestQuantizeHexIsExported(t *testing.T) {
 		t.Errorf("QuantizeHex returned %q, which ANSI16Code cannot render", got)
 	}
 }
+
+// TestBisectLightnessReportsAnUnparseableBackground pins the error path of
+// the bisect step directly: FitForeground validates bg before it gets
+// there, so only a direct call can reach it.
+func TestBisectLightnessReportsAnUnparseableBackground(t *testing.T) {
+	if _, err := bisectLightness(0, 1, 0, 0.5, "not-a-colour", AAFloor); err == nil {
+		t.Fatal("bisectLightness with an unparseable background returned no error")
+	}
+}
