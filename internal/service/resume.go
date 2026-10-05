@@ -385,6 +385,22 @@ func (s Service) buildResumeLaunch(session store.Session, adapter agent.Adapter,
 // startResumePane creates the pane and records the launch as ready; every
 // error is the launch-failure cause Resume records.
 func (s Service) startResumePane(ctx context.Context, session store.Session, paneCommand []string, launchEnv map[string]string) error {
+	if err := s.collectRetainedPane(ctx, session); err != nil {
+		return err
+	}
+	if _, err := s.TMux.Create(ctx, tmux.Launch{Slug: session.Slug, CWD: session.CWD, Command: paneCommand, Env: launchEnv}); err != nil {
+		return fmt.Errorf("resume session %q: %w", session.Name, err)
+	}
+	if err := s.Audit.Launch(session.ID, paneCommand, launchEnv); err != nil {
+		_ = s.TMux.Kill(ctx, session.Slug)
+		return fmt.Errorf("audit resume launch %q: %w", session.Name, err)
+	}
+	return s.recordResumeReady(ctx, session)
+}
+
+// collectRetainedPane removes a retained dead pane still holding the
+// session's name before the resume launches.
+func (s Service) collectRetainedPane(ctx context.Context, session store.Session) error {
 	// This call holds the launch lease and the eligibility check proved the
 	// session has no live pane, so anything still on the socket under this
 	// name is a retained corpse (`remain-on-exit failed`) holding the name
@@ -401,13 +417,11 @@ func (s Service) startResumePane(ctx context.Context, session store.Session, pan
 			return fmt.Errorf("collect the retained dead pane of session %q before resuming it: %w", session.Name, killErr)
 		}
 	}
-	if _, err := s.TMux.Create(ctx, tmux.Launch{Slug: session.Slug, CWD: session.CWD, Command: paneCommand, Env: launchEnv}); err != nil {
-		return fmt.Errorf("resume session %q: %w", session.Name, err)
-	}
-	if err := s.Audit.Launch(session.ID, paneCommand, launchEnv); err != nil {
-		_ = s.TMux.Kill(ctx, session.Slug)
-		return fmt.Errorf("audit resume launch %q: %w", session.Name, err)
-	}
+	return nil
+}
+
+// recordResumeReady records the resumed launch as starting and audits it.
+func (s Service) recordResumeReady(ctx context.Context, session store.Session) error {
 	if err := s.Store.UpdateSessionStatus(ctx, store.StatusUpdateInput{
 		SessionID: session.ID, Status: "starting", Reason: "", Source: "tmux",
 		At: s.Clock.Now().UnixMilli(), EventKind: "launch.ready",
