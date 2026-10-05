@@ -56,3 +56,21 @@ func TestRunWithIOReportsAnArgumentError(t *testing.T) {
 		t.Fatalf("a rejected invocation printed %q before failing", stdout.String())
 	}
 }
+
+func TestAnnounceLaunchPrintsTheBannerArgvAndOnlyTheOptionsGiven(t *testing.T) {
+	for name, tc := range map[string]struct {
+		opts options
+		want string
+	}{
+		"bare":       {options{}, "Fake pi\nfake-pi argv: [\"x\"]\n"},
+		"session id": {options{sessionID: "s1"}, "Fake pi\nfake-pi argv: [\"x\"]\nfake-pi session-id: s1\n"},
+		"approve":    {options{approve: true}, "Fake pi\nfake-pi argv: [\"x\"]\nfake-pi approve: true\n"},
+		"both":       {options{sessionID: "s1", approve: true}, "Fake pi\nfake-pi argv: [\"x\"]\nfake-pi session-id: s1\nfake-pi approve: true\n"},
+	} {
+		var stdout bytes.Buffer
+		announceLaunch(&stdout, tc.opts, []byte(`["x"]`))
+		if got := stdout.String(); got != tc.want {
+			t.Errorf("%s: banner = %q, want %q", name, got, tc.want)
+		}
+	}
+}
