@@ -165,9 +165,12 @@ func (s *Store) configure(home string) error {
 	if err := secureStateFiles(s.path); err != nil {
 		return err
 	}
-	// secure_delete=ON (R197/#61) zeroes freed pages and stale WAL frames
-	// instead of leaving session env values recoverable from unallocated
-	// space. journal_size_limit is deliberately left unset: forcing it to 0
+	// secure_delete=ON (R197/#61) zeroes freed database pages in state.db,
+	// so a deleted or overwritten session env value is not left recoverable
+	// from unallocated space there. Stale WAL frames are NOT rewritten: they
+	// persist in state.db-wal until SQLite overwrites them in a later
+	// checkpoint cycle, and the 0600 mode on state.db and its -wal/-shm
+	// siblings (SPEC section 6.4) protects that window. journal_size_limit is deliberately left unset: forcing it to 0
 	// would reset (truncate and recreate) the WAL on every checkpoint, and a
 	// fresh WAL's header is fsynced before the first frame -- the exact cost
 	// persistWAL above exists to avoid (SPEC section 3.1's 20ms hook write
