@@ -294,14 +294,9 @@ func LoadFromProfile(getenv func(string) string, userHome func() (string, error)
 		return Settings{}, err
 	}
 	applyFileConfig(&settings, fileCfg)
-	envOverrides := map[string]string{}
-	if err := applyDisplayEnv(getenv, &settings, envOverrides); err != nil {
+	envOverrides, err := applyEnvOverrides(getenv, &settings)
+	if err != nil {
 		return Settings{}, err
-	}
-	for _, step := range envOverrideSteps {
-		if err := step(getenv, &settings, envOverrides); err != nil {
-			return Settings{}, err
-		}
 	}
 	settings.ThemesDir = theme.ThemesDir(defaultPaths.ConfigFile)
 	userThemes, userErrs := theme.DiscoverUserThemes(settings.ThemesDir)
@@ -310,6 +305,22 @@ func LoadFromProfile(getenv func(string) string, userHome func() (string, error)
 		settings.EnvOverrides = envOverrides
 	}
 	return settings, nil
+}
+
+// applyEnvOverrides runs the display override and then every registered
+// override step against settings, in order, and returns the record of which
+// environment variables took effect. The first failing step is the error.
+func applyEnvOverrides(getenv func(string) string, settings *Settings) (map[string]string, error) {
+	envOverrides := map[string]string{}
+	if err := applyDisplayEnv(getenv, settings, envOverrides); err != nil {
+		return nil, err
+	}
+	for _, step := range envOverrideSteps {
+		if err := step(getenv, settings, envOverrides); err != nil {
+			return nil, err
+		}
+	}
+	return envOverrides, nil
 }
 
 // applyIntervalEnv resolves the four DECK_*_MS interval variables, in the
