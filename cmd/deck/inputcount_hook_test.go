@@ -169,3 +169,29 @@ func TestKeyWeightCountsRunesButOnePerPasteOrNamedKey(t *testing.T) {
 		}
 	}
 }
+
+// TestWriteInputCountFailuresAreSilentAndLeaveNoTempFile pins the
+// documented guarantee that counting is scaffolding that can never crash
+// deck: an unwritable directory records nothing, and a rename that cannot
+// land (the target is a non-empty directory) removes its temp file.
+func TestWriteInputCountFailuresAreSilentAndLeaveNoTempFile(t *testing.T) {
+	missing := filepath.Join(t.TempDir(), "no-such-dir", "count")
+	writeInputCount(missing, 7)
+	if _, err := os.Stat(missing); !os.IsNotExist(err) {
+		t.Fatalf("count file exists after a write into a missing directory (stat err %v)", err)
+	}
+
+	dir := t.TempDir()
+	target := filepath.Join(dir, "count")
+	if err := os.MkdirAll(filepath.Join(target, "occupied"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	writeInputCount(target, 3)
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 || entries[0].Name() != "count" {
+		t.Fatalf("directory after a failed rename = %v, want only the untouched %q", entries, "count")
+	}
+}

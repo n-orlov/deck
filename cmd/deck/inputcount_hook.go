@@ -117,6 +117,12 @@ func writeInputCount(path string, total int64) {
 	if !ok {
 		return
 	}
+	renameOrRemove(name, path)
+}
+
+// renameOrRemove moves the finished temp file onto path, removing it when
+// the rename fails so no stray temp file is left behind.
+func renameOrRemove(name, path string) {
 	if err := os.Rename(name, path); err != nil {
 		os.Remove(name)
 	}
