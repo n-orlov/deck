@@ -114,8 +114,13 @@ func run(args []string, stdout io.Writer, getenv func(string) string, getwd func
 	return runWithIO(args, strings.NewReader(""), stdout, io.Discard, getenv, getwd)
 }
 
+// isHelpRequest reports whether args is exactly one --help or -h.
+func isHelpRequest(args []string) bool {
+	return len(args) == 1 && (args[0] == "--help" || args[0] == "-h")
+}
+
 func runWithIO(args []string, stdin io.Reader, stdout, stderr io.Writer, getenv func(string) string, getwd func() (string, error)) (int, error) {
-	if len(args) == 1 && (args[0] == "--help" || args[0] == "-h") {
+	if isHelpRequest(args) {
 		say(stdout, helpText)
 		return 0, nil
 	}
