@@ -98,18 +98,26 @@ func FitForeground(fg, bg string, floor float64) (string, bool, error) {
 		return extreme, true, nil
 	}
 
-	// Bisect for the lightness CLOSEST TO THE AGENT'S OWN that still
-	// clears the floor, so the colour moves as little as it has to.
-	// clears() is monotonic in this direction: `limit` clears, `l` does
-	// not, so the invariant "clearing end / failing end" holds throughout.
-	// 24 iterations resolve L to ~6e-8, far finer than the 1/255 the
-	// result is quantised to.
+	clearing, err := bisectLightness(h, s, limit, l, bg, floor)
+	if err != nil {
+		return "", false, err
+	}
+	return hslToHex(h, s, clearing), true, nil
+}
+
+// bisectLightness bisects for the lightness CLOSEST TO THE AGENT'S OWN
+// that still clears the floor, so the colour moves as little as it has to.
+// clears() is monotonic in this direction: `limit` clears, `l` does
+// not, so the invariant "clearing end / failing end" holds throughout.
+// 24 iterations resolve L to ~6e-8, far finer than the 1/255 the
+// result is quantised to.
+func bisectLightness(h, s, limit, l float64, bg string, floor float64) (float64, error) {
 	clearing, failing := limit, l
 	for range 24 {
 		mid := (clearing + failing) / 2
 		cr, err := ContrastRatio(hslToHex(h, s, mid), bg)
 		if err != nil {
-			return "", false, err
+			return 0, err
 		}
 		if cr >= floor {
 			clearing = mid
@@ -117,7 +125,7 @@ func FitForeground(fg, bg string, floor float64) (string, bool, error) {
 			failing = mid
 		}
 	}
-	return hslToHex(h, s, clearing), true, nil
+	return clearing, nil
 }
 
 // rgbToHSL converts 0-255 RGB to hue (degrees), saturation and lightness
