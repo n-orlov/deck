@@ -166,6 +166,29 @@ func skippedScanDir(name string) bool {
 	return name == "vendor" || name == "testdata" || strings.HasPrefix(name, ".")
 }
 
+// govulncheckCommand builds the govulncheck invocation for o: the binary
+// (default "govulncheck"), the optional -db override, ./... as the pattern,
+// the target as working directory, and the environment pinned to the local
+// toolchain with the optional cache directory.
+func govulncheckCommand(o govulncheckOptions) *exec.Cmd {
+	bin := o.Binary
+	if bin == "" {
+		bin = "govulncheck"
+	}
+	args := []string{}
+	if o.DB != "" {
+		args = append(args, "-db", o.DB)
+	}
+	args = append(args, "./...")
+	cmd := exec.Command(bin, args...) //nolint:gosec // G204: the govulncheck binary and database are the operator's gate options, never external input
+	cmd.Dir = o.Target
+	cmd.Env = append(os.Environ(), "GOTOOLCHAIN=local")
+	if o.CacheDir != "" {
+		cmd.Env = append(cmd.Env, "XDG_CACHE_HOME="+o.CacheDir)
+	}
+	return cmd
+}
+
 // runGovulncheckGate runs the gate. ok=false with a nil error is a gate
 // failure (called vulnerability, old Go, or empty target); a non-nil
 // error is a tooling failure (exit 2): govulncheck missing, or exiting
@@ -185,21 +208,7 @@ func runGovulncheckGate(o govulncheckOptions) (ok bool, output string, err error
 			"(the deck-ci image), or lower the toolchain line only if the product no longer needs it.\n", nil
 	}
 
-	bin := o.Binary
-	if bin == "" {
-		bin = "govulncheck"
-	}
-	args := []string{}
-	if o.DB != "" {
-		args = append(args, "-db", o.DB)
-	}
-	args = append(args, "./...")
-	cmd := exec.Command(bin, args...) //nolint:gosec // G204: the govulncheck binary and database are the operator's gate options, never external input
-	cmd.Dir = o.Target
-	cmd.Env = append(os.Environ(), "GOTOOLCHAIN=local")
-	if o.CacheDir != "" {
-		cmd.Env = append(cmd.Env, "XDG_CACHE_HOME="+o.CacheDir)
-	}
+	cmd := govulncheckCommand(o)
 	out, runErr := cmd.CombinedOutput()
 	text := string(out)
 	if runErr == nil {
@@ -210,5 +219,5 @@ func runGovulncheckGate(o govulncheckOptions) (ok bool, output string, err error
 		return false, text + "what to do: bump the named module (or the toolchain, for a standard-library finding) to the " +
 			"\"Fixed in\" version (go get <module>@<fixed> && go mod tidy), or remove the call.\n", nil
 	}
-	return false, text, fmt.Errorf("running %s: %w", bin, runErr)
+	return false, text, fmt.Errorf("running %s: %w", cmd.Args[0], runErr)
 }
