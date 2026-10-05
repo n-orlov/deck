@@ -3,6 +3,7 @@ package config
 import (
 	"bufio"
 	"fmt"
+	"io"
 	"os"
 	"slices"
 	"strconv"
@@ -65,8 +66,18 @@ func loadConfigFile(path string) (FileConfig, error) {
 	}
 	defer func() { _ = file.Close() }() // read-only handle: Close cannot lose data
 
+	if err := parseConfigStream(file, path, &cfg); err != nil {
+		return FileConfig{}, err
+	}
+	return cfg, nil
+}
+
+// parseConfigStream reads the TOML subset line by line from r, applying
+// every key/value pair to cfg. path and the 1-based line number prefix each
+// parse error; a read failure is reported as "read <path>".
+func parseConfigStream(r io.Reader, path string, cfg *FileConfig) error {
 	section := ""
-	scanner := bufio.NewScanner(file)
+	scanner := bufio.NewScanner(r)
 	line := 0
 	for scanner.Scan() {
 		line++
@@ -78,23 +89,23 @@ func loadConfigFile(path string) (FileConfig, error) {
 		if strings.HasPrefix(text, "[") {
 			name, err := parseSectionHeader(text)
 			if err != nil {
-				return FileConfig{}, fmt.Errorf("%s:%d: %w", path, line, err)
+				return fmt.Errorf("%s:%d: %w", path, line, err)
 			}
 			section = name
 			continue
 		}
 		key, value, err := parseKeyValue(text)
 		if err != nil {
-			return FileConfig{}, fmt.Errorf("%s:%d: %w", path, line, err)
+			return fmt.Errorf("%s:%d: %w", path, line, err)
 		}
-		if err := applyConfigKey(&cfg, section, key, value, path, line); err != nil {
-			return FileConfig{}, err
+		if err := applyConfigKey(cfg, section, key, value, path, line); err != nil {
+			return err
 		}
 	}
 	if err := scanner.Err(); err != nil {
-		return FileConfig{}, fmt.Errorf("read %s: %w", path, err)
+		return fmt.Errorf("read %s: %w", path, err)
 	}
-	return cfg, nil
+	return nil
 }
 
 // applyConfigKey applies one parsed key/value pair to cfg according to the
