@@ -64,8 +64,27 @@ if [ -d /go-cache ] && [ -w /go-cache ]; then
     mkdir -p "$govuln_cache"
 fi
 
+# R187: the gate report is also written to "$outdir/quality-report.txt", so
+# it crosses the ci/run.sh sibling boundary on the bind-mounted workspace and
+# the runner-side `Quality gate report` step in ci.yml can append it to
+# GITHUB_STEP_SUMMARY whether the gates pass or fail. stdout (what a local
+# run prints) is the same text; only stdout is captured, so go run's and
+# qualitycheck's stderr (usage/config errors) stays on stderr.
+report_file="$outdir/quality-report.txt"
+mkdir -p "$outdir"
+rm -f "$report_file"
+
 exit_code=0
 go run ./ci/qualitycheck -config "$config" -profile "$profile" \
     -trivy-target . -trivy-cache "$trivy_cache" -trivy-ignore .trivyignore \
-    -govulncheck-target . -govulncheck-cache "$govuln_cache" || exit_code=$?
+    -govulncheck-target . -govulncheck-cache "$govuln_cache" \
+    > "$report_file" || exit_code=$?
+
+# A run that died before printing any gate section (bad config, build
+# failure) still leaves a report saying so, never an empty or missing file.
+if [ ! -s "$report_file" ]; then
+    echo "ci/quality.sh: no gate report was produced (exit status $exit_code); see the step log for the error." > "$report_file"
+fi
+
+cat "$report_file"
 exit "$exit_code"
