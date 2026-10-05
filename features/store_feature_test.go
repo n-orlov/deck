@@ -52,11 +52,10 @@ func newerDatabaseFixture(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	// One past internal/store.SchemaVersion (bumped to 8 by R162's schemaV8
-	// -- sessions.pinned_at, task 002) -- must always stay strictly newer
-	// than the binary understands, so a later SchemaVersion bump has to bump
-	// this literal too.
-	if err := writeDatabaseFixture(h, 9); err != nil {
+	// One past internal/store.SchemaVersion (9 as of schemaV9) -- must always
+	// stay strictly newer than the binary understands, so a later
+	// SchemaVersion bump has to bump this literal too.
+	if err := writeDatabaseFixture(h, 10); err != nil {
 		return err
 	}
 	h.databaseFixture, err = os.ReadFile(filepath.Join(h.Home, "state.db"))
