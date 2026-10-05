@@ -52,7 +52,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	}
 	if isHook {
 		if err := runHook(context.Background(), settings, stdin); err != nil {
-			sayln(stderr, "deck hook:", err)
+			sayln(stderr, "deck hook:", hookFailureMessage(err))
 			return 1
 		}
 		return 0
@@ -685,4 +685,32 @@ func (s timedHookStore) RecordOrphanEvent(ctx context.Context, input store.Event
 	return s.Audit.HookStoreWrite("", func() error {
 		return s.Store.RecordOrphanEvent(ctx, input)
 	})
+}
+
+// hookFailureMessage is the text `deck _hook` prints for a failed run. A state
+// database newer than this hook binary (a long-lived agent keeps the hook
+// command of the deck that launched it) gets the restart-the-session message,
+// never the TUI's "upgrade deck": the user cannot upgrade a hook command
+// inside a running agent, only restart the session so deck rewrites it.
+func hookFailureMessage(err error) string {
+	var newer *store.NewerSchemaError
+	if !errors.As(err, &newer) {
+		return err.Error()
+	}
+	exe, exeErr := os.Executable()
+	if exeErr != nil {
+		exe = os.Args[0]
+	}
+	if abs, absErr := filepath.Abs(exe); absErr == nil {
+		exe = abs
+	}
+	return newerSchemaHookMessage(exe, buildVersion(), newer)
+}
+
+// newerSchemaHookMessage names the hook executable, its version and schema,
+// and the database schema, and says to restart the session from deck (R).
+func newerSchemaHookMessage(exe, ver string, newer *store.NewerSchemaError) string {
+	return fmt.Sprintf("the state database (schema %d) is newer than this hook command %s (deck %s, schema %d); "+
+		"this session was launched by an older deck. Restart the session from deck (R) so it gets the current hook command",
+		newer.DB, exe, ver, newer.Supported)
 }
