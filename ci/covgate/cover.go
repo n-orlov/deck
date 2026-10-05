@@ -48,18 +48,9 @@ func parseProfile(path string) (*profile, error) {
 			continue
 		}
 		lines++
-		if lines == 1 {
-			if !strings.HasPrefix(line, "mode:") {
-				return nil, fmt.Errorf("coverprofile %q: first line %q is not a mode line", path, line)
-			}
-			continue
+		if err := p.addLine(path, lines, line); err != nil {
+			return nil, err
 		}
-		key, stat, perr := parseBlockLine(line)
-		if perr != nil {
-			return nil, fmt.Errorf("coverprofile %q: %w", path, perr)
-		}
-		prev := p.blocks[key]
-		p.blocks[key] = blockStat{numStmt: stat.numStmt, covered: prev.covered || stat.covered}
 	}
 	if err := scanner.Err(); err != nil {
 		return nil, fmt.Errorf("coverprofile %q: %w", path, err)
@@ -71,6 +62,25 @@ func parseProfile(path string) (*profile, error) {
 		return nil, fmt.Errorf("coverprofile %q has a mode line but zero coverage blocks", path)
 	}
 	return p, nil
+}
+
+// addLine folds one non-blank profile line into p: line 1 must be the mode
+// line, every later line is a "file:start,end numStmt count" block, and a
+// block seen twice is covered if either copy was.
+func (p *profile) addLine(path string, lineNo int, line string) error {
+	if lineNo == 1 {
+		if !strings.HasPrefix(line, "mode:") {
+			return fmt.Errorf("coverprofile %q: first line %q is not a mode line", path, line)
+		}
+		return nil
+	}
+	key, stat, err := parseBlockLine(line)
+	if err != nil {
+		return fmt.Errorf("coverprofile %q: %w", path, err)
+	}
+	prev := p.blocks[key]
+	p.blocks[key] = blockStat{numStmt: stat.numStmt, covered: prev.covered || stat.covered}
+	return nil
 }
 
 // parseBlockLine parses "file:start,end numStmt count".
