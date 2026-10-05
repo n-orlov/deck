@@ -2286,6 +2286,7 @@ scroll, no close button that is the only way to dismiss.
 | wheel over the sidebar | scroll the list, without selecting | `↑`/`↓`/`PgUp`/`PgDn` |
 | drag the seam | adjust `sidebar_width` live | `<`/`>` |
 | drag over the preview | select text; release copies it. With `[ui] select_on_drag` false (default true, §6.5) the drag goes to a pane program that tracks the mouse instead | `a`, then tmux's own copy-mode |
+| `Alt`+drag or `Ctrl`+drag over the preview | select the rectangle spanned by the two corner cells; release copies one line per row (see **Rectangular selection** below). Governed by `[ui] select_on_drag` like a plain drag | `a`, then tmux's own copy-mode |
 | click the collapsed strip | restore the previous non-collapsed mode | `|` |
 | click the passive preview | enter §11.9's interactive preview on the **already selected** row | `↵` |
 | click empty sidebar space while interactive | leave interactive mode | `Ctrl+Q` |
@@ -2403,9 +2404,33 @@ cell the pointer is over, clamped into the preview), under the same routing rule
 tracks the mouse, the grid is at live), and nothing is highlighted and nothing is copied. A program
 that does not track the mouse receives nothing and the drag does nothing. A `Shift` held at the
 press keeps the selection route in both settings. A click is forwarded either way. **The marking is
-linear, not rectangular**, because the copy is: it covers exactly the run `SelectedText`
+linear for a plain drag**, because the copy is: it covers exactly the run `SelectedText`
 would return for the same anchor and current cell, so what is highlighted and what is
-copied can never disagree. The copy is written to a **tmux
+copied can never disagree. **Rectangular selection.** A drag with `Alt` held, or with `Ctrl`
+held, selects the rectangle spanned by the press cell and the current cell instead (`Ctrl` is the
+fallback for window managers and terminals that swallow `Alt`; each works alone). `Ctrl`+`Alt`
+together, and anything with `Shift` held, are not bindings: such a drag selects by line like a
+plain one. The modifiers are read on the press and fix the kind of selection for that drag. The rectangle is
+marked with the `selection` token over every cell of its column range, blank cells included, on
+every row between the two corners, and it is the same block the release copies: for each row, the
+characters inside the column range with trailing blanks trimmed, joined with `\n`, one line per
+row. A row that ends before the range gives a shorter, possibly empty, line and is never padded
+to the width of the rectangle. A double-width glyph is copied whole when its left cell is inside
+the range, and not at all when only its right cell is: half a glyph is never emitted. The
+corners may be dragged in any of the four directions with the same result. The rectangle is
+clamped to the preview where the drag began (a drag that runs onto the sidebar or off the screen
+stops at the preview's edge), so sidebar text never mixes into the copy. Where a plain drag
+selects, the rectangle is available, in the interactive preview, and `[ui] select_on_drag` false turns
+off both kinds: an `Alt` or `Ctrl` drag then goes to a pane program that tracks the mouse like
+any other drag and selects nothing. **Caveats.** Many window managers grab `Alt`+drag to move the
+window, in which case deck never receives the drag: use `Ctrl`+drag, or change the window
+manager's modifier. A terminal reports modifiers in the mouse report's button code (SGR adds 4
+for `Shift`, 8 for `Alt`/`Meta`, 16 for `Ctrl`); some terminals omit the `Alt` bit or take
+`Alt`+drag for their own selection, and `Ctrl`+drag is independent of that. When deck runs
+inside tmux, tmux must pass the report through with its modifier bits intact (tmux does by default
+with `mouse on` and does not rewrite them), and a tmux or terminal binding on the same chord
+takes it before deck sees it; `Ctrl`+`Alt` is no alternative, since it still depends on `Alt`, and
+`Shift` stays the terminal's own selection override. The copy is written to a **tmux
 buffer** on deck's own server, which always works and is what `tmux paste-buffer` reads;
 where the outer terminal permits it an **OSC 52** write additionally reaches the user's system
 clipboard, and that half is best-effort by nature — it depends on the terminal and on tmux's
