@@ -590,7 +590,16 @@ threshold from here and nowhere else:
   overrides both. Skipped, by exact path with the reason in
   `ci/qualitycheck/trivy.go`: the 11 MB stability log
   `docs/reports/phase3g-812-stability10/summary.log`, and `ci-results/`
-  (the suite's own generated output, not repo content). The gate fails on an
+  (the suite's own generated output, not repo content). Also skipped, by
+  exact (glob-escaped) path: whatever git itself reports in the scan target
+  as untracked AND ignored (`git ls-files --others --ignored
+  --exclude-standard --directory`) -- a checkout's local leftovers such as an
+  agent's `.claude/` scratch tree, a `.spike-preview/` clone or `bin/`, which
+  a clean CI checkout never has, so the gate's verdict is the same on a
+  developer's checkout as in CI. A tracked file is never skipped (even one
+  matching an ignore pattern), nor an untracked file git would commit; outside
+  a git work tree, or if git cannot run, nothing extra is skipped (the
+  stricter scan). The gate fails on an
   empty or wrong scan target (no files, or no `go.mod`) without running
   trivy, because trivy itself exits 0 on an empty directory.
   When trivy's output names a failed vulnerability-database download (a

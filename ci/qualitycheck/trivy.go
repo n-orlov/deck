@@ -44,6 +44,51 @@ var trivySkipFiles = []string{
 // content, and scanning it would make the gate judge its own run's logs.
 var trivySkipDirs = []string{"ci-results"}
 
+// gitIgnoredUntracked lists, relative to dir, every path git itself
+// reports as untracked AND ignored there (`git ls-files --others --ignored
+// --exclude-standard --directory`; a wholly ignored directory is one entry
+// ending in "/"). These are a checkout's local leftovers -- an editor's or
+// agent's scratch tree, a spike clone, bin/ -- never repository content:
+// git cannot commit them without -f, and a clean CI checkout has none, so
+// a scan that judged them would pass or fail on what happens to lie in the
+// developer's directory rather than on the repo. A tracked file is never
+// in this list (even one that matches an ignore pattern), so nothing the
+// repository holds is ever skipped. When dir is not a git work tree or git
+// cannot run, the list is empty and the whole directory is scanned: the
+// fallback is the stricter scan, never a narrower one.
+func gitIgnoredUntracked(dir string) []string {
+	out, err := exec.Command("git", "-C", dir, "ls-files", "-z", "--others", "--ignored", "--exclude-standard", "--directory").Output() //nolint:gosec // G204: fixed git argv, dir is the gate's scan target
+	if err != nil {
+		return nil
+	}
+	var paths []string
+	for _, p := range strings.Split(string(out), "\x00") {
+		if p != "" {
+			paths = append(paths, p)
+		}
+	}
+	return paths
+}
+
+// trivyGlobEscaper escapes the glob metacharacters trivy's --skip-dirs and
+// --skip-files patterns honour, so a local path is skipped exactly and
+// never widens into a pattern.
+var trivyGlobEscaper = strings.NewReplacer(`\`, `\\`, `*`, `\*`, `?`, `\?`, `[`, `\[`, `{`, `\{`)
+
+// localSkipArgs turns gitIgnoredUntracked(dir) into trivy skip flags: a
+// directory entry ("x/") becomes --skip-dirs x, a file --skip-files.
+func localSkipArgs(dir string) []string {
+	var args []string
+	for _, p := range gitIgnoredUntracked(dir) {
+		flag := "--skip-files"
+		if strings.HasSuffix(p, "/") {
+			flag, p = "--skip-dirs", strings.TrimSuffix(p, "/")
+		}
+		args = append(args, flag, trivyGlobEscaper.Replace(p))
+	}
+	return args
+}
+
 // trivyOptions is everything one gate run needs; tests build their own
 // (a fake binary, an injected clock) without touching the process env.
 type trivyOptions struct {
@@ -192,6 +237,7 @@ func trivyArgs(o trivyOptions) []string {
 	for _, d := range trivySkipDirs {
 		args = append(args, "--skip-dirs", d)
 	}
+	args = append(args, localSkipArgs(o.Target)...)
 	if _, err := os.Stat(o.IgnoreFile); err == nil {
 		args = append(args, "--ignorefile", o.IgnoreFile)
 	}
