@@ -269,3 +269,70 @@ func TestThresholdsNotLoosened_TrivyOffOrSeverityDroppedFails(t *testing.T) {
 		t.Errorf("widening severity reported as loosened: %v", p)
 	}
 }
+
+// flakyDBTrivy writes a stand-in trivy that fails with trivy's own
+// database-download wording for the first failures runs, then exits
+// finalCode; it counts its runs in the returned file.
+func flakyDBTrivy(t *testing.T, failures, finalCode int) (bin, countFile string) {
+	t.Helper()
+	dir := t.TempDir()
+	countFile = filepath.Join(dir, "count")
+	bin = filepath.Join(dir, "trivy")
+	script := "#!/bin/sh\necho x >> '" + countFile + "'\nn=$(wc -l < '" + countFile + "')\n" +
+		"if [ \"$n\" -le " + strconv.Itoa(failures) + " ]; then\n" +
+		"  echo 'FATAL run error: DB error: failed to download vulnerability DB: unexpected status code 404 Not Found'\n  exit 1\nfi\n" +
+		"echo fake trivy report\nexit " + strconv.Itoa(finalCode) + "\n"
+	if err := os.WriteFile(bin, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return bin, countFile
+}
+
+func runCount(t *testing.T, countFile string) int {
+	t.Helper()
+	b, err := os.ReadFile(countFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return strings.Count(string(b), "x")
+}
+
+// TestTrivyGate_RetriesATransientDatabaseDownloadFailure: a mirror 404
+// on the vulnerability DB says nothing about the tree, so the gate tries
+// again and passes when the database arrives.
+func TestTrivyGate_RetriesATransientDatabaseDownloadFailure(t *testing.T) {
+	bin, count := flakyDBTrivy(t, 2, 0)
+	ok, _, err := runTrivyGate(opts(t, bin, scanTree(t)))
+	if err != nil || !ok {
+		t.Fatalf("ok=%v err=%v, want a pass once the database downloads", ok, err)
+	}
+	if n := runCount(t, count); n != 3 {
+		t.Fatalf("trivy ran %d times, want 3", n)
+	}
+}
+
+// TestTrivyGate_DatabaseDownloadFailureStillFailsAfterTheLastAttempt: the
+// retry is bounded, and a database that never arrives is still red.
+func TestTrivyGate_DatabaseDownloadFailureStillFailsAfterTheLastAttempt(t *testing.T) {
+	bin, count := flakyDBTrivy(t, 99, 0)
+	ok, out, err := runTrivyGate(opts(t, bin, scanTree(t)))
+	if err == nil && ok {
+		t.Fatalf("a database that never downloads passed the gate: %s", out)
+	}
+	if n := runCount(t, count); n != trivyDBAttempts {
+		t.Fatalf("trivy ran %d times, want %d", n, trivyDBAttempts)
+	}
+}
+
+// TestTrivyGate_AFindingIsNeverRetried: only the database-download wording
+// earns another attempt; a real finding fails on the first run.
+func TestTrivyGate_AFindingIsNeverRetried(t *testing.T) {
+	bin, count := flakyDBTrivy(t, 0, 1)
+	ok, _, err := runTrivyGate(opts(t, bin, scanTree(t)))
+	if err != nil || ok {
+		t.Fatalf("ok=%v err=%v, want a finding (ok=false, nil error)", ok, err)
+	}
+	if n := runCount(t, count); n != 1 {
+		t.Fatalf("trivy ran %d times, want 1", n)
+	}
+}

@@ -53,7 +53,23 @@ type trivyOptions struct {
 	IgnoreFile string // .trivyignore path; may be absent
 	Severity   string
 	Now        time.Time
+	// DBRetryDelay is the pause between attempts when trivy could not
+	// download its vulnerability database (zero: no pause; the gate
+	// itself sets trivyDBRetryDelay).
+	DBRetryDelay time.Duration
 }
+
+// trivyDBAttempts is how many times one gate run tries trivy when the
+// failure is the vulnerability-database download, never a finding.
+const trivyDBAttempts = 3
+
+// trivyDBRetryDelay is the gate's pause between those attempts.
+const trivyDBRetryDelay = 20 * time.Second
+
+// trivyDBDownloadFailure is trivy's own wording when its database fetch
+// fails (a mirror 404, a registry outage): a transient infrastructure
+// failure that says nothing about the scanned tree.
+const trivyDBDownloadFailure = "failed to download vulnerability DB"
 
 // reviewByRe finds the review-by token of a .trivyignore entry.
 var reviewByRe = regexp.MustCompile(`(?:^|\s)review-by:(\d{4}-\d{2}-\d{2})(?:\s|$)`)
@@ -203,9 +219,7 @@ func runTrivyGate(o trivyOptions) (ok bool, output string, err error) {
 	if bin == "" {
 		bin = "trivy"
 	}
-	cmd := exec.Command(bin, trivyArgs(o)...) //nolint:gosec // G204: the trivy binary is the operator's gate option, default trivy
-	out, runErr := cmd.CombinedOutput()
-	text := string(out)
+	text, runErr := runTrivyWithDBRetry(bin, o)
 	if runErr == nil {
 		return true, text + "what to do: nothing -- no unfixed-excluded HIGH/CRITICAL vulnerability, secret or misconfiguration.\n", nil
 	}
@@ -215,4 +229,25 @@ func runTrivyGate(o trivyOptions) (ok bool, output string, err error) {
 			"remove the secret or misconfiguration, or -- only if neither is possible -- add a dated, reasoned .trivyignore entry.\n", nil
 	}
 	return false, text, fmt.Errorf("running %s: %w", bin, runErr)
+}
+
+// runTrivyWithDBRetry runs trivy, repeating it up to trivyDBAttempts
+// times ONLY while its output names a failed vulnerability-database
+// download. A finding, a tooling error of any other kind, and a clean
+// scan all return from the first attempt; the retry never reruns a scan
+// to look for a different answer, it only waits out a flaky database
+// mirror.
+func runTrivyWithDBRetry(bin string, o trivyOptions) (string, error) {
+	var text string
+	var runErr error
+	for attempt := 1; attempt <= trivyDBAttempts; attempt++ {
+		cmd := exec.Command(bin, trivyArgs(o)...) //nolint:gosec // G204: the trivy binary is the operator's gate option, default trivy
+		out, err := cmd.CombinedOutput()
+		text, runErr = string(out), err
+		if runErr == nil || !strings.Contains(text, trivyDBDownloadFailure) {
+			return text, runErr
+		}
+		time.Sleep(o.DBRetryDelay)
+	}
+	return text, runErr
 }

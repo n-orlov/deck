@@ -68,7 +68,7 @@ type config struct {
 // target, cache dir, ignore file); run fills in the severity from the
 // config and the clock. A package variable so run's signature, which
 // every other gate's tests use, stays put.
-var trivyBase = trivyOptions{Target: ".", IgnoreFile: ".trivyignore", CacheDir: "/go-cache/trivy"}
+var trivyBase = trivyOptions{Target: ".", IgnoreFile: ".trivyignore", CacheDir: "/go-cache/trivy", DBRetryDelay: trivyDBRetryDelay}
 
 // govulncheckBase carries the govulncheck gate's flag-supplied options.
 var govulncheckBase = govulncheckOptions{Target: "."}
