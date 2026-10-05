@@ -73,3 +73,17 @@ func (s Service) killAndRecord(ctx context.Context, session store.Session) error
 	}
 	return nil
 }
+
+// killLiveForTeardown is the kill-first step Archive and Delete share: a
+// session that is not already stopped is killed and recorded as killed by the
+// user before the caller's own teardown; verb names the caller in the
+// missing-slug refusal.
+func (s Service) killLiveForTeardown(ctx context.Context, session store.Session, verb string) error {
+	if session.Status == "stopped" {
+		return nil
+	}
+	if session.Slug == "" {
+		return fmt.Errorf("session %s requires a durable slug to kill a live pane", verb)
+	}
+	return s.killAndRecord(ctx, session)
+}
