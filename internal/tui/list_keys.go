@@ -61,10 +61,8 @@ func (m Model) onKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 	}
-	for _, overlay := range keyOverlays {
-		if overlay.active(m) {
-			return overlay.handle(m, msg)
-		}
+	if overlay, ok := m.activeKeyOverlay(); ok {
+		return overlay.handle(m, msg)
 	}
 	if m.pendingDelete {
 		return m.handlePendingDeleteKey(msg)
@@ -87,6 +85,17 @@ func (m Model) onKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return handle(m, msg)
 	}
 	return m, nil
+}
+
+// activeKeyOverlay returns the first open overlay in keyOverlays' precedence
+// order, if any.
+func (m Model) activeKeyOverlay() (keyOverlay, bool) {
+	for _, overlay := range keyOverlays {
+		if overlay.active(m) {
+			return overlay, true
+		}
+	}
+	return keyOverlay{}, false
 }
 
 // replayCoalescedKeys splits one multi-rune KeyMsg back into single-rune
