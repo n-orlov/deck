@@ -1201,6 +1201,8 @@ status**, for every event name rather than the one that motivated it: it is genu
 from a pane that is genuinely gone, and the row it would otherwise describe belongs to a
 different launch. A hook carrying no generation at all, against a row that has none, behaves as
 it always did.
+The `i` detail dialog's `Hook declined` line treats the replaced pane's own `session_end` as
+expected and hides it; §11.4 gives the two declines that stay loud.
 
 **A launch releases its lease the moment it concludes** — pane up or launch failed, on every
 exit path — by clearing `launch_lease_until`, CASed on the exact owner that acquired it. The
@@ -2045,6 +2047,18 @@ detail) ·
 snooze duration · theme picker (§11.6) · event log · health view ·
 find (§12) · **lost attach (§11.9)** · help overlay. Settings is deliberately *not* a dialog
 — see below.
+
+**The `i` detail dialog's `Hook declined` line is an alarm, so it is shown only for a decline
+that is not expected.** A hook declined because it came from a replaced launch (§9.3) is
+recorded as a `<kind>.superseded` event, and a restart or resume produces one almost every
+time: the pane it replaced delivers its own `session_end` after the new launch has taken the
+row. That decline is correct and routine, so `i` does not show it — no `Hook declined` line
+appears for it. Two cases stay loud, and only these: a declined hook of any other kind (`stop`,
+`notification`, …) from a replaced launch, and a declined `session_end` that carried no launch
+generation while the row holds one and no restart or resume came before it. A generation-less
+`session_end` that follows a restart or resume is the replaced pre-lease pane ending, and is
+hidden like the first. The line shows the newest declined hook that is not hidden. `E` is
+unaffected: it lists every `.superseded` event, `session_end.superseded` included, raw.
 
 ### 11.5 Settings
 

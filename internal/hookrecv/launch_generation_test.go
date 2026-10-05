@@ -172,3 +172,16 @@ func TestSupersededSessionStartDoesNotMoveTheConversationID(t *testing.T) {
 		t.Fatalf("superseded SessionStart moved the row's status to %q", row.Status)
 	}
 }
+
+// TestSupersededReasonForAGenerationlessHookKeepsTheStorePrefix pins the
+// literal internal/store's LastAlarmingDroppedHook (R200) matches on to
+// tell a generation-less decline from one that named a generation: the store
+// cannot import this package, so the two are tied together here.
+func TestSupersededReasonForAGenerationlessHookKeepsTheStorePrefix(t *testing.T) {
+	if got := supersededReason("gen-row", ""); !strings.HasPrefix(got, "declined: hook carries no launch generation") {
+		t.Fatalf("supersededReason without a hook generation = %q, want the prefix internal/store matches on", got)
+	}
+	if got := supersededReason("gen-row", "gen-old"); strings.HasPrefix(got, "declined: hook carries no launch generation") {
+		t.Fatalf("supersededReason with a hook generation = %q, must not carry the generation-less prefix", got)
+	}
+}

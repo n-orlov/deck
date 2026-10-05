@@ -2122,19 +2122,42 @@ func (s *Store) ListEvents(ctx context.Context, limit int) ([]Event, error) {
 // caller trawling ListEvents itself.
 const droppedHookKindSuffix = ".superseded"
 
-// LastDroppedHook returns the most recent event recorded for sessionID
-// whose kind carries droppedHookKindSuffix -- i.e. the newest hook write
-// supersededLaunch (internal/hookrecv) declined for this row, if any.
-// found is false, with a zero Event and nil error, when this session has
-// never had one; that is the ordinary case and is not an error. Ordered
-// the same way ListEvents is (at DESC, seq DESC) so two declines sharing a
-// millisecond still resolve to the actually-newest one.
-func (s *Store) LastDroppedHook(ctx context.Context, sessionID string) (Event, bool, error) {
+// droppedHookNoGenerationReason is the prefix of hookrecv's supersededReason
+// for a hook whose pane carried no launch generation at all (duplicated as a
+// literal for the same layering reason as droppedHookKindSuffix; hookrecv's
+// own test pins the two to each other).
+const droppedHookNoGenerationReason = "declined: hook carries no launch generation"
+
+// LastAlarmingDroppedHook returns the most recent event recorded for
+// sessionID that is a declined hook worth an alarm in the `i` detail dialog
+// (R200): a hook write supersededLaunch (internal/hookrecv) declined for
+// this row, EXCEPT the expected teardown of a replaced launch. Not alarming:
+// a "session_end.superseded" whose hook named a launch generation (the
+// replaced pane's own SessionEnd, which arrives on essentially every
+// restart/resume), and a "session_end.superseded" whose hook carried no
+// generation but which a restart (kind "restart") or a launch lease
+// acquisition (kind "launch_lease_acquired", written by every restart and
+// resume) preceded on the same row. Always alarming: any other base kind
+// (stop, notification, ...) from a replaced generation, and a generation-less
+// session_end with no restart/resume before it. The raw events are never
+// altered: ListEvents (`E`) still lists every one of them.
+// found is false, with a zero Event and nil error, when there is none; that
+// is the ordinary case and is not an error. Ordered the same way ListEvents
+// is (at DESC, seq DESC) so two declines sharing a millisecond still resolve
+// to the actually-newest one.
+func (s *Store) LastAlarmingDroppedHook(ctx context.Context, sessionID string) (Event, bool, error) {
 	if sessionID == "" {
 		return Event{}, false, errors.New("session id is required")
 	}
-	row := s.db.QueryRowContext(ctx, `SELECT seq, session_id, at, kind, reason, payload
-		FROM events WHERE session_id = ? AND kind LIKE '%' || ? ORDER BY at DESC, seq DESC LIMIT 1`, sessionID, droppedHookKindSuffix)
+	row := s.db.QueryRowContext(ctx, `SELECT e.seq, e.session_id, e.at, e.kind, e.reason, e.payload
+		FROM events e
+		WHERE e.session_id = ? AND e.kind LIKE '%' || ?
+		AND NOT (e.kind = 'session_end' || ?
+			AND (COALESCE(e.reason, '') NOT LIKE ? || '%'
+				OR EXISTS (SELECT 1 FROM events p WHERE p.session_id = e.session_id AND p.seq < e.seq
+					AND p.kind IN ('restart', 'launch_lease_acquired'))))
+		ORDER BY e.at DESC, e.seq DESC LIMIT 1`,
+		sessionID, droppedHookKindSuffix, droppedHookKindSuffix, droppedHookNoGenerationReason)
 	var event Event
 	var sqlSessionID, reason, payload sql.NullString
 	if err := row.Scan(&event.Seq, &sqlSessionID, &event.At, &event.Kind, &reason, &payload); err != nil {

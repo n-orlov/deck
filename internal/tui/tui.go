@@ -690,7 +690,7 @@ type Model struct {
 	eventLogErr  error
 	// detailDroppedHookSessionID/detailDroppedHookFound/detailDroppedHookEvent
 	// are the `i` detail dialog's own R61 (steer 3e-001 §6.3) in-memory copy
-	// of loadDetailDroppedHook's LastDroppedHook result (R90/task 033).
+	// of loadDetailDroppedHook's LastAlarmingDroppedHook result (R90/task 033).
 	// detailDroppedHookSessionID is set to the session's id the moment "i"
 	// opens the dialog and dispatches loadDetailDroppedHook for it -- both a
 	// pending marker (detailDroppedHookFound stays false until a reply
@@ -4303,7 +4303,7 @@ func (m Model) persistCollapsedGroups() tea.Cmd {
 	}
 }
 
-// detailDroppedHookLoaded carries loadDetailDroppedHook's LastDroppedHook
+// detailDroppedHookLoaded carries loadDetailDroppedHook's LastAlarmingDroppedHook
 // result back into Update (R90/task 033, R61): dispatched exactly once by
 // the "i" key handler when the detail dialog opens. sessionID is the
 // session the lookup was FOR, not necessarily the one still selected when
@@ -4330,7 +4330,7 @@ func (m Model) loadDetailDroppedHook(sessionID string) tea.Cmd {
 		return func() tea.Msg { return detailDroppedHookLoaded{sessionID: sessionID} }
 	}
 	return func() tea.Msg {
-		event, found, err := m.store.LastDroppedHook(context.Background(), sessionID)
+		event, found, err := m.store.LastAlarmingDroppedHook(context.Background(), sessionID)
 		return detailDroppedHookLoaded{sessionID: sessionID, event: event, found: found, err: err}
 	}
 }
@@ -7850,6 +7850,9 @@ func (m Model) writeDetailPermission(b *strings.Builder, session store.Session) 
 		// event.Reason already carries supersededReason's own explanation
 		// naming both launch generations -- shown verbatim, exactly as `E`
 		// shows them, so the two views never disagree about the wording.
+		// R200: detailDroppedHookEvent is only ever an ALARMING decline
+		// (store.LastAlarmingDroppedHook): the replaced pane's expected
+		// session_end never reaches this line, though `E` still lists it.
 		event := m.detailDroppedHookEvent
 		fmt.Fprintf(b, "%s\n", m.detailField("Hook declined:      ", fmt.Sprintf("%s -- %s (%s)", event.Kind, event.Reason, m.relativeAge(event.At))))
 	}
