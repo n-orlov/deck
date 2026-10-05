@@ -217,11 +217,8 @@ func (s Service) CreateShell(ctx context.Context, input ShellCreateInput) (store
 // planShellCreate validates the create input and resolves everything that can
 // refuse a shell create before the durable row exists.
 func (s Service) planShellCreate(input ShellCreateInput) (shellCreatePlan, error) {
-	if s.Store == nil || s.Audit == nil || s.Clock == nil || s.IDs == nil {
-		return shellCreatePlan{}, errors.New("shell creation requires store, audit logger, clock, and id generator")
-	}
-	if input.Name == "" || input.CWD == "" {
-		return shellCreatePlan{}, errors.New("shell session name and working directory are required")
+	if err := s.checkShellCreate(input); err != nil {
+		return shellCreatePlan{}, err
 	}
 	id, err := s.IDs.UUID()
 	if err != nil {
@@ -236,6 +233,18 @@ func (s Service) planShellCreate(input ShellCreateInput) (shellCreatePlan, error
 		return shellCreatePlan{}, errors.New("PATH is required to create a shell session")
 	}
 	return shellCreatePlan{id: id, shell: shell, capturedPath: capturedPath, now: s.Clock.Now().UnixMilli()}, nil
+}
+
+// checkShellCreate rejects a create whose collaborators or required input
+// fields are missing.
+func (s Service) checkShellCreate(input ShellCreateInput) error {
+	if s.Store == nil || s.Audit == nil || s.Clock == nil || s.IDs == nil {
+		return errors.New("shell creation requires store, audit logger, clock, and id generator")
+	}
+	if input.Name == "" || input.CWD == "" {
+		return errors.New("shell session name and working directory are required")
+	}
+	return nil
 }
 
 // insertShellRow writes the durable "starting" row and its first audit
