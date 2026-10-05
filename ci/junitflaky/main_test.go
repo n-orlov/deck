@@ -270,3 +270,28 @@ func TestOutcomeOfReadsChildElementsThenTheStatusAttribute(t *testing.T) {
 		})
 	}
 }
+
+// rerunNode: a failure child becomes <rerunFailure> with its message, type
+// and text (other attributes dropped); an error child becomes <rerunError>;
+// an attempt with neither child is named by its godog status.
+func TestRerunNodeNamesAndCarriesEachKindOfEarlierAttempt(t *testing.T) {
+	attempt := func(body string) *node {
+		return mustParse(t, "r.xml", `<testsuite name="s">`+body+`</testsuite>`).Nodes[0].Nodes[0]
+	}
+	f := rerunNode(attempt(`<testcase name="T"><failure message="m" type="Y" extra="x">body</failure></testcase>`))
+	if f.XMLName.Local != "rerunFailure" || f.attr("message") != "m" || f.attr("type") != "Y" || f.hasAttr("extra") || f.Text != "body" {
+		t.Errorf("failure child: %+v", f)
+	}
+	e := rerunNode(attempt(`<testcase name="T"><error message="boom"/></testcase>`))
+	if e.XMLName.Local != "rerunError" || e.attr("message") != "boom" {
+		t.Errorf("error child: %+v", e)
+	}
+	u := rerunNode(attempt(`<testcase name="T" status="undefined"/>`))
+	if u.XMLName.Local != "rerunError" || u.attr("message") != "status undefined" {
+		t.Errorf("undefined status: %+v", u)
+	}
+	p := rerunNode(attempt(`<testcase name="T" status="failed"/>`))
+	if p.XMLName.Local != "rerunFailure" || p.attr("message") != "status failed" {
+		t.Errorf("failed status without a child: %+v", p)
+	}
+}
