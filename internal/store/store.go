@@ -36,6 +36,10 @@ func SupportedSchemaVersion() int { return supportedSchema }
 type NewerSchemaError struct {
 	DB        int // schema version recorded in the database
 	Supported int // newest schema this binary understands
+	// WriterBinary is the absolute path of the deck binary the database
+	// records as its last writer, "" when none is recorded. `deck _hook`
+	// re-execs it (SPEC section 3.1, R204).
+	WriterBinary string
 }
 
 func (e *NewerSchemaError) Error() string {
@@ -170,7 +174,8 @@ func (s *Store) configure(home string) error {
 	// Check this before setting journal mode or running a migration. A future
 	// database is read only from this binary's point of view.
 	if version > supportedSchema {
-		return &NewerSchemaError{DB: version, Supported: supportedSchema}
+		writer, _ := readWriterBinary(s.db)
+		return &NewerSchemaError{DB: version, Supported: supportedSchema, WriterBinary: writer}
 	}
 	if err := os.Chmod(home, 0o700); err != nil { //nolint:gosec // G302: home is a directory, 0o700 is owner-only (gosec reads it as a file mode)
 		return fmt.Errorf("secure store directory: %w", err)
@@ -196,7 +201,11 @@ func (s *Store) configure(home string) error {
 	if _, err := s.db.Exec(`PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL; PRAGMA busy_timeout=5000; PRAGMA foreign_keys=ON; PRAGMA secure_delete=ON`); err != nil {
 		return fmt.Errorf("configure state database: %w", err)
 	}
-	return s.migrate(version)
+	if err := s.migrate(version); err != nil {
+		return err
+	}
+	s.recordWriterBinary()
+	return nil
 }
 
 // immediateTxDSN appends _txlock=immediate to the database path, whether or
