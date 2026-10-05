@@ -51,6 +51,11 @@ type ScenarioHarness struct {
 	// per-conversation transcript (cmd/fake-claude's transcriptPath) is written
 	// under a scenario-scoped directory rather than the real developer's home.
 	agentHOMEDir string
+	// rememberedLaunchGenerations holds, per session name, the launch
+	// generation a scenario step captured before a restart
+	// (superseded_session_end_test.go), so a later step can deliver a hook
+	// from the pane that restart replaced.
+	rememberedLaunchGenerations map[string]string
 	// fakeAgents holds fake-agent fixture drivers keyed by agent kind
 	// ("claude"/"pi"), started directly (not through the deck binary) to prove
 	// requirement 4's size-recording contract from the fixture's own
