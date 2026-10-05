@@ -810,24 +810,35 @@ func parsePaneFacts(name, line string) (Pane, error) {
 		return Pane{}, fmt.Errorf("parse pane height for session %q: %w", name, err)
 	}
 	pane := Pane{ID: fields[0], PID: pid, Dead: fields[2] == "1", Width: width, Height: height}
-	if fields[3] != "" {
-		status, err := strconv.Atoi(fields[3])
+	pane.DeadStatus, err = parseDeadStatus(name, fields[3], fields[4])
+	if err != nil {
+		return Pane{}, err
+	}
+	return pane, nil
+}
+
+// parseDeadStatus reads a pane's exit status from its pane_dead_status and
+// pane_dead_signal fields: a nil status when neither is set.
+func parseDeadStatus(name, statusField, signalField string) (*int, error) {
+	if statusField != "" {
+		status, err := strconv.Atoi(statusField)
 		if err != nil {
-			return Pane{}, fmt.Errorf("parse pane exit status for session %q: %w", name, err)
+			return nil, fmt.Errorf("parse pane exit status for session %q: %w", name, err)
 		}
-		pane.DeadStatus = &status
-	} else if fields[4] != "" {
+		return &status, nil
+	}
+	if signalField != "" {
 		// tmux reports signal deaths separately from ordinary exit status.
 		// Preserve the conventional shell status (128 + signal) so SIGKILL
 		// remains a nonzero crash observation instead of an unclassified corpse.
-		signal, err := strconv.Atoi(fields[4])
+		signal, err := strconv.Atoi(signalField)
 		if err != nil {
-			return Pane{}, fmt.Errorf("parse pane death signal for session %q: %w", name, err)
+			return nil, fmt.Errorf("parse pane death signal for session %q: %w", name, err)
 		}
 		status := 128 + signal
-		pane.DeadStatus = &status
+		return &status, nil
 	}
-	return pane, nil
+	return nil, nil
 }
 
 func pairs(values []string) func(func(string, string) bool) {
