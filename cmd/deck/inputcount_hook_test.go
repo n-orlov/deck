@@ -142,3 +142,30 @@ func TestWrapForInputCountingIsInertWithoutTheEnvironmentVariable(t *testing.T) 
 		t.Fatalf("wrapForInputCounting returned a different value than its input when inert")
 	}
 }
+
+// TestKeyWeightCountsRunesButOnePerPasteOrNamedKey pins keyWeight's rule
+// directly: a coalesced rune read weighs its rune count, while a bracketed
+// paste and a named key (no runes) each weigh exactly one.
+func TestKeyWeightCountsRunesButOnePerPasteOrNamedKey(t *testing.T) {
+	cases := []struct {
+		name string
+		key  tea.KeyMsg
+		want int64
+		// single is whether the message is counted as one event regardless
+		// of its rune count (a paste or a named key).
+		single bool
+	}{
+		{"single rune", tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")}, 1, false},
+		{"coalesced runes", tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("jxk")}, 3, false},
+		{"paste of many runes", tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("pasted"), Paste: true}, 1, true},
+		{"named key", tea.KeyMsg{Type: tea.KeyEnter}, 1, true},
+	}
+	for _, tc := range cases {
+		if got := keyWeight(tc.key); got != tc.want {
+			t.Errorf("%s: keyWeight = %d, want %d", tc.name, got, tc.want)
+		}
+		if got := isSingleKeystroke(tc.key); got != tc.single {
+			t.Errorf("%s: isSingleKeystroke = %v, want %v", tc.name, got, tc.single)
+		}
+	}
+}
