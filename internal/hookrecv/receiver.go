@@ -194,19 +194,9 @@ func supersededReason(rowGeneration, hookGeneration string) string {
 // carries (empty when it carries none); see supersededLaunch for what a
 // mismatch means and how the token-absent cases are decided.
 func Receive(ctx context.Context, db Store, raw []byte, injectedSessionID, injectedLaunchGeneration string, at int64) (Result, error) {
-	if db == nil {
-		return Result{}, errors.New("hook store is required")
-	}
-	if at == 0 {
-		return Result{}, errors.New("hook timestamp is required")
-	}
-	var p payload
-	if err := json.Unmarshal(raw, &p); err != nil {
-		return Result{}, fmt.Errorf("decode hook payload: %w", err)
-	}
-	mapping, ok := Mappings[p.EventName]
-	if !ok {
-		return Result{}, fmt.Errorf("unsupported hook event %q", p.EventName)
+	p, mapping, err := decodeHook(db, raw, at)
+	if err != nil {
+		return Result{}, err
 	}
 	// eventKind is what actually gets persisted as the event's kind column; it
 	// stays mapping.Kind unless supersededLaunch below declines the write, in
@@ -257,6 +247,27 @@ func Receive(ctx context.Context, db Store, raw []byte, injectedSessionID, injec
 		return result, fmt.Errorf("apply %s hook: %w", p.EventName, err)
 	}
 	return result, nil
+}
+
+// decodeHook validates Receive's preconditions in their fixed order (store,
+// timestamp, JSON payload, supported event name) and returns the decoded
+// payload with the event's mapping.
+func decodeHook(db Store, raw []byte, at int64) (payload, Mapping, error) {
+	if db == nil {
+		return payload{}, Mapping{}, errors.New("hook store is required")
+	}
+	if at == 0 {
+		return payload{}, Mapping{}, errors.New("hook timestamp is required")
+	}
+	var p payload
+	if err := json.Unmarshal(raw, &p); err != nil {
+		return payload{}, Mapping{}, fmt.Errorf("decode hook payload: %w", err)
+	}
+	mapping, ok := Mappings[p.EventName]
+	if !ok {
+		return payload{}, Mapping{}, fmt.Errorf("unsupported hook event %q", p.EventName)
+	}
+	return p, mapping, nil
 }
 
 // resolveHookTarget finds the row a hook addresses. An unresolved hook is
