@@ -226,6 +226,7 @@ func (m Model) interactiveLeftMouse(msg tea.MouseMsg) Model {
 			return m.forwardInteractiveDragPress(msg)
 		}
 		if updated, ok := m.beginInteractiveSelection(msg.X, msg.Y); ok {
+			updated.interactiveSelectRect = rectangularSelectionPress(msg)
 			return updated
 		}
 	case tea.MouseActionMotion:

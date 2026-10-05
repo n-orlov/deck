@@ -86,6 +86,26 @@ func (d *ScreenDriver) Drag(fromCol, fromRow, toCol, toRow int) error {
 	return d.Send(sgrRelease(sgrButtonLeft, toCol, toRow))
 }
 
+// sgr modifier bits, added to a button code (xterm's mouse protocol).
+const (
+	sgrModAlt  = 8
+	sgrModCtrl = 16
+)
+
+// DragWithModifiers is Drag with modifier bits (sgrModAlt, sgrModCtrl) added
+// to the left button's code on the press, the motion and the release, as a
+// terminal reports a drag made with those keys held.
+func (d *ScreenDriver) DragWithModifiers(mods, fromCol, fromRow, toCol, toRow int) error {
+	button := sgrButtonLeft + mods
+	if err := d.Send(sgrPress(button, fromCol, fromRow)); err != nil {
+		return err
+	}
+	if err := d.Send(sgrMotion(button, toCol, toRow)); err != nil {
+		return err
+	}
+	return d.Send(sgrRelease(button, toCol, toRow))
+}
+
 // CaptureSnapshot stores the current normalized frame under name, so a later
 // step can assert a gesture changed nothing.
 func (d *ScreenDriver) CaptureSnapshot(name string, clockFrozen bool) {

@@ -1173,6 +1173,10 @@ type Model struct {
 	interactiveSelectAnchorRow  int
 	interactiveSelectCurrentCol int
 	interactiveSelectCurrentRow int
+	// interactiveSelectRect is true when the press that armed the drag held
+	// Alt or Ctrl (rectangularSelectionPress): the selection is the block
+	// between the two corner cells rather than the linear run (R203).
+	interactiveSelectRect bool
 	// interactiveForwardingDrag is true from a left press forwarded to the
 	// pane program ([ui] select_on_drag false) until its release: the motion
 	// and release that follow are forwarded too (interactive_drag_forward.go).

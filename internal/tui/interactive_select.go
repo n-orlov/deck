@@ -8,6 +8,8 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	tea "github.com/charmbracelet/bubbletea"
+
 	osc52 "github.com/aymanbagabas/go-osc52/v2"
 
 	"github.com/n-orlov/deck/internal/theme"
@@ -181,6 +183,34 @@ func (m Model) beginInteractiveSelection(x, y int) (Model, bool) {
 	return m, true
 }
 
+// rectangularSelectionPress reports whether a press selects a rectangle
+// (R203, SPEC §11.8): Alt alone or Ctrl alone. Ctrl is the fallback for
+// window managers and terminals that swallow Alt. Ctrl+Alt and anything
+// with Shift are not bindings, so such a press selects by line as a plain
+// one does.
+func rectangularSelectionPress(msg tea.MouseMsg) bool {
+	return msg.Alt != msg.Ctrl && !msg.Shift
+}
+
+// selectedPreviewText is the text a drag from (anchorCol, fromRow) to
+// (curCol, toRow) copies: the block between the corners for a rectangular
+// selection, the linear run otherwise.
+func (m Model) selectedPreviewText(anchorCol, fromRow, curCol, toRow int) string {
+	if m.interactiveSelectRect {
+		return m.interactiveGrid.SelectedRectText(anchorCol, fromRow, curCol, toRow)
+	}
+	return m.interactiveGrid.SelectedText(anchorCol, fromRow, curCol, toRow)
+}
+
+// selectionHighlightRange is the marked column range of view row i, by the
+// same rule selectedPreviewText copies.
+func (m Model) selectionHighlightRange(offset, height, i, fromCol, fromRow, toCol, toRow int) (int, int, bool) {
+	if m.interactiveSelectRect {
+		return m.interactiveGrid.SelectionRectHighlightRange(offset, height, i, fromCol, fromRow, toCol, toRow)
+	}
+	return m.interactiveGrid.SelectionHighlightRange(offset, height, i, fromCol, fromRow, toCol, toRow)
+}
+
 // updateInteractiveSelection extends an in-progress selection to
 // wherever the drag's latest motion event landed (previewClampToContent,
 // so a drag that runs off the panel's own edge keeps selecting to the
@@ -252,7 +282,7 @@ func (m Model) commitInteractiveSelection(shift bool) Model {
 	_, contentHeight := m.previewContentSize()
 	fromRow := grid.AbsoluteRow(offset, contentHeight, anchorRow)
 	toRow := grid.AbsoluteRow(offset, contentHeight, curRow)
-	text := grid.SelectedText(anchorCol, fromRow, curCol, toRow)
+	text := m.selectedPreviewText(anchorCol, fromRow, curCol, toRow)
 
 	ctx := context.Background()
 	if err := client.SetSelectionBuffer(ctx, text); err != nil {
@@ -336,14 +366,27 @@ func (m Model) highlightInProgressSelection(lines []string, contentHeight int) [
 
 	out := make([]string, len(lines))
 	for i, line := range lines {
-		startCol, endCol, sel := grid.SelectionHighlightRange(offset, contentHeight, i, fromCol, fromRow, toCol, toRow)
+		startCol, endCol, sel := m.selectionHighlightRange(offset, contentHeight, i, fromCol, fromRow, toCol, toRow)
 		if !sel {
 			out[i] = line
 			continue
 		}
+		if m.interactiveSelectRect {
+			line = padToColumn(line, endCol+1)
+		}
 		out[i] = highlightRangeSGR(line, startCol, endCol, openSeq, selectionCloseSGR)
 	}
 	return out
+}
+
+// padToColumn appends blanks to an already-rendered row shorter than width
+// display columns. The grid's rows are trimmed of trailing blanks, but a
+// rectangle is marked over its whole column range, blank cells included.
+func padToColumn(line string, width int) string {
+	if w := stringWidth(line); w < width {
+		return line + strings.Repeat(" ", width-w)
+	}
+	return line
 }
 
 // highlightRangeSGR wraps the display columns [startCol, endCol]

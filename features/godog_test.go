@@ -182,6 +182,7 @@ func initializeScenario(sc *godog.ScenarioContext) {
 	registerInteractiveScrollSteps(sc)
 	registerInteractiveCursorSteps(sc)
 	registerInteractiveSelectionSteps(sc)
+	registerRectangularSelectionSteps(sc)
 	registerInteractiveRetargetSteps(sc)
 	registerInteractivePipeLeakSteps(sc)
 	registerInteractiveForceAttachSteps(sc)
