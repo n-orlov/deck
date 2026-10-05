@@ -164,19 +164,11 @@ func runTUI(settings config.Settings, stderr io.Writer) int {
 	// running client keeps enforcing the OLD window until deck restarts.
 	tuiReconcile := newTUIReconcile(db, sessions, settings)
 	model := newDeckModel(db, settings, sessions, client, registry, tuiReconcile)
-	programOptions := []tea.ProgramOption{tea.WithAltScreen()}
-	// [ui] mouse / DECK_MOUSE (requirement 3) gates SGR mouse reporting for the
-	// whole program lifetime; §11.8's hit-testing and gesture handling land in
-	// later phase-2b1 tasks, but the on/off control itself is honoured here.
-	if settings.Mouse {
-		programOptions = append(programOptions, tea.WithMouseCellMotion())
-	}
-	programOptions = append(programOptions, rawByteCountingProgramOptions()...)
 	// wrapForInteractiveShutdownOnPanic is deliberately the OUTERMOST wrap
 	// (applied last, around everything else): its own recover must see a
 	// panic thrown by any of the layers below it too, not only one from
 	// inside the real tui.Model's own Update (see cmd/deck/interactive_shutdown.go).
-	finalModel, runErr := tea.NewProgram(wrapForInteractiveShutdownOnPanic(wrapForInputCounting(wrapForDeliberateTestPanic(model))), programOptions...).Run()
+	finalModel, runErr := tea.NewProgram(wrapForInteractiveShutdownOnPanic(wrapForInputCounting(wrapForDeliberateTestPanic(model))), tuiProgramOptions(settings)...).Run()
 	// PRD R89/task 031: SIGTERM's QuitMsg (Bubble Tea's own signal handler)
 	// returns the model completely unchanged, without ever calling Update --
 	// so unlike a panic (already handled inside the wrapper above, before
@@ -192,6 +184,20 @@ func runTUI(settings config.Settings, stderr io.Writer) int {
 		return 0
 	}
 	return 0
+}
+
+// tuiProgramOptions are the Bubble Tea program options for settings: the
+// alternate screen always, and [ui] mouse / DECK_MOUSE (requirement 3)
+// gates SGR mouse reporting for the whole program lifetime; §11.8's
+// hit-testing and gesture handling land in later phase-2b1 tasks, but the
+// on/off control itself is honoured here. A test-only raw-byte counting
+// build appends its own option last.
+func tuiProgramOptions(settings config.Settings) []tea.ProgramOption {
+	options := []tea.ProgramOption{tea.WithAltScreen()}
+	if settings.Mouse {
+		options = append(options, tea.WithMouseCellMotion())
+	}
+	return append(options, rawByteCountingProgramOptions()...)
 }
 
 // absoluteExecutable is the absolute path of the running deck binary, which
