@@ -255,10 +255,7 @@ func (s *Store) AcquireLaunchLease(ctx context.Context, sessionID, owner string,
 	if err := checkAcquireLeaseArgs(sessionID, owner, at); err != nil {
 		return LaunchLeaseResult{}, err
 	}
-	if ttl <= 0 {
-		ttl = DefaultLaunchLeaseTTL
-	}
-	until := at + ttl.Milliseconds()
+	until := leaseExpiry(at, ttl)
 
 	// Mint the per-launch generation before the transaction: it identifies
 	// THIS launch attempt, and a failure to produce one must not leave a
@@ -293,14 +290,32 @@ func (s *Store) AcquireLaunchLease(ctx context.Context, sessionID, owner string,
 		// won, or by a later legitimate acquire.
 		return LaunchLeaseResult{Outcome: LaunchLeaseHeldElsewhere}, nil
 	}
-	if _, err := tx.ExecContext(ctx, `INSERT INTO events (session_id, at, kind, reason, payload)
-		VALUES (?, ?, ?, ?, ?)`, sessionID, at, "launch_lease_acquired", "user", storedOwner); err != nil {
-		return LaunchLeaseResult{}, fmt.Errorf("record launch lease event: %w", err)
-	}
-	if err := tx.Commit(); err != nil {
-		return LaunchLeaseResult{}, fmt.Errorf("commit launch lease acquisition: %w", err)
+	if err := commitLeaseAcquisitionTx(ctx, tx, sessionID, storedOwner, at); err != nil {
+		return LaunchLeaseResult{}, err
 	}
 	return LaunchLeaseResult{Outcome: LaunchLeaseAcquired, HeldBy: storedOwner, LaunchGeneration: generation}, nil
+}
+
+// leaseExpiry is the lease's expiry in UnixMilli: at plus ttl, with a
+// non-positive ttl meaning DefaultLaunchLeaseTTL.
+func leaseExpiry(at int64, ttl time.Duration) int64 {
+	if ttl <= 0 {
+		ttl = DefaultLaunchLeaseTTL
+	}
+	return at + ttl.Milliseconds()
+}
+
+// commitLeaseAcquisitionTx records the launch_lease_acquired event and
+// commits the acquisition transaction.
+func commitLeaseAcquisitionTx(ctx context.Context, tx *sql.Tx, sessionID, storedOwner string, at int64) error {
+	if _, err := tx.ExecContext(ctx, `INSERT INTO events (session_id, at, kind, reason, payload)
+		VALUES (?, ?, ?, ?, ?)`, sessionID, at, "launch_lease_acquired", "user", storedOwner); err != nil {
+		return fmt.Errorf("record launch lease event: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit launch lease acquisition: %w", err)
+	}
+	return nil
 }
 
 // checkAcquireLeaseArgs rejects an AcquireLaunchLease call that names no
