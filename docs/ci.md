@@ -657,6 +657,97 @@ loosened copy (a lower floor, a raised ceiling, a gate switched off) against
 a fixed base and assert the comparison fails, and a tightened copy against
 the same base and assert it passes.
 
+## Gate reference (R198)
+
+Every gate is run by `ci/quality.sh` (locally: `ci/run.sh ci/quality.sh`,
+after `ci/run.sh ci/suite.sh ci-results` has written the merged profile the
+coverage and CRAP gates read), and every threshold lives in one file,
+`ci/quality.json`. Each on gate prints one `=== <gate> gate ===` section: the
+tool's own report (top offenders, each named by `file:line` or module), then a
+single `what to do:` line (`nothing -- ...` when it passed). The run exits `1`
+if any on gate failed. To read a failure: find the first `=== ... gate ===`
+section whose body is not `what to do: nothing`, fix what it names, and re-run
+that one tool (the commands below) rather than the whole suite.
+
+| Gate | Threshold (`ci/quality.json`) | A failure names | Run it alone |
+| --- | --- | --- | --- |
+| coverage | `coverage.total_floor` 85, `package_floor` 80, `fixture_floor` 50 | each package or total under its floor, with percentage and statement counts | `go run ./ci/covgate -config ci/quality.json -profile ci-results/coverage-merged.out` |
+| CRAP | `crap.ceiling` and `crap.fixture_ceiling` | each function over the ceiling: `file:line`, `cc`, `cov`, `CRAP` | `go run ./ci/crapgate -profile ci-results/coverage-merged.out -max 10` |
+| golangci-lint | none: zero findings | each finding, as golangci prints it | `ci/golangci.sh` |
+| govulncheck | none: no reachable vulnerability | the vulnerable module/standard-library symbol and its fixed version | `go run ./ci/qualitycheck -config ci/quality.json -profile ci-results/coverage-merged.out` with only `govulncheck` on |
+| trivy | `trivy.severity` `HIGH,CRITICAL` | each vulnerability, secret or misconfiguration with its fixed version, or a bad `.trivyignore` line | same, with only `trivy` on |
+
+All five run through `ci/run.sh` in the `deck-ci` image so local and CI results
+agree; the coverage and CRAP gates are only meaningful on the merged unit +
+features profile, never a unit-only one.
+
+**The CRAP stage that is on.** The ceiling is ratcheted 30 -> 20 -> 15 -> 10
+(R191-R193), one stage per commit, each only once the whole tree was clean at it.
+The ceiling `ci/quality.json` holds at this commit: **CRAP ceiling 10** (the
+fixture ceiling is 10 as well). `TestDocsCiMdStatesTheCheckedInCrapCeiling`
+(`ci/qualitycheck`) fails if this paragraph's number differs from
+`ci/quality.json`, so changing one means changing the other in the same commit.
+
+**Adopting or tightening a ratchet.**
+
+- Tightening: measure first (run the gate alone at the lower number over the
+  merged profile of a green push run, or the `tighten:` prompt for a coverage
+  floor), cure every named offender at its root (lift a helper, add a behaviour
+  test), and only then lower the number in `ci/quality.json`, in the same
+  commit that updates this file and renames the ceiling test. If the next stage
+  cannot be reached cleanly, stay at the last clean stage and list what is left;
+  a half-done stage is never committed as on.
+- Adopting a new gate: add it to `ci/quality.json` with `enabled: false`, make
+  the product pass it locally, then switch it on. A seeded-failure test proves
+  it fails when it should.
+- Loosening is refused: `TestThresholdsNotLoosened` fails the build when a floor
+  drops, a ceiling rises or a gate goes from on to off against the base branch.
+  There is no override; a ratchet only moves toward stricter.
+
+**Exceptions policy.**
+
+- `.trivyignore` is the only place a trivy finding may be waived: one line per
+  exception, `<ID> review-by:YYYY-MM-DD # <reason>`. A missing reason or date,
+  or a date already passed, fails the gate; waivers are for findings with no
+  fixed version, and the date forces a re-review. There are none at present.
+- `//nolint` is allowed only as `//nolint:<linter> // <reason>` (nolintlint
+  enforces both parts) on the single line concerned, for a case where the lint
+  is wrong for that line (for example `gosec` G304 on a path that is a
+  command-line argument by design). No file- or package-wide exclusion is
+  added for production code, and no function is exempted from the CRAP or
+  coverage gates.
+
+**Native Allure results (R195-R196).** `features/` writes native Allure 2
+results when `DECK_GODOG_ALLURE=<dir>` is set (feature, scenario and one step
+per Gherkin step, with status, duration and attachments); `ci/suite.sh` sets it
+for the `TestFeatures` run and every solo rerun into one
+`<outdir>/allure-results/`, the unit tests are converted into the same
+directory by `ci/junit2allure`, and `ci/allure-report.sh` builds the single
+report with its history carried forward. The Allure smoke check and the layout
+are described under "Allure report and Pages layout" above.
+
+## The pre-release security review (R194)
+
+This is a process, not a gate, and nothing about a review is tracked in the
+repository beyond this section.
+
+- **When:** before a release tag is cut, the operator asks Claude Code for a
+  security review of everything since the last reviewed tag.
+- **How:** separate review agents cover the hook input (`deck _hook` stdin),
+  tmux command construction and quoting, the filesystem and permissions under
+  `DECK_HOME`, env and secret handling, the workflows and the self-hosted
+  runner trust boundary, and dependencies. Each finding is adversarially
+  verified before it is reported.
+- **Output:** each confirmed finding becomes a GitHub issue, a short summary
+  goes to Telegram, and the release's tag message or notes carry "security
+  review: <range>, N findings, all resolved/filed".
+- **Blocking:** a confirmed HIGH or CRITICAL finding blocks the release. Lower
+  findings are filed and do not block.
+- **Rejected alternatives:** the scheduled `claude-code-security-review` Action
+  (it is PR-oriented and needs a model API key stored as a repo secret); a
+  periodic ralphd security job (costlier than asking when a release is near);
+  and a session cron (it fires only while a session is alive).
+
 ## The release gate (`release.yml`, R147)
 
 Before `release.yml` builds or publishes anything for a pushed `vX.Y.Z` tag,
