@@ -345,3 +345,31 @@ func TestZeroStatementPackageScoreIsZero(t *testing.T) {
 		t.Errorf("pct of an empty package = %v, want 0", got)
 	}
 }
+
+func TestRunInWorkingDirScoresTheWorkingDirectory(t *testing.T) {
+	cfg, prof, root := seed(t, floors,
+		pkgCover{"internal/a", 90, 100}, pkgCover{"internal/b", 86, 100}, pkgCover{"cmd/fake-x", 60, 100})
+	t.Chdir(root)
+	report, code, err := runInWorkingDir(cfg, prof)
+	if err != nil || code != 0 {
+		t.Fatalf("runInWorkingDir = (%d, %v), want exit 0:\n%s", code, err, report)
+	}
+	if !strings.Contains(report, "coverage gate passed") {
+		t.Errorf("report lacks the pass line:\n%s", report)
+	}
+}
+
+func TestRunInWorkingDirReportsAMissingWorkingDirectoryAsUsageError(t *testing.T) {
+	gone := filepath.Join(t.TempDir(), "gone")
+	if err := os.Mkdir(gone, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(gone)
+	if err := os.Remove(gone); err != nil {
+		t.Skipf("cannot remove the working directory here: %v", err)
+	}
+	_, code, err := runInWorkingDir("quality.json", "cover.out")
+	if err == nil || code != 2 {
+		t.Fatalf("runInWorkingDir = (%d, %v), want exit 2 with an error", code, err)
+	}
+}
