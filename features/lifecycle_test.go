@@ -56,6 +56,9 @@ type ScenarioHarness struct {
 	// (superseded_session_end_test.go), so a later step can deliver a hook
 	// from the pane that restart replaced.
 	rememberedLaunchGenerations map[string]string
+	// staleHook holds the binary-A/binary-B fixture of
+	// stale_hook_binding.feature (R204, #56).
+	staleHook staleHookBinaries
 	// fakeAgents holds fake-agent fixture drivers keyed by agent kind
 	// ("claude"/"pi"), started directly (not through the deck binary) to prove
 	// requirement 4's size-recording contract from the fixture's own
