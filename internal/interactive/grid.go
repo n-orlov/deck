@@ -1150,9 +1150,7 @@ func (s *Session) AbsoluteRow(offset, height, viewRow int) int {
 // toCol), so the highlighted range and the copied text can never disagree
 // (SPEC §11.8: "it covers exactly the run SelectedText would return").
 func (s *Session) SelectionHighlightRange(offset, height, viewRow, fromCol, fromRow, toCol, toRow int) (startCol, endCol int, ok bool) {
-	if fromRow > toRow || (fromRow == toRow && fromCol > toCol) {
-		fromCol, fromRow, toCol, toRow = toCol, toRow, fromCol, fromRow
-	}
+	fromCol, fromRow, toCol, toRow = orderSelectionEnds(fromCol, fromRow, toCol, toRow)
 	abs := s.AbsoluteRow(offset, height, viewRow)
 	if abs < fromRow || abs > toRow {
 		return 0, 0, false
@@ -1203,9 +1201,7 @@ func (s *Session) SelectionHighlightRange(offset, height, viewRow, fromCol, from
 // blocks here for exactly AbsoluteRow's reason -- a gesture needs the
 // real cells, not a stale approximation of them.
 func (s *Session) SelectedText(fromCol, fromRow, toCol, toRow int) string {
-	if fromRow > toRow || (fromRow == toRow && fromCol > toCol) {
-		fromCol, fromRow, toCol, toRow = toCol, toRow, fromCol, fromRow
-	}
+	fromCol, fromRow, toCol, toRow = orderSelectionEnds(fromCol, fromRow, toCol, toRow)
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	s.writes.RLock()
@@ -1233,6 +1229,16 @@ func (s *Session) SelectedText(fromCol, fromRow, toCol, toRow int) string {
 		lines = append(lines, selectedRowText(g, sbLen, i, startCol, endCol))
 	}
 	return strings.Join(lines, "\n")
+}
+
+// orderSelectionEnds returns a selection's two endpoints in reading order:
+// swapped when the drag ran backwards (a release above its own press, or
+// leftward on the same row), unchanged otherwise.
+func orderSelectionEnds(fromCol, fromRow, toCol, toRow int) (int, int, int, int) {
+	if fromRow > toRow || (fromRow == toRow && fromCol > toCol) {
+		return toCol, toRow, fromCol, fromRow
+	}
+	return fromCol, fromRow, toCol, toRow
 }
 
 // clampIndex pins v into [0, n-1] (n > 0).
