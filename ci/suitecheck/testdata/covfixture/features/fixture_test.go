@@ -18,6 +18,12 @@ var extraFlagMarker string
 
 func TestFeatures(t *testing.T) {
 	dir := os.Getenv("EXTRA_PROBE_DIR")
+	if dir != "" {
+		// What ci/suite.sh told this pass about the unit pass's covermode.
+		if err := os.WriteFile(filepath.Join(dir, "features-covermode"), []byte(os.Getenv("DECK_FEATURES_COVERMODE")), 0o644); err != nil {
+			t.Fatalf("write covermode marker: %v", err)
+		}
+	}
 	if dir == "" || extraFlagMarker == "" {
 		return
 	}

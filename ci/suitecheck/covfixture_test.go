@@ -145,3 +145,28 @@ func TestSuiteScriptPassesCapturedExtraFlagsToBothPasses(t *testing.T) {
 		}
 	}
 }
+
+// TestSuiteScriptGivesTheFeaturesPassTheUnitPassCoverMode is the regression
+// for the first nightly dispatch at 1b169a1e61: -race makes the unit pass
+// write atomic counters while the features harness built its black-box deck
+// binary in the default set mode, `go tool covdata textfmt` refused the mix
+// ("counter mode clash") and coverage-merged.out came out empty. The
+// features pass must therefore be told the unit pass's covermode.
+func TestSuiteScriptGivesTheFeaturesPassTheUnitPassCoverMode(t *testing.T) {
+	for _, tc := range []struct{ name, flags, want string }{
+		{"plain run", "-tags=suiteextraflag", "set"},
+		{"nightly with -race", "-race -tags=suiteextraflag", "atomic"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			markers := t.TempDir()
+			runCovFixture(t, "DECK_CI_GO_EXTRA_FLAGS="+tc.flags, "EXTRA_PROBE_DIR="+markers)
+			got, err := os.ReadFile(filepath.Join(markers, "features-covermode"))
+			if err != nil {
+				t.Fatalf("features pass never reported its covermode: %v", err)
+			}
+			if string(got) != tc.want {
+				t.Errorf("features pass saw DECK_FEATURES_COVERMODE=%q, want %q", got, tc.want)
+			}
+		})
+	}
+}

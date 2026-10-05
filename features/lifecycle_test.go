@@ -632,11 +632,7 @@ func registerScenarioLifecycle(sc *godog.ScenarioContext) {
 		// environment (StartScreenDriverInDir's cmd.Env starts from os.Environ(),
 		// which already carries GOCOVERDIR when the test process itself has it).
 		// Unset, this is the exact same `go build -o binary cmd/deck` as before.
-		buildArgs := []string{"build", "-o", binary}
-		if os.Getenv("GOCOVERDIR") != "" {
-			buildArgs = append(buildArgs, "-cover")
-		}
-		buildArgs = append(buildArgs, filepath.Join(root, "cmd", "deck"))
+		buildArgs := deckBuildArgs(binary, root, os.Getenv("GOCOVERDIR"), os.Getenv("DECK_FEATURES_COVERMODE"))
 		output, buildErr := exec.CommandContext(buildCtx, "go", buildArgs...).CombinedOutput()
 		elapsed := time.Since(start)
 		timedOut := buildCtx.Err() != nil
@@ -759,4 +755,21 @@ func TestScenarioHarnessSharesIsolationAndCleansUp(t *testing.T) {
 	if _, err := os.Stat(harness.Home); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("scenario root remains after clean teardown: %v", err)
 	}
+}
+
+// deckBuildArgs returns the `go build` arguments for the per-scenario deck
+// binary. With a coverDir (ci/suite.sh's GOCOVERDIR) the binary is built
+// with `-cover`, and with a coverMode (ci/suite.sh's DECK_FEATURES_COVERMODE,
+// the unit pass's mode) `-covermode=<mode>` too: the nightly's -race unit
+// pass writes atomic counters, and `go tool covdata` cannot merge those with
+// a set-mode black-box binary's. Neither set: the plain build.
+func deckBuildArgs(binary, root, coverDir, coverMode string) []string {
+	args := []string{"build", "-o", binary}
+	if coverDir != "" {
+		args = append(args, "-cover")
+		if coverMode != "" {
+			args = append(args, "-covermode="+coverMode)
+		}
+	}
+	return append(args, filepath.Join(root, "cmd", "deck"))
 }
