@@ -635,10 +635,13 @@ Session `env` values are stored literally in `state.db`. Therefore:
 - Values whose key matches `*TOKEN*|*SECRET*|*KEY*|*PASSWORD*|*CREDENTIAL*` are masked in
   every view and in event-hook payloads; reveal is a per-view explicit toggle.
 - Env values never enter `events`, event-hook payloads, or logs.
-- Deleted and overwritten env values are not left readable on disk: `state.db` runs with
-  `PRAGMA secure_delete=ON`, so freed pages and stale WAL frames are zeroed rather than kept.
-  The WAL stays on disk across closes (a reset WAL would bring back the fresh-WAL fsync on the
-  hook path), so `journal_size_limit=0` is deliberately not used.
+- Deleted and overwritten env values are zeroed in `state.db`: it runs with
+  `PRAGMA secure_delete=ON`, so freed database pages are overwritten rather than kept. Stale
+  WAL frames are not rewritten; they stay in `state.db-wal` until SQLite overwrites them in a
+  later checkpoint cycle, so the `0600` mode on `state.db` and its `-wal`/`-shm` siblings is
+  the protection for that window. The WAL stays on disk across closes (a reset WAL would bring
+  back the fresh-WAL fsync on the hook path), so `journal_size_limit=0` is deliberately not
+  used.
 - `pre_launch` exists precisely so secrets need not be stored at all: one shell line run
   in the pane before the agent starts (typically sourcing a file the user already keeps
   outside deck). Recommended in help over putting tokens in `env`.
