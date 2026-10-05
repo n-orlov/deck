@@ -678,6 +678,22 @@ if any on gate failed. To read a failure: find the first `=== ... gate ===`
 section whose body is not `what to do: nothing`, fix what it names, and re-run
 that one tool (the commands below) rather than the whole suite.
 
+Where the report appears: `ci/quality.sh` prints the report on stdout (so a
+local run shows exactly the text CI shows) and also writes the same text to
+`<suite-outdir>/quality-report.txt` (`ci-results/quality-report.txt`). That file
+is what crosses the `ci/run.sh` sibling boundary: the sibling bind-mounts the
+checkout, so the runner-side `Quality gate report (job summary)` step in the
+`suite` job (`if: always()`) reads it back and appends it, in a code block under
+`### Quality gates (ci/quality.sh)`, to `GITHUB_STEP_SUMMARY` on every run,
+whether the gates passed or failed. The quality step is `continue-on-error` only
+so that report step and the upload still run; the closing "Fail the job" step
+fails the job on its outcome, so the gate exit status still fails the job. A
+run that died before printing any section leaves a one-line report saying so.
+The file is also in the `ci-results-<run id>` artifact.
+`ci/workflowcheck`'s `TestQualityReportReachesJobSummary*` and
+`ci/qualitycheck`'s `TestQualityShWritesReport*` fail if any link of that chain
+is cut.
+
 | Gate | Threshold (`ci/quality.json`) | A failure names | Run it alone |
 | --- | --- | --- | --- |
 | coverage | `coverage.total_floor` 85, `package_floor` 80, `fixture_floor` 50 | each package or total under its floor, with percentage and statement counts | `go run ./ci/covgate -config ci/quality.json -profile ci-results/coverage-merged.out` |

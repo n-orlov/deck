@@ -170,6 +170,26 @@ jobs:
             } >> "$GITHUB_STEP_SUMMARY"
           done
 
+      # R187: every on gate's `=== <gate> gate ===` section (verdict, top
+      # offenders, `what to do:`) from ci/quality.sh, whether the gates passed
+      # or failed. ci/quality.sh writes the report to $DECK_CI_OUT/quality-report.txt
+      # inside the ci/run.sh sibling; this runner-side step reads it back.
+      - name: Quality gate report (job summary)
+        if: always()
+        run: |
+          set -eu
+          {
+            echo "### Quality gates (ci/quality.sh)"
+            echo
+            if [ -s "$DECK_CI_OUT/quality-report.txt" ]; then
+              echo '```'
+              cat "$DECK_CI_OUT/quality-report.txt"
+              echo '```'
+            else
+              echo "(no gate report -- the quality step never ran or produced no output)"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Upload raw results
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

@@ -179,3 +179,95 @@ func TestQualityShScrubsDeckEnv(t *testing.T) {
 		t.Fatalf("a DECK_* variable reached a child process spawned by ci/quality.sh:\n%s", leaked)
 	}
 }
+
+// runQualitySh runs the real ci/quality.sh against outdir/configJSON and
+// returns its stdout, the quality-report.txt it left in outdir (and
+// whether that file exists) and its exit code.
+func runQualitySh(t *testing.T, outdir, configJSON string) (stdout, report string, reportExists bool, code int) {
+	t.Helper()
+	root := repoRoot(t)
+	configPath := filepath.Join(t.TempDir(), "quality.json")
+	if err := os.WriteFile(configPath, []byte(configJSON), 0o644); err != nil {
+		t.Fatalf("writing config: %v", err)
+	}
+	cmd := exec.Command("sh", "ci/quality.sh", outdir, configPath)
+	cmd.Dir = root
+	cmd.Env = goChildEnv()
+	var so strings.Builder
+	cmd.Stdout = &so
+	err := cmd.Run()
+	if err != nil {
+		var exitErr *exec.ExitError
+		if !errors.As(err, &exitErr) {
+			t.Fatalf("ci/quality.sh did not run: %v", err)
+		}
+		code = exitErr.ExitCode()
+	}
+	raw, rerr := os.ReadFile(filepath.Join(outdir, "quality-report.txt"))
+	return so.String(), string(raw), rerr == nil, code
+}
+
+const seededOneBlockProfile = "mode: set\n" +
+	"github.com/n-orlov/deck/ci/qualitycheck/main.go:1.1,1.1 0 0\n"
+
+// TestQualityShWritesReportOnSeededFailingGate: the report the job summary
+// shows (outdir/quality-report.txt) holds the failing gate's whole section
+// -- verdict, offenders, what to do -- identical to stdout, and the exit
+// status still fails.
+func TestQualityShWritesReportOnSeededFailingGate(t *testing.T) {
+	outdir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(outdir, "coverage-merged.out"), []byte(seededOneBlockProfile), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	stdout, report, exists, code := runQualitySh(t, outdir,
+		`{"crap": {"enabled": true, "ceiling": 0, "fixture_ceiling": 0}}`)
+	if code == 0 {
+		t.Fatalf("seeded failing gate exited 0")
+	}
+	if !exists {
+		t.Fatalf("quality-report.txt was not written on a failing gate")
+	}
+	for _, want := range []string{"=== crap gate ===", "over the ceiling", "what to do:"} {
+		if !strings.Contains(report, want) {
+			t.Errorf("quality-report.txt lacks %q:\n%s", want, report)
+		}
+	}
+	if report != stdout {
+		t.Errorf("quality-report.txt differs from stdout\nreport:\n%s\nstdout:\n%s", report, stdout)
+	}
+}
+
+// TestQualityShWritesReportOnPassingGate: a passing run delivers the
+// report too (the summary is for every run, not only failures), and a stale
+// report from an earlier run is replaced, never kept.
+func TestQualityShWritesReportOnPassingGate(t *testing.T) {
+	outdir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(outdir, "quality-report.txt"), []byte("STALE\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// Every gate off: exit 0 and a one-line "nothing enabled" report.
+	stdout, report, exists, code := runQualitySh(t, outdir, `{}`)
+	if code != 0 {
+		t.Fatalf("all-gates-off run exited %d, want 0", code)
+	}
+	if !exists || strings.Contains(report, "STALE") {
+		t.Fatalf("report missing or stale after a passing run: exists=%v %q", exists, report)
+	}
+	if !strings.Contains(report, "no gates are enabled") || report != stdout {
+		t.Errorf("report %q does not match stdout %q", report, stdout)
+	}
+}
+
+// TestQualityShWritesReportOnConfigError: a run that dies before any gate
+// section (unreadable config) still leaves a non-empty report and a
+// non-zero exit, never a missing file the summary step would skip.
+func TestQualityShWritesReportOnConfigError(t *testing.T) {
+	outdir := t.TempDir()
+	_, report, exists, code := runQualitySh(t, outdir, `{not json`)
+	if code == 0 {
+		t.Fatalf("malformed config exited 0")
+	}
+	if !exists || !strings.Contains(report, "no gate report was produced") {
+		t.Errorf("want a one-line failure report, got exists=%v %q", exists, report)
+	}
+}
