@@ -33,27 +33,8 @@ func (s Service) Archive(ctx context.Context, session store.Session) (string, er
 	if session.ID == "" {
 		return "", errors.New("session archive requires a durable session id")
 	}
-	if session.Status != "stopped" {
-		if session.Slug == "" {
-			return "", errors.New("session archive requires a durable slug to kill a live pane")
-		}
-		if err := s.TMux.Kill(ctx, session.Slug); err != nil {
-			return "", fmt.Errorf("kill tmux session %q: %w", session.Name, err)
-		}
-		if err := s.Store.UpdateSessionStatus(ctx, store.StatusUpdateInput{
-			SessionID:    session.ID,
-			Status:       "stopped",
-			Reason:       "killed by user",
-			Source:       "user",
-			At:           s.Clock.Now().UnixMilli(),
-			EventKind:    "killed",
-			KilledByUser: true,
-		}); err != nil {
-			return "", fmt.Errorf("record killed session %q: %w", session.Name, err)
-		}
-		if err := s.Audit.Transition(session.ID, "killed"); err != nil {
-			return "", fmt.Errorf("audit killed session %q: %w", session.Name, err)
-		}
+	if err := s.killLiveForTeardown(ctx, session, "archive"); err != nil {
+		return "", err
 	}
 	at := s.Clock.Now().UnixMilli()
 	if err := s.Store.ArchiveSession(ctx, session.ID, at); err != nil {
