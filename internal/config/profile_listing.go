@@ -62,6 +62,18 @@ func ListProfiles(getenv func(string) string, userHome func() (string, error)) (
 		}
 		return nil, err
 	}
+	for _, name := range sortedDirNames(entries) {
+		listing, err := listingForDir(getenv, userHome, name)
+		if err != nil {
+			return nil, err
+		}
+		listings = append(listings, listing)
+	}
+	return listings, nil
+}
+
+// sortedDirNames returns the names of the directory entries, sorted.
+func sortedDirNames(entries []os.DirEntry) []string {
 	names := make([]string, 0, len(entries))
 	for _, entry := range entries {
 		if entry.IsDir() {
@@ -69,22 +81,25 @@ func ListProfiles(getenv func(string) string, userHome func() (string, error)) (
 		}
 	}
 	sort.Strings(names)
-	for _, name := range names {
-		// resolvePaths only joins name beneath the root, never validates
-		// it; a ReadDir entry name holds no separator and is never "."
-		// or "..", so an invalid name still resolves to its own literal
-		// profiles/<name>/ directories and nothing outside them.
-		paths, err := resolvePaths(getenv, userHome, name)
-		if err != nil {
-			return nil, err
-		}
-		listing := newProfileListing(name, socketForProfile(name), paths)
-		if err := ValidateProfileName(name); err != nil {
-			listing.Valid = false
-		}
-		listings = append(listings, listing)
+	return names
+}
+
+// listingForDir describes the profiles/<name>/ directory as one listing
+// row, flagging a name that fails ValidateProfileName.
+func listingForDir(getenv func(string) string, userHome func() (string, error), name string) (ProfileListing, error) {
+	// resolvePaths only joins name beneath the root, never validates
+	// it; a ReadDir entry name holds no separator and is never "."
+	// or "..", so an invalid name still resolves to its own literal
+	// profiles/<name>/ directories and nothing outside them.
+	paths, err := resolvePaths(getenv, userHome, name)
+	if err != nil {
+		return ProfileListing{}, err
 	}
-	return listings, nil
+	listing := newProfileListing(name, socketForProfile(name), paths)
+	if err := ValidateProfileName(name); err != nil {
+		listing.Valid = false
+	}
+	return listing, nil
 }
 
 // socketForProfile mirrors LoadFromProfile's own derivation (minus the
