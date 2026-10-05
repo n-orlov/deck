@@ -86,11 +86,8 @@ type agentCreatePlan struct {
 // and captured PATH, then probes the adapter's executable (R111), all before
 // any row or pane exists.
 func (s Service) planAgentCreate(input AgentCreateInput) (agentCreatePlan, error) {
-	if s.Store == nil || s.Audit == nil || s.Clock == nil || s.IDs == nil || s.Agents == nil {
-		return agentCreatePlan{}, errors.New("agent creation requires store, audit logger, clock, id generator, and adapter registry")
-	}
-	if input.Name == "" || input.CWD == "" {
-		return agentCreatePlan{}, errors.New("agent session name and working directory are required")
+	if err := s.checkAgentCreate(input); err != nil {
+		return agentCreatePlan{}, err
 	}
 	adapter, ok := s.Agents.Lookup(input.Agent)
 	if !ok {
@@ -100,18 +97,9 @@ func (s Service) planAgentCreate(input AgentCreateInput) (agentCreatePlan, error
 	profile, _, degradationReason := caps.ResolveProfile(adapter.Kind(), input.PermissionProfile)
 	plan := agentCreatePlan{adapter: adapter, caps: caps, profile: profile, degradationReason: degradationReason}
 
-	id, err := s.IDs.UUID()
-	if err != nil {
-		return agentCreatePlan{}, fmt.Errorf("generate agent session id: %w", err)
+	if err := s.assignAgentIDs(&plan); err != nil {
+		return agentCreatePlan{}, err
 	}
-	plan.id = id
-	if caps.AssignsConversationID {
-		plan.conversationID, err = s.IDs.UUID()
-		if err != nil {
-			return agentCreatePlan{}, fmt.Errorf("assign conversation id: %w", err)
-		}
-	}
-
 	plan.capturedPath = os.Getenv("PATH")
 	if plan.capturedPath == "" {
 		return agentCreatePlan{}, errors.New("PATH is required to create an agent session")
@@ -120,6 +108,35 @@ func (s Service) planAgentCreate(input AgentCreateInput) (agentCreatePlan, error
 		return agentCreatePlan{}, err
 	}
 	return plan, nil
+}
+
+// checkAgentCreate rejects a create whose collaborators or required input
+// fields are missing, before the adapter is even looked up.
+func (s Service) checkAgentCreate(input AgentCreateInput) error {
+	if s.Store == nil || s.Audit == nil || s.Clock == nil || s.IDs == nil || s.Agents == nil {
+		return errors.New("agent creation requires store, audit logger, clock, id generator, and adapter registry")
+	}
+	if input.Name == "" || input.CWD == "" {
+		return errors.New("agent session name and working directory are required")
+	}
+	return nil
+}
+
+// assignAgentIDs draws the session id and, for an adapter that assigns its
+// own conversation id up front, the conversation id.
+func (s Service) assignAgentIDs(plan *agentCreatePlan) error {
+	id, err := s.IDs.UUID()
+	if err != nil {
+		return fmt.Errorf("generate agent session id: %w", err)
+	}
+	plan.id = id
+	if plan.caps.AssignsConversationID {
+		plan.conversationID, err = s.IDs.UUID()
+		if err != nil {
+			return fmt.Errorf("assign conversation id: %w", err)
+		}
+	}
+	return nil
 }
 
 // probeAgentExecutable is R111: probe the adapter's declared executable
