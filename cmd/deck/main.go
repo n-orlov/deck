@@ -34,6 +34,10 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		printVersion(stdout)
 		return 0
 	}
+	if isSchemaRequest(args) {
+		printSchema(stdout)
+		return 0
+	}
 	if isProfilesRequest(args) {
 		return runProfilesListing(os.Getenv, os.UserHomeDir, stdout)
 	}
@@ -51,14 +55,26 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return 0
 	}
 	if isHook {
-		if err := runHook(context.Background(), settings, stdin); err != nil {
-			sayln(stderr, "deck hook:", hookFailureMessage(err))
-			return 1
-		}
-		return 0
+		return runHookCommand(settings, stdin, stderr)
 	}
 
 	return runTUI(settings, stderr)
+}
+
+// runHookCommand runs the hidden `_hook` verb and returns its exit code: 0 on
+// success, 1 with the failure on stderr, or a re-exec'd writer's own non-zero
+// exit code (whose stderr already said why).
+func runHookCommand(settings config.Settings, stdin io.Reader, stderr io.Writer) int {
+	err := runHook(context.Background(), settings, stdin)
+	var reexit *hookReexecExit
+	switch {
+	case err == nil:
+		return 0
+	case errors.As(err, &reexit):
+		return reexit.code
+	}
+	sayln(stderr, "deck hook:", hookFailureMessage(err))
+	return 1
 }
 
 // runTUI is run()'s normal launch path once the profile is resolved and its
@@ -626,9 +642,9 @@ func runHook(ctx context.Context, settings config.Settings, stdin io.Reader) (ru
 	if err := requireStateDatabase(settings.Paths.StateDB); err != nil {
 		return err
 	}
-	db, err := store.Open(settings.Paths)
-	if err != nil {
-		return fmt.Errorf("open existing state database: %w", err)
+	db, err := openHookStore(ctx, settings, trimmed)
+	if db == nil {
+		return err
 	}
 	defer func() {
 		if closeErr := db.Close(); closeErr != nil {
@@ -666,6 +682,22 @@ func runHook(ctx context.Context, settings config.Settings, stdin io.Reader) (ru
 		return fmt.Errorf("post-hook liveness pass: %w", err)
 	}
 	return nil
+}
+
+// openHookStore opens the existing state database for a hook. It returns a nil
+// store with a nil error when a newer database made the hook hand its payload
+// to the recorded writer binary and that re-exec succeeded (healHook): the
+// update has landed and there is nothing left to do. A nil store with an error
+// is a failed hook, including a re-exec'd writer that itself exited non-zero.
+func openHookStore(ctx context.Context, settings config.Settings, payload []byte) (*store.Store, error) {
+	db, err := store.Open(settings.Paths)
+	if err == nil {
+		return db, nil
+	}
+	if handled, outcome := healHook(ctx, err, payload); handled {
+		return nil, outcome
+	}
+	return nil, fmt.Errorf("open existing state database: %w", err)
 }
 
 // timedHookStore leaves resolution reads outside the measured span and wraps
