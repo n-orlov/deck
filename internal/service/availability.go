@@ -35,21 +35,33 @@ func lookPathIn(file, pathEnv string) error {
 		return errors.New("empty command")
 	}
 	if strings.ContainsRune(file, os.PathSeparator) || strings.Contains(file, "/") {
-		info, err := os.Stat(file)
-		if err != nil {
-			return err
-		}
-		if info.IsDir() {
-			return fmt.Errorf("%s is a directory", file)
-		}
-		if !info.Mode().IsRegular() {
-			return fmt.Errorf("%s: not a regular file", file)
-		}
-		if !isExecutable(info) {
-			return fmt.Errorf("%s: not executable", file)
-		}
-		return nil
+		return checkExecutableFile(file)
 	}
+	return searchPathFor(file, pathEnv)
+}
+
+// checkExecutableFile is lookPathIn's explicit-path branch: file must be a
+// regular, executable, non-directory file.
+func checkExecutableFile(file string) error {
+	info, err := os.Stat(file)
+	if err != nil {
+		return err
+	}
+	if info.IsDir() {
+		return fmt.Errorf("%s is a directory", file)
+	}
+	if !info.Mode().IsRegular() {
+		return fmt.Errorf("%s: not a regular file", file)
+	}
+	if !isExecutable(info) {
+		return fmt.Errorf("%s: not executable", file)
+	}
+	return nil
+}
+
+// searchPathFor is lookPathIn's bare-name branch: the first PATH directory
+// holding a regular executable file named file satisfies it.
+func searchPathFor(file, pathEnv string) error {
 	for _, dir := range filepath.SplitList(pathEnv) {
 		if dir == "" {
 			dir = "."
