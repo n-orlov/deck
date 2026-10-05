@@ -20,6 +20,12 @@ const reexecPayload = `{"hook_event_name":"SessionEnd","session_id":"conversatio
 // session for reexecPayload to land on.
 func stateHomeAt(t *testing.T, schema int, writer string, seed bool) (string, config.Paths) {
 	t.Helper()
+	return stateHomeFor(t, "claude", schema, writer, seed)
+}
+
+// stateHomeFor is stateHomeAt for a session of the given agent kind.
+func stateHomeFor(t *testing.T, agentKind string, schema int, writer string, seed bool) (string, config.Paths) {
+	t.Helper()
 	home := t.TempDir()
 	paths := config.Paths{Home: home, DataDir: home, ConfigFile: filepath.Join(home, "config.toml"), LogDir: filepath.Join(home, "log"), StateDB: filepath.Join(home, "state.db")}
 	db, err := store.Open(paths)
@@ -28,7 +34,7 @@ func stateHomeAt(t *testing.T, schema int, writer string, seed bool) (string, co
 	}
 	if seed {
 		if _, err := db.CreateSession(context.Background(), store.CreateSessionInput{
-			ID: "row-1", Name: "reexec target", CWD: home, Agent: "claude", CapturedPath: "/bin",
+			ID: "row-1", Name: "reexec target", CWD: home, Agent: agentKind, CapturedPath: "/bin",
 			Status: "running", StatusSource: "hook", StatusAt: 1000, CreatedAt: 1000, ConversationID: "conversation-1",
 		}); err != nil {
 			t.Fatal(err)
@@ -46,13 +52,13 @@ func stateHomeAt(t *testing.T, schema int, writer string, seed bool) (string, co
 	return home, paths
 }
 
-func writeScript(t *testing.T, mode os.FileMode, body string) string {
+func writeScript(t *testing.T, body string) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "writer")
-	if err := os.WriteFile(path, []byte("#!/bin/sh\nPATH=/usr/bin:/bin\n"+body), mode); err != nil {
+	if err := os.WriteFile(path, []byte("#!/bin/sh\nPATH=/usr/bin:/bin\n"+body), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Chmod(path, mode); err != nil {
+	if err := os.Chmod(path, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	return path
@@ -65,7 +71,7 @@ func recordingWriter(t *testing.T, schema, code int) (writer, log, payload strin
 	t.Helper()
 	dir := t.TempDir()
 	log, payload = filepath.Join(dir, "argv.log"), filepath.Join(dir, "payload")
-	writer = writeScript(t, 0o755, fmt.Sprintf(`if [ "$1" = _schema ]; then echo %d; exit 0; fi
+	writer = writeScript(t, fmt.Sprintf(`if [ "$1" = _schema ]; then echo %d; exit 0; fi
 echo "$*|marker=$DECK_HOOK_REEXEC" >> %s
 cat > %s
 exit %d
@@ -194,7 +200,7 @@ func TestOldBuildHookHealsThroughRecordedCurrentBuild(t *testing.T) {
 	old, current := buildOldSchemaDeck(t), buildCurrentDeck(t)
 	dir := t.TempDir()
 	log, payload := filepath.Join(dir, "argv.log"), filepath.Join(dir, "payload")
-	wrapper := writeScript(t, 0o755, fmt.Sprintf(`if [ "$1" = _hook ]; then echo "$*" >> %[2]s; cat > %[3]s; exec %[1]s "$@" < %[3]s; fi
+	wrapper := writeScript(t, fmt.Sprintf(`if [ "$1" = _hook ]; then echo "$*" >> %[2]s; cat > %[3]s; exec %[1]s "$@" < %[3]s; fi
 exec %[1]s "$@"
 `, current, log, payload))
 	home, paths := stateHomeAt(t, store.SchemaVersion, wrapper, true)
@@ -226,7 +232,7 @@ func TestReexecLoopGuardWithRealBinaries(t *testing.T) {
 	old := buildOldSchemaDeck(t)
 	dir := t.TempDir()
 	log := filepath.Join(dir, "argv.log")
-	wrapper := writeScript(t, 0o755, fmt.Sprintf(`if [ "$1" = _schema ]; then echo 99; exit 0; fi
+	wrapper := writeScript(t, fmt.Sprintf(`if [ "$1" = _schema ]; then echo 99; exit 0; fi
 echo "$*" >> %[2]s
 if [ "$(wc -l < %[2]s)" -gt 5 ]; then echo runaway >&2; exit 99; fi
 exec %[1]s "$@"
