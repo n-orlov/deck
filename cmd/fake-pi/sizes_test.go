@@ -131,3 +131,31 @@ func TestRecordSigwinchCountSwallowsUnwritableTargets(t *testing.T) {
 		t.Fatalf("log dir after a failed rename = %v, want only the untouched target", entries)
 	}
 }
+
+func TestAppendSizeLineWritesColsByRowsLinePerCall(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "log", "fake-pi-sizes.log")
+	appendSizeLine(path, 24, 80)
+	appendSizeLine(path, 50, 132)
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read size log: %v", err)
+	}
+	if want := "80x24\n132x50\n"; string(got) != want {
+		t.Fatalf("size log = %q, want %q", got, want)
+	}
+}
+
+func TestAppendSizeLineSwallowsUnwritablePath(t *testing.T) {
+	dir := t.TempDir()
+	blocker := filepath.Join(dir, "blocker")
+	if err := os.WriteFile(blocker, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// A path below a regular file cannot have its directory created, and a
+	// directory cannot be opened for appending: both are silently dropped.
+	appendSizeLine(filepath.Join(blocker, "sizes.log"), 24, 80)
+	appendSizeLine(dir, 24, 80)
+	if _, err := os.Stat(filepath.Join(blocker, "sizes.log")); err == nil {
+		t.Fatal("a size log appeared below a regular file")
+	}
+}
