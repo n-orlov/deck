@@ -674,7 +674,7 @@ schema:
 |---|---|
 | top level | `allow_yolo` (default false, §5), `yolo_default` (default false, §5 — inert unless `allow_yolo`), `stale_after` (default 45 s, §7), `capture_min_interval` (§9.4), `tmux_mouse` (default true, §3.2 — `false` restores tmux's own default and with it the arrow-key behaviour), `event_retention_days` (default 30, §12), `pre_launch` (empty by default, §6.4 — the global launch hook), `post_destroy` (empty by default, §9.2 — the global teardown hook), `event_hook` (empty by default, §10.1 — the one event script; empty makes §10 inert), `event_hook_default` (default false, §10.2), `event_hook_events` (default `["waiting","error","ended"]`, §10.2), `event_hook_timeout` (default 3 s, §10.3) |
 | `[env]` | the middle PATH/env layer (§6.1) |
-| `[ui]` | `theme` (§11.6), `ascii` (§11), `mouse` (default true, §11.8), `preview_fit` (default true, §11), `preview_paint` (default `"fit"`, one of `fit`/`nofit`/`bg`/`off`, §11.3), `sort_order` (default `"attention"`, one of `attention`/`created`/`activity`/`name`, §11), `default_group_first` (default false, §11), `attach_on_new` (default true, §11), `attach_on_resume` (default false, §9.1), `recent_cwd_limit` (default 5, §11.7). **Not** `layout_mode`, `sidebar_width` or the recent-directory list itself — those are machine-local UI state/history and live in `state.db` (§11.2, §11.7), so a keypress never rewrites this file |
+| `[ui]` | `theme` (§11.6), `ascii` (§11), `mouse` (default true, §11.8), `preview_fit` (default true, §11), `preview_paint` (default `"fit"`, one of `fit`/`nofit`/`bg`/`off`, §11.3), `sort_order` (default `"attention"`, one of `attention`/`created`/`activity`/`name`, §11), `default_group_first` (default false, §11), `attach_on_new` (default true, §11), `attach_on_click` (default true, §11.8), `attach_on_resume` (default false, §9.1), `recent_cwd_limit` (default 5, §11.7). **Not** `layout_mode`, `sidebar_width` or the recent-directory list itself — those are machine-local UI state/history and live in `state.db` (§11.2, §11.7), so a keypress never rewrites this file |
 
 The settings view (§11.5) edits this file: `,` opens it and `,` or `esc` closes it (§11.5
 spells out the discard prompt and the text-entry modes where `,` is a literal character).
@@ -2089,6 +2089,10 @@ the TUI must be the place it is edited.
   prompts included, rather than the close shortcut. `,` is ignored while the discard prompt or
   the group-delete confirm is up: it neither answers nor dismisses either. The footer names it
   beside `esc` (`esc/, close`).
+- **`[ui] attach_on_click`** (default true, `DECK_ATTACH_ON_CLICK`) sits beside `attach_on_new`
+  and `attach_on_resume` and governs whether a sidebar row click or double-click enters the
+  interactive preview (§11.8). It is `ScopeGlobal`: a save applies to the running client at
+  the next click, and an env override wins over the file value like the other two.
 - **Save is explicit** (`ctrl+s` or the Save action), a discard prompt guards unsaved
   changes on `esc`, and the write is atomic — settings must never be able to leave an
   unparseable `config.toml` behind.
@@ -2273,7 +2277,7 @@ scroll, no close button that is the only way to dismiss.
 
 | event | effect | key it duplicates |
 |---|---|---|
-| click a sidebar row | selects that row **and enters §11.9's interactive preview on it** | `↑`/`↓` then `↵` |
+| click or double-click a sidebar row | selects that row **and enters §11.9's interactive preview on it**; with `[ui] attach_on_click` false (default true, §6.5) it **only selects**: the list keeps keyboard focus, the preview stays passive, and no entry, ownership claim or fit happens | `↑`/`↓` then `↵` |
 | click a group header | toggle collapse | `c` (§11) |
 | wheel over the sidebar | scroll the list, without selecting | `↑`/`↓`/`PgUp`/`PgDn` |
 | drag the seam | adjust `sidebar_width` live | `<`/`>` |
@@ -2331,6 +2335,14 @@ than the obvious one:
   deliberately still key-only: it hands over the *whole terminal*, which `Ctrl+Q` cannot undo,
   so the argument this bullet just reversed still holds there and is the reason it is not
   reversed everywhere.
+- **`[ui] attach_on_click` turns that handover off.** With it false (default true, §6.5,
+  `DECK_ATTACH_ON_CLICK`, editable in Settings §11.5), a click **and a double-click** on a
+  sidebar row only select it: the list keeps keyboard focus, the preview stays passive, and
+  no entry, ownership claim, fit or attachment record happens, so a key typed next is a list
+  key. A double-click is two presses on the row and has no handler of its own, so the one
+  setting governs both. `↵` still enters. The setting does not touch the group-header click
+  (collapse), a click on the passive preview (that is `↵`), the collapsed-strip click, a
+  sidebar click that re-targets while interactive mode is already active, or `Ctrl+Q`.
 - **A sidebar click works while interactive mode is active, and re-targets it.** While the
   preview owns the keyboard, a click on a sidebar row selects that row and moves interactive
   mode to it — leaving the previous session's window (restoring its size per §11.9) and
@@ -2883,6 +2895,8 @@ features/
                                 without selecting, the header click toggling collapse in list
                                 mode and in interactive mode alike, seam drag resizes, preview
                                 drag selects and release copies, DECK_MOUSE=0 disables
+  attach_on_click.feature       §11.8 — [ui] attach_on_click off: click and double-click only
+                                select, the next key goes to the list
   settings.feature              §11.5 — schema-generated fields, explicit save, atomicity
   themes.feature                §11.6 — picker, live preview/revert, fallback says so,
                                 quantised rendering under DECK_COLOR_DEPTH=16

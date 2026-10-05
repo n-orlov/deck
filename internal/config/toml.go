@@ -33,6 +33,7 @@ type FileConfig struct {
 	DefaultGroupFirst    bool
 	PreviewFit           bool
 	AttachOnNew          bool
+	AttachOnClick        bool
 	AttachOnResume       bool
 	PreviewPaint         string
 	SortOrder            string
@@ -187,6 +188,7 @@ var toggleSetters = map[string]func(*FileConfig, bool){
 	"ui.default_group_first": func(c *FileConfig, v bool) { c.DefaultGroupFirst = v },
 	"ui.preview_fit":         func(c *FileConfig, v bool) { c.PreviewFit = v },
 	"ui.attach_on_new":       func(c *FileConfig, v bool) { c.AttachOnNew = v },
+	"ui.attach_on_click":     func(c *FileConfig, v bool) { c.AttachOnClick = v },
 	"ui.attach_on_resume":    func(c *FileConfig, v bool) { c.AttachOnResume = v },
 }
 

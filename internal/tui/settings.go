@@ -533,7 +533,8 @@ func (m *Model) settingsApplyLiveScalars(previous config.FileConfig) {
 	if settingsLiveChanged(overrides, "ui.preview_fit", m.settingsEdits.PreviewFit, previous.PreviewFit) {
 		m.settings.PreviewFit = m.settingsEdits.PreviewFit
 	}
-	// ui.attach_on_new/ui.attach_on_resume (GH #52): the shellCreated and
+	// ui.attach_on_new/ui.attach_on_resume (GH #52) and ui.attach_on_click
+	// (GH #62, read by clickSidebarRow): the shellCreated and
 	// sessionResumed/sessionRestarted success paths read these members on
 	// every create, resume and restart, so the next one after a save
 	// already follows them. Guarded by EnvOverrides like ui.preview_fit,
@@ -541,6 +542,9 @@ func (m *Model) settingsApplyLiveScalars(previous config.FileConfig) {
 	// copy.
 	if settingsLiveChanged(overrides, "ui.attach_on_new", m.settingsEdits.AttachOnNew, previous.AttachOnNew) {
 		m.settings.AttachOnNew = m.settingsEdits.AttachOnNew
+	}
+	if settingsLiveChanged(overrides, "ui.attach_on_click", m.settingsEdits.AttachOnClick, previous.AttachOnClick) {
+		m.settings.AttachOnClick = m.settingsEdits.AttachOnClick
 	}
 	if settingsLiveChanged(overrides, "ui.attach_on_resume", m.settingsEdits.AttachOnResume, previous.AttachOnResume) {
 		m.settings.AttachOnResume = m.settingsEdits.AttachOnResume
@@ -1560,6 +1564,7 @@ func settingsEditsFromSettings(s config.Settings) config.FileConfig {
 		DefaultGroupFirst:    s.File.DefaultGroupFirst,
 		PreviewFit:           s.File.PreviewFit,
 		AttachOnNew:          s.File.AttachOnNew,
+		AttachOnClick:        s.File.AttachOnClick,
 		AttachOnResume:       s.File.AttachOnResume,
 		PreviewPaint:         s.File.PreviewPaint,
 		SortOrder:            s.File.SortOrder,
@@ -1608,14 +1613,34 @@ func settingsToggleValue(f config.Field, cfg config.FileConfig) bool {
 		return cfg.DefaultGroupFirst
 	case "ui.preview_fit":
 		return cfg.PreviewFit
-	case "ui.attach_on_new":
-		return cfg.AttachOnNew
-	case "ui.attach_on_resume":
-		return cfg.AttachOnResume
 	default:
+		if t, ok := settingsAttachToggles[f.FullKey()]; ok {
+			return t.get(cfg)
+		}
 		b, _ := f.Default.(bool)
 		return b
 	}
+}
+
+// settingsAttachToggles is the get/set pair of each [ui] attach_on_* toggle
+// (GH #52 and #62), kept as one table so settingsToggleValue and
+// settingsSetToggle stay below the complexity ceiling as the family grows.
+var settingsAttachToggles = map[string]struct {
+	get func(config.FileConfig) bool
+	set func(*config.FileConfig, bool)
+}{
+	"ui.attach_on_new": {
+		get: func(c config.FileConfig) bool { return c.AttachOnNew },
+		set: func(c *config.FileConfig, v bool) { c.AttachOnNew = v },
+	},
+	"ui.attach_on_click": {
+		get: func(c config.FileConfig) bool { return c.AttachOnClick },
+		set: func(c *config.FileConfig, v bool) { c.AttachOnClick = v },
+	},
+	"ui.attach_on_resume": {
+		get: func(c config.FileConfig) bool { return c.AttachOnResume },
+		set: func(c *config.FileConfig, v bool) { c.AttachOnResume = v },
+	},
 }
 
 func settingsSetToggle(cfg *config.FileConfig, f config.Field, v bool) {
@@ -1634,10 +1659,10 @@ func settingsSetToggle(cfg *config.FileConfig, f config.Field, v bool) {
 		cfg.DefaultGroupFirst = v
 	case "ui.preview_fit":
 		cfg.PreviewFit = v
-	case "ui.attach_on_new":
-		cfg.AttachOnNew = v
-	case "ui.attach_on_resume":
-		cfg.AttachOnResume = v
+	default:
+		if t, ok := settingsAttachToggles[f.FullKey()]; ok {
+			t.set(cfg, v)
+		}
 	}
 }
 
@@ -1797,6 +1822,8 @@ func settingsFieldRunningValueDisplay(f config.Field, s config.Settings, fallbac
 		return onOff(s.PreviewFit)
 	case "ui.attach_on_new":
 		return onOff(s.AttachOnNew)
+	case "ui.attach_on_click":
+		return onOff(s.AttachOnClick)
 	case "ui.attach_on_resume":
 		return onOff(s.AttachOnResume)
 	case "ui.preview_paint":
