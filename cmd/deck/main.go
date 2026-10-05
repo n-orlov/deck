@@ -123,12 +123,7 @@ func runTUI(settings config.Settings, stderr io.Writer) int {
 		sayln(stderr, "deck audit:", err)
 		return 0
 	}
-	executable, err := os.Executable()
-	if err != nil {
-		sayln(stderr, "deck executable:", err)
-		return 0
-	}
-	executable, err = filepath.Abs(executable)
+	executable, err := absoluteExecutable()
 	if err != nil {
 		sayln(stderr, "deck executable:", err)
 		return 0
@@ -197,6 +192,16 @@ func runTUI(settings config.Settings, stderr io.Writer) int {
 		return 0
 	}
 	return 0
+}
+
+// absoluteExecutable is the absolute path of the running deck binary, which
+// the service hands to the hooks it installs.
+func absoluteExecutable() (string, error) {
+	executable, err := os.Executable()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Abs(executable)
 }
 
 // newDeckModel builds the tui.Model with every service-backed dependency
