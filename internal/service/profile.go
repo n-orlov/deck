@@ -27,19 +27,28 @@ func (s Service) SetPermissionProfile(ctx context.Context, sessionID, profile st
 	if err != nil {
 		return store.Session{}, fmt.Errorf("get session %q: %w", sessionID, err)
 	}
-	adapter, ok := s.Agents.Lookup(session.Agent)
-	if !ok {
-		return store.Session{}, fmt.Errorf("agent %q is not registered", session.Agent)
-	}
-	caps := adapter.Capabilities()
-	if len(caps.Profiles) == 0 {
-		return store.Session{}, fmt.Errorf("agent %q has no permission profiles", session.Agent)
-	}
-	if !caps.SupportsProfile(profile) {
-		return store.Session{}, fmt.Errorf("agent %q does not support permission profile %q", session.Agent, profile)
+	if err := s.checkProfileSupported(session, profile); err != nil {
+		return store.Session{}, err
 	}
 	if err := s.Store.SetPermissionProfile(ctx, sessionID, profile, "user", s.Clock.Now().UnixMilli()); err != nil {
 		return store.Session{}, err
 	}
 	return s.Store.GetSession(ctx, sessionID)
+}
+
+// checkProfileSupported refuses a profile the session's adapter is not
+// registered for, declares no profiles for, or does not support.
+func (s Service) checkProfileSupported(session store.Session, profile string) error {
+	adapter, ok := s.Agents.Lookup(session.Agent)
+	if !ok {
+		return fmt.Errorf("agent %q is not registered", session.Agent)
+	}
+	caps := adapter.Capabilities()
+	if len(caps.Profiles) == 0 {
+		return fmt.Errorf("agent %q has no permission profiles", session.Agent)
+	}
+	if !caps.SupportsProfile(profile) {
+		return fmt.Errorf("agent %q does not support permission profile %q", session.Agent, profile)
+	}
+	return nil
 }
