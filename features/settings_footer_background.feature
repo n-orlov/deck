@@ -29,7 +29,7 @@ Feature: The settings takeover's own footer carries deck's background token in e
   `[ui] theme = "daylight"` pins the scenarios' expected hex the same way
   the retained review probe (review_settings_footer.feature) did. Each
   scenario's own column range is the footer text's own literal length at
-  the harness's default 100-column terminal (90 for the plain footer, 100
+  the harness's default 100-column terminal (92 for the plain footer, 100
   for the discard prompt, 57 for search) -- truncateToWidth never pads a
   short line out to the terminal's full width, so a range past that length
   is legitimately unpainted and asserting over it would be testing the
@@ -46,7 +46,7 @@ Feature: The settings takeover's own footer carries deck's background token in e
     When deck client "A" sends ","
     Then deck client "A" screen contains "Categories"
     And deck client "A" screen contains "ctrl+s save"
-    And deck client "A" cells at row 29 columns 0 to 89 have background token "background"
+    And deck client "A" cells at row 29 columns 0 to 91 have background token "background"
     When deck client "A" sends ""
     Then deck client "A" screen contains "deck - sessions"
     When deck client "A" exits cleanly
