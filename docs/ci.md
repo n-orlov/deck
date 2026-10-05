@@ -593,6 +593,11 @@ threshold from here and nowhere else:
   (the suite's own generated output, not repo content). The gate fails on an
   empty or wrong scan target (no files, or no `go.mod`) without running
   trivy, because trivy itself exits 0 on an empty directory.
+  When trivy's output names a failed vulnerability-database download (a
+  mirror 404 or registry outage, which says nothing about the tree), the gate
+  tries again, three attempts in all with a 20 s pause; a finding or any other
+  failure is never retried, and a database that never arrives still fails the
+  gate.
   Exceptions live only in `.trivyignore`, one per line, in the form
   `<ID> review-by:YYYY-MM-DD # <reason>`: a line with no reason, no date, or a
   date before today (UTC) fails the gate and
