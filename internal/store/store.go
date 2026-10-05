@@ -1680,18 +1680,12 @@ func (s *Store) ConsumeFreshOnce(ctx context.Context, sessionID, source string, 
 // either would leave the store in a state CreateSession could never
 // legally reach in the first place.
 func (s *Store) RenameSession(ctx context.Context, sessionID, newName, source string, at int64) error {
-	if sessionID == "" || newName == "" {
-		return errors.New("session id and new name are required")
-	}
-	slug := Slug(newName)
-	if slug == "" {
-		return fmt.Errorf("session name %q does not produce a usable slug", newName)
+	slug, err := renameSlug(sessionID, newName, at)
+	if err != nil {
+		return err
 	}
 	if source == "" {
 		source = "user"
-	}
-	if at == 0 {
-		return errors.New("event timestamp is required")
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -1712,6 +1706,22 @@ func (s *Store) RenameSession(ctx context.Context, sessionID, newName, source st
 		return fmt.Errorf("commit rename session: %w", err)
 	}
 	return nil
+}
+
+// renameSlug validates RenameSession's arguments and returns the slug the
+// new name would derive.
+func renameSlug(sessionID, newName string, at int64) (string, error) {
+	if sessionID == "" || newName == "" {
+		return "", errors.New("session id and new name are required")
+	}
+	slug := Slug(newName)
+	if slug == "" {
+		return "", fmt.Errorf("session name %q does not produce a usable slug", newName)
+	}
+	if at == 0 {
+		return "", errors.New("event timestamp is required")
+	}
+	return slug, nil
 }
 
 // claimRenameNameTx is RenameSession's uniqueness pre-check inside its
