@@ -9,6 +9,8 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+
+	"github.com/n-orlov/deck/internal/store"
 )
 
 // i1TraceFileEnvironment names an append-only log of every Msg Model.Update
@@ -58,14 +60,17 @@ func openI1TraceFile(path string) *os.File {
 }
 
 func describeMsg(message tea.Msg) string {
-	switch msg := message.(type) {
-	case tea.KeyMsg:
+	if msg, ok := message.(tea.KeyMsg); ok {
 		return fmt.Sprintf("KeyMsg(%q)", msg.String())
-	case debugMsg:
-		return string(msg)
-	default:
-		return describeOtherMsg(message)
 	}
+	return describeDebugMsg(message)
+}
+
+func describeDebugMsg(message tea.Msg) string {
+	if msg, ok := message.(debugMsg); ok {
+		return string(msg)
+	}
+	return describeOtherMsg(message)
 }
 
 func describeOtherMsg(message tea.Msg) string {
@@ -93,11 +98,16 @@ func i1TraceSessions(m Model) {
 	if path == "" {
 		return
 	}
-	parts := make([]string, 0, len(m.sessions))
-	for i, s := range m.sessions {
+	i1Trace("sessions", debugMsg(fmt.Sprintf("%v", describeSessionIndex(m.sessions))), m.selected)
+}
+
+// describeSessionIndex renders each session as index:name:status@statusAt.
+func describeSessionIndex(sessions []store.Session) []string {
+	parts := make([]string, 0, len(sessions))
+	for i, s := range sessions {
 		parts = append(parts, fmt.Sprintf("%d:%s:%s@%d", i, s.Name, s.Status, s.StatusAt))
 	}
-	i1Trace("sessions", debugMsg(fmt.Sprintf("%v", parts)), m.selected)
+	return parts
 }
 
 type debugMsg string
