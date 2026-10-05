@@ -678,6 +678,15 @@ func CreateProfile(getenv func(string) string, userHome func() (string, error), 
 	if err != nil {
 		return err
 	}
+	if err := makeProfileDirs(paths, profile); err != nil {
+		return err
+	}
+	return copyDefaultConfig(defaultPaths.ConfigFile, paths.ConfigFile, profile)
+}
+
+// makeProfileDirs creates a profile's data, config and log directories
+// (idempotent: MkdirAll tolerates a racing launch having made them first).
+func makeProfileDirs(paths Paths, profile string) error {
 	if err := os.MkdirAll(paths.DataDir, 0o700); err != nil {
 		return fmt.Errorf("create profile %q data directory: %w", profile, err)
 	}
@@ -687,14 +696,21 @@ func CreateProfile(getenv func(string) string, userHome func() (string, error), 
 	if err := os.MkdirAll(paths.LogDir, 0o700); err != nil {
 		return fmt.Errorf("create profile %q log directory: %w", profile, err)
 	}
-	data, err := os.ReadFile(defaultPaths.ConfigFile)
+	return nil
+}
+
+// copyDefaultConfig copies the default profile's config file src to the new
+// profile's dst at most once: a missing src copies nothing, and an
+// already-present dst is left exactly as found (see CreateProfile).
+func copyDefaultConfig(src, dst, profile string) error {
+	data, err := os.ReadFile(src) //nolint:gosec // G304: src is the resolved default profile's config.toml path
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil
 		}
 		return fmt.Errorf("read default profile config: %w", err)
 	}
-	file, err := os.OpenFile(paths.ConfigFile, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+	file, err := os.OpenFile(dst, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600) //nolint:gosec // G304: dst is the resolved profile's config.toml path
 	if err != nil {
 		if os.IsExist(err) {
 			// Another launch (or a lost confirmation race against one) already
