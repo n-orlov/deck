@@ -2283,18 +2283,29 @@ func (s *Store) SweepTombstones(ctx context.Context, deleteGrace time.Duration, 
 	if now <= 0 {
 		return false, errors.New("tombstone sweep timestamp is required")
 	}
-	lastRunRaw, err := s.getUIState(ctx, tombstoneSweepLastRunKey, "0")
+	throttled, err := s.throttleActive(ctx, tombstoneSweepLastRunKey, now, tombstoneSweepMinInterval)
 	if err != nil {
 		return false, fmt.Errorf("read tombstone sweep throttle: %w", err)
 	}
-	lastRun, err := strconv.ParseInt(lastRunRaw, 10, 64)
-	if err != nil {
-		lastRun = 0
-	}
-	if lastRun != 0 && now-lastRun < tombstoneSweepMinInterval.Milliseconds() {
+	if throttled {
 		return false, nil
 	}
-	cutoff := now - deleteGrace.Milliseconds()
+	more, err := s.sweepTombstoneBatch(ctx, now-deleteGrace.Milliseconds(), now)
+	if err != nil {
+		return false, err
+	}
+	if more {
+		return true, nil
+	}
+	if err := s.setUIState(ctx, tombstoneSweepLastRunKey, strconv.FormatInt(now, 10)); err != nil {
+		return false, fmt.Errorf("write tombstone sweep throttle: %w", err)
+	}
+	return false, nil
+}
+
+// sweepTombstoneBatch reaps one batch of tombstones older than cutoff and
+// reports whether at least one more such row remains.
+func (s *Store) sweepTombstoneBatch(ctx context.Context, cutoff, now int64) (bool, error) {
 	ids, err := s.tombstonesOlderThan(ctx, cutoff, tombstoneSweepBatchRows)
 	if err != nil {
 		return false, fmt.Errorf("list expired tombstones: %w", err)
@@ -2308,13 +2319,7 @@ func (s *Store) SweepTombstones(ctx context.Context, deleteGrace time.Duration, 
 	if err != nil {
 		return false, fmt.Errorf("check remaining expired tombstones: %w", err)
 	}
-	if len(remaining) > 0 {
-		return true, nil
-	}
-	if err := s.setUIState(ctx, tombstoneSweepLastRunKey, strconv.FormatInt(now, 10)); err != nil {
-		return false, fmt.Errorf("write tombstone sweep throttle: %w", err)
-	}
-	return false, nil
+	return len(remaining) > 0, nil
 }
 
 // DrainExpiredTombstones is the continuation SweepTombstones' own doc
