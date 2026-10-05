@@ -1093,12 +1093,9 @@ func (s *Store) RecordAttachment(ctx context.Context, sessionID string, at int64
 	}
 	defer rollbackTx(tx)
 
-	var status string
-	if err := tx.QueryRowContext(ctx, `SELECT status FROM sessions WHERE id = ?`, sessionID).Scan(&status); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return fmt.Errorf("session %q not found", sessionID)
-		}
-		return fmt.Errorf("read attachment status: %w", err)
+	status, err := attachmentStatusTx(ctx, tx, sessionID)
+	if err != nil {
+		return err
 	}
 
 	applied, err := applyAttachmentToStatusTx(ctx, tx, sessionID, status, at)
@@ -1117,6 +1114,19 @@ func (s *Store) RecordAttachment(ctx context.Context, sessionID string, at int64
 		return fmt.Errorf("commit attachment: %w", err)
 	}
 	return nil
+}
+
+// attachmentStatusTx reads the session's current status inside
+// RecordAttachment's transaction, reporting an unknown session by id.
+func attachmentStatusTx(ctx context.Context, tx *sql.Tx, sessionID string) (string, error) {
+	var status string
+	if err := tx.QueryRowContext(ctx, `SELECT status FROM sessions WHERE id = ?`, sessionID).Scan(&status); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return "", fmt.Errorf("session %q not found", sessionID)
+		}
+		return "", fmt.Errorf("read attachment status: %w", err)
+	}
+	return status, nil
 }
 
 // applyAttachmentToStatusTx writes RecordAttachment's status-side effect for
