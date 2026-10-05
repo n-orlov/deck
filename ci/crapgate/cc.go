@@ -33,27 +33,33 @@ func cyclomaticComplexity(fn *ast.FuncDecl) int {
 func branchCount(node ast.Node) int {
 	count := 0
 	ast.Inspect(node, func(n ast.Node) bool {
-		switch v := n.(type) {
-		case *ast.IfStmt:
-			count++
-		case *ast.ForStmt:
-			count++
-		case *ast.RangeStmt:
-			count++
-		case *ast.CaseClause:
-			if v.List != nil { // nil List == "default:", adds nothing
-				count++
-			}
-		case *ast.CommClause:
-			if v.Comm != nil { // nil Comm == "default:", adds nothing
-				count++
-			}
-		case *ast.BinaryExpr:
-			if v.Op == token.LAND || v.Op == token.LOR {
-				count++
-			}
-		}
+		count += branchesAt(n)
 		return true // always descend, including into nested FuncLit bodies
 	})
 	return count
+}
+
+// branchesAt returns the points node itself adds under the locked rules: one
+// for an if, for, range, non-default case, non-default comm-case, && or ||,
+// and nothing for any other node (its children are visited separately).
+func branchesAt(node ast.Node) int {
+	switch v := node.(type) {
+	case *ast.IfStmt, *ast.ForStmt, *ast.RangeStmt:
+		return 1
+	case *ast.CaseClause:
+		return branchIf(v.List != nil) // nil List == "default:", adds nothing
+	case *ast.CommClause:
+		return branchIf(v.Comm != nil) // nil Comm == "default:", adds nothing
+	case *ast.BinaryExpr:
+		return branchIf(v.Op == token.LAND || v.Op == token.LOR)
+	}
+	return 0
+}
+
+// branchIf is 1 when cond holds and 0 otherwise.
+func branchIf(cond bool) int {
+	if cond {
+		return 1
+	}
+	return 0
 }
