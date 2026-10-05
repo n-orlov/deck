@@ -121,25 +121,32 @@ func checkTrivyIgnore(path string, now time.Time) ([]string, error) {
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}
-		entry, reason, hasReason := strings.Cut(line, "#")
-		if !hasReason || strings.TrimSpace(reason) == "" {
-			problems = append(problems, fmt.Sprintf("%s:%d: %q has no reason (want \"<ID> review-by:YYYY-MM-DD # <reason>\")", path, n, line))
-			continue
-		}
-		m := reviewByRe.FindStringSubmatch(entry)
-		if m == nil {
-			problems = append(problems, fmt.Sprintf("%s:%d: %q has no review-by:YYYY-MM-DD date", path, n, line))
-			continue
-		}
-		if _, perr := time.Parse("2006-01-02", m[1]); perr != nil {
-			problems = append(problems, fmt.Sprintf("%s:%d: review-by date %q is not a real date", path, n, m[1]))
-			continue
-		}
-		if m[1] < today {
-			problems = append(problems, fmt.Sprintf("%s:%d: %q expired on %s -- fix the finding or review the exception and move the date", path, n, strings.Fields(entry)[0], m[1]))
+		if problem := trivyIgnoreLineProblem(path, n, line, today); problem != "" {
+			problems = append(problems, problem)
 		}
 	}
 	return problems, sc.Err()
+}
+
+// trivyIgnoreLineProblem checks one non-blank, non-comment .trivyignore line
+// (line n of path) against today's date (YYYY-MM-DD) and returns the problem
+// with it, or "" when the line is an acceptable dated, reasoned exception.
+func trivyIgnoreLineProblem(path string, n int, line, today string) string {
+	entry, reason, hasReason := strings.Cut(line, "#")
+	if !hasReason || strings.TrimSpace(reason) == "" {
+		return fmt.Sprintf("%s:%d: %q has no reason (want \"<ID> review-by:YYYY-MM-DD # <reason>\")", path, n, line)
+	}
+	m := reviewByRe.FindStringSubmatch(entry)
+	if m == nil {
+		return fmt.Sprintf("%s:%d: %q has no review-by:YYYY-MM-DD date", path, n, line)
+	}
+	if _, perr := time.Parse("2006-01-02", m[1]); perr != nil {
+		return fmt.Sprintf("%s:%d: review-by date %q is not a real date", path, n, m[1])
+	}
+	if m[1] < today {
+		return fmt.Sprintf("%s:%d: %q expired on %s -- fix the finding or review the exception and move the date", path, n, strings.Fields(entry)[0], m[1])
+	}
+	return ""
 }
 
 // scanTargetHasFiles reports whether dir holds at least one regular
