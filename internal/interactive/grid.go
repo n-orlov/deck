@@ -1161,21 +1161,12 @@ func (s *Session) SelectionHighlightRange(offset, height, viewRow, fromCol, from
 	if width <= 0 {
 		return 0, 0, false
 	}
-	clampCol := func(c int) int {
-		if c < 0 {
-			return 0
-		}
-		if c >= width {
-			return width - 1
-		}
-		return c
-	}
 	startCol, endCol = 0, width-1
 	if abs == fromRow {
-		startCol = clampCol(fromCol)
+		startCol = clampIndex(fromCol, width)
 	}
 	if abs == toRow {
-		endCol = clampCol(toCol)
+		endCol = clampIndex(toCol, width)
 	}
 	if startCol > endCol {
 		return 0, 0, false
