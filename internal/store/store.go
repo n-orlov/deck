@@ -22,7 +22,7 @@ import (
 )
 
 // SchemaVersion is the newest schema understood by this binary.
-const SchemaVersion = 8
+const SchemaVersion = 9
 
 // SupportedSchemaVersion is the newest schema this binary opens: SchemaVersion
 // in every shipped build. A test build (-tags deckoldschema, see
@@ -426,6 +426,11 @@ type Session struct {
 	// pinned. Like ArchivedAt/DeletedAt, it is a FLAG-with-timestamp rather
 	// than a Status transition -- nothing here writes or reads Status.
 	PinnedAt int64
+	// HookExecutable is the sessions.hook_executable column (schemaV9, R204c):
+	// the absolute path of the deck binary the session's agent was last
+	// launched with, which its hook command stays bound to until the agent
+	// is restarted or resumed. Empty when no launch has recorded one.
+	HookExecutable string
 }
 
 // CapturedPathAdvisory reports whether this row's CapturedPath is advisory
@@ -748,7 +753,7 @@ func scanSession(row interface {
 		&session.NotifyEpoch, &lastMessage, &acknowledged, &launchArgsJSON, &envJSON, &preLaunch, &postDestroy,
 		&loginShell, &session.PermissionProfile, &permissionProfileReason, &conversationID, &resumePin, &session.ResumeState,
 		&groupID, &groupName, &session.LastProbeAt, &envDirty, &session.DeletedAt, &session.ArchivedAt, &launchDirty,
-		&leaseOwner, &session.PinnedAt); err != nil {
+		&leaseOwner, &session.PinnedAt, &session.HookExecutable); err != nil {
 		return Session{}, err
 	}
 	// Only the generation half is surfaced: the launcher identity is lease
@@ -795,7 +800,7 @@ const sessionColumns = `sessions.id, sessions.name, slug, cwd, agent, captured_p
 		killed_by_user, pane_exit_status, crash_tail, notify_epoch, last_message, acknowledged,
 		launch_args, env, pre_launch, post_destroy, login_shell, permission_profile, permission_profile_reason, conversation_id, resume_pin, resume_state,
 		sessions.group_id, groups.name, last_probe_at, env_dirty, deleted_at, archived_at, launch_dirty,
-		COALESCE(launch_lease_owner, ''), pinned_at`
+		COALESCE(launch_lease_owner, ''), pinned_at, COALESCE(hook_executable, '')`
 
 // sessionsFromClause is every sessionColumns-backed query's shared FROM:
 // a LEFT JOIN against groups so GroupName resolves (or reads back empty
@@ -2704,7 +2709,7 @@ func (s *Store) migrate(version int) error {
 // the schemaVN variables at call time (tests substitute them); a version
 // outside 0..SchemaVersion-1 has no migration path.
 func applySchemaLadder(tx *sql.Tx, version int) error {
-	rungs := [][]string{schemaV1, schemaV2, schemaV3, schemaV4, schemaV5, schemaV6, schemaV7, schemaV8}
+	rungs := [][]string{schemaV1, schemaV2, schemaV3, schemaV4, schemaV5, schemaV6, schemaV7, schemaV8, schemaV9}
 	if version < 0 || version >= len(rungs) {
 		return fmt.Errorf("no migration path from schema version %d", version)
 	}
@@ -2869,6 +2874,17 @@ var schemaV7 = []string{
 // standalone for an existing v1-v7 database.
 var schemaV8 = []string{
 	`ALTER TABLE sessions ADD COLUMN pinned_at INTEGER NOT NULL DEFAULT 0`,
+}
+
+// schemaV9 adds sessions.hook_executable (R204c, GH #56): the absolute path of
+// the deck binary a session's agent was last launched with -- the executable
+// its hook command (`<path> _hook`) is bound to for as long as that agent
+// runs. NULL for a row no launch has recorded one for (every row created
+// before this version), which reads back empty and means "unknown", never a
+// stale binding. A single ALTER TABLE ADD COLUMN, touching no other column
+// or row value.
+var schemaV9 = []string{
+	`ALTER TABLE sessions ADD COLUMN hook_executable TEXT`,
 }
 
 // getUIState returns the persisted value for key, or def when no row exists

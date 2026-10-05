@@ -128,7 +128,7 @@ func (s Service) Resume(ctx context.Context, sessionID string) (store.Session, R
 	if err != nil {
 		return s.resumeFailed(ctx, session, err)
 	}
-	if err := s.startResumePane(ctx, session, paneCommand, launchEnv); err != nil {
+	if err := s.startBoundResumePane(ctx, &session, adapter, launchInput, paneCommand, launchEnv); err != nil {
 		return s.resumeFailed(ctx, session, err)
 	}
 	return s.concludeResume(ctx, session, conversationID, freshOnce)
@@ -422,6 +422,15 @@ func checkResumeBinary(session store.Session, argv []string, launchEnv map[strin
 		return fmt.Errorf("resume session %q: agent binary %q not found on PATH: %w", session.Name, argv[0], lookErr)
 	}
 	return nil
+}
+
+// startBoundResumePane starts the resumed pane and, once it is up, records
+// the deck binary its hook command is bound to (R204c).
+func (s Service) startBoundResumePane(ctx context.Context, session *store.Session, adapter agent.Adapter, launchInput agent.LaunchInput, paneCommand []string, launchEnv map[string]string) error {
+	if err := s.startResumePane(ctx, *session, paneCommand, launchEnv); err != nil {
+		return err
+	}
+	return s.recordHookExecutable(ctx, session, adapter, launchInput)
 }
 
 // startResumePane creates the pane and records the launch as ready; every

@@ -28,10 +28,13 @@ import (
 // Model is the base session-list screen. Later modal and action work extends
 // this model rather than providing a separate command-line interface.
 type Model struct {
-	store       *store.Store
-	settings    config.Settings
-	sessions    []store.Session
-	startupNote string
+	store *store.Store
+	// deckExecutable is the absolute path of the running deck binary, the
+	// one a session's recorded hook executable is compared with (R204c).
+	deckExecutable string
+	settings       config.Settings
+	sessions       []store.Session
+	startupNote    string
 	// sessionsReloadNote (R140/GH #36) is the RUNTIME counterpart to
 	// startupNote: startupNote is set once at construction from tmuxNote
 	// (the start-up tmux-missing/too-old note) and never touched again by a
@@ -1889,7 +1892,7 @@ type sessionGroupMoved struct {
 // New creates a list model. tmux failures are intentionally retained as a
 // rendered health state: users must be able to read and quit it.
 func New(db *store.Store, settings config.Settings, tmuxNote string) Model {
-	m := Model{store: db, settings: settings, startupNote: tmuxNote, createCWDRecentIndex: -1, interactiveScroll: &interactiveScrollState{}}
+	m := Model{store: db, settings: settings, startupNote: tmuxNote, createCWDRecentIndex: -1, interactiveScroll: &interactiveScrollState{}, deckExecutable: runningExecutable()}
 	if wd, err := os.Getwd(); err == nil {
 		m.startCWD = wd
 	}
@@ -6517,6 +6520,12 @@ func (m Model) selectedRowReason() string {
 		return ""
 	}
 	session, _ := m.selectedSession()
+	return m.withStaleHookBinding(session, m.baseRowReason(session))
+}
+
+// baseRowReason is selectedRowReason's status-derived reason, before the
+// stale-hook-binding hint (R204c) is added.
+func (m Model) baseRowReason(session store.Session) string {
 	switch {
 	case session.Status == "stopped":
 		return session.Status + m.glyph(" · resumable", " - resumable")
@@ -7805,6 +7814,9 @@ func (m Model) writeDetailStatus(b *strings.Builder, session store.Session) {
 	fmt.Fprintf(b, "%s\n", m.detailField("Status:             ", status))
 	if session.StatusReason != "" {
 		fmt.Fprintf(b, "%s\n", m.detailField("Status reason:      ", session.StatusReason))
+	}
+	if hint := m.staleHookBinding(session); hint != "" {
+		fmt.Fprintf(b, "%s\n", m.detailField("", hint))
 	}
 	source := session.StatusSource
 	if source == "" {
