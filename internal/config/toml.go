@@ -285,7 +285,22 @@ func parseStringFieldValue(field Field, raw, path string, line int) (string, err
 // integer field (currently capture_min_interval) rather than special-casing
 // one key.
 func parseIntegerValue(field Field, raw string) (int, error) {
-	var value int
+	value, err := parseIntegerLiteral(field, raw)
+	if err != nil {
+		return 0, err
+	}
+	if value < field.IntBounds.Min {
+		return 0, fmt.Errorf("%s must be at least %d, got %d", field.FullKey(), field.IntBounds.Min, value)
+	}
+	if field.IntBounds.Max != nil && value > *field.IntBounds.Max {
+		return 0, fmt.Errorf("%s must be at most %d, got %d", field.FullKey(), *field.IntBounds.Max, value)
+	}
+	return value, nil
+}
+
+// parseIntegerLiteral reads raw as a bare integer or, for a seconds field,
+// as a quoted Go duration, without applying the field's bounds.
+func parseIntegerLiteral(field Field, raw string) (int, error) {
 	if field.Unit == "seconds" && strings.HasPrefix(raw, "\"") {
 		text, err := unquoteString(raw)
 		if err != nil {
@@ -295,24 +310,16 @@ func parseIntegerValue(field Field, raw string) (int, error) {
 		if err != nil {
 			return 0, fmt.Errorf("%s must be seconds or a duration, got %q", field.FullKey(), raw)
 		}
-		value = int(duration.Seconds())
-	} else {
-		parsed, err := strconv.Atoi(raw)
-		if err != nil {
-			if field.Unit == "seconds" {
-				return 0, fmt.Errorf("%s must be seconds or a duration, got %q", field.FullKey(), raw)
-			}
-			return 0, fmt.Errorf("%s must be an integer, got %q", field.FullKey(), raw)
+		return int(duration.Seconds()), nil
+	}
+	parsed, err := strconv.Atoi(raw)
+	if err != nil {
+		if field.Unit == "seconds" {
+			return 0, fmt.Errorf("%s must be seconds or a duration, got %q", field.FullKey(), raw)
 		}
-		value = parsed
+		return 0, fmt.Errorf("%s must be an integer, got %q", field.FullKey(), raw)
 	}
-	if value < field.IntBounds.Min {
-		return 0, fmt.Errorf("%s must be at least %d, got %d", field.FullKey(), field.IntBounds.Min, value)
-	}
-	if field.IntBounds.Max != nil && value > *field.IntBounds.Max {
-		return 0, fmt.Errorf("%s must be at most %d, got %d", field.FullKey(), *field.IntBounds.Max, value)
-	}
-	return value, nil
+	return parsed, nil
 }
 
 func stripComment(line string) string {
