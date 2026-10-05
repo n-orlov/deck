@@ -553,22 +553,22 @@ func normalizeCreateInput(input CreateSessionInput) (CreateSessionInput, string,
 	if slug == "" {
 		return input, "", fmt.Errorf("session name %q does not produce a usable slug", input.Name)
 	}
-	if input.Status == "" {
-		input.Status = "starting"
-	}
-	if input.StatusSource == "" {
-		input.StatusSource = "user"
-	}
+	input.Status = valueOrDefault(input.Status, "starting")
+	input.StatusSource = valueOrDefault(input.StatusSource, "user")
 	if input.StatusAt == 0 || input.CreatedAt == 0 {
 		return input, "", errors.New("session status_at and created_at timestamps are required")
 	}
-	if input.ResumeState == "" {
-		input.ResumeState = "auto"
-	}
-	if input.PermissionProfile == "" {
-		input.PermissionProfile = "safe"
-	}
+	input.ResumeState = valueOrDefault(input.ResumeState, "auto")
+	input.PermissionProfile = valueOrDefault(input.PermissionProfile, "safe")
 	return input, slug, nil
+}
+
+// valueOrDefault returns def when value is empty.
+func valueOrDefault(value, def string) string {
+	if value == "" {
+		return def
+	}
+	return value
 }
 
 // claimSessionNameTx frees the name and slug a new session wants, or reports
