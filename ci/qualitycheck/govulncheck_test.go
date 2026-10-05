@@ -353,3 +353,33 @@ func TestGoModMinimumPrefersToolchainThenGoLineAndRejectsBadInput(t *testing.T) 
 		t.Error("missing go.mod: want an error")
 	}
 }
+
+func TestSkippedScanDir(t *testing.T) {
+	for name, want := range map[string]bool{
+		"vendor": true, "testdata": true, ".git": true, ".hidden": true,
+		"internal": false, "cmd": false, "vendored": false, "data": false,
+	} {
+		if got := skippedScanDir(name); got != want {
+			t.Errorf("skippedScanDir(%q) = %v, want %v", name, got, want)
+		}
+	}
+}
+
+func TestCountGoFilesSkipsVendorTestdataAndHiddenBelowTheTarget(t *testing.T) {
+	dir := t.TempDir()
+	for _, f := range []string{"a.go", "pkg/b.go", "vendor/c.go", "pkg/testdata/d.go", ".hidden/e.go", "notes.txt"} {
+		writeFile(t, filepath.Join(dir, f), "package x\n")
+	}
+	if got := countGoFiles(dir); got != 2 {
+		t.Fatalf("countGoFiles = %d, want 2 (a.go, pkg/b.go)", got)
+	}
+	// The target itself may be a hidden or vendor-named directory.
+	hidden := filepath.Join(t.TempDir(), ".target")
+	writeFile(t, filepath.Join(hidden, "a.go"), "package x\n")
+	if got := countGoFiles(hidden); got != 1 {
+		t.Fatalf("countGoFiles(hidden target) = %d, want 1", got)
+	}
+	if got := countGoFiles(filepath.Join(dir, "missing")); got != 0 {
+		t.Fatalf("countGoFiles(missing) = %d, want 0", got)
+	}
+}
