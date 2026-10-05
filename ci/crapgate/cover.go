@@ -46,18 +46,9 @@ func parseProfile(path string) (*profile, error) {
 		if line == "" {
 			continue
 		}
-		if lineNo == 1 {
-			if !strings.HasPrefix(line, "mode:") {
-				return nil, fmt.Errorf("coverprofile %q: first line %q is not a mode line", path, line)
-			}
-			p.mode = strings.TrimSpace(strings.TrimPrefix(line, "mode:"))
-			continue
+		if err := p.addLine(path, lineNo, line); err != nil {
+			return nil, err
 		}
-		block, name, parseErr := parseProfileLine(line)
-		if parseErr != nil {
-			return nil, fmt.Errorf("coverprofile %q line %d: %w", path, lineNo, parseErr)
-		}
-		p.blocks[name] = append(p.blocks[name], block)
 	}
 	if scanErr := scanner.Err(); scanErr != nil {
 		return nil, fmt.Errorf("coverprofile %q: %w", path, scanErr)
@@ -69,6 +60,24 @@ func parseProfile(path string) (*profile, error) {
 		return nil, fmt.Errorf("coverprofile %q has a mode line but zero coverage blocks", path)
 	}
 	return p, nil
+}
+
+// addLine folds one non-blank profile line into p: line 1 must be the mode
+// line, every later line is a coverage block.
+func (p *profile) addLine(path string, lineNo int, line string) error {
+	if lineNo == 1 {
+		if !strings.HasPrefix(line, "mode:") {
+			return fmt.Errorf("coverprofile %q: first line %q is not a mode line", path, line)
+		}
+		p.mode = strings.TrimSpace(strings.TrimPrefix(line, "mode:"))
+		return nil
+	}
+	block, name, err := parseProfileLine(line)
+	if err != nil {
+		return fmt.Errorf("coverprofile %q line %d: %w", path, lineNo, err)
+	}
+	p.blocks[name] = append(p.blocks[name], block)
+	return nil
 }
 
 // parseProfileLine parses one "name:startLine.startCol,endLine.endCol
