@@ -308,42 +308,49 @@ func parse(args []string) (options, error) {
 			message = append(message, args[index+1:]...) // Remaining positional prompt text is accepted by Claude.
 			break
 		}
-		if len(argument) > 1 && argument[0] == '-' {
-			if index+1 == len(args) {
-				return result, fmt.Errorf("option %q requires a value", argument)
-			}
-			value := args[index+1]
-			index++
-			switch argument {
-			case "--session-id":
-				if err := validUUID("--session-id", value); err != nil {
-					return result, err
-				}
-				result.sessionID = value
-			case "--resume":
-				if err := validUUID("--resume", value); err != nil {
-					return result, err
-				}
-				result.resume = value
-			case "--permission-mode":
-				if !permissionModes[value] {
-					return result, fmt.Errorf("invalid value for --permission-mode: %q", value)
-				}
-				result.permissionMode = value
-			case "--settings":
-				if _, err := hookCommands(value); err != nil {
-					return result, fmt.Errorf("invalid --settings: %w", err)
-				}
-				result.settings = value
-			default:
-				return result, fmt.Errorf("unknown option %q", argument)
-			}
+		if len(argument) <= 1 || argument[0] != '-' {
+			message = append(message, argument)
 			continue
 		}
-		message = append(message, argument)
+		if index+1 == len(args) {
+			return result, fmt.Errorf("option %q requires a value", argument)
+		}
+		index++
+		if err := result.apply(argument, args[index]); err != nil {
+			return result, err
+		}
 	}
 	result.message = strings.Join(message, " ")
 	return result, nil
+}
+
+// apply validates one "--option value" pair and records it.
+func (result *options) apply(argument, value string) error {
+	switch argument {
+	case "--session-id":
+		if err := validUUID("--session-id", value); err != nil {
+			return err
+		}
+		result.sessionID = value
+	case "--resume":
+		if err := validUUID("--resume", value); err != nil {
+			return err
+		}
+		result.resume = value
+	case "--permission-mode":
+		if !permissionModes[value] {
+			return fmt.Errorf("invalid value for --permission-mode: %q", value)
+		}
+		result.permissionMode = value
+	case "--settings":
+		if _, err := hookCommands(value); err != nil {
+			return fmt.Errorf("invalid --settings: %w", err)
+		}
+		result.settings = value
+	default:
+		return fmt.Errorf("unknown option %q", argument)
+	}
+	return nil
 }
 
 var supportedHookEvents = map[string]bool{
