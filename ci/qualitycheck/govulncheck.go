@@ -133,25 +133,37 @@ func scanTargetHasGoCode(dir string) error {
 	if _, err := os.Stat(filepath.Join(dir, "go.mod")); err != nil {
 		return fmt.Errorf("scan target %q has no go.mod", dir)
 	}
+	goFiles := countGoFiles(dir)
+	if goFiles == 0 {
+		return fmt.Errorf("scan target %q has no Go files to scan", dir)
+	}
+	return nil
+}
+
+// countGoFiles counts the regular .go files under dir, skipping vendor/,
+// testdata/ and hidden directories below dir; an entry that cannot be read
+// is passed over rather than counted.
+func countGoFiles(dir string) int {
 	goFiles := 0
 	_ = filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return nil
 		}
-		if d.IsDir() && p != dir {
-			if n := d.Name(); n == "vendor" || n == "testdata" || strings.HasPrefix(n, ".") {
-				return filepath.SkipDir
-			}
+		if d.IsDir() && p != dir && skippedScanDir(d.Name()) {
+			return filepath.SkipDir
 		}
 		if d.Type().IsRegular() && strings.HasSuffix(p, ".go") {
 			goFiles++
 		}
 		return nil
 	})
-	if goFiles == 0 {
-		return fmt.Errorf("scan target %q has no Go files to scan", dir)
-	}
-	return nil
+	return goFiles
+}
+
+// skippedScanDir reports whether a directory name is one the scan target's
+// Go-file count does not look inside.
+func skippedScanDir(name string) bool {
+	return name == "vendor" || name == "testdata" || strings.HasPrefix(name, ".")
 }
 
 // runGovulncheckGate runs the gate. ok=false with a nil error is a gate
