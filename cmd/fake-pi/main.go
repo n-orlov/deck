@@ -432,49 +432,16 @@ func runRepaintFixture(mode string, stdin io.Reader, stdout io.Writer) error {
 // factored out, so a test can register its own channel and drive this loop
 // directly, race-free.
 func watchAndRepaint(mode string, stdin io.Reader, stdout io.Writer, signals <-chan os.Signal) error {
-	var mu sync.Mutex
-	counter := 0
-	pending := false
-	repaint := func() {
-		mu.Lock()
-		counter++
-		n := counter
-		mu.Unlock()
-		sayf(stdout, "repaint #%d\n", n)
-	}
-
+	painter := &repainter{mode: mode, stdout: stdout}
 	done := make(chan struct{})
 	defer close(done)
-	go func() {
-		for {
-			select {
-			case <-signals:
-				switch mode {
-				case repaintModeSigwinch:
-					repaint()
-				case repaintModeKeystroke:
-					mu.Lock()
-					pending = true
-					mu.Unlock()
-				case repaintModeNever:
-				}
-			case <-done:
-				return
-			}
-		}
-	}()
+	go painter.watchSignals(signals, done)
 
 	buffer := make([]byte, 4096)
 	for {
 		n, err := stdin.Read(buffer)
-		if n > 0 && mode == repaintModeKeystroke {
-			mu.Lock()
-			fire := pending
-			pending = false
-			mu.Unlock()
-			if fire {
-				repaint()
-			}
+		if n > 0 {
+			painter.onInput()
 		}
 		if err != nil {
 			if errors.Is(err, io.EOF) {
@@ -482,6 +449,67 @@ func watchAndRepaint(mode string, stdin io.Reader, stdout io.Writer, signals <-c
 			}
 			return err
 		}
+	}
+}
+
+// repainter is the state watchAndRepaint's two concurrent loops share: the
+// repaint counter and, in keystroke mode, the remembered SIGWINCH.
+type repainter struct {
+	mode   string
+	stdout io.Writer
+
+	mu      sync.Mutex
+	counter int
+	pending bool
+}
+
+func (r *repainter) repaint() {
+	r.mu.Lock()
+	r.counter++
+	n := r.counter
+	r.mu.Unlock()
+	sayf(r.stdout, "repaint #%d\n", n)
+}
+
+// watchSignals reacts to each SIGWINCH according to the mode until done closes.
+func (r *repainter) watchSignals(signals <-chan os.Signal, done <-chan struct{}) {
+	for {
+		select {
+		case <-signals:
+			r.onSignal()
+		case <-done:
+			return
+		}
+	}
+}
+
+func (r *repainter) onSignal() {
+	switch r.mode {
+	case repaintModeSigwinch:
+		r.repaint()
+	case repaintModeKeystroke:
+		// Ignore the SIGWINCH itself; remember it happened so the
+		// next byte read from stdin (a forwarded keystroke) triggers
+		// the repaint instead.
+		r.mu.Lock()
+		r.pending = true
+		r.mu.Unlock()
+	case repaintModeNever:
+		// Never repaints, whatever arrives.
+	}
+}
+
+// onInput repaints once if a SIGWINCH is waiting for the next keystroke.
+func (r *repainter) onInput() {
+	if r.mode != repaintModeKeystroke {
+		return
+	}
+	r.mu.Lock()
+	fire := r.pending
+	r.pending = false
+	r.mu.Unlock()
+	if fire {
+		r.repaint()
 	}
 }
 
