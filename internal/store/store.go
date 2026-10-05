@@ -1064,6 +1064,12 @@ func (s *Store) UpdateSessionStatus(ctx context.Context, input StatusUpdateInput
 		}
 	}
 
+	return recordStatusEventTx(ctx, tx, input)
+}
+
+// recordStatusEventTx appends the status update's source event and commits
+// UpdateSessionStatus's transaction.
+func recordStatusEventTx(ctx context.Context, tx *sql.Tx, input StatusUpdateInput) error {
 	if _, err := tx.ExecContext(ctx, `INSERT INTO events (session_id, at, kind, reason, payload)
 		VALUES (?, ?, ?, ?, ?)`, input.SessionID, input.At, input.EventKind, input.Reason, input.Payload); err != nil {
 		return fmt.Errorf("record session status event: %w", err)
