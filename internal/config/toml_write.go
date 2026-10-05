@@ -184,9 +184,19 @@ func applyEnvFields(blocks []tomlBlock, cfg FileConfig) []tomlBlock {
 	}
 	block := &blocks[blockIdx]
 
+	kept, seen := retainEnvLines(block.lines, cfg.Env)
+	block.lines = append(kept, newEnvLines(cfg.Env, seen)...)
+	return blocks
+}
+
+// retainEnvLines walks an [env] table's existing lines: blanks, comments
+// and unparsable lines are kept verbatim, a key still in env is rewritten
+// with its current value, and a key no longer in env is dropped. It returns
+// the surviving lines and the set of keys it rewrote.
+func retainEnvLines(lines []string, env map[string]string) ([]string, map[string]bool) {
 	seen := map[string]bool{}
 	var kept []string
-	for _, raw := range block.lines {
+	for _, raw := range lines {
 		text := strings.TrimSpace(stripComment(raw))
 		if text == "" {
 			kept = append(kept, raw)
@@ -197,25 +207,31 @@ func applyEnvFields(blocks []tomlBlock, cfg FileConfig) []tomlBlock {
 			kept = append(kept, raw)
 			continue
 		}
-		value, ok := cfg.Env[key]
+		value, ok := env[key]
 		if !ok {
 			continue // key removed from cfg.Env: drop the line
 		}
 		kept = append(kept, key+" = "+strconv.Quote(value))
 		seen[key] = true
 	}
+	return kept, seen
+}
+
+// newEnvLines returns, in sorted key order, the "key = value" lines for
+// every key of env that seen does not already hold.
+func newEnvLines(env map[string]string, seen map[string]bool) []string {
 	var newKeys []string
-	for key := range cfg.Env {
+	for key := range env {
 		if !seen[key] {
 			newKeys = append(newKeys, key)
 		}
 	}
 	sort.Strings(newKeys)
+	var lines []string
 	for _, key := range newKeys {
-		kept = append(kept, key+" = "+strconv.Quote(cfg.Env[key]))
+		lines = append(lines, key+" = "+strconv.Quote(env[key]))
 	}
-	block.lines = kept
-	return blocks
+	return lines
 }
 
 // blockIndexForSection returns the index of the LAST block whose parsed
