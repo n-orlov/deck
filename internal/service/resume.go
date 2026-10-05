@@ -131,6 +131,13 @@ func (s Service) Resume(ctx context.Context, sessionID string) (store.Session, R
 	if err := s.startResumePane(ctx, session, paneCommand, launchEnv); err != nil {
 		return s.resumeFailed(ctx, session, err)
 	}
+	return s.concludeResume(ctx, session, conversationID, freshOnce)
+}
+
+// concludeResume finishes a resume whose pane is up: a fresh-once launch has
+// its minted conversation id persisted, then the row reports tmux as the
+// source of its status.
+func (s Service) concludeResume(ctx context.Context, session store.Session, conversationID string, freshOnce bool) (store.Session, ResumeOutcome, error) {
 	// The fresh-once launch above has now actually happened: persist the
 	// newly minted conversation id and revert resume_state to auto (never
 	// back to pinned, and never left as fresh-once) so a later resume goes
