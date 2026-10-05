@@ -297,7 +297,9 @@ var selectionCloseSGR = fmt.Sprintf("\x1b[%dm", 49)
 // (m.interactiveSelecting -- set true by beginInteractiveSelection on
 // press, set false by commitInteractiveSelection on release, so this is
 // automatically a no-op the instant a release commits the copy, with no
-// separate clearing step of its own). It resolves the selection's
+// separate clearing step of its own). A press alone marks nothing
+// (SPEC §11.8: a click is not a selection): the marking begins with the
+// first motion event (m.interactiveSelectDragged). It resolves the selection's
 // per-row column range through the SAME m.interactiveScrollOffset() and
 // interactiveGrid.AbsoluteRow conversion commitInteractiveSelection uses
 // (via interactive.Session.SelectionHighlightRange, AbsoluteRow's own
@@ -312,7 +314,7 @@ var selectionCloseSGR = fmt.Sprintf("\x1b[%dm", 49)
 // invisible one under those settings, exactly like every other themed
 // surface in this package.
 func (m Model) highlightInProgressSelection(lines []string, contentHeight int) []string {
-	if !m.interactiveSelecting || m.interactiveGrid == nil {
+	if !m.interactiveSelecting || !m.interactiveSelectDragged || m.interactiveGrid == nil {
 		return lines
 	}
 	openSeq, ok := m.backgroundSGR(theme.Selection)
