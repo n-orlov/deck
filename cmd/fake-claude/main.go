@@ -343,28 +343,28 @@ func parse(args []string) (options, error) {
 }
 
 // apply validates one "--option value" pair and records it.
-func (result *options) apply(argument, value string) error {
+func (o *options) apply(argument, value string) error {
 	switch argument {
 	case "--session-id":
 		if err := validUUID("--session-id", value); err != nil {
 			return err
 		}
-		result.sessionID = value
+		o.sessionID = value
 	case "--resume":
 		if err := validUUID("--resume", value); err != nil {
 			return err
 		}
-		result.resume = value
+		o.resume = value
 	case "--permission-mode":
 		if !permissionModes[value] {
 			return fmt.Errorf("invalid value for --permission-mode: %q", value)
 		}
-		result.permissionMode = value
+		o.permissionMode = value
 	case "--settings":
 		if _, err := hookCommands(value); err != nil {
 			return fmt.Errorf("invalid --settings: %w", err)
 		}
-		result.settings = value
+		o.settings = value
 	default:
 		return fmt.Errorf("unknown option %q", argument)
 	}
