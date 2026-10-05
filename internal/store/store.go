@@ -2568,6 +2568,21 @@ func (s *Store) ReapSession(ctx context.Context, sessionID string, at int64) err
 		return fmt.Errorf("begin reap session: %w", err)
 	}
 	defer rollbackTx(tx)
+	if err := requireTombstonedTx(ctx, tx, sessionID); err != nil {
+		return err
+	}
+	if err := reapSessionTx(ctx, tx, sessionID, at); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit reap session %q: %w", sessionID, err)
+	}
+	return nil
+}
+
+// requireTombstonedTx refuses a session that does not exist or is not
+// tombstoned, so ReapSession never removes a live row.
+func requireTombstonedTx(ctx context.Context, tx *sql.Tx, sessionID string) error {
 	var deletedAt int64
 	if err := tx.QueryRowContext(ctx, `SELECT deleted_at FROM sessions WHERE id = ?`, sessionID).Scan(&deletedAt); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -2577,12 +2592,6 @@ func (s *Store) ReapSession(ctx context.Context, sessionID string, at int64) err
 	}
 	if deletedAt == 0 {
 		return fmt.Errorf("session %q is not tombstoned, refusing to reap", sessionID)
-	}
-	if err := reapSessionTx(ctx, tx, sessionID, at); err != nil {
-		return err
-	}
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("commit reap session %q: %w", sessionID, err)
 	}
 	return nil
 }
