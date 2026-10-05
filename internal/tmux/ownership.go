@@ -180,35 +180,72 @@ func (c Client) ClaimWindowOwnership(ctx context.Context, target string) (*Windo
 	}
 	mine := formatOwnershipClaim(tag, os.Getpid())
 	for attempt := 0; attempt < maxOwnershipClaimAttempts; attempt++ {
-		got, err := c.readWindowOwnership(ctx, target)
+		outcome, err := c.attemptWindowClaim(ctx, target, mine)
 		if err != nil {
 			return nil, false, err
 		}
-		if got.Set {
-			_, competingPID, ok := parseOwnershipClaim(got.Value)
-			if ok && pidAlive(competingPID) {
-				return nil, false, nil
-			}
-			// Either unparseable (a bug or a hand-edited option, never
-			// something formatOwnershipClaim itself produces) or a
-			// confirmed-dead owner: both are stolen from by falling through
-			// to the write below.
-		}
-		if err := c.writeWindowOwnership(ctx, target, mine); err != nil {
-			return nil, false, err
-		}
-		confirm, err := c.readWindowOwnership(ctx, target)
-		if err != nil {
-			return nil, false, err
-		}
-		if confirm.Set && confirm.Value == mine {
+		switch outcome {
+		case claimAcquired:
 			return &WindowOwnership{client: c, target: target, claim: mine}, true, nil
+		case claimStoodDown:
+			return nil, false, nil
 		}
-		// Lost the confirm-read race to a concurrent writer: loop back to
-		// step 1 and let the next iteration's read validate that writer's
-		// liveness instead of trusting our own just-issued write.
+		// claimRaceLost: loop back to step 1 and let the next iteration's
+		// read validate that writer's liveness instead of trusting our own
+		// just-issued write.
 	}
 	return nil, false, fmt.Errorf("claim %s on %q: gave up after %d attempts racing a concurrent writer", OwnershipOption, target, maxOwnershipClaimAttempts)
+}
+
+// claimAttemptOutcome is how one read/write/confirm-read pass of
+// ClaimWindowOwnership ended.
+type claimAttemptOutcome int
+
+const (
+	// claimRaceLost: this pass wrote its claim but the confirm-read showed
+	// another value; the caller loops back to a fresh read.
+	claimRaceLost claimAttemptOutcome = iota
+	// claimAcquired: the confirm-read showed exactly the value written.
+	claimAcquired
+	// claimStoodDown: a live owner holds the option; nothing was written.
+	claimStoodDown
+)
+
+// attemptWindowClaim is steps 1-3 of ClaimWindowOwnership's protocol, once:
+// read, stand down for a live owner, otherwise write mine and confirm-read it.
+func (c Client) attemptWindowClaim(ctx context.Context, target, mine string) (claimAttemptOutcome, error) {
+	got, err := c.readWindowOwnership(ctx, target)
+	if err != nil {
+		return claimRaceLost, err
+	}
+	// An unset option, an unparseable value (a bug or a hand-edited option,
+	// never something formatOwnershipClaim itself produces) and a
+	// confirmed-dead owner are all stolen from by falling through to the
+	// write below.
+	if holdsLiveClaim(got) {
+		return claimStoodDown, nil
+	}
+	if err := c.writeWindowOwnership(ctx, target, mine); err != nil {
+		return claimRaceLost, err
+	}
+	confirm, err := c.readWindowOwnership(ctx, target)
+	if err != nil {
+		return claimRaceLost, err
+	}
+	if confirm.Set && confirm.Value == mine {
+		return claimAcquired, nil
+	}
+	return claimRaceLost, nil
+}
+
+// holdsLiveClaim reports whether the option names a parseable claim whose pid
+// is alive.
+func holdsLiveClaim(state windowOwnershipState) bool {
+	if !state.Set {
+		return false
+	}
+	_, pid, ok := parseOwnershipClaim(state.Value)
+	return ok && pidAlive(pid)
 }
 
 // ForceClaimWindowOwnership implements a single-shot variant of
