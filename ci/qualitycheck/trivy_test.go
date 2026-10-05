@@ -336,3 +336,30 @@ func TestTrivyGate_AFindingIsNeverRetried(t *testing.T) {
 		t.Fatalf("trivy ran %d times, want 1", n)
 	}
 }
+
+// TestTrivyIgnoreLineProblem names the problem each bad line has, and
+// accepts a reasoned, dated, unexpired one (the date itself is the last good day).
+func TestTrivyIgnoreLineProblem(t *testing.T) {
+	const today = "2026-10-05"
+	cases := []struct{ line, want string }{
+		{"CVE-1 review-by:2099-01-01", "has no reason"},
+		{"CVE-1 review-by:2099-01-01 #   ", "has no reason"},
+		{"CVE-2 # reason but no date", "has no review-by:YYYY-MM-DD date"},
+		{"CVE-3 review-by:2099-13-45 # bad day", "is not a real date"},
+		{"CVE-4 review-by:2026-10-04 # expired yesterday", "expired on 2026-10-04"},
+		{"CVE-5 review-by:2026-10-05 # last good day", ""},
+		{"CVE-6 review-by:2099-01-01 # fine", ""},
+	}
+	for _, c := range cases {
+		got := trivyIgnoreLineProblem(".trivyignore", 7, c.line, today)
+		if c.want == "" {
+			if got != "" {
+				t.Errorf("%q: problem %q, want none", c.line, got)
+			}
+			continue
+		}
+		if !strings.Contains(got, c.want) || !strings.HasPrefix(got, ".trivyignore:7: ") {
+			t.Errorf("%q: problem %q, want it to name %q at .trivyignore:7", c.line, got, c.want)
+		}
+	}
+}
