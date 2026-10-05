@@ -676,6 +676,9 @@ schema:
 | `[env]` | the middle PATH/env layer (§6.1) |
 | `[ui]` | `theme` (§11.6), `ascii` (§11), `mouse` (default true, §11.8), `preview_fit` (default true, §11), `preview_paint` (default `"fit"`, one of `fit`/`nofit`/`bg`/`off`, §11.3), `sort_order` (default `"attention"`, one of `attention`/`created`/`activity`/`name`, §11), `default_group_first` (default false, §11), `attach_on_new` (default true, §11), `attach_on_resume` (default false, §9.1), `recent_cwd_limit` (default 5, §11.7). **Not** `layout_mode`, `sidebar_width` or the recent-directory list itself — those are machine-local UI state/history and live in `state.db` (§11.2, §11.7), so a keypress never rewrites this file |
 
+The settings view (§11.5) edits this file: `,` opens it and `,` or `esc` closes it (§11.5
+spells out the discard prompt and the text-entry modes where `,` is a literal character).
+
 Environment always outranks the file: `DECK_ASCII` set in the environment overrides
 `[ui] ascii`, as every `DECK_*` knob overrides its file counterpart (§13.1 depends on
 this — the harness must be able to pin behaviour regardless of what a config file says).
@@ -2063,10 +2066,15 @@ the TUI must be the place it is edited.
 - Navigation, spelled out because the takeover is not a §11.4 dialog and the main view has
   no `tab` binding for it to echo (§11.3): `tab`/`←`/`→` switch between the category list
   and the field list, `↑`/`↓` move within the focused list, `/` searches, `ctrl+s` saves,
-  `esc` prompts to discard if anything changed and otherwise closes. **While a value is being
-  typed** — a string, path, list entry, env key or value, a group name, or the `/` search —
+  `esc` prompts to discard if anything changed and otherwise closes. `,` — the same key that
+  opens settings (§11.3) — closes it too, through the identical `esc` code path: it prompts
+  to discard when something changed and otherwise closes, never a second, parallel
+  implementation. **While a value is being typed** — a string, path, list entry, env key or value, a group name, or the `/` search —
   the field is a §11.11 text field and its editing keys win: `←`/`→` move the caret there and
-  do not switch lists.
+  do not switch lists, and `,` is a literal character there, in the group create and rename
+  prompts included, rather than the close shortcut. `,` is ignored while the discard prompt or
+  the group-delete confirm is up: it neither answers nor dismisses either. The footer names it
+  beside `esc` (`esc/, close`).
 - **Save is explicit** (`ctrl+s` or the Save action), a discard prompt guards unsaved
   changes on `esc`, and the write is atomic — settings must never be able to leave an
   unparseable `config.toml` behind.

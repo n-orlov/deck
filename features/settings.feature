@@ -510,3 +510,13 @@ Feature: The `,` settings takeover (requirement 48)
     And deck client "A" screen contains "groups-delete-move"
     And the state database session "groups-delete-move" is not tombstoned
     When deck client "A" exits cleanly
+
+  Scenario: "," opens Settings and "," closes it again, named beside esc in the footer (R199, #63)
+    Given deck client "A" is started
+    When deck client "A" sends ","
+    Then deck client "A" screen contains "Categories"
+    And deck client "A" screen contains "esc/, close"
+    When deck client "A" sends ","
+    Then deck client "A" screen contains "deck - sessions"
+    And deck client "A" screen does not contain "Categories"
+    When deck client "A" exits cleanly

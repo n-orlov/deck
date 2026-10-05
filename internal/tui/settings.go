@@ -259,8 +259,24 @@ var settingsModalModes = []struct {
 
 // settingsKeyHandlers is the main takeover's key table. Keys it does not
 // name are deliberately unbound.
+//
+// R199/#63: "," is bound to the exact same handler as "esc"
+// ((*Model).settingsKeyEsc), not a second implementation that merely
+// mimics it -- "," closes the takeover when nothing is dirty and raises
+// the discard-confirm prompt (settingsKeyEsc's own settingsDirty check)
+// when something is, through the identical code path esc already takes.
+// This entry is only ever reached once every settingsModalModes entry has
+// declined the key (updateSettings' own precedence loop), so none of the
+// seven text-entry sub-modes, the discard-confirm prompt or the
+// group-delete confirm ever see this binding: a "," typed there is either
+// a literal character handed to that mode's own line editor, or (for the
+// two confirms) swallowed exactly as any other unbound key already is.
+// The main list's own "," (keySettings, list_keys.go) is unreachable while
+// settingsOpen is true (keyOverlays dispatches here first), so the two
+// bindings never race.
 var settingsKeyHandlers = map[string]func(*Model) tea.Cmd{
 	"esc":    (*Model).settingsKeyEsc,
+	",":      (*Model).settingsKeyEsc,
 	"ctrl+s": (*Model).settingsSave,
 	"tab":    (*Model).settingsKeySwitchFocus,
 	"left":   (*Model).settingsKeySwitchFocus,
@@ -651,13 +667,17 @@ func settingsCloneFileConfig(cfg config.FileConfig) config.FileConfig {
 // config.toml was never touched, so "what survives" is exactly what
 // settingsSavedEdits/settingsNote already told the user it would be. Any
 // other key (n, esc, or anything else) dismisses the prompt without losing
-// the edit, returning the user to the field they were on.
+// the edit, returning the user to the field they were on. "," is the one
+// exception (R199/#63): it is ignored, so the prompt stays up.
 func (m Model) updateSettingsDiscardConfirm(msg tea.KeyMsg) (Model, tea.Cmd) {
 	switch msg.String() {
 	case "y", "enter":
 		m.settingsDiscardConfirm = false
 		m.settingsOpen = false
 		m.settingsNote = ""
+	case ",":
+		// R199/#63: "," is the close shortcut, never an answer to this
+		// prompt -- it neither confirms nor dismisses it.
 	default:
 		m.settingsDiscardConfirm = false
 	}
@@ -2489,7 +2509,7 @@ func (m Model) settingsGroupsFooter(width int) (footer string, ok bool) {
 		// them in every other category's footer would be the "advertises a
 		// key it doesn't grant" defect this package already avoids for
 		// every other sub-mode-only binding.
-		footer = "tab/left/right switch - up/down select - n new group - r rename - d delete - esc close"
+		footer = "tab/left/right switch - up/down select - n new group - r rename - d delete - esc/, close"
 		if m.settingsGroupNote != "" {
 			footer = m.settingsGroupNote + " - " + footer
 		}
@@ -2508,7 +2528,7 @@ func (m Model) settingsFooterLineContent() string {
 		return truncateToWidth(m.fieldCopyNote, width)
 	}
 	if m.settingsDiscardConfirm {
-		return truncateToWidth("discard unsaved changes and keep config.toml as last saved? y/enter discards - any other key cancels", width)
+		return truncateToWidth("discard unsaved changes and keep config.toml as last saved? y/enter discards - any other key but , cancels", width)
 	}
 	if m.settingsSearchActive {
 		return truncateToWidth("type to search - up/down select - enter jump - esc cancel", width)
@@ -2531,7 +2551,11 @@ func (m Model) settingsFooterLineContent() string {
 	if footer, ok := m.settingsGroupsFooter(width); ok {
 		return footer
 	}
-	footer := "tab/left/right switch - up/down move - enter/+/- edit - / search - ctrl+s save - esc close"
+	// R199/#63: "," is named beside "esc" here because it is bound to the
+	// identical handler (settingsKeyHandlers[","] == settingsKeyHandlers["esc"]
+	// == (*Model).settingsKeyEsc) -- the footer never claims a key does
+	// something it does not.
+	footer := "tab/left/right switch - up/down move - enter/+/- edit - / search - ctrl+s save - esc/, close"
 	if m.settingsNote != "" {
 		footer = m.settingsNote + " - " + footer
 	}
