@@ -37,10 +37,22 @@ func wheelPaneScript(mouseOn bool) string {
 // off the target's row.
 func wheelFixtureModel(t *testing.T, name string, mouseOn bool) (Model, string, string) {
 	t.Helper()
+	flags := ""
+	if mouseOn {
+		flags = "11"
+	}
+	return wheelFixtureModelScript(t, name, wheelPaneScript(mouseOn), flags)
+}
+
+// wheelFixtureModelScript is wheelFixtureModel over an arbitrary pane
+// script; a non-empty wantFlags is the "#{mouse_standard_flag}#{mouse_sgr_flag}"
+// value the pane must report before the model enters interactive mode.
+func wheelFixtureModelScript(t *testing.T, name, script, wantFlags string) (Model, string, string) {
+	t.Helper()
 	socket := selectionTestSocket(name)
 	slug := "wheel_" + name
 	target := "deck_" + slug
-	args := []string{"-L", socket, "new-session", "-d", "-s", target, "-x", "80", "-y", "24", "sh", "-c", wheelPaneScript(mouseOn)}
+	args := []string{"-L", socket, "new-session", "-d", "-s", target, "-x", "80", "-y", "24", "sh", "-c", script}
 	if out, err := exec.Command("tmux", args...).CombinedOutput(); err != nil {
 		t.Fatalf("start wheel pane: %v: %s", err, out)
 	}
@@ -53,14 +65,14 @@ func wheelFixtureModel(t *testing.T, name string, mouseOn bool) (Model, string, 
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
-	if mouseOn {
+	if wantFlags != "" {
 		for {
 			out, err := exec.Command("tmux", "-L", socket, "display-message", "-p", "-t", target, "#{mouse_standard_flag}#{mouse_sgr_flag}").Output()
-			if err == nil && strings.TrimSpace(string(out)) == "11" {
+			if err == nil && strings.TrimSpace(string(out)) == wantFlags {
 				break
 			}
 			if time.Now().After(deadline) {
-				t.Fatalf("pane never reported mouse modes 1000+1006 (last %q, err %v)", out, err)
+				t.Fatalf("pane never reported mouse flags %q (last %q, err %v)", wantFlags, out, err)
 			}
 			time.Sleep(20 * time.Millisecond)
 		}

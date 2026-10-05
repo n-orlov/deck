@@ -187,6 +187,7 @@ func initializeScenario(sc *godog.ScenarioContext) {
 	registerInteractiveForceAttachSteps(sc)
 	registerInteractiveSidebarWheelFeatureSteps(sc)
 	registerInteractiveWheelForwardSteps(sc)
+	registerInteractiveClickForwardSteps(sc)
 	registerPinPersistenceSteps(sc)
 	registerTmuxSpawnBudgetSteps(sc)
 }

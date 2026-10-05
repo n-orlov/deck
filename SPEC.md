@@ -2378,7 +2378,17 @@ visible.** From the first motion after the press until the release, the selected
 `selection` token — the same treatment a selected sidebar row carries (§11.3) — and the
 marking clears when the release commits the copy. A selection the user cannot see is a
 selection they cannot aim: the gesture is tmux's, and so is the feedback. **A click is not a selection:** a press released without
-motion marks nothing and copies nothing, and the press alone draws no marking — only a drag selects. **The marking is
+motion marks nothing and copies nothing, and the press alone draws no marking — only a drag selects. **A click reaches the pane program that tracks the mouse.** While
+interactive, a click of the left, middle or right button over the preview is forwarded to a pane
+program with mouse reporting on (DEC modes 1000, 1002 or 1003) as a press followed by a release
+at the press cell, with that button's code (0, 1, 2), in the encoding the program asked for: the
+SGR report under mode 1006 (release `m`), the X10 form otherwise (release button code 3). It
+**shares the wheel's routing rule (R183, §11.9)**: forwarded only when the program tracks the
+mouse, the grid is at live and `Shift` is not held; a program that does not track the mouse (a
+plain shell), `Shift` held and a scrolled-back grid forward nothing. A left click is forwarded when
+its release arrives with no motion since the press; a drag is the selection above and the program
+receives nothing from it. A forwarded click is input to the pane and ends a sidebar drift (§11),
+and a click the encoding cannot carry (X10 past column or row 223) is dropped. **The marking is
 linear, not rectangular**, because the copy is: it covers exactly the run `SelectedText`
 would return for the same anchor and current cell, so what is highlighted and what is
 copied can never disagree. The copy is written to a **tmux
