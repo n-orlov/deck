@@ -169,6 +169,7 @@ func initializeScenario(sc *godog.ScenarioContext) {
 	registerNoLeakScanSteps(sc)
 	registerEventLogSteps(sc)
 	registerSupersededSessionEndSteps(sc)
+	registerStaleHookBindingSteps(sc)
 	registerFilterSteps(sc)
 	registerTmuxOptionScopeSteps(sc)
 	registerPaneHistoryLimitSteps(sc)
