@@ -310,3 +310,46 @@ func TestGovulncheckGate_CheckedInConfigIsOn(t *testing.T) {
 		t.Error("switching govulncheck off is not reported as a loosening")
 	}
 }
+
+func TestGoModDirectives(t *testing.T) {
+	cases := []struct {
+		name, gomod, toolchain, goLine string
+	}{
+		{"both", "module m\n\ngo 1.25.0\ntoolchain go1.25.4\n", "go1.25.4", "go1.25.0"},
+		{"go line only", "module m\ngo 1.24\n", "", "go1.24"},
+		{"go line already prefixed", "go go1.24\n", "", "go1.24"},
+		{"neither", "module m\nrequire x v1\n", "", ""},
+		{"one-field and long lines are ignored", "go\ntoolchain\ngo 1.25 // c\n", "", ""},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			tc, goLine, err := goModDirectives(strings.NewReader(c.gomod))
+			if err != nil || tc != c.toolchain || goLine != c.goLine {
+				t.Fatalf("goModDirectives = (%q, %q, %v), want (%q, %q, nil)", tc, goLine, err, c.toolchain, c.goLine)
+			}
+		})
+	}
+}
+
+func TestGoModMinimumPrefersToolchainThenGoLineAndRejectsBadInput(t *testing.T) {
+	dir := func(gomod string) string {
+		d := t.TempDir()
+		writeFile(t, filepath.Join(d, "go.mod"), gomod)
+		return d
+	}
+	if got, err := goModMinimum(dir("module m\ngo 1.25.0\ntoolchain go1.25.4\n")); err != nil || got != "go1.25.4" {
+		t.Errorf("toolchain line: got (%q, %v), want go1.25.4", got, err)
+	}
+	if got, err := goModMinimum(dir("module m\ngo 1.25.0\n")); err != nil || got != "go1.25.0" {
+		t.Errorf("go line fallback: got (%q, %v), want go1.25.0", got, err)
+	}
+	if _, err := goModMinimum(dir("module m\n")); err == nil || !strings.Contains(err.Error(), "neither a toolchain nor a go line") {
+		t.Errorf("no directive: err = %v", err)
+	}
+	if _, err := goModMinimum(dir("module m\ntoolchain banana\n")); err == nil || !strings.Contains(err.Error(), "not a valid Go version") {
+		t.Errorf("bad version: err = %v", err)
+	}
+	if _, err := goModMinimum(t.TempDir()); err == nil {
+		t.Error("missing go.mod: want an error")
+	}
+}

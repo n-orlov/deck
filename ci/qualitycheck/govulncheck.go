@@ -19,6 +19,7 @@ import (
 	"errors"
 	"fmt"
 	"go/version"
+	"io"
 	"io/fs"
 	"os"
 	"os/exec"
@@ -52,21 +53,8 @@ func goModMinimum(dir string) (string, error) {
 		return "", err
 	}
 	defer func() { _ = f.Close() }() // read-only handle: Close cannot lose data
-	var toolchain, goLine string
-	sc := bufio.NewScanner(f)
-	for sc.Scan() {
-		fields := strings.Fields(sc.Text())
-		if len(fields) != 2 {
-			continue
-		}
-		switch fields[0] {
-		case "toolchain":
-			toolchain = fields[1]
-		case "go":
-			goLine = "go" + strings.TrimPrefix(fields[1], "go")
-		}
-	}
-	if err := sc.Err(); err != nil {
+	toolchain, goLine, err := goModDirectives(f)
+	if err != nil {
 		return "", err
 	}
 	minimum := toolchain
@@ -80,6 +68,26 @@ func goModMinimum(dir string) (string, error) {
 		return "", fmt.Errorf("%s/go.mod: %q is not a valid Go version", dir, minimum)
 	}
 	return minimum, nil
+}
+
+// goModDirectives returns the version operand of the "toolchain" and "go"
+// directive lines read from a go.mod ("go" gets its "go" prefix added when
+// the file wrote a bare number); a directive that is absent comes back empty.
+func goModDirectives(r io.Reader) (toolchain, goLine string, err error) {
+	sc := bufio.NewScanner(r)
+	for sc.Scan() {
+		fields := strings.Fields(sc.Text())
+		if len(fields) != 2 {
+			continue
+		}
+		switch fields[0] {
+		case "toolchain":
+			toolchain = fields[1]
+		case "go":
+			goLine = "go" + strings.TrimPrefix(fields[1], "go")
+		}
+	}
+	return toolchain, goLine, sc.Err()
 }
 
 // checkGoNotOlderThanToolchain runs `go version` (GOTOOLCHAIN=local, so
