@@ -185,7 +185,8 @@ func applyEnvFields(blocks []tomlBlock, cfg FileConfig) []tomlBlock {
 	block := &blocks[blockIdx]
 
 	kept, seen := retainEnvLines(block.lines, cfg.Env)
-	block.lines = append(kept, newEnvLines(cfg.Env, seen)...)
+	kept = append(kept, newEnvLines(cfg.Env, seen)...)
+	block.lines = kept
 	return blocks
 }
 
