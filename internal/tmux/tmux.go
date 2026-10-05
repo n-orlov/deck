@@ -222,20 +222,7 @@ func (c Client) Discover(ctx context.Context) (Version, error) {
 // pane in CWD running Command. Environment is passed to that initial process
 // and mirrored into the session for any future pane.
 func (c Client) Create(ctx context.Context, launch Launch) (Session, error) {
-	if c.Socket == "" {
-		return Session{}, errors.New("tmux socket name is required")
-	}
-	name, err := sessionName(launch.Slug)
-	if err != nil {
-		return Session{}, err
-	}
-	if launch.CWD == "" {
-		return Session{}, errors.New("session working directory is required")
-	}
-	if len(launch.Command) == 0 || launch.Command[0] == "" {
-		return Session{}, errors.New("session command is required")
-	}
-	env, err := environmentArgs(launch.Env)
+	name, env, err := c.validateLaunch(launch)
 	if err != nil {
 		return Session{}, err
 	}
@@ -262,6 +249,41 @@ func (c Client) Create(ctx context.Context, launch Launch) (Session, error) {
 	// lose the environment-mirroring race against a concurrent reconciler
 	// anymore because there is no longer a second, later call for that
 	// race to have a window in.
+	args := newSessionArgs(name, env, launch)
+	if _, err := c.run(ctx, args...); err != nil {
+		return Session{}, fmt.Errorf("create session %q: %w", name, err)
+	}
+	return c.session(ctx, name)
+}
+
+// validateLaunch checks everything Create can refuse before it touches tmux, in
+// the order Create always checked it, and returns the session name and the
+// environment as key/value pairs.
+func (c Client) validateLaunch(launch Launch) (string, []string, error) {
+	if c.Socket == "" {
+		return "", nil, errors.New("tmux socket name is required")
+	}
+	name, err := sessionName(launch.Slug)
+	if err != nil {
+		return "", nil, err
+	}
+	if launch.CWD == "" {
+		return "", nil, errors.New("session working directory is required")
+	}
+	if len(launch.Command) == 0 || launch.Command[0] == "" {
+		return "", nil, errors.New("session command is required")
+	}
+	env, err := environmentArgs(launch.Env)
+	if err != nil {
+		return "", nil, err
+	}
+	return name, env, nil
+}
+
+// newSessionArgs is Create's one new-session argv: the session's environment
+// is mirrored with -e (one flag per variable) and also passed to the initial
+// process through env(1).
+func newSessionArgs(name string, env []string, launch Launch) []string {
 	args := []string{"new-session", "-d", "-s", name}
 	for key, value := range pairs(env) {
 		args = append(args, "-e", key+"="+value)
@@ -271,10 +293,7 @@ func (c Client) Create(ctx context.Context, launch Launch) (Session, error) {
 		args = append(args, key+"="+value)
 	}
 	args = append(args, launch.Command...)
-	if _, err := c.run(ctx, args...); err != nil {
-		return Session{}, fmt.Errorf("create session %q: %w", name, err)
-	}
-	return c.session(ctx, name)
+	return args
 }
 
 // SetEnvironment mirrors exactly one key/value into a deck-owned tmux
