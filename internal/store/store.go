@@ -1343,22 +1343,32 @@ func (s *Store) SetSessionEnvValue(ctx context.Context, sessionID, key, value, s
 	return nil
 }
 
-// writeSessionEnvKeyTx reads the row's env map inside tx, sets one key and
-// writes the map back with env_dirty = 1; SetSessionEnvValue records the
-// event and commits afterwards.
-func writeSessionEnvKeyTx(ctx context.Context, tx *sql.Tx, sessionID, key, value string) error {
+// readSessionEnvTx reads and decodes one row's env map inside tx; an empty
+// stored value decodes to an empty (non-nil) map.
+func readSessionEnvTx(ctx context.Context, tx *sql.Tx, sessionID string) (map[string]string, error) {
 	var envJSON string
 	if err := tx.QueryRowContext(ctx, `SELECT env FROM sessions WHERE id = ?`, sessionID).Scan(&envJSON); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return fmt.Errorf("session %q not found", sessionID)
+			return nil, fmt.Errorf("session %q not found", sessionID)
 		}
-		return fmt.Errorf("read session %q env: %w", sessionID, err)
+		return nil, fmt.Errorf("read session %q env: %w", sessionID, err)
 	}
 	env := map[string]string{}
 	if envJSON != "" {
 		if err := json.Unmarshal([]byte(envJSON), &env); err != nil {
-			return fmt.Errorf("decode session %q env: %w", sessionID, err)
+			return nil, fmt.Errorf("decode session %q env: %w", sessionID, err)
 		}
+	}
+	return env, nil
+}
+
+// writeSessionEnvKeyTx reads the row's env map inside tx, sets one key and
+// writes the map back with env_dirty = 1; SetSessionEnvValue records the
+// event and commits afterwards.
+func writeSessionEnvKeyTx(ctx context.Context, tx *sql.Tx, sessionID, key, value string) error {
+	env, err := readSessionEnvTx(ctx, tx, sessionID)
+	if err != nil {
+		return err
 	}
 	env[key] = value
 	newEnvJSON, err := marshalEnv(env)
