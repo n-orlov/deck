@@ -254,29 +254,16 @@ func waitForFifoWriter(ctx context.Context, fd int, stillArmed func(context.Cont
 	probed := false
 	buf := make([]byte, 64*1024)
 	for {
-		n, err := unix.Read(fd, buf)
-		if n > 0 {
-			return buf[:n], nil
-		}
-		// n == 0, err == nil means no writer is connected yet: fall through
-		// to the arming/deadline checks below.
-		if err == unix.EAGAIN {
-			return nil, nil
-		}
-		if err != nil {
-			return nil, err
+		if data, done, err := readFifoOnce(fd, buf); done {
+			return data, err
 		}
 		if err := ctx.Err(); err != nil {
 			return nil, fmt.Errorf("waiting for pipe-pane's job to open the fifo: %w", err)
 		}
 		if !probed && stillArmed != nil && time.Since(start) >= grace {
 			probed = true
-			armed, probeErr := stillArmed(ctx)
-			if probeErr != nil {
-				return nil, fmt.Errorf("no writer after %s; probing whether pipe-pane is still armed failed: %w", grace, probeErr)
-			}
-			if !armed {
-				return nil, fmt.Errorf("pipe-pane is no longer armed on the target after %s without its job ever opening the fifo", grace)
+			if err := probeFifoArming(ctx, stillArmed, grace); err != nil {
+				return nil, err
 			}
 		}
 		if time.Now().After(deadline) {
@@ -284,6 +271,39 @@ func waitForFifoWriter(ctx context.Context, fd int, stillArmed func(context.Cont
 		}
 		time.Sleep(2 * time.Millisecond)
 	}
+}
+
+// readFifoOnce is one raw non-blocking read of the fifo for
+// waitForFifoWriter. done is true when the read settled the wait: data from a
+// writer, EAGAIN (a writer exists, nothing written yet: nil data, nil error)
+// or a real read error. done is false for n == 0 with no error: no writer is
+// connected yet, so the caller keeps polling.
+func readFifoOnce(fd int, buf []byte) (data []byte, done bool, err error) {
+	n, err := unix.Read(fd, buf)
+	if n > 0 {
+		return buf[:n], true, nil
+	}
+	if err == unix.EAGAIN {
+		return nil, true, nil
+	}
+	if err != nil {
+		return nil, true, err
+	}
+	return nil, false, nil
+}
+
+// probeFifoArming asks, once the writer grace has passed, whether tmux still
+// considers a pipe armed on the target: a failed probe or a pipe that is no
+// longer armed ends the wait with an error naming which.
+func probeFifoArming(ctx context.Context, stillArmed func(context.Context) (bool, error), grace time.Duration) error {
+	armed, probeErr := stillArmed(ctx)
+	if probeErr != nil {
+		return fmt.Errorf("no writer after %s; probing whether pipe-pane is still armed failed: %w", grace, probeErr)
+	}
+	if !armed {
+		return fmt.Errorf("pipe-pane is no longer armed on the target after %s without its job ever opening the fifo", grace)
+	}
+	return nil
 }
 
 // Read satisfies io.Reader by reading raw pane bytes off the FIFO. It
