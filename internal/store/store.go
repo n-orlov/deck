@@ -3006,16 +3006,27 @@ func (s *Store) PromoteRecentCwd(ctx context.Context, path string, limit int) er
 		ON CONFLICT(path) DO UPDATE SET used_seq = excluded.used_seq`, path, nextSeq); err != nil {
 		return fmt.Errorf("promote recent cwd %q: %w", path, err)
 	}
+	if err := evictRecentCwdsTx(ctx, tx, limit); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit promote recent cwd: %w", err)
+	}
+	return nil
+}
+
+// evictRecentCwdsTx deletes every recent_cwds row beyond the limit most
+// recently used; limit <= 0 keeps nothing.
+func evictRecentCwdsTx(ctx context.Context, tx *sql.Tx, limit int) error {
 	if limit <= 0 {
 		if _, err := tx.ExecContext(ctx, `DELETE FROM recent_cwds`); err != nil {
 			return fmt.Errorf("evict recent cwds to limit 0: %w", err)
 		}
-	} else if _, err := tx.ExecContext(ctx, `DELETE FROM recent_cwds WHERE path NOT IN (
+		return nil
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM recent_cwds WHERE path NOT IN (
 		SELECT path FROM recent_cwds ORDER BY used_seq DESC LIMIT ?)`, limit); err != nil {
 		return fmt.Errorf("evict recent cwds beyond limit %d: %w", limit, err)
-	}
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("commit promote recent cwd: %w", err)
 	}
 	return nil
 }
