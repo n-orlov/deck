@@ -66,6 +66,21 @@ type checkRunsResponse struct {
 type actionsRun struct {
 	Event        string `json:"event"`
 	CheckSuiteID int64  `json:"check_suite_id"`
+	// Path is the workflow file that produced the run, e.g.
+	// ".github/workflows/ci.yml" (GitHub appends "@<ref>" for some events).
+	Path string `json:"path"`
+}
+
+// ciWorkflowPath is the only workflow file whose "suite" check gates a
+// release: another workflow (pages-pr-publish.yml, say) can publish a
+// check run that is also named "suite", and its green must never count.
+const ciWorkflowPath = ".github/workflows/ci.yml"
+
+// fromCIWorkflow reports whether a run came from ci.yml. The API always
+// reports a path; a run that carries none is not second-guessed.
+func fromCIWorkflow(r actionsRun) bool {
+	path, _, _ := strings.Cut(r.Path, "@")
+	return path == "" || path == ciWorkflowPath
 }
 
 type actionsRunsResponse struct {
@@ -111,7 +126,7 @@ func evaluate(checkRunsBody, actionsRunsBody []byte, sha, checkName string) erro
 	latest, namedTotal, nonGating := latestGatingCheckRun(resp.CheckRuns, gatingSuiteIDs(runs.WorkflowRuns), checkName)
 	if latest == nil {
 		if namedTotal > 0 && nonGating == namedTotal {
-			return fmt.Errorf("commit %s: found %d %q check run(s), but all %d belong to a non-gating (schedule/workflow_dispatch) workflow run, not a push or pull_request one", sha, namedTotal, checkName, nonGating)
+			return fmt.Errorf("commit %s: found %d %q check run(s), but all %d belong to a non-gating workflow run (schedule/workflow_dispatch, or not ci.yml), not a push or pull_request one from ci.yml", sha, namedTotal, checkName, nonGating)
 		}
 		return fmt.Errorf("commit %s: no %q check run from a push or pull_request workflow run found (saw %d %q check run(s) total, %d non-gating)", sha, checkName, namedTotal, checkName, nonGating)
 	}
@@ -125,15 +140,15 @@ func evaluate(checkRunsBody, actionsRunsBody []byte, sha, checkName string) erro
 }
 
 // gatingSuiteIDs returns the set of check_suite ids that count as gating:
-// a check_suite counts as gating only if some workflow run reports that
-// check_suite's id together with a gating event. A check_suite can in
+// a check_suite counts as gating only if some workflow run of ci.yml
+// reports that check_suite's id together with a gating event. A check_suite can in
 // principle have more than one workflow run associated (a re-run creates
 // a new one on the same suite); any of them reporting a gating event is
 // enough.
 func gatingSuiteIDs(workflowRuns []actionsRun) map[int64]bool {
 	gatingSuite := make(map[int64]bool, len(workflowRuns))
 	for _, r := range workflowRuns {
-		if gatingEvents[r.Event] {
+		if gatingEvents[r.Event] && fromCIWorkflow(r) {
 			gatingSuite[r.CheckSuiteID] = true
 		}
 	}
