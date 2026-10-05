@@ -108,35 +108,7 @@ func evaluate(checkRunsBody, actionsRunsBody []byte, sha, checkName string) erro
 		return fmt.Errorf("commit %s: could not parse actions-runs response: %w", sha, err)
 	}
 
-	// A check_suite counts as gating only if some workflow run reports
-	// that check_suite's id together with a gating event. A check_suite
-	// can in principle have more than one workflow run associated (a
-	// re-run creates a new one on the same suite); any of them reporting
-	// a gating event is enough.
-	gatingSuite := make(map[int64]bool, len(runs.WorkflowRuns))
-	for _, r := range runs.WorkflowRuns {
-		if gatingEvents[r.Event] {
-			gatingSuite[r.CheckSuiteID] = true
-		}
-	}
-
-	var latest *checkRun
-	namedTotal, nonGating := 0, 0
-	for i := range resp.CheckRuns {
-		cr := &resp.CheckRuns[i]
-		if cr.Name != checkName {
-			continue
-		}
-		namedTotal++
-		if !gatingSuite[cr.CheckSuite.ID] {
-			nonGating++
-			continue
-		}
-		if latest == nil || cr.StartedAt > latest.StartedAt {
-			latest = cr
-		}
-	}
-
+	latest, namedTotal, nonGating := latestGatingCheckRun(resp.CheckRuns, gatingSuiteIDs(runs.WorkflowRuns), checkName)
 	if latest == nil {
 		if namedTotal > 0 && nonGating == namedTotal {
 			return fmt.Errorf("commit %s: found %d %q check run(s), but all %d belong to a non-gating (schedule/workflow_dispatch) workflow run, not a push or pull_request one", sha, namedTotal, checkName, nonGating)
@@ -150,6 +122,45 @@ func evaluate(checkRunsBody, actionsRunsBody []byte, sha, checkName string) erro
 		return fmt.Errorf("commit %s: %q check run (push/pull_request) concluded %s, not success", sha, checkName, latest.Conclusion)
 	}
 	return nil
+}
+
+// gatingSuiteIDs returns the set of check_suite ids that count as gating:
+// a check_suite counts as gating only if some workflow run reports that
+// check_suite's id together with a gating event. A check_suite can in
+// principle have more than one workflow run associated (a re-run creates
+// a new one on the same suite); any of them reporting a gating event is
+// enough.
+func gatingSuiteIDs(workflowRuns []actionsRun) map[int64]bool {
+	gatingSuite := make(map[int64]bool, len(workflowRuns))
+	for _, r := range workflowRuns {
+		if gatingEvents[r.Event] {
+			gatingSuite[r.CheckSuiteID] = true
+		}
+	}
+	return gatingSuite
+}
+
+// latestGatingCheckRun picks, among the check runs named checkName, the
+// most recently started one whose check_suite is in gatingSuite (nil when
+// there is none). It also reports how many runs carried that name in total
+// and how many of those belonged to a non-gating suite, so evaluate can
+// say exactly what it found.
+func latestGatingCheckRun(checkRuns []checkRun, gatingSuite map[int64]bool, checkName string) (latest *checkRun, namedTotal, nonGating int) {
+	for i := range checkRuns {
+		cr := &checkRuns[i]
+		if cr.Name != checkName {
+			continue
+		}
+		namedTotal++
+		if !gatingSuite[cr.CheckSuite.ID] {
+			nonGating++
+			continue
+		}
+		if latest == nil || cr.StartedAt > latest.StartedAt {
+			latest = cr
+		}
+	}
+	return latest, namedTotal, nonGating
 }
 
 // fetchCheckRuns performs the actual GitHub API call, and follows every
