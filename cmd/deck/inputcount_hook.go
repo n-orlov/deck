@@ -136,6 +136,13 @@ func writeInputCountTemp(dir string, total int64) (name string, ok bool) {
 	if err != nil {
 		return "", false
 	}
+	return fillTemp(tmp, total)
+}
+
+// fillTemp writes total into the freshly created tmp and returns its name;
+// ok is false (with the temp file already removed) when the write or close
+// failed.
+func fillTemp(tmp *os.File, total int64) (name string, ok bool) {
 	name = tmp.Name()
 	if !writeAndClose(tmp, total) {
 		os.Remove(name)

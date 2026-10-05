@@ -195,3 +195,36 @@ func TestWriteInputCountFailuresAreSilentAndLeaveNoTempFile(t *testing.T) {
 		t.Fatalf("directory after a failed rename = %v, want only the untouched %q", entries, "count")
 	}
 }
+
+// TestFillTempRemovesTheTempFileWhenTheWriteCannotSucceed hands fillTemp a
+// file that is already closed, so its write fails: the temp file must be
+// gone and no name reported. With a good file it reports the file's name
+// holding the bare decimal total.
+func TestFillTempRemovesTheTempFileWhenTheWriteCannotSucceed(t *testing.T) {
+	dir := t.TempDir()
+	bad, err := os.CreateTemp(dir, ".deck-input-count-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := bad.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if name, ok := fillTemp(bad, 5); ok || name != "" {
+		t.Fatalf("fillTemp on a closed file = (%q, %v), want (\"\", false)", name, ok)
+	}
+	if _, err := os.Stat(bad.Name()); !os.IsNotExist(err) {
+		t.Fatalf("temp file survived a failed write (stat err %v)", err)
+	}
+
+	good, err := os.CreateTemp(dir, ".deck-input-count-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	name, ok := fillTemp(good, 42)
+	if !ok || name != good.Name() {
+		t.Fatalf("fillTemp = (%q, %v), want (%q, true)", name, ok, good.Name())
+	}
+	if got := readCount(t, name); got != 42 {
+		t.Fatalf("temp file holds %d, want 42", got)
+	}
+}
