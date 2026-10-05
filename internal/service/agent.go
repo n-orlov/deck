@@ -332,14 +332,29 @@ func buildPaneCommand(globalPreLaunch, preLaunch string, loginShell bool, argv [
 	if globalPreLaunch == "" && preLaunch == "" && !loginShell {
 		return argv, nil
 	}
-	shell := "/bin/sh"
-	flag := "-c"
-	if loginShell {
-		if s := os.Getenv("SHELL"); s != "" {
-			shell = s
-		}
-		flag = "-lc"
+	shell, flag := paneShell(loginShell)
+	script := preLaunchScript(globalPreLaunch, preLaunch)
+	// `$0` after the script is a dummy positional so `"$@"` inside the
+	// script starts at the real argv, not at the script text itself.
+	command := append([]string{shell, flag, script, "deck-agent"}, argv...)
+	return command, nil
+}
+
+// paneShell is the shell and flag that run a wrapped pane command: /bin/sh -c,
+// or, for a login shell, $SHELL -lc (still /bin/sh when SHELL is unset).
+func paneShell(loginShell bool) (shell, flag string) {
+	if !loginShell {
+		return "/bin/sh", "-c"
 	}
+	if s := os.Getenv("SHELL"); s != "" {
+		return s, "-lc"
+	}
+	return "/bin/sh", "-lc"
+}
+
+// preLaunchScript joins the global and per-session pre-launch hooks, global
+// first, in front of the `exec "$@"` that replaces the shell with the agent.
+func preLaunchScript(globalPreLaunch, preLaunch string) string {
 	script := "exec \"$@\""
 	if preLaunch != "" {
 		script = preLaunch + " && " + script
@@ -347,10 +362,7 @@ func buildPaneCommand(globalPreLaunch, preLaunch string, loginShell bool, argv [
 	if globalPreLaunch != "" {
 		script = globalPreLaunch + " && " + script
 	}
-	// `$0` after the script is a dummy positional so `"$@"` inside the
-	// script starts at the real argv, not at the script text itself.
-	command := append([]string{shell, flag, script, "deck-agent"}, argv...)
-	return command, nil
+	return script
 }
 
 // applyInstrumentation appends adapter-owned argv and merges its environment
