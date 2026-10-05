@@ -2059,8 +2059,10 @@ running deck's, or the file no longer exists, the `i` detail dialog shows
 footer's status reason for the row ends with the same text after a ` · `, so it is visible
 without opening `i`. It is a hint on a healthy row: the row's status, source and stored reason
 are untouched and it is never an error state. It stays until a restart or resume relaunches the
-agent under the running deck, which records that path and clears it. A row that recorded no
-path (created before schema 9, Pi, a shell) shows no hint.
+agent under the running deck, which records that path and clears it. The hint reads only the
+row's recorded path, never its agent kind, so it holds the same way for Claude, Codex and Pi; a
+row that recorded no path (created before schema 9, and every Pi or shell launch, which records
+none) shows no hint.
 
 **The `i` detail dialog's `Hook declined` line is an alarm, so it is shown only for a decline
 that is not expected.** A hook declined because it came from a replaced launch (§9.3) is

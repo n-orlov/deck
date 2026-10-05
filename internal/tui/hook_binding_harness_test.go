@@ -12,6 +12,9 @@ import (
 	"github.com/n-orlov/deck/internal/store"
 )
 
+// hookBindingHarnesses are the three agent harnesses R204 (#56) covers.
+var hookBindingHarnesses = []string{"claude", "codex", "pi"}
+
 // hookBindingModelFor is hookBindingModel for a session of any agent kind.
 func hookBindingModelFor(kind, running, bound string) Model {
 	model := New(nil, config.Settings{}, "")
@@ -21,79 +24,143 @@ func hookBindingModelFor(kind, running, bound string) Model {
 	return model
 }
 
-// R204c (#56) for the other harnesses: a Codex session launched by another
-// deck binary, or by one that is gone, shows the hint in `i` and the row's
-// reason exactly like Claude; the hint is advice, not an error; restart (R)
-// and resume clear it. A Pi session records no hook executable (its launch
-// builds no hook command), so it shows no hint even beside a deck that
-// differs from whatever launched it.
-func TestStaleHookBindingHintForCodexAndPi(t *testing.T) {
-	running := existingBinary(t, "deck-new")
-	older := existingBinary(t, "deck-old")
+// relaunchMsgs are the two relaunches (restart R, resume) that record the
+// running deck as the session's hook executable.
+var relaunchMsgs = map[string]func(store.Session) tea.Msg{
+	"restart": func(s store.Session) tea.Msg { return sessionRestarted{session: s, outcome: service.ResumeStarted} },
+	"resume":  func(s store.Session) tea.Msg { return sessionResumed{session: s, outcome: service.ResumeStarted} },
+}
 
-	t.Run("codex differs", func(t *testing.T) {
-		model := hookBindingModelFor("codex", running, older)
-		want := staleHint(older)
-		model.detail = true
-		if view := model.View(); !strings.Contains(flat(view), want) || strings.Contains(strings.ToLower(view), "error") {
-			t.Fatalf("`i` detail lacks %q (or shows an error):\n%s", want, view)
-		}
-		if reason := model.selectedRowReason(); !strings.HasPrefix(reason, "running") || !strings.Contains(reason, want) || !strings.Contains(reason, "tool running") {
-			t.Fatalf("row status reason = %q, want the stored reason and %q", reason, want)
-		}
-	})
+// relaunched applies a relaunch message carrying `refreshed`, then the reload
+// that picks the relaunched row up, and returns the resulting model.
+func relaunched(model Model, msg tea.Msg, refreshed store.Session) Model {
+	updated, _ := model.Update(msg)
+	updated, _ = updated.Update(sessionsLoaded{sessions: []store.Session{refreshed}})
+	return updated.(Model)
+}
 
-	t.Run("codex missing", func(t *testing.T) {
-		gone := existingBinary(t, "deck-gone")
-		model := hookBindingModelFor("codex", gone, gone)
-		if reason := model.selectedRowReason(); strings.Contains(reason, "hooks:") {
-			t.Fatalf("existing, identical binary shows a hint: %q", reason)
-		}
-		if err := os.Remove(gone); err != nil {
-			t.Fatal(err)
-		}
-		if reason := model.selectedRowReason(); !strings.Contains(reason, staleHint(gone)) {
-			t.Fatalf("row status reason = %q, want %q for a missing file", reason, staleHint(gone))
-		}
-	})
-
-	t.Run("pi never shows it", func(t *testing.T) {
-		model := hookBindingModelFor("pi", running, "")
-		model.detail = true
-		if view := model.View(); strings.Contains(flat(view), "hooks: bound to") {
-			t.Fatalf("a Pi session shows the hint:\n%s", view)
-		}
-		if reason := model.selectedRowReason(); strings.Contains(reason, "hooks:") {
-			t.Fatalf("a Pi session shows the hint in its reason: %q", reason)
-		}
-	})
-
-	for name, msg := range map[string]func(store.Session) tea.Msg{
-		"restart": func(s store.Session) tea.Msg { return sessionRestarted{session: s, outcome: service.ResumeStarted} },
-		"resume":  func(s store.Session) tea.Msg { return sessionResumed{session: s, outcome: service.ResumeStarted} },
-	} {
-		t.Run("codex clears after "+name, func(t *testing.T) {
-			model := hookBindingModelFor("codex", running, older)
-			if !strings.Contains(model.selectedRowReason(), "hooks: bound to") {
-				t.Fatal("precondition: the stale binding must show the hint")
+// TestStaleHookBindingHintPerHarnessWhenTheLaunchExecutableDiffers mirrors
+// TestStaleHookBindingHintWhenTheLaunchExecutableDiffers for every harness:
+// a Claude, Codex or Pi row bound to another deck binary shows the hint in
+// `i` and in the row's status reason. The hint reads only the row's recorded
+// binding, never its agent kind.
+func TestStaleHookBindingHintPerHarnessWhenTheLaunchExecutableDiffers(t *testing.T) {
+	for _, kind := range hookBindingHarnesses {
+		t.Run(kind, func(t *testing.T) {
+			older := existingBinary(t, "deck-old")
+			model := hookBindingModelFor(kind, existingBinary(t, "deck-new"), older)
+			want := staleHint(older)
+			model.detail = true
+			if view := model.View(); !strings.Contains(flat(view), want) {
+				t.Fatalf("%s: `i` detail lacks %q:\n%s", kind, want, view)
 			}
-			refreshed := model.sessions[0]
-			refreshed.HookExecutable = running
-			refreshed.Status = "starting"
-			refreshed.StatusReason = ""
-			updated, _ := model.Update(msg(refreshed))
-			updated, _ = updated.Update(sessionsLoaded{sessions: []store.Session{refreshed}})
-			after := updated.(Model)
-			if reason := after.selectedRowReason(); strings.Contains(reason, "hooks:") {
-				t.Fatalf("hint survives %s: %q", name, reason)
-			}
-			if session, _ := after.selectedSession(); session.Status == "error" {
-				t.Fatalf("%s left the row in an error state", name)
-			}
-			after.detail = true
-			if view := after.View(); strings.Contains(view, "hooks: bound to") || strings.Contains(strings.ToLower(view), "error") {
-				t.Fatalf("detail after %s still hints or errors:\n%s", name, view)
+			if reason := model.selectedRowReason(); !strings.Contains(reason, want) || !strings.Contains(reason, "tool running") {
+				t.Fatalf("%s: row status reason = %q, want the stored reason and %q", kind, reason, want)
 			}
 		})
+	}
+}
+
+// TestStaleHookBindingHintPerHarnessWhenTheLaunchExecutableIsMissing mirrors
+// TestStaleHookBindingHintWhenTheLaunchExecutableIsMissing for every harness.
+func TestStaleHookBindingHintPerHarnessWhenTheLaunchExecutableIsMissing(t *testing.T) {
+	for _, kind := range hookBindingHarnesses {
+		t.Run(kind, func(t *testing.T) {
+			binary := existingBinary(t, "deck")
+			model := hookBindingModelFor(kind, binary, binary)
+			if reason := model.selectedRowReason(); strings.Contains(reason, "hooks:") {
+				t.Fatalf("%s: existing, identical binary shows a hint: %q", kind, reason)
+			}
+			if err := os.Remove(binary); err != nil {
+				t.Fatal(err)
+			}
+			want := staleHint(binary)
+			if reason := model.selectedRowReason(); !strings.Contains(reason, want) {
+				t.Fatalf("%s: row status reason = %q, want %q for a missing file", kind, reason, want)
+			}
+			model.detail = true
+			if view := model.View(); !strings.Contains(flat(view), want) {
+				t.Fatalf("%s: `i` detail lacks %q for a missing file:\n%s", kind, want, view)
+			}
+		})
+	}
+}
+
+// TestNoStaleHookBindingHintPerHarnessWithoutARecordedExecutable mirrors
+// TestNoStaleHookBindingHintWithoutARecordedExecutable for every harness. For
+// Pi this is the row its launch path actually writes (Pi's Instrument builds
+// no hook command, so the launcher records no binding; see
+// TestCodexRecordsAndPiAndShellDoNotRecordAHookExecutable in internal/service).
+func TestNoStaleHookBindingHintPerHarnessWithoutARecordedExecutable(t *testing.T) {
+	for _, kind := range hookBindingHarnesses {
+		t.Run(kind, func(t *testing.T) {
+			model := hookBindingModelFor(kind, existingBinary(t, "deck"), "")
+			if reason := model.selectedRowReason(); strings.Contains(reason, "hooks:") {
+				t.Fatalf("%s: unrecorded binding shows a hint: %q", kind, reason)
+			}
+			model.detail = true
+			if view := model.View(); strings.Contains(flat(view), "hooks: bound to") {
+				t.Fatalf("%s: unrecorded binding shows a hint in `i`:\n%s", kind, view)
+			}
+		})
+	}
+}
+
+// TestStaleHookBindingHintPerHarnessIsNotAnErrorState mirrors
+// TestStaleHookBindingHintIsNotAnErrorState for every harness.
+func TestStaleHookBindingHintPerHarnessIsNotAnErrorState(t *testing.T) {
+	for _, kind := range hookBindingHarnesses {
+		t.Run(kind, func(t *testing.T) {
+			model := hookBindingModelFor(kind, existingBinary(t, "deck-new"), existingBinary(t, "deck-old"))
+			session, _ := model.selectedSession()
+			if session.Status != "running" {
+				t.Fatalf("%s: status = %q, want running", kind, session.Status)
+			}
+			if reason := model.selectedRowReason(); !strings.HasPrefix(reason, "running") {
+				t.Fatalf("%s: reason = %q, want the row's own status first", kind, reason)
+			}
+			if view := model.View(); strings.Contains(strings.ToLower(view), "error") {
+				t.Fatalf("%s: a stale binding put an error on screen:\n%s", kind, view)
+			}
+		})
+	}
+}
+
+// TestStaleHookBindingHintPerHarnessClearsAfterRestartAndResume mirrors
+// TestStaleHookBindingHintClearsAfterRestartAndResume for every harness: the
+// relaunched row is bound to the running deck (Claude, Codex) or to nothing
+// (Pi, whose relaunch records no binding, see
+// TestRestartRebindsCodexAndLeavesPiUnbound in internal/service), and either
+// way it carries no hint and is not in an error state.
+func TestStaleHookBindingHintPerHarnessClearsAfterRestartAndResume(t *testing.T) {
+	running := existingBinary(t, "deck-new")
+	for _, kind := range hookBindingHarnesses {
+		rebound := running
+		if kind == "pi" {
+			rebound = ""
+		}
+		for name, msg := range relaunchMsgs {
+			t.Run(kind+" "+name, func(t *testing.T) {
+				model := hookBindingModelFor(kind, running, existingBinary(t, "deck-old"))
+				if !strings.Contains(model.selectedRowReason(), "hooks: bound to") {
+					t.Fatal("precondition: the stale binding must show the hint")
+				}
+				refreshed := model.sessions[0]
+				refreshed.HookExecutable = rebound
+				refreshed.Status = "starting"
+				refreshed.StatusReason = ""
+				after := relaunched(model, msg(refreshed), refreshed)
+				if reason := after.selectedRowReason(); strings.Contains(reason, "hooks:") {
+					t.Fatalf("%s: hint survives %s: %q", kind, name, reason)
+				}
+				if session, _ := after.selectedSession(); session.Status == "error" {
+					t.Fatalf("%s: %s left the row in an error state", kind, name)
+				}
+				after.detail = true
+				if view := after.View(); strings.Contains(view, "hooks: bound to") || strings.Contains(strings.ToLower(view), "error") {
+					t.Fatalf("%s: detail after %s still hints or errors:\n%s", kind, name, view)
+				}
+			})
+		}
 	}
 }
