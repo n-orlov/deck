@@ -294,30 +294,38 @@ func findSuite(root *node, name string) *node {
 func fold(pass *node, fails []*node) *node {
 	out := &node{XMLName: pass.XMLName, Attrs: append([]xml.Attr(nil), pass.Attrs...), Text: pass.Text}
 	for _, f := range fails {
-		name, src := "rerunFailure", f.child("failure")
-		if src == nil {
-			if e := f.child("error"); e != nil {
-				name, src = "rerunError", e
-			}
-		}
-		if src == nil && outcomeOf(f) == errored {
-			name = "rerunError"
-		}
-		r := &node{XMLName: xml.Name{Local: name}}
-		if src != nil {
-			for _, a := range src.Attrs {
-				if a.Name.Local == "message" || a.Name.Local == "type" {
-					r.Attrs = append(r.Attrs, a)
-				}
-			}
-			r.Text = src.Text
-		} else {
-			r.setAttr("message", "status "+f.attr("status"))
-		}
-		out.Nodes = append(out.Nodes, r)
+		out.Nodes = append(out.Nodes, rerunNode(f))
 	}
 	out.Nodes = append(out.Nodes, pass.Nodes...)
 	return out
+}
+
+// rerunNode turns one failed earlier attempt into the <rerunFailure> or
+// <rerunError> element Allure reads as a hidden retry: it carries the
+// failure's (or error's) message, type and text, and when the attempt has
+// neither child, only a status-derived message.
+func rerunNode(f *node) *node {
+	name, src := "rerunFailure", f.child("failure")
+	if src == nil {
+		if e := f.child("error"); e != nil {
+			name, src = "rerunError", e
+		}
+	}
+	if src == nil && outcomeOf(f) == errored {
+		name = "rerunError"
+	}
+	r := &node{XMLName: xml.Name{Local: name}}
+	if src != nil {
+		for _, a := range src.Attrs {
+			if a.Name.Local == "message" || a.Name.Local == "type" {
+				r.Attrs = append(r.Attrs, a)
+			}
+		}
+		r.Text = src.Text
+	} else {
+		r.setAttr("message", "status "+f.attr("status"))
+	}
+	return r
 }
 
 // recount rewrites every tests/failures/errors (and skipped, where the
