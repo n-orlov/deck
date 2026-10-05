@@ -2840,6 +2840,9 @@ in the help view.
   tag publishes only for a sha whose suite check is green. Only suite runs triggered by a push
   or a pull request count: nightly (schedule) and manual (`workflow_dispatch`) runs alert but
   never gate a release, so a flaky or `-race` nightly cannot block a sha whose push run passed.
+  Only the `suite` check published by `ci.yml` counts: a check run named `suite` from any other
+  workflow (such as `pages-pr-publish.yml`) is ignored, green or red. `release.yml` pins its
+  actions by commit SHA like the other workflows.
   **Main's Actions history is a truthful signal:** every run on `main` is green unless the code
   is broken. Every push to `main` gets its own complete run, never cancelled by a later push; the
   nightly and manual lane never shares a concurrency group with pushes, so a push cannot cancel

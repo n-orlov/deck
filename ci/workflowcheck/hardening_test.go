@@ -3,8 +3,7 @@
 // env, never ${{ }} interpolation inside a run script, (2) pin every
 // third-party action by a 40-hex commit SHA with the tag in a trailing
 // comment, and (3) drop the GITHUB_TOKEN extraheader from site/.git/config
-// once the report job's push is done. release.yml is protected and is not
-// read here.
+// once the report job's push is done.
 package workflowcheck
 
 import (
@@ -87,9 +86,10 @@ var (
 	tagCommentRe = regexp.MustCompile(`^\s+#\s*v?[0-9][A-Za-z0-9._-]*\s*$`)
 )
 
-// TestCIAndPagesPublishPinActionsBySHA: criterion (2).
+// TestCIAndPagesPublishPinActionsBySHA: criterion (2); release.yml is pinned
+// the same way (R205).
 func TestCIAndPagesPublishPinActionsBySHA(t *testing.T) {
-	for _, name := range []string{"ci.yml", "pages-pr-publish.yml"} {
+	for _, name := range []string{"ci.yml", "pages-pr-publish.yml", "release.yml"} {
 		matches := usesLineRe.FindAllStringSubmatch(string(readWorkflowFile(t, name)), -1)
 		if len(matches) == 0 {
 			t.Fatalf("%s: no uses: line found, the probe would pass vacuously", name)
