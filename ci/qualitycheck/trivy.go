@@ -221,7 +221,13 @@ func runTrivyGate(o trivyOptions) (ok bool, output string, err error) {
 			"\nwhat to do: every entry needs \"<ID> review-by:YYYY-MM-DD # <reason>\" with a date not yet passed; " +
 			"remove the entry once the finding is fixed.\n", nil
 	}
+	return runTrivyScan(o)
+}
 
+// runTrivyScan runs trivy over the target (retrying a failed database
+// download) and sorts the outcome the way runTrivyGate documents: a clean
+// scan passes, exit code 1 is a finding, anything else is a tooling error.
+func runTrivyScan(o trivyOptions) (ok bool, output string, err error) {
 	bin := o.Binary
 	if bin == "" {
 		bin = "trivy"
