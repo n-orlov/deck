@@ -315,6 +315,21 @@ func atomicWrite(path string, data []byte) error {
 		}
 	}()
 
+	if err := writeTempFile(tmp, data); err != nil {
+		return err
+	}
+	if err := os.Rename(tmpPath, path); err != nil {
+		return fmt.Errorf("rename %s to %s: %w", tmpPath, path, err)
+	}
+	succeeded = true
+	return nil
+}
+
+// writeTempFile fills the already-created temp file tmp with data, flushes
+// it to disk, closes it and restricts it to its owner. tmp is closed on
+// every path, so atomicWrite's rename only ever sees a finished file.
+func writeTempFile(tmp *os.File, data []byte) error {
+	tmpPath := tmp.Name()
 	if _, err := tmp.Write(data); err != nil {
 		return fmt.Errorf("write %s: %w", tmpPath, errors.Join(err, tmp.Close()))
 	}
@@ -327,9 +342,5 @@ func atomicWrite(path string, data []byte) error {
 	if err := os.Chmod(tmpPath, 0o600); err != nil {
 		return fmt.Errorf("chmod %s: %w", tmpPath, err)
 	}
-	if err := os.Rename(tmpPath, path); err != nil {
-		return fmt.Errorf("rename %s to %s: %w", tmpPath, path, err)
-	}
-	succeeded = true
 	return nil
 }
