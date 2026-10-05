@@ -32,16 +32,27 @@ func (s Service) SetSessionEnv(ctx context.Context, sessionID, key, value string
 	if err := s.Store.SetSessionEnvValue(ctx, sessionID, key, value, "user", s.Clock.Now().UnixMilli()); err != nil {
 		return store.Session{}, err
 	}
-	if session.Slug != "" {
-		live, err := s.TMux.Exists(ctx, session.Slug)
-		if err != nil {
-			return store.Session{}, fmt.Errorf("check live session %q: %w", session.Name, err)
-		}
-		if live {
-			if err := s.TMux.SetEnvironment(ctx, session.Slug, key, value); err != nil {
-				return store.Session{}, fmt.Errorf("mirror environment for session %q: %w", session.Name, err)
-			}
-		}
+	if err := s.mirrorSessionEnv(ctx, session, key, value); err != nil {
+		return store.Session{}, err
 	}
 	return s.Store.GetSession(ctx, sessionID)
+}
+
+// mirrorSessionEnv copies the edited key into tmux's environment table when
+// the session's pane exists right now, so any future pane inherits it.
+func (s Service) mirrorSessionEnv(ctx context.Context, session store.Session, key, value string) error {
+	if session.Slug == "" {
+		return nil
+	}
+	live, err := s.TMux.Exists(ctx, session.Slug)
+	if err != nil {
+		return fmt.Errorf("check live session %q: %w", session.Name, err)
+	}
+	if !live {
+		return nil
+	}
+	if err := s.TMux.SetEnvironment(ctx, session.Slug, key, value); err != nil {
+		return fmt.Errorf("mirror environment for session %q: %w", session.Name, err)
+	}
+	return nil
 }
