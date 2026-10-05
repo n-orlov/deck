@@ -41,7 +41,9 @@ type PaneSeedState struct {
 	// mode.
 	KeypadFlag bool
 	// The five mouse-tracking flags tmux tracks independently:
-	// MouseAnyFlag (#{mouse_any_flag}, mode 1003), MouseButtonFlag
+	// MouseAnyFlag (#{mouse_all_flag}, mode 1003: tmux's own
+	// #{mouse_any_flag} is true for ANY of the three tracking levels, so it
+	// cannot tell 1000 from 1003), MouseButtonFlag
 	// (#{mouse_button_flag}, mode 1002), MouseSGRFlag
 	// (#{mouse_sgr_flag}, mode 1006 encoding), MouseStandardFlag
 	// (#{mouse_standard_flag}, mode 1000) and MouseUTF8Flag
@@ -73,7 +75,7 @@ type PaneSeedState struct {
 // booleans or bare, unsigned-looking integers).
 const paneSeedStateFormat = "#{alternate_on}|#{cursor_x}|#{cursor_y}|#{cursor_flag}|#{insert_flag}|" +
 	"#{keypad_cursor_flag}|#{keypad_flag}|" +
-	"#{mouse_any_flag}|#{mouse_button_flag}|#{mouse_sgr_flag}|#{mouse_standard_flag}|#{mouse_utf8_flag}|" +
+	"#{mouse_all_flag}|#{mouse_button_flag}|#{mouse_sgr_flag}|#{mouse_standard_flag}|#{mouse_utf8_flag}|" +
 	"#{wrap_flag}|#{origin_flag}|#{scroll_region_upper}|#{scroll_region_lower}"
 
 // paneSeedStateFieldCount is len(strings.Split(paneSeedStateFormat, "|")).

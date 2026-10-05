@@ -546,6 +546,9 @@ func (m *Model) settingsApplyLiveScalars(previous config.FileConfig) {
 	if settingsLiveChanged(overrides, "ui.attach_on_click", m.settingsEdits.AttachOnClick, previous.AttachOnClick) {
 		m.settings.AttachOnClick = m.settingsEdits.AttachOnClick
 	}
+	if settingsLiveChanged(overrides, "ui.select_on_drag", m.settingsEdits.SelectOnDrag, previous.SelectOnDrag) {
+		m.settings.SelectOnDrag = m.settingsEdits.SelectOnDrag
+	}
 	if settingsLiveChanged(overrides, "ui.attach_on_resume", m.settingsEdits.AttachOnResume, previous.AttachOnResume) {
 		m.settings.AttachOnResume = m.settingsEdits.AttachOnResume
 	}
@@ -1565,6 +1568,7 @@ func settingsEditsFromSettings(s config.Settings) config.FileConfig {
 		PreviewFit:           s.File.PreviewFit,
 		AttachOnNew:          s.File.AttachOnNew,
 		AttachOnClick:        s.File.AttachOnClick,
+		SelectOnDrag:         s.File.SelectOnDrag,
 		AttachOnResume:       s.File.AttachOnResume,
 		PreviewPaint:         s.File.PreviewPaint,
 		SortOrder:            s.File.SortOrder,
@@ -1636,6 +1640,10 @@ var settingsAttachToggles = map[string]struct {
 	"ui.attach_on_click": {
 		get: func(c config.FileConfig) bool { return c.AttachOnClick },
 		set: func(c *config.FileConfig, v bool) { c.AttachOnClick = v },
+	},
+	"ui.select_on_drag": {
+		get: func(c config.FileConfig) bool { return c.SelectOnDrag },
+		set: func(c *config.FileConfig, v bool) { c.SelectOnDrag = v },
 	},
 	"ui.attach_on_resume": {
 		get: func(c config.FileConfig) bool { return c.AttachOnResume },
@@ -1824,6 +1832,8 @@ func settingsFieldRunningValueDisplay(f config.Field, s config.Settings, fallbac
 		return onOff(s.AttachOnNew)
 	case "ui.attach_on_click":
 		return onOff(s.AttachOnClick)
+	case "ui.select_on_drag":
+		return onOff(s.SelectOnDrag)
 	case "ui.attach_on_resume":
 		return onOff(s.AttachOnResume)
 	case "ui.preview_paint":

@@ -48,6 +48,7 @@ type settingsResolvedSnapshot struct {
 	PreviewFit         bool
 	AttachOnNew        bool
 	AttachOnClick      bool
+	SelectOnDrag       bool
 	AttachOnResume     bool
 	PreviewPaint       string
 	RecentCwdLimit     int
@@ -77,6 +78,7 @@ func snapshotResolvedSettings(s config.Settings) settingsResolvedSnapshot {
 		PreviewFit:         s.PreviewFit,
 		AttachOnNew:        s.AttachOnNew,
 		AttachOnClick:      s.AttachOnClick,
+		SelectOnDrag:       s.SelectOnDrag,
 		AttachOnResume:     s.AttachOnResume,
 		PreviewPaint:       s.PreviewPaint,
 		RecentCwdLimit:     s.RecentCwdLimit,

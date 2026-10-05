@@ -858,6 +858,72 @@ func TestConfigFileUIAttachOnClickDefaultsToTrueEnvOverridesAndRoundTrips(t *tes
 	}
 }
 
+func TestConfigFileUISelectOnDragDefaultsToTrueEnvOverridesAndRoundTrips(t *testing.T) {
+	// GH #67 (SPEC §6.5, §11.5, §11.8): absent file/key defaults to true.
+	settings, err := LoadFrom(environment(map[string]string{"DECK_HOME": t.TempDir()}), fakeHome)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !settings.SelectOnDrag {
+		t.Fatal("SelectOnDrag should default to true when config.toml is absent")
+	}
+
+	dir := writeConfigFile(t, "[ui]\nselect_on_drag = false\n")
+	settings, err = LoadFrom(environment(map[string]string{"DECK_HOME": dir}), fakeHome)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if settings.SelectOnDrag {
+		t.Fatal("[ui] select_on_drag = false should clear Settings.SelectOnDrag")
+	}
+	if _, overridden := settings.EnvOverrides["ui.select_on_drag"]; overridden {
+		t.Fatal("ui.select_on_drag reported as env-overridden with no DECK_SELECT_ON_DRAG set")
+	}
+
+	// DECK_SELECT_ON_DRAG outranks the file and is recorded as an
+	// override so settings never writes it back.
+	settings, err = LoadFrom(environment(map[string]string{"DECK_HOME": dir, "DECK_SELECT_ON_DRAG": "1"}), fakeHome)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !settings.SelectOnDrag {
+		t.Fatal("DECK_SELECT_ON_DRAG=1 should override [ui] select_on_drag = false")
+	}
+	if settings.File.SelectOnDrag {
+		t.Fatal("Settings.File.SelectOnDrag should keep the file's own false under an env override")
+	}
+	if got := settings.EnvOverrides["ui.select_on_drag"]; got != "DECK_SELECT_ON_DRAG" {
+		t.Fatalf("EnvOverrides[ui.select_on_drag] = %q, want DECK_SELECT_ON_DRAG", got)
+	}
+	if _, err := LoadFrom(environment(map[string]string{"DECK_HOME": dir, "DECK_SELECT_ON_DRAG": "sometimes"}), fakeHome); err == nil {
+		t.Fatal("DECK_SELECT_ON_DRAG=sometimes was accepted")
+	}
+
+	path := filepath.Join(dir, "config.toml")
+	cfg, err := loadConfigFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.SelectOnDrag = true
+	if err := WriteConfigFile(path, cfg); err != nil {
+		t.Fatal(err)
+	}
+	written, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(written), "select_on_drag = true") {
+		t.Fatalf("write did not record select_on_drag = true; got:\n%s", written)
+	}
+	rereadCfg, err := loadConfigFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !rereadCfg.SelectOnDrag {
+		t.Fatal("re-reading the written file should yield select_on_drag = true")
+	}
+}
+
 func TestConfigFileUIAttachOnResumeDefaultsToFalseEnvOverridesAndRoundTrips(t *testing.T) {
 	// GH #52 (SPEC §6.5, §9.1): absent file/key defaults to false, so a
 	// resume keeps today's list-only behaviour.

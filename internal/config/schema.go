@@ -631,6 +631,25 @@ var Schema = []Field{
 	},
 	{
 		Section: "ui",
+		Key:     "select_on_drag",
+		Kind:    KindToggle,
+		Default: true,
+		Description: "Click and drag to select. When true, a left-button drag over " +
+			"the interactive preview selects text, highlights it and copies it on " +
+			"release, and the pane program receives nothing from the drag. false " +
+			"forwards the drag to a pane program that tracks the mouse as press, " +
+			"motion and release reports instead: nothing is highlighted and " +
+			"nothing is copied (Shift+drag still selects). A plain click is " +
+			"forwarded either way (SPEC §11.8). On by default. DECK_SELECT_ON_DRAG " +
+			"overrides the file when set.",
+		// R202c: onInteractiveMouse (internal/tui) reads
+		// m.settings.SelectOnDrag fresh on every press, and
+		// settingsApplyLiveFields copies a saved change into it -- the same
+		// live-read shape ui.attach_on_click above has.
+		Scope: ScopeGlobal,
+	},
+	{
+		Section: "ui",
 		Key:     "attach_on_resume",
 		Kind:    KindToggle,
 		Default: false,

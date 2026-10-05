@@ -201,6 +201,33 @@ func TestPaneSeedStateReadsEachNonDefaultFieldFromARealPane(t *testing.T) {
 	}
 }
 
+// TestPaneSeedStateMouseAnyFlagIsOnlyMode1003 pins that a pane tracking
+// at level 1000 or 1002 does not read back as mode 1003: tmux's
+// #{mouse_any_flag} is true for every tracking level, so the seed must
+// read #{mouse_all_flag} instead, or a program that asked for press and
+// release only would be given motion reports (R202c).
+func TestPaneSeedStateMouseAnyFlagIsOnlyMode1003(t *testing.T) {
+	for _, tc := range []struct{ name, bytes string }{
+		{"standard", `\033[?1000h`},
+		{"button", `\033[?1002h`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			socket := geometrySocket("seed-any-" + tc.name)
+			cleanup := newBareGeometrySession(t, socket, "s0", 40, 10)
+			defer cleanup()
+			client := Client{Socket: socket, Timeout: 5 * time.Second}
+			runInPaneBlocking(t, socket, tc.bytes)
+			state, err := client.PaneSeedState(context.Background(), "s0")
+			if err != nil {
+				t.Fatalf("PaneSeedState: %v", err)
+			}
+			if state.MouseAnyFlag {
+				t.Fatalf("after %s MouseAnyFlag (mode 1003) is set: %+v", tc.bytes, state)
+			}
+		})
+	}
+}
+
 // Dangerous escape classes a plain `capture-pane -p -e` snapshot must
 // NEVER contain, per PRD II-19's claim that a capture carries cell
 // content and SGR only: a DEC private mode set/reset (CSI ? ... h/l), a

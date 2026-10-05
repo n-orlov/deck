@@ -214,9 +214,17 @@ func (m Model) interactiveSelectionMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) 
 // interactiveLeftMouse: press arms a selection, motion makes it a drag, and
 // the release either copies the drag or, when no motion happened, is a click
 // forwarded at the press cell.
+//
+// With [ui] select_on_drag false the left button is the pane program's
+// instead (interactive_drag_forward.go): a press without Shift, the motion
+// that follows it and the release are forwarded as reports, and nothing is
+// selected. Shift on the press keeps the selection route.
 func (m Model) interactiveLeftMouse(msg tea.MouseMsg) Model {
 	switch msg.Action {
 	case tea.MouseActionPress:
+		if !m.settings.SelectOnDrag && !msg.Shift {
+			return m.forwardInteractiveDragPress(msg)
+		}
 		if updated, ok := m.beginInteractiveSelection(msg.X, msg.Y); ok {
 			return updated
 		}
@@ -224,10 +232,12 @@ func (m Model) interactiveLeftMouse(msg tea.MouseMsg) Model {
 		if m.interactiveSelecting {
 			return m.updateInteractiveSelection(msg.X, msg.Y)
 		}
+		return m.forwardInteractiveDragStep(msg, mouseReportMotion)
 	case tea.MouseActionRelease:
 		if m.interactiveSelecting {
 			return m.commitInteractiveSelection(msg.Shift)
 		}
+		return m.forwardInteractiveDragStep(msg, mouseReportRelease)
 	}
 	return m
 }

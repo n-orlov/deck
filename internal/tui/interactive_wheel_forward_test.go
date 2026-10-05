@@ -78,7 +78,7 @@ func wheelFixtureModelScript(t *testing.T, name, script, wantFlags string) (Mode
 		}
 	}
 
-	m := New(nil, config.Settings{Mouse: true, Color: true}, "")
+	m := New(nil, config.Settings{Mouse: true, Color: true, SelectOnDrag: true}, "")
 	var sessions []store.Session
 	for i := 0; i < 30; i++ {
 		id := fmt.Sprintf("s%02d", i)
