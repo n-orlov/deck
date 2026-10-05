@@ -2162,18 +2162,42 @@ func (s *Store) EnforceEventRetention(ctx context.Context, retentionDays int, no
 	if now <= 0 {
 		return errors.New("event retention timestamp is required")
 	}
-	lastRunRaw, err := s.getUIState(ctx, eventRetentionLastRunKey, "0")
+	throttled, err := s.throttleActive(ctx, eventRetentionLastRunKey, now, eventRetentionMinInterval)
 	if err != nil {
 		return fmt.Errorf("read event retention throttle: %w", err)
+	}
+	if throttled {
+		return nil
+	}
+	cutoff := now - int64(retentionDays)*24*time.Hour.Milliseconds()
+	if err := s.deleteRetiredEvents(ctx, cutoff); err != nil {
+		return err
+	}
+	if err := s.setUIState(ctx, eventRetentionLastRunKey, strconv.FormatInt(now, 10)); err != nil {
+		return fmt.Errorf("write event retention throttle: %w", err)
+	}
+	return nil
+}
+
+// throttleActive reports whether the pass recorded under the ui_state key
+// lastRunKey ran less than interval before now. A missing or unparsable
+// stamp counts as "never run" and is never throttled.
+func (s *Store) throttleActive(ctx context.Context, lastRunKey string, now int64, interval time.Duration) (bool, error) {
+	lastRunRaw, err := s.getUIState(ctx, lastRunKey, "0")
+	if err != nil {
+		return false, err
 	}
 	lastRun, err := strconv.ParseInt(lastRunRaw, 10, 64)
 	if err != nil {
 		lastRun = 0
 	}
-	if lastRun != 0 && now-lastRun < eventRetentionMinInterval.Milliseconds() {
-		return nil
-	}
-	cutoff := now - int64(retentionDays)*24*time.Hour.Milliseconds()
+	return lastRun != 0 && now-lastRun < interval.Milliseconds(), nil
+}
+
+// deleteRetiredEvents deletes events older than cutoff, oldest first, in
+// batches of eventRetentionBatchRows, at most eventRetentionMaxBatches of
+// them.
+func (s *Store) deleteRetiredEvents(ctx context.Context, cutoff int64) error {
 	for batch := 0; batch < eventRetentionMaxBatches; batch++ {
 		result, err := s.db.ExecContext(ctx, `DELETE FROM events WHERE seq IN (
 			SELECT seq FROM events WHERE at < ? ORDER BY at ASC, seq ASC LIMIT ?)`,
@@ -2188,9 +2212,6 @@ func (s *Store) EnforceEventRetention(ctx context.Context, retentionDays int, no
 		if affected < int64(eventRetentionBatchRows) {
 			break
 		}
-	}
-	if err := s.setUIState(ctx, eventRetentionLastRunKey, strconv.FormatInt(now, 10)); err != nil {
-		return fmt.Errorf("write event retention throttle: %w", err)
 	}
 	return nil
 }
