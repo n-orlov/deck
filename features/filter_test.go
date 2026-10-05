@@ -138,13 +138,40 @@ func clientUnarchivesSelectedSession(ctx context.Context, clientName, sessionNam
 			return err
 		}
 		if archivedAt == 0 {
-			return nil
+			break
 		}
 		if time.Now().After(deadline) {
 			return fmt.Errorf("session %q still has archived_at=%d after U\nframe:\n%s", sessionName, archivedAt, client.Frame(false))
 		}
 		time.Sleep(25 * time.Millisecond)
 	}
+	// The store write lands before deck repaints the row it unarchived, so
+	// returning on the database alone let the next step race that repaint:
+	// nightly dispatch run 37327435258 (85cb0f91f7, -race) recorded
+	// filter.feature:97 flaky when the row losing its "[archived]" badge
+	// changed the selected sidebar line, navigateToRowByName's "g" settle
+	// took that repaint for its own, and "r" followed "g" by 7 ms -- close
+	// enough to be read as one "gr" KeyMsg that the keymap ignores (the same
+	// coalescing clientOpensDetailForSession documents), so resume never
+	// fired. Waiting here for the repaint itself -- the selected row without
+	// its archived badge and the footer no longer offering U -- leaves no
+	// unarchive repaint in flight for a following step to mistake.
+	if _, err := client.WaitForFrameFunc(ctx, false, unarchiveRepainted); err != nil {
+		return fmt.Errorf("deck client %q never repainted %q as unarchived after U: %w\nframe:\n%s", clientName, sessionName, err, client.Frame(false))
+	}
+	return nil
+}
+
+// unarchiveRepainted reports whether frame shows deck's own repaint after
+// `U`: the selected sidebar row no longer carries the archived badge (ascii
+// "[archived]", possibly truncated to "[arch...", or the unicode glyph) and
+// the footer no longer offers "U unarchive" for it.
+func unarchiveRepainted(frame string) bool {
+	row := selectedSidebarLine(frame)
+	if strings.Contains(row, "[arch") || strings.Contains(row, "\u25a3") {
+		return false
+	}
+	return !strings.Contains(frame, "U unarchive")
 }
 
 // clientPressesLeftInFilterField sends n real left-arrow keys to the open
