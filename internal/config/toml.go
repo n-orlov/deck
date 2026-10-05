@@ -212,31 +212,51 @@ var stringSetters = map[string]func(*FileConfig, string){
 func setField(cfg *FileConfig, field Field, raw, path string, line int) error {
 	switch field.Kind {
 	case KindToggle:
-		value, err := strconv.ParseBool(raw)
-		if err != nil {
-			return fmt.Errorf("%s:%d: %s must be true or false, got %q", path, line, field.FullKey(), raw)
-		}
-		if set := toggleSetters[field.FullKey()]; set != nil {
-			set(cfg, value)
-		}
+		return setToggleField(cfg, field, raw, path, line)
 	case KindInteger:
-		value, err := parseIntegerValue(field, raw)
-		if err != nil {
-			return fmt.Errorf("%s:%d: %w", path, line, err)
-		}
-		if set := integerSetters[field.FullKey()]; set != nil {
-			set(cfg, value)
-		}
+		return setIntegerField(cfg, field, raw, path, line)
 	case KindEnum, KindString, KindPath:
-		unquoted, err := parseStringFieldValue(field, raw, path, line)
-		if err != nil {
-			return err
-		}
-		if set := stringSetters[field.FullKey()]; set != nil {
-			set(cfg, unquoted)
-		}
+		return setStringField(cfg, field, raw, path, line)
 	default:
 		return fmt.Errorf("%s:%d: %s: unsupported field kind %q for a flat key", path, line, field.FullKey(), field.Kind)
+	}
+}
+
+// setToggleField parses raw as a boolean and writes it through the toggle
+// setter table.
+func setToggleField(cfg *FileConfig, field Field, raw, path string, line int) error {
+	value, err := strconv.ParseBool(raw)
+	if err != nil {
+		return fmt.Errorf("%s:%d: %s must be true or false, got %q", path, line, field.FullKey(), raw)
+	}
+	if set := toggleSetters[field.FullKey()]; set != nil {
+		set(cfg, value)
+	}
+	return nil
+}
+
+// setIntegerField parses raw against the field's bounds and writes it
+// through the integer setter table.
+func setIntegerField(cfg *FileConfig, field Field, raw, path string, line int) error {
+	value, err := parseIntegerValue(field, raw)
+	if err != nil {
+		return fmt.Errorf("%s:%d: %w", path, line, err)
+	}
+	if set := integerSetters[field.FullKey()]; set != nil {
+		set(cfg, value)
+	}
+	return nil
+}
+
+// setStringField unquotes and validates raw and writes it through the
+// string setter table.
+func setStringField(cfg *FileConfig, field Field, raw, path string, line int) error {
+	unquoted, err := parseStringFieldValue(field, raw, path, line)
+	if err != nil {
+		return err
+	}
+	if set := stringSetters[field.FullKey()]; set != nil {
+		set(cfg, unquoted)
 	}
 	return nil
 }
