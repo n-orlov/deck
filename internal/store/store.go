@@ -113,12 +113,7 @@ func OpenPath(home, path string) (*Store, error) {
 	// out busy_timeout and retry like every other contended write, matching
 	// SPEC section 9.3's guarantee that no case wedges the row under real
 	// concurrent callers.
-	dsn := path
-	if strings.Contains(dsn, "?") {
-		dsn += "&_txlock=immediate"
-	} else {
-		dsn += "?_txlock=immediate"
-	}
+	dsn := immediateTxDSN(path)
 	// Tighten the process umask before the first connection opens (and so,
 	// for a database that does not exist yet, before SQLite creates it): a
 	// brand-new state.db -- and the -wal/-shm siblings SQLite gives the main
@@ -129,12 +124,7 @@ func OpenPath(home, path string) (*Store, error) {
 	// OpenPath call in the same process rather than letting them race each
 	// other's umask; it is restored when OpenPath returns, by which point
 	// every file this call creates already exists.
-	openUmaskMu.Lock()
-	oldUmask := syscall.Umask(0o177)
-	defer func() {
-		syscall.Umask(oldUmask)
-		openUmaskMu.Unlock()
-	}()
+	defer tightenUmask()()
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("open state database: %w", err)
@@ -145,27 +135,35 @@ func OpenPath(home, path string) (*Store, error) {
 	db.SetMaxOpenConns(1)
 	db.SetMaxIdleConns(1)
 	store := &Store{db: db, path: path}
-	version, err := store.version()
-	if err != nil {
+	if err := store.configure(home); err != nil {
 		return nil, closeAfter(db, err)
+	}
+	return store, nil
+}
+
+// configure checks the on-disk schema version, secures the directory and
+// database files, applies the connection PRAGMAs and migrates. OpenPath closes
+// the database handle when it returns an error.
+func (s *Store) configure(home string) error {
+	version, err := s.version()
+	if err != nil {
+		return err
 	}
 	// Check this before setting journal mode or running a migration. A future
 	// database is read only from this binary's point of view.
 	if version > SchemaVersion {
-		return nil, closeAfter(db, fmt.Errorf("state database schema version %d is newer than supported version %d; upgrade deck", version, SchemaVersion))
+		return fmt.Errorf("state database schema version %d is newer than supported version %d; upgrade deck", version, SchemaVersion)
 	}
 	if err := os.Chmod(home, 0o700); err != nil { //nolint:gosec // G302: home is a directory, 0o700 is owner-only (gosec reads it as a file mode)
-		return nil, closeAfter(db, fmt.Errorf("secure store directory: %w", err))
+		return fmt.Errorf("secure store directory: %w", err)
 	}
 	// Tighten state.db before journal_mode=WAL: SQLite creates -wal and -shm
 	// with the main file's mode, and the WAL now persists across closes, so a
 	// loose main file would leave session env values in a 0644 WAL on disk
 	// (SPEC section 6.4). Siblings left loose by an earlier binary are fixed
 	// here too; SQLite never changes an existing file's mode.
-	for _, p := range []string{path, path + "-wal", path + "-shm"} {
-		if err := os.Chmod(p, 0o600); err != nil && !errors.Is(err, os.ErrNotExist) {
-			return nil, closeAfter(db, fmt.Errorf("secure state database: %w", err))
-		}
+	if err := secureStateFiles(s.path); err != nil {
+		return err
 	}
 	// secure_delete=ON (R197/#61) zeroes freed pages and stale WAL frames
 	// instead of leaving session env values recoverable from unallocated
@@ -174,13 +172,42 @@ func OpenPath(home, path string) (*Store, error) {
 	// fresh WAL's header is fsynced before the first frame -- the exact cost
 	// persistWAL above exists to avoid (SPEC section 3.1's 20ms hook write
 	// budget).
-	if _, err := db.Exec(`PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL; PRAGMA busy_timeout=5000; PRAGMA foreign_keys=ON; PRAGMA secure_delete=ON`); err != nil {
-		return nil, closeAfter(db, fmt.Errorf("configure state database: %w", err))
+	if _, err := s.db.Exec(`PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL; PRAGMA busy_timeout=5000; PRAGMA foreign_keys=ON; PRAGMA secure_delete=ON`); err != nil {
+		return fmt.Errorf("configure state database: %w", err)
 	}
-	if err := store.migrate(version); err != nil {
-		return nil, closeAfter(db, err)
+	return s.migrate(version)
+}
+
+// immediateTxDSN appends _txlock=immediate to the database path, whether or
+// not the path already carries a query string (see OpenPath for why).
+func immediateTxDSN(path string) string {
+	if strings.Contains(path, "?") {
+		return path + "&_txlock=immediate"
 	}
-	return store, nil
+	return path + "?_txlock=immediate"
+}
+
+// tightenUmask serializes against other OpenPath callers, sets the process
+// umask to 0o177 and returns the function that restores the previous umask
+// and releases the serialization.
+func tightenUmask() func() {
+	openUmaskMu.Lock()
+	oldUmask := syscall.Umask(0o177)
+	return func() {
+		syscall.Umask(oldUmask)
+		openUmaskMu.Unlock()
+	}
+}
+
+// secureStateFiles chmods the state database and its -wal/-shm siblings to
+// 0o600; a sibling that does not exist yet is skipped.
+func secureStateFiles(path string) error {
+	for _, p := range []string{path, path + "-wal", path + "-shm"} {
+		if err := os.Chmod(p, 0o600); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("secure state database: %w", err)
+		}
+	}
+	return nil
 }
 
 // DB exposes the connection for narrowly scoped queries. Product mutations
