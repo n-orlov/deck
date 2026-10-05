@@ -695,6 +695,19 @@ func (m Model) keyDeleteChord(_ tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+// undoWindow is one of keyUndo's undo windows: it answers ok=false when its
+// window is not open (so the next one is consulted), and ok=true -- with the
+// model and command to return -- once its window is the one `u` acts on,
+// whether or not the service behind it is wired.
+type undoWindow func(m Model) (Model, tea.Cmd, bool)
+
+// undoWindows lists keyUndo's windows in precedence order: kill, batch kill,
+// delete, batch delete, and the archive window last, so adding a later one
+// cannot change what `u` does for any earlier window.
+var undoWindows = []undoWindow{
+	Model.undoKill, Model.undoBatchKill, Model.undoDelete, Model.undoBatchDelete, Model.undoArchive,
+}
+
 // keyUndo handles "u".
 func (m Model) keyUndo(_ tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// Requirement 22: u undoes the most recent x, not whatever row
@@ -706,98 +719,124 @@ func (m Model) keyUndo(_ tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// to undoing the most recent dd delete within its own
 	// DECK_DELETE_GRACE_MS window, tracked by the separate
 	// deleteUndoSessionID trio (never merged with the one above).
-	if m.undoSessionID != "" {
-		if m.resume == nil {
-			return m, nil
-		}
-		sessionID := m.undoSessionID
-		m.undoSessionID, m.undoSessionName = "", ""
-		m.undoGeneration++
-		return m, func() tea.Msg {
-			resumed, outcome, err := m.resume(context.Background(), sessionID)
-			return sessionResumed{session: resumed, outcome: outcome, err: err}
-		}
-	}
-	// Task 112: the batch-kill undo window is checked next, still
-	// ahead of the delete-undo trio below -- a batch x's undo is
-	// "undo the most recent x" too, exactly like the single-session
-	// case just above, just covering N sessions with one keypress.
-	if len(m.batchUndoSessionIDs) > 0 {
-		if m.resume == nil {
-			return m, nil
-		}
-		ids := m.batchUndoSessionIDs
-		m.batchUndoSessionIDs = nil
-		m.batchUndoGeneration++
-		resume := m.resume
-		return m, func() tea.Msg {
-			result := sessionsBulkResumed{}
-			for _, id := range ids {
-				resumed, outcome, err := resume(context.Background(), id)
-				result.sessionIDs = append(result.sessionIDs, resumed.ID)
-				result.outcomes = append(result.outcomes, outcome)
-				result.errs = append(result.errs, err)
-			}
-			return result
-		}
-	}
-	if m.deleteUndoSessionID != "" {
-		if m.restoreSvc == nil {
-			return m, nil
-		}
-		sessionID := m.deleteUndoSessionID
-		m.deleteUndoSessionID, m.deleteUndoSessionName = "", ""
-		m.deleteUndoGeneration++
-		return m, func() tea.Msg {
-			restored, err := m.restoreSvc(context.Background(), sessionID)
-			return sessionRestored{session: restored, err: err}
-		}
-	}
-	// Task 112: the batch-delete undo window mirrors the single dd
-	// undo case directly above, one shared window restoring every
-	// session a marked-set dd tombstoned.
-	if len(m.batchDeleteUndoSessionIDs) > 0 {
-		if m.restoreSvc == nil {
-			return m, nil
-		}
-		ids := m.batchDeleteUndoSessionIDs
-		m.batchDeleteUndoSessionIDs = nil
-		m.batchDeleteUndoGeneration++
-		restoreSvc := m.restoreSvc
-		return m, func() tea.Msg {
-			result := sessionsBulkRestored{}
-			for _, id := range ids {
-				_, err := restoreSvc(context.Background(), id)
-				result.errs = append(result.errs, err)
-			}
-			return result
-		}
-	}
-	// R72 (issue #10, SPEC.md:752): the archive window is checked LAST,
-	// behind all four kill/delete trios above, so adding it cannot change
-	// what `u` does for any pre-existing window -- an archive undo only
-	// ever runs when no kill and no delete undo is outstanding. Its
-	// reversal is unarchiveSvc (R71's store.UnarchiveSession), the same
-	// service `U` uses, so the row returns to the default list reading
-	// stopped/resumable; `A`'s kill is deliberately NOT resumed here (the
-	// toast says so in as many words), since undoing a hide must never
-	// silently relaunch an agent.
-	if m.archiveUndoSessionID != "" {
-		if m.unarchiveSvc == nil {
-			return m, nil
-		}
-		sessionID := m.archiveUndoSessionID
-		hookRan := m.archiveUndoHookRan
-		m.archiveUndoSessionID, m.archiveUndoSessionName = "", ""
-		m.archiveUndoKilled = false
-		m.archiveUndoHookRan = false
-		m.archiveUndoGeneration++
-		return m, func() tea.Msg {
-			unarchived, err := m.unarchiveSvc(context.Background(), sessionID)
-			return sessionUnarchived{session: unarchived, err: err, teardownHookRan: hookRan}
+	for _, window := range undoWindows {
+		if next, cmd, ok := window(m); ok {
+			return next, cmd
 		}
 	}
 	return m, nil
+}
+
+// undoKill is the single-kill window: resume the session `x` just killed.
+func (m Model) undoKill() (Model, tea.Cmd, bool) {
+	if m.undoSessionID == "" {
+		return m, nil, false
+	}
+	if m.resume == nil {
+		return m, nil, true
+	}
+	sessionID := m.undoSessionID
+	m.undoSessionID, m.undoSessionName = "", ""
+	m.undoGeneration++
+	return m, func() tea.Msg {
+		resumed, outcome, err := m.resume(context.Background(), sessionID)
+		return sessionResumed{session: resumed, outcome: outcome, err: err}
+	}, true
+}
+
+// undoBatchKill is the batch-kill window. Task 112: it is checked next,
+// still ahead of the delete-undo trio -- a batch x's undo is "undo the most
+// recent x" too, exactly like the single-session case, just covering N
+// sessions with one keypress.
+func (m Model) undoBatchKill() (Model, tea.Cmd, bool) {
+	if len(m.batchUndoSessionIDs) == 0 {
+		return m, nil, false
+	}
+	if m.resume == nil {
+		return m, nil, true
+	}
+	ids := m.batchUndoSessionIDs
+	m.batchUndoSessionIDs = nil
+	m.batchUndoGeneration++
+	resume := m.resume
+	return m, func() tea.Msg {
+		result := sessionsBulkResumed{}
+		for _, id := range ids {
+			resumed, outcome, err := resume(context.Background(), id)
+			result.sessionIDs = append(result.sessionIDs, resumed.ID)
+			result.outcomes = append(result.outcomes, outcome)
+			result.errs = append(result.errs, err)
+		}
+		return result
+	}, true
+}
+
+// undoDelete is the single dd-delete window: restore the tombstoned session.
+func (m Model) undoDelete() (Model, tea.Cmd, bool) {
+	if m.deleteUndoSessionID == "" {
+		return m, nil, false
+	}
+	if m.restoreSvc == nil {
+		return m, nil, true
+	}
+	sessionID := m.deleteUndoSessionID
+	m.deleteUndoSessionID, m.deleteUndoSessionName = "", ""
+	m.deleteUndoGeneration++
+	return m, func() tea.Msg {
+		restored, err := m.restoreSvc(context.Background(), sessionID)
+		return sessionRestored{session: restored, err: err}
+	}, true
+}
+
+// undoBatchDelete is the batch-delete window (task 112), mirroring the
+// single dd undo case: one shared window restoring every session a
+// marked-set dd tombstoned.
+func (m Model) undoBatchDelete() (Model, tea.Cmd, bool) {
+	if len(m.batchDeleteUndoSessionIDs) == 0 {
+		return m, nil, false
+	}
+	if m.restoreSvc == nil {
+		return m, nil, true
+	}
+	ids := m.batchDeleteUndoSessionIDs
+	m.batchDeleteUndoSessionIDs = nil
+	m.batchDeleteUndoGeneration++
+	restoreSvc := m.restoreSvc
+	return m, func() tea.Msg {
+		result := sessionsBulkRestored{}
+		for _, id := range ids {
+			_, err := restoreSvc(context.Background(), id)
+			result.errs = append(result.errs, err)
+		}
+		return result
+	}, true
+}
+
+// undoArchive is the archive window. R72 (issue #10, SPEC.md:752): it is
+// checked LAST, behind all four kill/delete trios, so adding it cannot change
+// what `u` does for any pre-existing window -- an archive undo only ever
+// runs when no kill and no delete undo is outstanding. Its reversal is
+// unarchiveSvc (R71's store.UnarchiveSession), the same service `U` uses, so
+// the row returns to the default list reading stopped/resumable; `A`'s
+// kill is deliberately NOT resumed here (the toast says so in as many
+// words), since undoing a hide must never silently relaunch an agent.
+func (m Model) undoArchive() (Model, tea.Cmd, bool) {
+	if m.archiveUndoSessionID == "" {
+		return m, nil, false
+	}
+	if m.unarchiveSvc == nil {
+		return m, nil, true
+	}
+	sessionID := m.archiveUndoSessionID
+	hookRan := m.archiveUndoHookRan
+	m.archiveUndoSessionID, m.archiveUndoSessionName = "", ""
+	m.archiveUndoKilled = false
+	m.archiveUndoHookRan = false
+	m.archiveUndoGeneration++
+	return m, func() tea.Msg {
+		unarchived, err := m.unarchiveSvc(context.Background(), sessionID)
+		return sessionUnarchived{session: unarchived, err: err, teardownHookRan: hookRan}
+	}, true
 }
 
 // keyResume handles "r".
