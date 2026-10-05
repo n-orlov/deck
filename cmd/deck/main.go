@@ -71,9 +71,7 @@ func runTUI(settings config.Settings, stderr io.Writer) int {
 	// of a last_used marker the TUI touches in the profile's data root at
 	// launch, default included. Best-effort, like the tombstone sweep
 	// below -- an unwritable data root must never stop deck from starting.
-	if err := config.TouchLastUsed(settings.Paths); err != nil {
-		sayln(stderr, "deck last used:", err)
-	}
+	touchLastUsedBestEffort(settings, stderr)
 
 	stopClockStep := startClockStepTrigger(settings.Clock, stderr)
 	defer stopClockStep()
@@ -184,6 +182,14 @@ func runTUI(settings config.Settings, stderr io.Writer) int {
 		return 0
 	}
 	return 0
+}
+
+// touchLastUsedBestEffort touches the profile's last_used marker and reports
+// a failure on stderr without stopping the launch.
+func touchLastUsedBestEffort(settings config.Settings, stderr io.Writer) {
+	if err := config.TouchLastUsed(settings.Paths); err != nil {
+		sayln(stderr, "deck last used:", err)
+	}
 }
 
 // tuiProgramOptions are the Bubble Tea program options for settings: the
