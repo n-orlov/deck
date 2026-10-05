@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -2357,5 +2358,16 @@ func TestFreshDatabaseReportsSchemaVersion6WithPostDestroyAndLaunchDirtyColumns(
 		if !seen[column] {
 			t.Fatalf("fresh database sessions table missing column %q", column)
 		}
+	}
+}
+
+func TestNewerSchemaErrorKeepsTUIWordingAndIsTyped(t *testing.T) {
+	err := error(&NewerSchemaError{DB: 9, Supported: 8})
+	var typed *NewerSchemaError
+	if !errors.As(fmt.Errorf("wrap: %w", err), &typed) || typed.DB != 9 || typed.Supported != 8 {
+		t.Fatalf("errors.As = %v", typed)
+	}
+	if !strings.Contains(err.Error(), "upgrade deck") || SupportedSchemaVersion() != SchemaVersion {
+		t.Fatalf("message %q, supported %d", err.Error(), SupportedSchemaVersion())
 	}
 }

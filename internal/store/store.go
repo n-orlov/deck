@@ -24,6 +24,24 @@ import (
 // SchemaVersion is the newest schema understood by this binary.
 const SchemaVersion = 8
 
+// SupportedSchemaVersion is the newest schema this binary opens: SchemaVersion
+// in every shipped build. A test build (-tags deckoldschema, see
+// schema_old_hook.go) lowers it to stand in for an older release.
+func SupportedSchemaVersion() int { return supportedSchema }
+
+// NewerSchemaError reports a state database written by a newer deck than this
+// binary. Its message keeps the TUI wording ("upgrade deck"); `deck _hook`
+// recognises the type with errors.As and prints its own restart-the-session
+// message instead (SPEC section 3.1, R204).
+type NewerSchemaError struct {
+	DB        int // schema version recorded in the database
+	Supported int // newest schema this binary understands
+}
+
+func (e *NewerSchemaError) Error() string {
+	return fmt.Sprintf("state database schema version %d is newer than supported version %d; upgrade deck", e.DB, e.Supported)
+}
+
 // DefaultLayoutMode and DefaultSidebarWidth are the documented degrade-to
 // values a missing ui_state row implies (SPEC §11.2): ui_state is
 // explicitly not load-bearing, so losing it (or never having written it)
@@ -151,8 +169,8 @@ func (s *Store) configure(home string) error {
 	}
 	// Check this before setting journal mode or running a migration. A future
 	// database is read only from this binary's point of view.
-	if version > SchemaVersion {
-		return fmt.Errorf("state database schema version %d is newer than supported version %d; upgrade deck", version, SchemaVersion)
+	if version > supportedSchema {
+		return &NewerSchemaError{DB: version, Supported: supportedSchema}
 	}
 	if err := os.Chmod(home, 0o700); err != nil { //nolint:gosec // G302: home is a directory, 0o700 is owner-only (gosec reads it as a file mode)
 		return fmt.Errorf("secure store directory: %w", err)

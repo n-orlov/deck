@@ -30,6 +30,12 @@ func isVersionRequest(args []string) bool {
 // "deck v0.1.0 linux/amd64". A "dev" build adds the short vcs revision when
 // the Go toolchain stamped one (go build from a git checkout does).
 func printVersion(w io.Writer) {
+	sayf(w, "deck %s %s/%s\n", buildVersion(), runtime.GOOS, runtime.GOARCH)
+}
+
+// buildVersion is the version string printVersion reports: the release tag,
+// or "dev-<short vcs revision>" for a dev build that carries one.
+func buildVersion() string {
 	v := version
 	if v == "dev" {
 		if info, ok := debug.ReadBuildInfo(); ok {
@@ -41,5 +47,5 @@ func printVersion(w io.Writer) {
 			}
 		}
 	}
-	sayf(w, "deck %s %s/%s\n", v, runtime.GOOS, runtime.GOARCH)
+	return v
 }
