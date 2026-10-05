@@ -43,15 +43,31 @@ func TestResumeOrCreateTranscriptReplaysAnExistingConversationsLastMessage(t *te
 	}
 }
 
-func TestResumeOrCreateTranscriptReportsACorruptTranscript(t *testing.T) {
+func TestResumeOrCreateTranscriptSkipsLinesThatAreNotMessageEntries(t *testing.T) {
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "x_conv-3.jsonl"), []byte("not json\n"), 0o600); err != nil {
+	body := `{"type":"session","id":"conv-3"}` + "\nnot json\n\n" + `{"message":"kept"}` + "\nalso not json\n"
+	if err := os.WriteFile(filepath.Join(dir, "x_conv-3.jsonl"), []byte(body), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	var stdout bytes.Buffer
-	_, err := resumeOrCreateTranscript(dir, "conv-3", piGetwd(t), &stdout)
-	if err == nil || !strings.Contains(err.Error(), "decode transcript entry") {
-		t.Fatalf("error = %v, want the decode failure", err)
+	if _, err := resumeOrCreateTranscript(dir, "conv-3", piGetwd(t), &stdout); err != nil {
+		t.Fatalf("error = %v", err)
+	}
+	if got, want := stdout.String(), "fake-pi replay: kept\n"; got != want {
+		t.Fatalf("replay = %q, want %q", got, want)
+	}
+}
+
+func TestResumeOrCreateTranscriptReportsAnUnreadableTranscript(t *testing.T) {
+	dir := t.TempDir()
+	// A single line past bufio.Scanner's token limit cannot be read back.
+	if err := os.WriteFile(filepath.Join(dir, "x_conv-5.jsonl"), []byte(strings.Repeat("a", 200_000)+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var stdout bytes.Buffer
+	_, err := resumeOrCreateTranscript(dir, "conv-5", piGetwd(t), &stdout)
+	if err == nil || !strings.Contains(err.Error(), "read transcript") {
+		t.Fatalf("error = %v, want the read failure", err)
 	}
 	if stdout.Len() != 0 {
 		t.Fatalf("printed %q although the transcript could not be read", stdout.String())
