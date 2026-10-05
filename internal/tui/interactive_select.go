@@ -228,7 +228,7 @@ func (m Model) updateInteractiveSelection(x, y int) Model {
 // this task. Every non-success return path (no drag, no grid, or a
 // failed tmux write) clears it, so a stale confirmation from an earlier
 // successful drag never lingers over a click or a failed one.
-func (m Model) commitInteractiveSelection() Model {
+func (m Model) commitInteractiveSelection(shift bool) Model {
 	anchorCol, anchorRow := m.interactiveSelectAnchorCol, m.interactiveSelectAnchorRow
 	curCol, curRow := m.interactiveSelectCurrentCol, m.interactiveSelectCurrentRow
 	dragged := m.interactiveSelectDragged
@@ -241,6 +241,12 @@ func (m Model) commitInteractiveSelection() Model {
 
 	if !dragged || grid == nil {
 		m.selectionCopyNote = ""
+		if !dragged && grid != nil {
+			// A click: nothing is marked or copied, and a program that
+			// tracks the mouse gets a press and release at the press cell
+			// (R202).
+			return m.forwardInteractiveClick(mouseButtonCodeLeft, shift, anchorCol, anchorRow)
+		}
 		return m
 	}
 	_, contentHeight := m.previewContentSize()

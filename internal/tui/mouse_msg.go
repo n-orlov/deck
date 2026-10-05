@@ -198,26 +198,54 @@ func (m Model) interactiveSidebarPress(msg tea.MouseMsg) (tea.Model, tea.Cmd, bo
 	return updated, cmd, true
 }
 
-// interactiveSelectionMouse is the left-button drag-to-copy gesture while interactive; everything else is a no-op.
+// interactiveSelectionMouse is the interactive preview's non-wheel mouse: a
+// left-button drag selects and copies text; a click of any button is
+// forwarded to a program that tracks the mouse (R202, SPEC §11.8).
 func (m Model) interactiveSelectionMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
-	if msg.Button == tea.MouseButtonLeft {
-		switch msg.Action {
-		case tea.MouseActionPress:
-			if updated, ok := m.beginInteractiveSelection(msg.X, msg.Y); ok {
-				return updated, nil
-			}
-			return m, nil
-		case tea.MouseActionMotion:
-			if m.interactiveSelecting {
-				return m.updateInteractiveSelection(msg.X, msg.Y), nil
-			}
-			return m, nil
-		case tea.MouseActionRelease:
-			if m.interactiveSelecting {
-				return m.commitInteractiveSelection(), nil
-			}
-			return m, nil
-		}
+	switch msg.Button {
+	case tea.MouseButtonLeft:
+		return m.interactiveLeftMouse(msg), nil
+	case tea.MouseButtonMiddle, tea.MouseButtonRight:
+		return m.interactiveOtherButtonClick(msg), nil
 	}
 	return m, nil
+}
+
+// interactiveLeftMouse: press arms a selection, motion makes it a drag, and
+// the release either copies the drag or, when no motion happened, is a click
+// forwarded at the press cell.
+func (m Model) interactiveLeftMouse(msg tea.MouseMsg) Model {
+	switch msg.Action {
+	case tea.MouseActionPress:
+		if updated, ok := m.beginInteractiveSelection(msg.X, msg.Y); ok {
+			return updated
+		}
+	case tea.MouseActionMotion:
+		if m.interactiveSelecting {
+			return m.updateInteractiveSelection(msg.X, msg.Y)
+		}
+	case tea.MouseActionRelease:
+		if m.interactiveSelecting {
+			return m.commitInteractiveSelection(msg.Shift)
+		}
+	}
+	return m
+}
+
+// interactiveOtherButtonClick forwards a middle or right click as a press
+// and release at the press cell; the release event itself carries nothing
+// more to say.
+func (m Model) interactiveOtherButtonClick(msg tea.MouseMsg) Model {
+	if msg.Action != tea.MouseActionPress {
+		return m
+	}
+	col, row, ok := m.previewCellAt(msg.X, msg.Y)
+	if !ok {
+		return m
+	}
+	button := mouseButtonCodeRight
+	if msg.Button == tea.MouseButtonMiddle {
+		button = mouseButtonCodeMiddle
+	}
+	return m.forwardInteractiveClick(button, msg.Shift, col, row)
 }

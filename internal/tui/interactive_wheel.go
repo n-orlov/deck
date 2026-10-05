@@ -127,19 +127,8 @@ func encodeWheelReport(modes interactive.MouseMode, up bool, col, row int) (repo
 // `send-keys -H` path (Dispatcher.SendBytes). No tmux read is made per notch
 // beyond that dispatcher's own identity check.
 func (m Model) forwardInteractiveWheel(msg tea.MouseMsg) (out Model, handled bool) {
-	if m.interactiveGrid == nil || m.interactiveDispatcher == nil {
-		return m, false
-	}
-	grid := m.interactiveGrid.Grid()
-	if grid == nil {
-		return m, false
-	}
-	offset := m.interactiveScrollOffset()
-	if offset > 0 {
-		offset = m.healInteractiveScrollOffsetFromRender().interactiveScrollOffset()
-	}
-	modes := grid.MouseModes()
-	if !wheelForwardsToProgram(modes, offset, msg.Shift) {
+	modes, forwards := m.mouseForwardModes(msg.Shift)
+	if !forwards {
 		return m, false
 	}
 	col, row, ok := m.previewCellAt(msg.X, msg.Y)
@@ -150,12 +139,61 @@ func (m Model) forwardInteractiveWheel(msg tea.MouseMsg) (out Model, handled boo
 	if !ok {
 		return m, true
 	}
-	// A forwarded notch is input to the pane, so it ends a sidebar wheel
-	// drift exactly as a forwarded key does (updateInteractive).
+	return m.sendMouseBytes(report), true
+}
+
+// mouseForwardModes applies the routing rule (wheelForwardsToProgram) to
+// the live interactive grid: forwards is true when the pane program tracks
+// the mouse, the grid is at live and Shift is not held, and modes is then
+// the program's mode set to encode against. It is shared by the wheel and
+// by clicks (R202), which is what makes them one rule (SPEC §11.8).
+func (m Model) mouseForwardModes(shift bool) (modes interactive.MouseMode, forwards bool) {
+	if m.interactiveGrid == nil || m.interactiveDispatcher == nil {
+		return 0, false
+	}
+	grid := m.interactiveGrid.Grid()
+	if grid == nil {
+		return 0, false
+	}
+	offset := m.interactiveScrollOffset()
+	if offset > 0 {
+		offset = m.healInteractiveScrollOffsetFromRender().interactiveScrollOffset()
+	}
+	modes = grid.MouseModes()
+	return modes, wheelForwardsToProgram(modes, offset, shift)
+}
+
+// sendMouseBytes delivers an encoded report to the pane. A forwarded event
+// is input to the pane, so it ends a sidebar wheel drift exactly as a
+// forwarded key does (updateInteractive).
+func (m Model) sendMouseBytes(report []byte) Model {
 	if m.sidebarScrollDrifted {
 		m.revealInteractiveDriftTarget()
 		m.sidebarScrollDrifted = false
 	}
 	_ = m.interactiveDispatcher.SendBytes(context.Background(), report)
-	return m, true
+	return m
+}
+
+// forwardInteractiveClick forwards a click of one button (a
+// mouseButtonCode*) at 0-based pane cell (col, row) to a program that
+// tracks the mouse, as a press followed by a release at that same cell, in
+// the encoding the program asked for (R202, SPEC §11.8). It shares the
+// wheel's routing rule; a program that does not track the mouse, Shift
+// held, a scrolled-back grid, or a cell the encoding cannot carry sends
+// nothing.
+func (m Model) forwardInteractiveClick(button int, shift bool, col, row int) Model {
+	modes, forwards := m.mouseForwardModes(shift)
+	if !forwards {
+		return m
+	}
+	press, ok := encodeMouseReport(modes, button, mouseReportPress, col, row)
+	if !ok {
+		return m
+	}
+	release, ok := encodeMouseReport(modes, button, mouseReportRelease, col, row)
+	if !ok {
+		return m
+	}
+	return m.sendMouseBytes(append(press, release...))
 }
