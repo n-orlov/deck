@@ -577,6 +577,12 @@ func (c Client) CapturePreview(ctx context.Context, slug string) (PreviewCapture
 		}
 		return PreviewCapture{}, fmt.Errorf("capture preview %q: %w", name, err)
 	}
+	return parsePreviewCapture(name, data)
+}
+
+// parsePreviewCapture splits CapturePreview's single output into the pane
+// facts line (pane_dead|width|height) and the captured screen after it.
+func parsePreviewCapture(name string, data []byte) (PreviewCapture, error) {
 	newline := bytes.IndexByte(data, '\n')
 	if newline < 0 {
 		return PreviewCapture{}, fmt.Errorf("capture preview %q: no pane facts in %q", name, data)
