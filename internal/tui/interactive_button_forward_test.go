@@ -229,13 +229,14 @@ func TestInteractiveOtherButtonControlsRetained(t *testing.T) {
 
 // TestInteractiveOverlappingButtonsEachKeepTheirLifecycle: a right press
 // while the middle button is still held does not lose the middle release.
+// Neither moved, so each release is a click's: at its own press cell.
 func TestInteractiveOverlappingButtonsEachKeepTheirLifecycle(t *testing.T) {
 	m, socket, target := dragFixture(t, "overlap", dragButtonScript, interactive.MouseButton|interactive.MouseSGR, true)
 	m = updateModel(t, m, buttonMsg(t, m, tea.MouseButtonMiddle, tea.MouseActionPress, 1, 1, false))
 	m = updateModel(t, m, buttonMsg(t, m, tea.MouseButtonRight, tea.MouseActionPress, 2, 1, false))
 	m = updateModel(t, m, buttonMsg(t, m, tea.MouseButtonMiddle, tea.MouseActionRelease, 3, 1, false))
 	_ = updateModel(t, m, buttonMsg(t, m, tea.MouseButtonRight, tea.MouseActionRelease, 4, 1, false))
-	waitForPaneJoined(t, socket, target, "^[[<1;2;2M^[[<2;3;2M^[[<1;4;2m^[[<2;5;2m")
+	waitForPaneJoined(t, socket, target, "^[[<1;2;2M^[[<2;3;2M^[[<1;2;2m^[[<2;3;2m")
 }
 
 // TestInteractiveX10ReleaseEndsTheHeldButton: an X10 release names no button
@@ -302,7 +303,8 @@ func playX10Steps(t *testing.T, m Model, steps []x10ReleaseStep) (Model, int) {
 // buttons down, two anonymous releases finish both gestures (the second is
 // not dropped because the last pressed button is already up), in the X10
 // form for an X10 program and with each button's own code for an SGR one;
-// a further anonymous release with nothing held sends nothing. It holds in
+// each release lands at its own button's press cell (nothing moved); a further
+// anonymous release with nothing held sends nothing. It holds in
 // both select_on_drag settings, and nothing is selected or copied.
 func TestInteractiveX10ReleasesEndEveryOverlappingButton(t *testing.T) {
 	press, release, none := tea.MouseActionPress, tea.MouseActionRelease, tea.MouseButtonNone
@@ -318,9 +320,9 @@ func TestInteractiveX10ReleasesEndEveryOverlappingButton(t *testing.T) {
 			want   string
 		}{
 			// X10: middle 32+1, right 32+2, release 32+3; col c -> 33+c, row 1 -> 34.
-			{"x10", x10ButtonScript, interactive.MouseButton, "^[[M!\"\"^[[M\"#\"^[[M#%\"^[[M#'\""},
+			{"x10", x10ButtonScript, interactive.MouseButton, "^[[M!\"\"^[[M\"#\"^[[M##\"^[[M#\"\""},
 			// SGR keeps each button's identity: the right (last) ends first.
-			{"sgr", dragButtonScript, interactive.MouseButton | interactive.MouseSGR, "^[[<1;2;2M^[[<2;3;2M^[[<2;5;2m^[[<1;7;2m"},
+			{"sgr", dragButtonScript, interactive.MouseButton | interactive.MouseSGR, "^[[<1;2;2M^[[<2;3;2M^[[<2;3;2m^[[<1;2;2m"},
 		} {
 			t.Run(fmt.Sprintf("%s/select_on_drag_%v", tc.name, selectOnDrag), func(t *testing.T) {
 				m, socket, target := dragFixture(t, fmt.Sprintf("x10ov%s%v", tc.name, selectOnDrag), tc.script, tc.modes, selectOnDrag)
@@ -360,7 +362,7 @@ func TestInteractiveX10ReleasesEndLeftAndAnotherButton(t *testing.T) {
 	if sent != 4 {
 		t.Errorf("OFF: left and right with two X10 releases dispatched %d reports, want 4", sent)
 	}
-	waitForPaneJoined(t, osocket, otarget, "^[[<0;2;2M^[[<2;3;2M^[[<2;5;2m^[[<0;7;2m")
+	waitForPaneJoined(t, osocket, otarget, "^[[<0;2;2M^[[<2;3;2M^[[<2;3;2m^[[<0;2;2m")
 	if off.interactiveForwardedButtons != 0 || off.interactiveSelecting || off.selectionCopyNote != "" {
 		t.Fatalf("OFF: gesture not finished cleanly (mask %b)", off.interactiveForwardedButtons)
 	}
@@ -376,7 +378,7 @@ func TestInteractiveX10ReleasesEndLeftAndAnotherButton(t *testing.T) {
 	if sent != 2 {
 		t.Errorf("ON: the middle gesture dispatched %d reports, want 2", sent)
 	}
-	waitForPaneJoined(t, nsocket, ntarget, "^[[<1;5;2M^[[<1;7;2m")
+	waitForPaneJoined(t, nsocket, ntarget, "^[[<1;5;2M^[[<1;5;2m")
 	if on.interactiveForwardedButtons != 0 {
 		t.Fatalf("ON: the second X10 release did not end the middle gesture")
 	}

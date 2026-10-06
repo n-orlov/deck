@@ -1187,6 +1187,10 @@ type Model struct {
 	// latest of them, the one an X10 release (which names no button) ends.
 	interactiveForwardedButtons uint16
 	interactiveForwardedLast    tea.MouseButton
+	// interactiveForwardedPress is, per forwarded button, the cell its press
+	// was sent at and whether motion arrived since: a release with no motion
+	// is a click and goes to the press cell (SPEC §11.8).
+	interactiveForwardedPress [forwardedButtonSlots]forwardedPress
 	// lostAttach is SPEC §11.9's dialog raised when a client is displaced
 	// out of interactive mode -- its own claim stolen by `F`, or a full
 	// attach arriving and re-expressing its own size (task 118 wires the
