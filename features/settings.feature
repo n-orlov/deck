@@ -244,7 +244,8 @@ Feature: The `,` settings takeover (requirement 48)
     And deck client "A" text "deck" has foreground "#fabd2f"
     And deck client "A" text "deck" has foreground token "title"
     And deck client "A" cells at row 0 columns 0 to 99 have background token "background"
-    And deck client "A" cell at row 0 column 0 has foreground token "border"
+    # The list is the focused panel, so its corner carries border_focus.
+    And deck client "A" cell at row 0 column 0 has foreground token "border_focus"
     When deck client "A" exits cleanly
 
   Scenario: driving every key the takeover binds leaves the session set untouched

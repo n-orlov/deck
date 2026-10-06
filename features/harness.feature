@@ -361,7 +361,7 @@ Feature: Godog harness wiring
     And the scenario's config.toml selects theme "does-not-exist"
     When the scenario's config-selected theme is painted onto a fresh swatch emulator sized 23x1 named "fallback-swatch"
     Then the "fallback-swatch" swatch emulator does not have foreground "#ff00ff" for token "text"
-    And the "fallback-swatch" swatch emulator has foreground "#cbd5e1" for token "text"
+    And the "fallback-swatch" swatch emulator has foreground "#ddd8cf" for token "text"
 
   @requirement-4-theme-pinning
   Scenario: a built-in and a user theme paint genuinely different colours at the same token, proving the pinning step is not a no-op
@@ -397,12 +397,12 @@ Feature: Godog harness wiring
       archived          = "#000000"
       """
     When the scenario's config-selected theme is painted onto a fresh swatch emulator sized 23x1 named "builtin-only"
-    Then the "builtin-only" swatch emulator has foreground "#cbd5e1" for token "text"
+    Then the "builtin-only" swatch emulator has foreground "#ddd8cf" for token "text"
     And the "builtin-only" swatch emulator does not have foreground "#ff00ff" for token "text"
     When the scenario's config.toml selects theme "custom"
     And the scenario's config-selected theme is painted onto a fresh swatch emulator sized 23x1 named "user-only"
     Then the "user-only" swatch emulator has foreground "#ff00ff" for token "text"
-    And the "user-only" swatch emulator does not have foreground "#cbd5e1" for token "text"
+    And the "user-only" swatch emulator does not have foreground "#ddd8cf" for token "text"
 
   @requirement-3-no-color @requirement-31-no-color-glyph
   Scenario: NO_COLOR renders a monochrome frame with a session's status carried by its glyphs alone
