@@ -209,11 +209,12 @@ func (Codex) Probe(pane string) (string, string) { return probe("codex", pane) }
 // (no CODEX_HOME entry in in.Env) is exactly the case that must resolve to
 // the default, not to this process's own $CODEX_HOME, which could belong
 // to a different session entirely. It returns ok=false -- never an error
-// -- when ConversationID is empty, both Home and the resolved codex home
+// -- when ConversationID is empty or not a single safe path component
+// (a separator, "." or ".."), both Home and the resolved codex home
 // are empty, or nothing on disk matches: a miss is always "cannot
 // locate", never a guess.
 func (Codex) TranscriptPaths(in TranscriptInput) (string, bool) {
-	if in.ConversationID == "" {
+	if !safeConversationID(in.ConversationID) {
 		return "", false
 	}
 	codexHome := in.Env["CODEX_HOME"]

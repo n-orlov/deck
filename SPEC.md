@@ -907,6 +907,13 @@ than faking it:
 | **status** | **hooks → `deck _hook`** (live) | **extension → `deck _hook`** (live), probe until its first event (§8.3) | **hooks → `deck _hook`** (live), probe until the first prompt (§8.2) | probe (sampled) |
 | **banned** | `--continue` | `--continue` | `resume --last` | — |
 
+**A conversation id is one path component.** A conversation id reaches deck in a hook payload, so
+it is untrusted. Claude's, Codex's and Pi's `TranscriptPaths` decline (`ok = false`, no file
+opened) for an id that is empty, is `.` or `..`, or contains a path separator (`/` or `\`); only
+an id that is a single plain path component is joined into a transcript path, and a valid id
+resolves to the same path as ever. Claude's relaunch decision (§9.1) treats such an id as
+unknowable and resumes, never starting it again.
+
 ### 8.1 Claude instrumentation
 
 Hooks are injected **per session** via the settings-on-the-command-line mechanism. Nothing
