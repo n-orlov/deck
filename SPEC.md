@@ -2252,6 +2252,12 @@ archived          = "#9a9387"
   nudged copy of another: `empire` is near-black charcoal with amber, brick-red and gold
   accents, and `cobalt` is a saturated cobalt blue with ice, cyan and white accents and one
   warm warning colour (`badge_warn`), the red `error` status aside.
+  `gruvbox-dark` is the warm brown dark of the upstream gruvbox palette and `solarized-dark` the
+  teal-grey dark of upstream Solarized — both follow the upstream colours by name, and their files
+  credit the upstream project and its MIT licence in a header comment. `amber` is black with
+  monochrome amber phosphor, so its seven status colours differ by tone and brightness rather than
+  hue alone. `high-contrast` is black and white with saturated primaries, and its `text` on
+  `background` clears WCAG AAA (7:1).
 - **The seven status tokens are exactly the seven statuses in §7.** If §7 grows a status,
   the theme schema grows a token; a status rendered in a colour borrowed from another
   status is a defect, because the colour is the fastest thing a human reads in the list.

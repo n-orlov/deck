@@ -212,12 +212,11 @@ Feature: The `,` settings takeover (requirement 48)
     Then deck client "A" screen contains "Theme: empire"
     And deck client "A" cell at row 0 column 0 has foreground token "border"
     # settingsThemeOptions cycles the sorted built-in name list
-    # (theme.Builtins(), alphabetical): cobalt, daylight, empire, matrix,
-    # parchment. Tasks 315/316 added matrix/cobalt/parchment, so "empire"
-    # is now index 2 with "daylight" one step BACKWARD (index 1), not
-    # forward -- "+" from empire now lands on "matrix". A future built-in
-    # theme whose name sorts between "daylight" and "empire" would need
-    # this comment (and the "-" below) revisited again.
+    # (theme.Builtins(), alphabetical): amber, cobalt, daylight, empire,
+    # gruvbox-dark, high-contrast, matrix, parchment, solarized-dark. From
+    # "empire" the "-" below lands on "daylight" one step BACKWARD. A future
+    # built-in theme whose name sorts between "daylight" and "empire" would
+    # need this comment (and the "-" below) revisited again.
     When deck client "A" sends "-"
     Then deck client "A" screen contains "Theme: daylight"
     When deck client "A" sends ""
@@ -225,6 +224,27 @@ Feature: The `,` settings takeover (requirement 48)
     And deck client "A" cell at row 0 column 0 has foreground token "border"
     When deck client "A" sends ""
     Then deck client "A" screen contains "deck - sessions"
+    When deck client "A" exits cleanly
+
+  Scenario: selecting a new built-in theme in settings paints the screen with it, read per cell (R211)
+    Given the scenario's config.toml selects theme "empire"
+    And deck client "A" is started with colour enabled
+    When deck client "A" sends ","
+    And deck client "A" sends "j"
+    And deck client "A" sends "	"
+    Then deck client "A" screen contains "Theme: empire"
+    # "+" from empire steps FORWARD through the sorted built-in names to
+    # gruvbox-dark, one of the four R211 themes.
+    When deck client "A" sends "+"
+    Then deck client "A" screen contains "Theme: gruvbox-dark"
+    When deck client "A" sends ""
+    Then deck client "A" screen contains "saved "
+    When deck client "A" sends ""
+    Then deck client "A" screen contains "deck - sessions"
+    And deck client "A" text "deck" has foreground "#fabd2f"
+    And deck client "A" text "deck" has foreground token "title"
+    And deck client "A" cells at row 0 columns 0 to 99 have background token "background"
+    And deck client "A" cell at row 0 column 0 has foreground token "border"
     When deck client "A" exits cleanly
 
   Scenario: driving every key the takeover binds leaves the session set untouched
