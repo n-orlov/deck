@@ -100,9 +100,11 @@ func ciede2000(l1, a1, b1, l2, a2, b2 float64) float64 {
 	}
 	t := 1 - 0.17*math.Cos(radians(hBarP-30)) + 0.24*math.Cos(radians(2*hBarP)) +
 		0.32*math.Cos(radians(3*hBarP+6)) - 0.20*math.Cos(radians(4*hBarP-63))
-	dTheta := 30 * math.Exp(-math.Pow((hBarP-275)/25, 2))
+	hz := (hBarP - 275) / 25
+	dTheta := 30 * math.Exp(-hz*hz)
 	rC := 2 * math.Sqrt(math.Pow(cBarP, 7)/(math.Pow(cBarP, 7)+math.Pow(25, 7)))
-	sL := 1 + 0.015*math.Pow(lBarP-50, 2)/math.Sqrt(20+math.Pow(lBarP-50, 2))
+	dl50 := (lBarP - 50) * (lBarP - 50)
+	sL := 1 + 0.015*dl50/math.Sqrt(20+dl50)
 	sC := 1 + 0.045*cBarP
 	sH := 1 + 0.015*cBarP*t
 	rT := -math.Sin(radians(2*dTheta)) * rC
