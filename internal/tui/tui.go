@@ -8211,7 +8211,7 @@ func (m Model) agentCapabilities(kind string) (agent.Caps, bool) {
 // entirely, or simply differ from what the already-running server
 // itself inherited when it started. This function names no key of its
 // own and branches on no adapter kind: an adapter that declares no
-// TranscriptEnvKeys (claude, pi, shell) simply gets a nil/empty Env, and
+// TranscriptEnvKeys (pi, shell) simply gets a nil/empty Env, and
 // a future adapter with its own env-keyed convention needs no change
 // here at all.
 func (m Model) transcriptPathFor(session store.Session) (string, bool) {

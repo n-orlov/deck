@@ -14,6 +14,7 @@ import (
 // while the OLD pane was still running), and clears env_dirty back to
 // false only once that relaunch has actually happened.
 func TestRestartKillsRelaunchesWithResumeArgvSameConversationIDAndClearsEnvDirty(t *testing.T) {
+	home := isolateAgentHome(t)
 	cwd := t.TempDir()
 	stubExecutableOnPath(t, "claude")
 	service, db, logger, socket := newAgentTestService(t, nil, "restart-test")
@@ -28,6 +29,9 @@ func TestRestartKillsRelaunchesWithResumeArgvSameConversationIDAndClearsEnvDirty
 	if created.Status == "stopped" {
 		t.Fatalf("freshly created session status = %q, want non-stopped so it can be restarted", created.Status)
 	}
+	// The conversation has received its first message, so it has a transcript
+	// and the restart resumes it (R207 case 2).
+	recordClaudeTranscript(t, home, cwd, created.ConversationID)
 
 	updated, err := service.SetSessionEnv(context.Background(), created.ID, "RESTART_ENV_KEY", "after-restart")
 	if err != nil {

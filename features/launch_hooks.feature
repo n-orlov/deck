@@ -103,6 +103,7 @@ Feature: Every pane carries its own session's DECK_SESSION_* context (R104, SPEC
     And deck client "A" is started
     When deck client "A" creates claude session "launch edit target" with permission profile "safe"
     Then deck client "A" screen contains "launch edit target"
+    And the first message of session "launch edit target" is recorded in its fake claude transcript
     And the live pane process environment for session "launch edit target" has no key "DECK_LAUNCH_EDIT_MARKER"
     When deck client "A" opens the launch inputs editor for session "launch edit target"
     And deck client "A" types "export DECK_LAUNCH_EDIT_MARKER=applied" into the pre-launch field

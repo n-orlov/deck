@@ -22,6 +22,9 @@ Feature: Real agent session creation and resume through the TUI
     # down and the row becomes resumable within the ordinary UI timeout.
     Then deck client "A" screen contains "resumable"
     And exactly 0 private tmux sessions match slug "deck_claude-one"
+    # Claude writes no transcript until the first message (R207): record one,
+    # so this relaunch is a resume and not a fresh start on the same id.
+    And the first message of session "claude one" is recorded in its fake claude transcript
     When deck client "A" presses r on session "claude one"
     Then the audit log records session "claude one" entering starting 2 times
     And deck client "A" screen contains "resumable"
@@ -43,6 +46,7 @@ Feature: Real agent session creation and resume through the TUI
     Then deck client "A" screen contains "restart claude"
     And the state database session "restart claude" has a non-empty conversation id
     And the audit log has 1 launch record for session "restart claude"
+    And the first message of session "restart claude" is recorded in its fake claude transcript
     And the audit log's most recent launch argv for session "restart claude" contains "--session-id"
     When deck client "A" presses R on session "restart claude"
     Then within one configured reconcile interval deck client "A" screen contains "fake-claude resume:"
@@ -50,6 +54,31 @@ Feature: Real agent session creation and resume through the TUI
     And the audit log's most recent launch argv for session "restart claude" contains "--resume"
     And the audit log's most recent launch argv for session "restart claude" does not contain "--session-id"
     And the audit log's most recent launch argv for session "restart claude" contains session "restart claude"'s conversation id
+    When deck client "A" exits cleanly
+
+  Scenario: R before the first message starts the claude session again on the same conversation id
+    # R207 (#70): Claude writes no transcript until its first message, so
+    # `claude --resume <id>` of a session that never received one fails with
+    # "No conversation found". Deck relaunches it with `--session-id <same
+    # id>` instead, and every later restart stays on that path until a
+    # transcript exists. No message is ever sent here.
+    Given a long-running fake "claude" binary is on PATH for future deck clients
+    And deck client "A" is started
+    When deck client "A" creates claude session "early restart" with permission profile "safe"
+    Then deck client "A" screen contains "early restart"
+    And the audit log has 1 launch record for session "early restart"
+    When deck client "A" presses R on session "early restart"
+    Then within one configured reconcile interval the audit log has 2 launch records for session "early restart"
+    And the audit log's most recent launch argv for session "early restart" contains "--session-id"
+    And the audit log's most recent launch argv for session "early restart" does not contain "--resume"
+    And the audit log's most recent launch argv for session "early restart" contains session "early restart"'s conversation id
+    And exactly 1 private tmux sessions match slug "deck_early-restart"
+    And deck client "A" screen does not contain "Cannot resume"
+    When deck client "A" presses R on session "early restart"
+    Then within one configured reconcile interval the audit log has 3 launch records for session "early restart"
+    And the audit log's most recent launch argv for session "early restart" contains "--session-id"
+    And the audit log's most recent launch argv for session "early restart" contains session "early restart"'s conversation id
+    And the state database session "early restart" has a non-empty conversation id
     When deck client "A" exits cleanly
 
   Scenario: R restarts a running codex session with the resume argv, never composing --last
@@ -132,6 +161,7 @@ Feature: Real agent session creation and resume through the TUI
     And the audit log's most recent launch record for session "restart audit env" names environment key "AUDIT_ENV_TOKEN"
     And the audit log file never contains "super-secret-restart-do-not-log-2468013"
     And the audit log has 1 launch record for session "restart audit env"
+    And the first message of session "restart audit env" is recorded in its fake claude transcript
     When deck client "A" presses R on session "restart audit env"
     Then within one configured reconcile interval deck client "A" screen contains "fake-claude resume:"
     And within one configured reconcile interval the audit log has 2 launch records for session "restart audit env"

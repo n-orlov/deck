@@ -37,6 +37,7 @@ func registerKillDeleteUndoSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^deck client "([^"]+)" seeds captures and a history file for session "([^"]+)"$`, clientSeedsCapturesAndHistoryFileForSession)
 	sc.Step(`^the captures directory and history file for reaped session "([^"]+)" are gone$`, capturesDirAndHistoryFileForReapedSessionAreGone)
 	sc.Step(`^the audit log still contains an earlier event for reaped session "([^"]+)"$`, auditLogStillContainsEarlierEventForReapedSession)
+	sc.Step(`^the first message of session "([^"]+)" is recorded in its fake claude transcript$`, firstMessageRecordedInFakeClaudeTranscript)
 	sc.Step(`^the fake claude transcript for session "([^"]+)" is captured as "([^"]+)"$`, fakeClaudeTranscriptForSessionIsCapturedAs)
 	sc.Step(`^the fake codex transcript for session "([^"]+)" is captured as "([^"]+)"$`, fakeCodexTranscriptForSessionIsCapturedAs)
 	sc.Step(`^the transcript captured as "([^"]+)" still exists byte-identical$`, transcriptCapturedStillExistsByteIdentical)
@@ -116,6 +117,32 @@ func claudeTranscriptPathForSession(h *ScenarioHarness, name string) (string, er
 	}
 	project := strings.ReplaceAll(h.workingDir, string(os.PathSeparator), "-")
 	return filepath.Join(h.agentHOMEDir, ".claude", "projects", project, conversationID+".jsonl"), nil
+}
+
+// firstMessageRecordedInFakeClaudeTranscript writes the one-line transcript a
+// real Claude Code leaves once its conversation has received its first
+// message, at the path Claude's own convention names for the session's
+// conversation id and the scenario's fixture HOME. Claude writes nothing
+// before that message (R207), so a scenario that restarts a session and
+// asserts the resume argv has to record one first; a scenario that restarts
+// without it asserts the fresh-start relaunch instead.
+func firstMessageRecordedInFakeClaudeTranscript(ctx context.Context, name string) error {
+	h, err := assertionHarness(ctx)
+	if err != nil {
+		return err
+	}
+	path, err := claudeTranscriptPathForSession(h, name)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return fmt.Errorf("create transcript directory for session %q: %w", name, err)
+	}
+	line := `{"message":"first message of ` + name + `"}` + "\n"
+	if err := os.WriteFile(path, []byte(line), 0o600); err != nil {
+		return fmt.Errorf("write transcript %q for session %q: %w", path, name, err)
+	}
+	return nil
 }
 
 // fakeClaudeTranscriptForSessionIsCapturedAs resolves session's declared

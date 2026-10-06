@@ -162,6 +162,7 @@ Feature: Permission profile mapping, degradation and the yolo gate
     And deck client "A" is started
     When deck client "A" creates claude session "sticky" with permission profile "yolo"
     Then deck client "A" screen contains "resumable"
+    And the first message of session "sticky" is recorded in its fake claude transcript
     When deck client "A" presses r on session "sticky"
     Then the audit log records session "sticky" entering starting 2 times
     And the audit log's most recent launch argv for session "sticky" contains "--permission-mode"

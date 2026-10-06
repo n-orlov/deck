@@ -49,7 +49,31 @@ func (Claude) Capabilities() Caps {
 		Resumable:             true,
 		HasTranscript:         true,
 		Executable:            "claude",
+		TranscriptEnvKeys:     []string{claudeConfigDirKey},
 	}
+}
+
+// claudeConfigDirKey is the environment key that relocates Claude's own
+// config (and with it the transcript directory) away from $HOME/.claude.
+const claudeConfigDirKey = "CLAUDE_CONFIG_DIR"
+
+// RelaunchFresh reports whether a relaunch of the conversation in must start
+// it again with `--session-id` (Launch on the same id) instead of
+// `--resume` (R207). Claude writes no transcript until the first message, so
+// `--resume` of a conversation that never received one fails with "No
+// conversation found"; the id is still unused, so Launch on it is correct.
+//
+// It answers true only when the absence of the transcript is knowable: the
+// home directory is known, CLAUDE_CONFIG_DIR is not set (the transcript may
+// then live anywhere), the conversation id is present, and no transcript
+// file exists at the expected path. Every other state answers false, so the
+// caller resumes as it always has.
+func (c Claude) RelaunchFresh(in TranscriptInput) bool {
+	if in.Home == "" || in.ConversationID == "" || in.Env[claudeConfigDirKey] != "" {
+		return false
+	}
+	_, found := c.TranscriptPaths(in)
+	return !found
 }
 
 // TranscriptPaths locates Claude's on-disk transcript for a conversation,

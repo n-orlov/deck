@@ -54,6 +54,7 @@ func stopSession(t *testing.T, db *store.Store, sessionID string) {
 }
 
 func TestResumeLaunchesAdapterResumeArgvUnderLease(t *testing.T) {
+	home := isolateAgentHome(t)
 	cwd := t.TempDir()
 	stubExecutableOnPath(t, "claude")
 	service, db, logger, socket := newAgentTestService(t, nil, "resume-test")
@@ -65,6 +66,9 @@ func TestResumeLaunchesAdapterResumeArgvUnderLease(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create agent: %v", err)
 	}
+	// The conversation has received its first message, so it has a transcript
+	// and the relaunch resumes it (R207 case 2).
+	recordClaudeTranscript(t, home, cwd, created.ConversationID)
 	if err := service.TMux.Kill(context.Background(), created.Slug); err != nil {
 		t.Fatalf("kill original pane: %v", err)
 	}
