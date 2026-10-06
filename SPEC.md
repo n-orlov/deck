@@ -2407,7 +2407,11 @@ release of the **middle** and **right** buttons and of the additional buttons 8-
 SGR only: X10 has no form for them), each as it arrives with that button's code (middle 1, right 2)
 and the cell the pointer is over (motion adds 32 to the code; the release cell is clamped into the
 preview, so a gesture that runs off the edge still ends); motion with **no button** held (code
-35); and the sideways wheel (codes 66 and 67). The press of a gesture must begin inside the
+35); and the sideways wheel (codes 66 and 67). A release that arrives from deck's terminal in the
+X10 form names no button, so each one ends exactly one gesture still held: an ON-mode selection
+first, else the last button pressed while it is still down, else the held button with the lowest
+code. With several buttons down every one of them receives its release, and an anonymous release
+with nothing held sends nothing. The press of a gesture must begin inside the
 preview and without `Shift`: a gesture that begins on the sidebar, or with `Shift`, is never
 forwarded in part. Motion is sent only to a program that asked for it: held-button motion to mode
 1002 or 1003 (plain 1000 asks for press and release alone), motion with no button to mode 1003

@@ -55,17 +55,37 @@ func buttonBit(b tea.MouseButton) uint16 { return 1 << uint(b) }
 
 // normalizeInteractiveRelease gives an X10 release, which cannot say which
 // button came up (bubbletea reports it as no button), the button it ends:
-// the selection's left press, else the last forwarded button still held.
+// the selection's left press, else a forwarded button still held. Each
+// anonymous release ends exactly one held gesture, so with several buttons
+// down every one of them still gets its release.
 func (m Model) normalizeInteractiveRelease(msg tea.MouseMsg) tea.MouseMsg {
 	if msg.Action != tea.MouseActionRelease || msg.Button != tea.MouseButtonNone {
 		return msg
 	}
 	if m.interactiveSelecting {
 		msg.Button = tea.MouseButtonLeft
-	} else if m.interactiveForwardedButtons&buttonBit(m.interactiveForwardedLast) != 0 {
-		msg.Button = m.interactiveForwardedLast
+	} else if held, ok := m.heldForwardedButton(); ok {
+		msg.Button = held
 	}
 	return msg
+}
+
+// heldForwardedButton is the forwarded button an anonymous release ends:
+// the last one pressed while it is still held, else the held button with
+// the lowest code. ok is false when no forwarded button is held.
+func (m Model) heldForwardedButton() (tea.MouseButton, bool) {
+	held := m.interactiveForwardedButtons
+	if held == 0 {
+		return tea.MouseButtonNone, false
+	}
+	if held&buttonBit(m.interactiveForwardedLast) != 0 {
+		return m.interactiveForwardedLast, true
+	}
+	b := tea.MouseButtonNone
+	for held&buttonBit(b) == 0 {
+		b++
+	}
+	return b, true
 }
 
 // interactiveForwardedMouse is every interactive-preview mouse event that

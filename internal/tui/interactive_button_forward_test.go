@@ -277,3 +277,107 @@ func TestInteractiveForwardedGestureStartedOutsidePreviewIsNotForwarded(t *testi
 		t.Fatalf("a gesture started on the sidebar reached the program")
 	}
 }
+
+// x10ReleaseStep is one event of an overlapping-buttons gesture: a press of
+// button, or (button None) an anonymous X10 release, at pane cell (col, 1).
+type x10ReleaseStep struct {
+	button tea.MouseButton
+	action tea.MouseAction
+	col    int
+}
+
+// playX10Steps applies steps and returns the model and how many reports
+// were dispatched to the pane.
+func playX10Steps(t *testing.T, m Model, steps []x10ReleaseStep) (Model, int) {
+	t.Helper()
+	before := m.interactiveDispatcher.Verifications()
+	for _, s := range steps {
+		m = updateModel(t, m, buttonMsg(t, m, s.button, s.action, s.col, 1, false))
+	}
+	return m, m.interactiveDispatcher.Verifications() - before
+}
+
+// TestInteractiveX10ReleasesEndEveryOverlappingButton: an X10 release names
+// no button, so each one ends one forwarded button still held. With two
+// buttons down, two anonymous releases finish both gestures (the second is
+// not dropped because the last pressed button is already up), in the X10
+// form for an X10 program and with each button's own code for an SGR one;
+// a further anonymous release with nothing held sends nothing. It holds in
+// both select_on_drag settings, and nothing is selected or copied.
+func TestInteractiveX10ReleasesEndEveryOverlappingButton(t *testing.T) {
+	press, release, none := tea.MouseActionPress, tea.MouseActionRelease, tea.MouseButtonNone
+	middleRight := []x10ReleaseStep{
+		{tea.MouseButtonMiddle, press, 1}, {tea.MouseButtonRight, press, 2},
+		{none, release, 4}, {none, release, 6}, {none, release, 7},
+	}
+	for _, selectOnDrag := range []bool{true, false} {
+		for _, tc := range []struct {
+			name   string
+			script string
+			modes  interactive.MouseMode
+			want   string
+		}{
+			// X10: middle 32+1, right 32+2, release 32+3; col c -> 33+c, row 1 -> 34.
+			{"x10", x10ButtonScript, interactive.MouseButton, "^[[M!\"\"^[[M\"#\"^[[M#%\"^[[M#'\""},
+			// SGR keeps each button's identity: the right (last) ends first.
+			{"sgr", dragButtonScript, interactive.MouseButton | interactive.MouseSGR, "^[[<1;2;2M^[[<2;3;2M^[[<2;5;2m^[[<1;7;2m"},
+		} {
+			t.Run(fmt.Sprintf("%s/select_on_drag_%v", tc.name, selectOnDrag), func(t *testing.T) {
+				m, socket, target := dragFixture(t, fmt.Sprintf("x10ov%s%v", tc.name, selectOnDrag), tc.script, tc.modes, selectOnDrag)
+				m, sent := playX10Steps(t, m, middleRight)
+				if sent != 4 {
+					t.Errorf("two presses and two X10 releases dispatched %d reports, want 4 (pane %q)", sent, tmuxCapturePane(t, socket, target))
+				}
+				waitForPaneJoined(t, socket, target, tc.want)
+				if m.interactiveForwardedButtons != 0 {
+					t.Fatalf("held-button mask %b left after both releases", m.interactiveForwardedButtons)
+				}
+				if m.interactiveSelecting || len(previewHighlight(t, m)) != 0 || m.selectionCopyNote != "" {
+					t.Fatal("a forwarded gesture selected, highlighted or copied")
+				}
+				if b, err := selectionBufferText(socket); err == nil {
+					t.Fatalf("a forwarded gesture copied %q", b)
+				}
+			})
+		}
+	}
+}
+
+// TestInteractiveX10ReleasesEndLeftAndAnotherButton: the left button shares
+// the rule. With select_on_drag false the left press is forwarded too, and
+// two anonymous releases end the right then the left gesture. With it true
+// the left drag is the selection: the first anonymous release commits it,
+// and the second still ends the middle button forwarded meanwhile.
+func TestInteractiveX10ReleasesEndLeftAndAnotherButton(t *testing.T) {
+	press, motion, release, none := tea.MouseActionPress, tea.MouseActionMotion, tea.MouseActionRelease, tea.MouseButtonNone
+	sgr := interactive.MouseButton | interactive.MouseSGR
+
+	off, osocket, otarget := dragFixture(t, "x10leftoff", dragButtonScript, sgr, false)
+	off, sent := playX10Steps(t, off, []x10ReleaseStep{
+		{tea.MouseButtonLeft, press, 1}, {tea.MouseButtonRight, press, 2},
+		{none, release, 4}, {none, release, 6},
+	})
+	if sent != 4 {
+		t.Errorf("OFF: left and right with two X10 releases dispatched %d reports, want 4", sent)
+	}
+	waitForPaneJoined(t, osocket, otarget, "^[[<0;2;2M^[[<2;3;2M^[[<2;5;2m^[[<0;7;2m")
+	if off.interactiveForwardedButtons != 0 || off.interactiveSelecting || off.selectionCopyNote != "" {
+		t.Fatalf("OFF: gesture not finished cleanly (mask %b)", off.interactiveForwardedButtons)
+	}
+
+	on, nsocket, ntarget := dragFixture(t, "x10lefton", dragButtonScript, sgr, true)
+	on, sent = playX10Steps(t, on, []x10ReleaseStep{
+		{tea.MouseButtonLeft, press, 0}, {tea.MouseButtonLeft, motion, 3},
+		{tea.MouseButtonMiddle, press, 4}, {none, release, 5}, {none, release, 6},
+	})
+	if on.interactiveSelecting || on.selectionCopyNote == "" {
+		t.Fatalf("ON: the first X10 release did not commit the selection (note %q)", on.selectionCopyNote)
+	}
+	if sent != 2 {
+		t.Errorf("ON: the middle gesture dispatched %d reports, want 2", sent)
+	}
+	waitForPaneJoined(t, nsocket, ntarget, "^[[<1;5;2M^[[<1;7;2m")
+	if on.interactiveForwardedButtons != 0 {
+		t.Fatalf("ON: the second X10 release did not end the middle gesture")
+	}
+}
