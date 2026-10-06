@@ -35,8 +35,10 @@ func registerStaleHookBindingSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^the scenario deck binary is "B", a copy of the current build$`, scenarioDeckBinaryIsCopyB)
 	sc.Step(`^the state database schema is newer than binary "A"'s$`, databaseSchemaNewerThanBinaryA)
 	sc.Step(`^the state database session "([^"]+)" is bound to the hook executable of binary "A"$`, sessionBoundToBinaryA)
-	sc.Step(`^the state database session "([^"]+)" has no hook executable$`, sessionHasNoHookExecutable)
-	sc.Step(`^the scenario binds the state database session "([^"]+)" to the hook executable of binary "A"$`, scenarioBindsSessionToBinaryA)
+	sc.Step(`^the state database session "([^"]+)" is bound to the hook executable of binary "B"$`, sessionBoundToBinaryB)
+	sc.Step(`^a long-running fake "pi" binary is on PATH for future deck clients$`, longRunningFakePiOnPATHForFutureClients)
+	sc.Step(`^fake Pi session "([^"]+)" loaded the deck extension from the data root$`, fakePiLoadedDeckExtension)
+	sc.Step(`^fake Pi session "([^"]+)" fires "([^"]+)" through its installed extension$`, fakePiFiresThroughInstalledExtension)
 	sc.Step(`^binary "B" is no longer executable$`, binaryBIsNoLongerExecutable)
 	sc.Step(`^binary "A" runs _hook for session "([^"]+)" with a "([^"]+)" payload$`, binaryARunsHook)
 	sc.Step(`^that hook run succeeded and printed nothing$`, lastHookSucceededSilently)
@@ -168,43 +170,121 @@ func sessionBoundToBinaryA(ctx context.Context, name string) error {
 	return nil
 }
 
-func sessionHasNoHookExecutable(ctx context.Context, name string) error {
-	h, _, err := staleHookState(ctx)
-	if err != nil {
-		return err
-	}
-	got, err := sessionHookExecutable(ctx, h, name)
-	if err != nil {
-		return err
-	}
-	if got != "" {
-		return fmt.Errorf("session %q hook_executable = %q, want none (its launch builds no hook command)", name, got)
-	}
-	return nil
-}
-
-// scenarioBindsSessionToBinaryA stands in for the launch fact a Pi session
-// never records: Pi builds no hook command (SPEC §8.1), so the Pi leg of the
-// "A cannot re-exec" case writes the binding the Claude and Codex launches
-// record themselves, and asserts the hint is agent-agnostic.
-func scenarioBindsSessionToBinaryA(ctx context.Context, name string) error {
+func sessionBoundToBinaryB(ctx context.Context, name string) error {
 	h, st, err := staleHookState(ctx)
 	if err != nil {
 		return err
 	}
-	db, err := openObservedDatabase(h)
+	// The binding is recorded once the relaunched pane is up, a moment after
+	// the launch record the scenario waited on.
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		got, err := sessionHookExecutable(ctx, h, name)
+		if err != nil {
+			return err
+		}
+		if got == st.b {
+			return nil
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("session %q hook_executable = %q, want binary B %q", name, got, st.b)
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+}
+
+func longRunningFakePiOnPATHForFutureClients(ctx context.Context) error {
+	return installFakePiOnPATH(ctx, true)
+}
+
+// fakePiPane returns the tmux target of the named session's pane and a reader
+// for its joined capture.
+func fakePiPane(ctx context.Context, name string) (*ScenarioHarness, string, func() (string, error), error) {
+	h, err := assertionHarness(ctx)
+	if err != nil {
+		return nil, "", nil, err
+	}
+	slug, err := sessionSlugByName(h, name)
+	if err != nil {
+		return nil, "", nil, err
+	}
+	target := "deck_" + slug
+	capture := func() (string, error) {
+		out, err := tmuxOutput(ctx, h, "capture-pane", "-p", "-J", "-S", "-", "-t", target)
+		return string(out), err
+	}
+	return h, target, capture, nil
+}
+
+// fakePiLoadedDeckExtension asserts the launched fake pi announced the
+// extension file deck's Pi launch named with -e, under the scenario's data
+// root: the install is read from the pane the launch produced.
+func fakePiLoadedDeckExtension(ctx context.Context, name string) error {
+	h, _, capture, err := fakePiPane(ctx, name)
 	if err != nil {
 		return err
 	}
-	defer db.Close()
-	res, err := db.ExecContext(ctx, `UPDATE sessions SET hook_executable = ? WHERE name = ?`, st.a, name)
+	want := "fake-pi extension: " + filepath.Join(h.Home, "pi", "deck-hook.js")
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		output, err := capture()
+		if err == nil && strings.Contains(output, want) {
+			return nil
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("fake pi pane of %q never announced %q (err=%w):\n%s", name, want, err, output)
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+}
+
+// fakePiFiresThroughInstalledExtension asks the running fake pi to fire one
+// event through the extension its launch installed (cmd/fake-pi's "hook" pane
+// command), which runs the hook command the launch put in its environment: the
+// scenario never runs a hook binary itself. The pane's own report of that one
+// hook run becomes the "last hook run" the shared hook steps assert on: its
+// notification text when the hook failed, nothing when it succeeded.
+func fakePiFiresThroughInstalledExtension(ctx context.Context, name, event string) error {
+	_, st, err := staleHookState(ctx)
 	if err != nil {
 		return err
 	}
-	if n, _ := res.RowsAffected(); n != 1 {
-		return fmt.Errorf("binding session %q to binary A changed %d rows", name, n)
+	h, target, capture, err := fakePiPane(ctx, name)
+	if err != nil {
+		return err
 	}
-	return nil
+	fired, failed := "fake-pi hook fired: "+event, "fake-pi hook failed: "+event
+	before, err := capture()
+	if err != nil {
+		return err
+	}
+	baseline := strings.Count(before, fired) + strings.Count(before, failed)
+	request, err := json.Marshal(map[string]any{"command": "hook", "event": event, "payload": map[string]any{"source": "startup"}})
+	if err != nil {
+		return err
+	}
+	if _, err := tmuxOutput(ctx, h, "send-keys", "-t", target, "-l", string(request)); err != nil {
+		return fmt.Errorf("send hook command to fake pi pane %q: %w", target, err)
+	}
+	if _, err := tmuxOutput(ctx, h, "send-keys", "-t", target, "Enter"); err != nil {
+		return fmt.Errorf("submit hook command to fake pi pane %q: %w", target, err)
+	}
+	deadline := time.Now().Add(15 * time.Second)
+	for {
+		output, err := capture()
+		if err == nil && strings.Count(output, fired)+strings.Count(output, failed) > baseline {
+			st.lastOutput, st.lastErr = "", nil
+			if strings.Count(output, failed) > strings.Count(before, failed) {
+				_, notice, _ := strings.Cut(output[strings.LastIndex(output, failed):], "fake-pi notify: ")
+				st.lastOutput, st.lastErr = strings.TrimSpace(notice), fmt.Errorf("fake pi hook %s failed", event)
+			}
+			return nil
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("fake pi pane %q never reported the %s hook (err=%w):\n%s", target, event, err, output)
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
 }
 
 func binaryBIsNoLongerExecutable(ctx context.Context) error {

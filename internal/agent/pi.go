@@ -73,10 +73,22 @@ func (p Pi) Resume(in ResumeInput) ([]string, error) {
 	return append(argv, in.ExtraArgs...), nil
 }
 
-// Instrument is empty until Pi has a verified event source (SPEC §8.1).
-func (Pi) Instrument(LaunchInput) ([]string, map[string]string) { return nil, nil }
+// Instrument installs deck's Pi extension (PiExtensionSource) with `-e` and
+// hands it the session's hook command through PiHookCommandEnv: the
+// single-quoted absolute path of the launching deck binary plus ` _hook`,
+// the same command Claude and Codex embed (SPEC §8.1). Like Claude and Codex
+// it adds DECK_LAUNCH_GENERATION when the launch holds a lease. The extension
+// file itself is written by the launcher (InstrumentFiles), never here.
+func (Pi) Instrument(in LaunchInput) ([]string, map[string]string) {
+	env := map[string]string{PiHookCommandEnv: shellQuote(in.DeckExecutable) + " _hook"}
+	if in.LaunchGeneration != "" {
+		env[LaunchGenerationEnv] = in.LaunchGeneration
+	}
+	return []string{"-e", PiExtensionPath(in.DeckHome)}, env
+}
 
-// Probe is Pi's sampled status source until it has a verified event source.
+// Probe is Pi's sampled status source before its extension's first event and
+// for the transitions the extension has no event for (SPEC §8.3).
 func (Pi) Probe(pane string) (string, string) { return probe("pi", pane) }
 
 // TranscriptPaths locates pi's on-disk transcript for a conversation,

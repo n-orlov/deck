@@ -27,23 +27,23 @@ type hookHarness struct {
 	reason  string // and the reason that event carries
 }
 
-// R204 (#56) covers Claude, Codex and Pi. Pi's adapter builds no hook command
-// (Instrument is empty until Pi has a verified event source, SPEC §8.1), so
-// the case is: a `_hook` that reaches the store for a Pi row, whichever way it
-// was started, takes exactly the same newer-schema paths.
+// R204 (#56) covers Claude, Codex and Pi: each launch path builds the same
+// `<deck> _hook` command (Pi hands it to its deck-owned extension through the
+// environment), so a `_hook` that reaches a newer database takes exactly the
+// same paths for all three.
 var hookHarnesses = []hookHarness{
 	{"claude", agent.Claude{}, `{"hook_event_name":"SessionEnd","session_id":"conversation-1","reason":"logout"}`, "session_end", "logout"},
 	{"codex", agent.Codex{}, `{"hook_event_name":"PermissionRequest","session_id":"conversation-1","tool_name":"shell"}`, "permission_request", "shell"},
-	{"pi", agent.Pi{}, `{"hook_event_name":"SessionEnd","session_id":"conversation-1","reason":"logout"}`, "session_end", "logout"},
+	{"pi", agent.Pi{}, `{"hook_event_name":"SessionEnd","session_id":"conversation-1","reason":"other"}`, "session_end", "other"},
 }
 
 // launchHookCommand returns the exact shell command line the harness's agent
 // would run for a hook, built by that harness's real launch path from deck
-// (Claude: inside --settings JSON; Codex: inside a -c TOML override). Pi has
-// none, so the hook is started as the plain `<deck> _hook` argv instead.
+// (Claude: inside --settings JSON; Codex: inside a -c TOML override; Pi: the
+// environment variable its installed extension runs).
 func launchHookCommand(t *testing.T, h hookHarness, deck string) string {
 	t.Helper()
-	argv, _ := h.adapter.Instrument(agent.LaunchInput{Profile: "safe", DeckExecutable: deck})
+	argv, env := h.adapter.Instrument(agent.LaunchInput{Profile: "safe", DeckExecutable: deck, DeckHome: "/deck-home"})
 	switch h.adapter.(type) {
 	case agent.Claude:
 		var settings struct {
@@ -66,11 +66,14 @@ func launchHookCommand(t *testing.T, h hookHarness, deck string) string {
 			}
 		}
 		t.Fatalf("codex Instrument embedded no PermissionRequest hook: %#v", argv)
+	case agent.Pi:
+		if len(argv) != 2 || argv[0] != "-e" || env[agent.PiHookCommandEnv] == "" {
+			t.Fatalf("pi Instrument = %#v, %#v; want -e <extension> and the hook command", argv, env)
+		}
+		return env[agent.PiHookCommandEnv]
 	}
-	if len(argv) != 0 {
-		t.Fatalf("%s unexpectedly instruments hooks: %#v", h.name, argv)
-	}
-	return "'" + strings.ReplaceAll(deck, "'", `'"'"'`) + "' _hook"
+	t.Fatalf("unknown harness %q", h.name)
+	return ""
 }
 
 // quirkyDeck copies binary to a path holding a space and a single quote, so

@@ -87,10 +87,11 @@ func TestStaleHookBindingHintPerHarnessWhenTheLaunchExecutableIsMissing(t *testi
 }
 
 // TestNoStaleHookBindingHintPerHarnessWithoutARecordedExecutable mirrors
-// TestNoStaleHookBindingHintWithoutARecordedExecutable for every harness. For
-// Pi this is the row its launch path actually writes (Pi's Instrument builds
-// no hook command, so the launcher records no binding; see
-// TestCodexRecordsAndPiAndShellDoNotRecordAHookExecutable in internal/service).
+// TestNoStaleHookBindingHintWithoutARecordedExecutable for every harness: a
+// row that never recorded a binding (one created before the binding existed;
+// every launch of Claude, Codex and Pi records one, see
+// TestCodexAndPiRecordAHookExecutableAndShellDoesNot in internal/service)
+// has nothing to compare and shows no hint.
 func TestNoStaleHookBindingHintPerHarnessWithoutARecordedExecutable(t *testing.T) {
 	for _, kind := range hookBindingHarnesses {
 		t.Run(kind, func(t *testing.T) {
@@ -128,17 +129,13 @@ func TestStaleHookBindingHintPerHarnessIsNotAnErrorState(t *testing.T) {
 
 // TestStaleHookBindingHintPerHarnessClearsAfterRestartAndResume mirrors
 // TestStaleHookBindingHintClearsAfterRestartAndResume for every harness: the
-// relaunched row is bound to the running deck (Claude, Codex) or to nothing
-// (Pi, whose relaunch records no binding, see
-// TestRestartRebindsCodexAndLeavesPiUnbound in internal/service), and either
-// way it carries no hint and is not in an error state.
+// relaunched row is bound to the running deck (every harness records it, see
+// TestRestartRebindsCodexAndPi in internal/service), and so carries no hint and
+// is not in an error state.
 func TestStaleHookBindingHintPerHarnessClearsAfterRestartAndResume(t *testing.T) {
 	running := existingBinary(t, "deck-new")
 	for _, kind := range hookBindingHarnesses {
 		rebound := running
-		if kind == "pi" {
-			rebound = ""
-		}
 		for name, msg := range relaunchMsgs {
 			t.Run(kind+" "+name, func(t *testing.T) {
 				model := hookBindingModelFor(kind, running, existingBinary(t, "deck-old"))

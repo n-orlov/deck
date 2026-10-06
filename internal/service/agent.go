@@ -381,6 +381,9 @@ func applyInstrumentation(adapter agent.Adapter, input agent.LaunchInput, argv [
 	if input.DeckHome == "" {
 		return nil, nil, errors.New("deck home for instrumentation is required")
 	}
+	if err := writeInstrumentFiles(adapter, input); err != nil {
+		return nil, nil, err
+	}
 	argv = append(argv, instrumentArgv...)
 	// Instrumentation is deck-owned and wins over config/session keys with
 	// the same names, without mutating either persisted input map.
@@ -388,6 +391,48 @@ func applyInstrumentation(adapter agent.Adapter, input agent.LaunchInput, argv [
 		launchEnv[key] = value
 	}
 	return argv, launchEnv, nil
+}
+
+// writeInstrumentFiles puts the deck-owned files an adapter's instrumentation
+// names on disk before the agent starts (Pi's extension). Each file is
+// replaced through a temporary file and a rename, so a concurrent launch or a
+// running agent never reads a half-written file.
+func writeInstrumentFiles(adapter agent.Adapter, input agent.LaunchInput) error {
+	provider, ok := adapter.(agent.FileInstrumenter)
+	if !ok {
+		return nil
+	}
+	for _, file := range provider.InstrumentFiles(input) {
+		if err := writeFileAtomic(file.Path, file.Content); err != nil {
+			return fmt.Errorf("install %s instrumentation: %w", adapter.Kind(), err)
+		}
+	}
+	return nil
+}
+
+// writeFileAtomic writes content to path through a sibling temporary file and
+// a rename, creating the directory when needed.
+func writeFileAtomic(path string, content []byte) error {
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0o750); err != nil {
+		return err
+	}
+	tmp, err := os.CreateTemp(dir, ".instrument-*")
+	if err != nil {
+		return err
+	}
+	name := tmp.Name()
+	_, writeErr := tmp.Write(content)
+	closeErr := tmp.Close()
+	if writeErr != nil || closeErr != nil {
+		_ = os.Remove(name) // best-effort cleanup of the scratch file
+		return errors.Join(writeErr, closeErr)
+	}
+	if err := os.Rename(name, path); err != nil {
+		_ = os.Remove(name) // best-effort cleanup of the scratch file
+		return err
+	}
+	return nil
 }
 
 // resolveLaunchEnv merges the SPEC §6.3 PATH-resolution layers that sit

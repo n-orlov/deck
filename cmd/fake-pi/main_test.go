@@ -205,7 +205,7 @@ func TestRenderedFixturesProbeToTheRealPiVerdict(t *testing.T) {
 
 func TestPaneFixtureCommandNeedsConfiguredCorpus(t *testing.T) {
 	var output bytes.Buffer
-	err := runCommands(strings.NewReader(`{"command":"fixture","name":"pi/running.txt"}`+"\n"), &output, "")
+	err := runCommands(strings.NewReader(`{"command":"fixture","name":"pi/running.txt"}`+"\n"), &output, "", extensionHooks{})
 	if err == nil || !strings.Contains(err.Error(), "FAKE_AGENT_FIXTURE_DIR is not set") {
 		t.Fatalf("runCommands error = %v, want missing corpus", err)
 	}
