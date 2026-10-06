@@ -61,30 +61,44 @@ Feature: Real agent session creation and resume through the TUI
     # `claude --resume <id>` of a session that never received one fails with
     # "No conversation found". Deck relaunches it with `--session-id <same
     # id>` instead, and every later restart stays on that path until a
-    # transcript exists. No message is ever sent here.
+    # transcript exists. No message is ever sent here. Each launch is
+    # followed by its ready verdict (starting, from tmux) and then by the
+    # SessionStart signal a real Claude sends on startup, which is what
+    # moves a Claude row to running (SPEC.md §7); the conversation id
+    # remembered at creation must survive both restarts unchanged.
     Given a long-running fake "claude" binary is on PATH for future deck clients
     And deck client "A" is started
     When deck client "A" creates claude session "early restart" with permission profile "safe"
     Then deck client "A" screen contains "early restart"
     And the audit log has 1 launch record for session "early restart"
-    And the state database contains session "early restart" with status "running"
+    And the state database session "early restart" has status "starting" from "tmux"
     And the conversation id of session "early restart" is remembered
+    When fake Claude session "early restart" fires "SessionStart" for itself using conversation identity:
+      | source | startup |
+    Then the state database contains session "early restart" with status "running"
     When deck client "A" presses R on session "early restart"
     Then within one configured reconcile interval the audit log has 2 launch records for session "early restart"
     And the audit log's most recent launch argv for session "early restart" contains "--session-id"
     And the audit log's most recent launch argv for session "early restart" does not contain "--resume"
     And the audit log's most recent launch argv for session "early restart" contains its remembered conversation id
     And the state database session "early restart" still has its remembered conversation id
-    And the state database contains session "early restart" with status "running"
+    And the state database session "early restart" has status "starting" from "tmux"
     And exactly 1 private tmux sessions match slug "deck_early-restart"
+    When fake Claude session "early restart" fires "SessionStart" for itself using conversation identity:
+      | source | startup |
+    Then the state database contains session "early restart" with status "running"
+    And the state database session "early restart" still has its remembered conversation id
     And deck client "A" screen does not contain "Cannot resume"
     When deck client "A" presses R on session "early restart"
     Then within one configured reconcile interval the audit log has 3 launch records for session "early restart"
     And the audit log's most recent launch argv for session "early restart" contains "--session-id"
     And the audit log's most recent launch argv for session "early restart" does not contain "--resume"
     And the audit log's most recent launch argv for session "early restart" contains its remembered conversation id
+    And the state database session "early restart" has status "starting" from "tmux"
+    When fake Claude session "early restart" fires "SessionStart" for itself using conversation identity:
+      | source | startup |
+    Then the state database contains session "early restart" with status "running"
     And the state database session "early restart" still has its remembered conversation id
-    And the state database contains session "early restart" with status "running"
     When deck client "A" exits cleanly
 
   Scenario: R restarts a running codex session with the resume argv, never composing --last
