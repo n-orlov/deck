@@ -3,6 +3,7 @@ package agent
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -72,9 +73,16 @@ func TestPiTranscriptPathRejectsUnsafeIDs(t *testing.T) {
 			// separator) is what the suffix match would pick up.
 			writeDecoy(t, filepath.Join(dir, "2026-01-01T00-00-00-000Z_"+filepath.Base(tc.id)+".jsonl"))
 			writeDecoy(t, filepath.Join(dir, "2026-01-01T00-00-00-000Z_"+tc.id+".jsonl"))
+			reads := recordPiReadDir(t)
 			got, ok := NewPi().TranscriptPaths(TranscriptInput{Home: home, CWD: cwd, ConversationID: tc.id})
 			if ok || got != "" {
 				t.Fatalf("Pi.TranscriptPaths(%q) = (%q, %v), want (\"\", false)", tc.id, got, ok)
+			}
+			// A separator-holding id can never match an entry name, so the
+			// result alone cannot tell a validated decline from a suffix miss:
+			// the id must be refused before the directory is read at all.
+			if len(*reads) != 0 {
+				t.Fatalf("Pi.TranscriptPaths(%q) read %v, want no transcript-directory access", tc.id, *reads)
 			}
 		})
 	}
@@ -86,10 +94,44 @@ func TestCodexTranscriptPathRejectsUnsafeIDs(t *testing.T) {
 			home := t.TempDir()
 			day := filepath.Join(home, ".codex", "sessions", "2026", "01", "01")
 			writeDecoy(t, filepath.Join(day, "rollout-2026-01-01T00-00-00-"+tc.id+".jsonl"))
+			// Glob reads a backslash as an escape, so `a\b` would match "...-ab.jsonl".
+			writeDecoy(t, filepath.Join(day, "rollout-2026-01-01T00-00-00-"+strings.ReplaceAll(tc.id, `\`, "")+".jsonl"))
 			got, ok := NewCodex().TranscriptPaths(TranscriptInput{Home: home, CWD: "/tmp/work", ConversationID: tc.id})
 			if ok || got != "" {
 				t.Fatalf("Codex.TranscriptPaths(%q) = (%q, %v), want (\"\", false)", tc.id, got, ok)
 			}
 		})
+	}
+}
+
+// recordPiReadDir swaps piReadDir for a recorder that still reads the real
+// directory, restoring it when the test ends, and returns the paths read.
+func recordPiReadDir(t *testing.T) *[]string {
+	t.Helper()
+	var reads []string
+	orig := piReadDir
+	piReadDir = func(dir string) ([]os.DirEntry, error) {
+		reads = append(reads, dir)
+		return orig(dir)
+	}
+	t.Cleanup(func() { piReadDir = orig })
+	return &reads
+}
+
+// TestPiTranscriptPathReadsDirForSafeID keeps the read recorder honest: a
+// valid id does read the transcript directory and resolves the same file.
+func TestPiTranscriptPathReadsDirForSafeID(t *testing.T) {
+	cwd := "/tmp/work"
+	home := t.TempDir()
+	dir := filepath.Join(home, ".pi", "agent", "sessions", piEncodeCwd(cwd))
+	want := filepath.Join(dir, "2026-01-01T00-00-00-000Z_abc-123.jsonl")
+	writeDecoy(t, want)
+	reads := recordPiReadDir(t)
+	got, ok := NewPi().TranscriptPaths(TranscriptInput{Home: home, CWD: cwd, ConversationID: "abc-123"})
+	if !ok || got != want {
+		t.Fatalf("Pi.TranscriptPaths(abc-123) = (%q, %v), want (%q, true)", got, ok, want)
+	}
+	if len(*reads) != 1 || (*reads)[0] != dir {
+		t.Fatalf("Pi.TranscriptPaths(abc-123) read %v, want exactly [%s]", *reads, dir)
 	}
 }
