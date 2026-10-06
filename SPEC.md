@@ -2694,7 +2694,10 @@ must be restored afterwards.
   (`ESC X`), PM (`ESC ^`) or APC (`ESC _`) string it drops the bytes that would end the string
   early: `0x80`–`0x9F` in an OSC and in a DCS's passthrough, every byte `>= 0x80` in an SOS, PM
   or APC string and in a DCS header, whose payload the parser reads as ASCII only. A string ends
-  where the parser ends it: `BEL` (OSC only), `ESC` (so `ESC \`), `CAN` or `SUB`. Outside a
+  where the parser ends it: `BEL` (OSC only), `ESC` (so `ESC \`), `CAN` or `SUB`. `ESC \`
+  ends every kind from every header and payload state, an empty DCS (`ESC P ESC \`) included —
+  there the parser reads the `ESC` as payload, but the filter still treats the string as ended.
+  Outside a
   string every byte is forwarded unchanged — ordinary text, including every non-ASCII
   character, reaches the grid byte for byte — and nothing is buffered: a chunk is forwarded as it
   arrives, and the filter's state carries across chunks, so a read split anywhere (between `E2`

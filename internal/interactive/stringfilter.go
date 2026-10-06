@@ -21,6 +21,9 @@ import "sync"
 // its state across calls, so a read split anywhere (between E2 and 9C B3
 // included) yields the same bytes as an unsplit one.
 //
+// Every kind also ends on ESC \ (ST) from any of its states, including an
+// empty DCS (ESC P ESC \), and everything after it is outside a string.
+//
 // Strings begin at ESC ] / P / X / ^ / _. They end where the emulator ends
 // them: BEL (OSC only) and ESC, which the parser then reads as the start of
 // an escape sequence (ESC \ being ST), plus CAN and SUB, which the parser
@@ -49,6 +52,9 @@ const (
 	filterDCSEntry
 	filterDCSParam
 	filterDCSIntermediate
+	// filterDCSEntryEscape follows ESC straight after ESC P: the vt table
+	// reads that ESC as payload, but ESC \ there is still the string's end.
+	filterDCSEntryEscape
 	filterDCSData
 )
 
@@ -62,7 +68,7 @@ const (
 // drops reports whether b is removed in the current state.
 func (f *stringFilter) drops(b byte) bool {
 	switch f.state {
-	case filterOSC, filterDCSData:
+	case filterOSC, filterDCSData, filterDCSEntryEscape:
 		return b >= 0x80 && b <= 0x9F
 	case filterText, filterDCSEntry, filterDCSParam, filterDCSIntermediate:
 		return b >= 0x80
@@ -115,6 +121,8 @@ func (f *stringFilter) advance(b byte) {
 		f.advanceEscapeIntermediate(b)
 	case filterDCSEntry:
 		f.advanceDCSEntry(b)
+	case filterDCSEntryEscape:
+		f.advanceDCSEntryEscape(b)
 	case filterDCSParam:
 		f.advanceDCSParam(b)
 	case filterDCSIntermediate:
@@ -153,12 +161,27 @@ func (f *stringFilter) advanceEscapeIntermediate(b byte) {
 // the start of an escape sequence.
 func (f *stringFilter) advanceDCSEntry(b byte) {
 	switch {
-	case b == byteESC || (b >= 0x08 && b <= 0x0D) || (b >= 0x40 && b <= 0x7E):
+	case b == byteESC:
+		f.state = filterDCSEntryEscape
+	case (b >= 0x08 && b <= 0x0D) || (b >= 0x40 && b <= 0x7E):
 		f.state = filterDCSData
 	case b >= 0x20 && b <= 0x2F:
 		f.state = filterDCSIntermediate
 	case b >= 0x30 && b <= 0x3F:
 		f.state = filterDCSParam
+	}
+}
+
+// advanceDCSEntryEscape follows ESC P ESC: a backslash is ST and ends the
+// (empty) string; another ESC may still precede it; anything else is payload.
+func (f *stringFilter) advanceDCSEntryEscape(b byte) {
+	switch b {
+	case '\\':
+		f.state = filterGround
+	case byteESC:
+		// stays: ESC ESC \ is still ST
+	default:
+		f.state = filterDCSData
 	}
 }
 
