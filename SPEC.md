@@ -902,7 +902,7 @@ than faking it:
 | | Claude Code | Pi / oh-my-pi | Codex CLI | shell (bash/zsh/fish) |
 |---|---|---|---|---|
 | **conversation id** | **deck assigns**: `--session-id <uuid>` | **deck assigns**: `--session-id <id>` (created if missing), plus a display name | agent mints it; deck adopts it from the first hook (§8.2) | none |
-| **resume** | `--resume <uuid>` (fork = new id, offered explicitly) | `--session-id <id>` | `resume <id>` by id | recreate shell (§9.1) |
+| **resume** | `--resume <uuid>` (fork = new id, offered explicitly); `--session-id <uuid>` while the conversation has no transcript yet (§9.1) | `--session-id <id>` | `resume <id>` by id | recreate shell (§9.1) |
 | **id discovery** | not needed | not needed | **§8.2** — `SessionStart` reports it; no filesystem search, no lease | n/a |
 | **status** | **hooks → `deck _hook`** (live) | **extension → `deck _hook`** (live), probe until its first event (§8.3) | **hooks → `deck _hook`** (live), probe until the first prompt (§8.2) | probe (sampled) |
 | **banned** | `--continue` | `--continue` | `resume --last` | — |
@@ -1119,6 +1119,22 @@ every session reads `stopped · resumable`, and `r` brings one back:
   sticky across restarts; a one-shot "start fresh" reverts to `auto` afterwards. The stored
   value keeps its historical name `pinned`, but the UI calls this a *lock* and never a pin:
   "pin" in the UI means only §11's sidebar pin, which is unrelated to resume.
+- **A Claude conversation that has no transcript yet is started again, not resumed.** Claude
+  writes no transcript until the first message, and `claude --resume <uuid>` of a conversation
+  with none fails ("No conversation found"), so a session restarted or resumed before its first
+  message would fail every time. The relaunch decision for `r` and `R` is a finite set of cases:
+  1. Claude, the conversation **not locked**, the home directory known, no `CLAUDE_CONFIG_DIR`
+     in the session's env layering (session env over config `[env]` over the tmux server's
+     environment, falling back to deck's own), and **no transcript file** at
+     `$HOME/.claude/projects/<cwd with separators as "-">/<conversation id>.jsonl` →
+     `--session-id <the same uuid>`. The conversation id on the row is unchanged.
+  2. A transcript file exists → `--resume <uuid>`.
+  3. The conversation is locked (`resume_state = pinned`) → `--resume`.
+  4. `CLAUDE_CONFIG_DIR` is set (the transcript location cannot be known) → `--resume`.
+  5. The home directory is unknown → `--resume`.
+  6. Codex and Pi → their resume argv from the table in §8, whatever the transcript state.
+
+  `resume_state = fresh-once` is unchanged: it launches a new conversation id once.
 - `shell` sessions "resume" by recreating the shell with their history file, replayed
   scrollback, and last known working directory (§9.4). A shell session never re-runs a
   previous command on resume.

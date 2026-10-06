@@ -346,7 +346,7 @@ func (s Service) releaseResumeLease(ctx context.Context, sessionID, heldBy strin
 func (s Service) resumeArgv(session store.Session, adapter agent.Adapter, caps agent.Caps, launchInput agent.LaunchInput, freshOnce bool) ([]string, error) {
 	var argv []string
 	var err error
-	if freshOnce {
+	if freshOnce || s.relaunchFresh(session, adapter, launchInput.ConversationID) {
 		argv, err = adapter.Launch(launchInput)
 	} else {
 		argv, err = adapter.Resume(agent.ResumeInput{
@@ -366,6 +366,56 @@ func (s Service) resumeArgv(session store.Session, adapter agent.Adapter, caps a
 		return nil, fmt.Errorf("resolve resume argv for session %q: %w", session.Name, err)
 	}
 	return argv, nil
+}
+
+// relaunchFresh reports whether a non-fresh-once relaunch must start the
+// conversation again on its own id (R207) because its agent has not written a
+// transcript yet and so cannot resume it. Only an adapter that declares
+// agent.FreshRelauncher is ever asked, and a pinned conversation is never
+// relaunched fresh: a pin names a conversation some other launch made, so
+// the absence of a transcript for the row's own id says nothing about it.
+// A home directory that cannot be resolved answers false (resume).
+func (s Service) relaunchFresh(session store.Session, adapter agent.Adapter, conversationID string) bool {
+	relauncher, ok := adapter.(agent.FreshRelauncher)
+	if !ok || (session.ResumeState == "pinned" && session.ResumePin != "") {
+		return false
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return false
+	}
+	return relauncher.RelaunchFresh(agent.TranscriptInput{
+		Home: home, CWD: session.CWD, ConversationID: conversationID,
+		Env: s.transcriptEnv(adapter.Capabilities().TranscriptEnvKeys, session),
+	})
+}
+
+// transcriptEnv resolves the session environment keys an adapter's transcript
+// convention names through the session's own layering: the session env over
+// the config [env] over the tmux server's global environment, falling back to
+// this process's own environment (which a server started by this launch
+// inherits) when no server holds the key.
+func (s Service) transcriptEnv(keys []string, session store.Session) map[string]string {
+	env := make(map[string]string, len(keys))
+	for _, key := range keys {
+		env[key] = s.resolveTranscriptKey(key, session)
+	}
+	return env
+}
+
+func (s Service) resolveTranscriptKey(key string, session store.Session) string {
+	if value, ok := session.Env[key]; ok {
+		return value
+	}
+	if value, ok := s.ConfigEnv[key]; ok {
+		return value
+	}
+	if s.TMux.Socket != "" {
+		if value, ok, _ := s.TMux.ServerEnvironment(context.Background(), key); ok {
+			return value
+		}
+	}
+	return os.Getenv(key)
 }
 
 // buildResumeLaunch resolves the pane command and environment of the resumed

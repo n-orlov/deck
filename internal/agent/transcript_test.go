@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -253,5 +254,62 @@ func TestCodexTranscriptPathMissDegrades(t *testing.T) {
 
 	if got, ok := NewCodex().TranscriptPaths(TranscriptInput{Home: home, ConversationID: ""}); ok || got != "" {
 		t.Fatalf("Codex.TranscriptPaths with empty ConversationID = (%q, %v), want (\"\", false)", got, ok)
+	}
+}
+
+func recordClaudeTranscriptFor(t *testing.T, home, cwd, id string) {
+	t.Helper()
+	dir := filepath.Join(home, ".claude", "projects", strings.ReplaceAll(cwd, string(filepath.Separator), "-"))
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, id+".jsonl"), []byte(`{"message":"hi"}`+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// R207: Claude names a relaunch as fresh (Launch on the same id) exactly when
+// the absence of its transcript is knowable and the transcript is absent.
+func TestClaudeRelaunchFreshOnlyWhenTranscriptIsKnownAbsent(t *testing.T) {
+	const id = "7f1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
+	const cwd = "/tmp/relaunch-fresh/cwd"
+	claude := NewClaude()
+	if !slices.Contains(claude.Capabilities().TranscriptEnvKeys, "CLAUDE_CONFIG_DIR") {
+		t.Fatalf("Claude must declare CLAUDE_CONFIG_DIR as a transcript env key, got %v", claude.Capabilities().TranscriptEnvKeys)
+	}
+
+	empty := t.TempDir()
+	withTranscript := t.TempDir()
+	recordClaudeTranscriptFor(t, withTranscript, cwd, id)
+
+	cases := []struct {
+		name string
+		in   TranscriptInput
+		want bool
+	}{
+		{"case 1: home known, no override, no transcript", TranscriptInput{Home: empty, CWD: cwd, ConversationID: id}, true},
+		{"case 1: an empty override value is no override", TranscriptInput{Home: empty, CWD: cwd, ConversationID: id, Env: map[string]string{"CLAUDE_CONFIG_DIR": ""}}, true},
+		{"case 2: a transcript exists", TranscriptInput{Home: withTranscript, CWD: cwd, ConversationID: id}, false},
+		{"case 4: CLAUDE_CONFIG_DIR is set", TranscriptInput{Home: empty, CWD: cwd, ConversationID: id, Env: map[string]string{"CLAUDE_CONFIG_DIR": "/elsewhere"}}, false},
+		{"case 5: home unknown", TranscriptInput{Home: "", CWD: cwd, ConversationID: id}, false},
+		{"no conversation id", TranscriptInput{Home: empty, CWD: cwd}, false},
+	}
+	for _, tc := range cases {
+		if got := claude.RelaunchFresh(tc.in); got != tc.want {
+			t.Errorf("%s: RelaunchFresh = %v, want %v", tc.name, got, tc.want)
+		}
+	}
+}
+
+// R207 case 6: Codex and Pi (and shell) never ask for a fresh relaunch, so
+// whatever their transcript state, they are resumed as before.
+func TestCodexPiAndShellAreNeverRelaunchedFresh(t *testing.T) {
+	for _, adapter := range []Adapter{NewCodex(), NewPi(), NewShell()} {
+		if _, ok := adapter.(FreshRelauncher); ok {
+			t.Errorf("%s implements FreshRelauncher, want it always resumed", adapter.Kind())
+		}
+	}
+	if _, ok := Adapter(NewClaude()).(FreshRelauncher); !ok {
+		t.Error("Claude must implement FreshRelauncher")
 	}
 }
