@@ -2,8 +2,6 @@
 
 package store
 
-import "strconv"
-
 // oldSchemaVersion is the schema this test build claims to support, settable
 // with -ldflags "-X github.com/n-orlov/deck/internal/store.oldSchemaVersion=N".
 // The file is compiled in only under `-tags deckoldschema`, which no release
@@ -11,12 +9,4 @@ import "strconv"
 // an older deck without ever building a real old release (R204).
 var oldSchemaVersion = "7"
 
-var supportedSchema = parseOldSchema(oldSchemaVersion)
-
-func parseOldSchema(s string) int {
-	n, err := strconv.Atoi(s)
-	if err != nil || n < 1 {
-		return SchemaVersion - 1
-	}
-	return n
-}
+var supportedSchema = parseSchemaOverride(oldSchemaVersion, SchemaVersion-1)
