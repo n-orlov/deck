@@ -2,7 +2,9 @@ package agent
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -63,17 +65,60 @@ const claudeConfigDirKey = "CLAUDE_CONFIG_DIR"
 // `--resume` of a conversation that never received one fails with "No
 // conversation found"; the id is still unused, so Launch on it is correct.
 //
-// It answers true only when the absence of the transcript is knowable: the
-// home directory is known, CLAUDE_CONFIG_DIR is not set (the transcript may
-// then live anywhere), the conversation id is present, and no transcript
-// file exists at the expected path. Every other state answers false, so the
-// caller resumes as it always has.
-func (c Claude) RelaunchFresh(in TranscriptInput) bool {
+// It answers true only when the absence of the transcript is positively
+// known: the home directory is known, CLAUDE_CONFIG_DIR is not set (the
+// transcript may then live anywhere), the conversation id is present, and the
+// filesystem confirms that nothing exists at the expected path (a not-exist
+// result). Every other state answers false, so the caller resumes as it
+// always has: that includes any lookup error that is not a confirmed
+// not-exist (permission denied, an I/O error, ...), and an entry that exists
+// whose metadata cannot be read.
+func (Claude) RelaunchFresh(in TranscriptInput) bool {
 	if in.Home == "" || !safeConversationID(in.ConversationID) || in.Env[claudeConfigDirKey] != "" {
 		return false
 	}
-	_, found := c.TranscriptPaths(in)
-	return !found
+	_, state := claudeTranscriptLookup(in)
+	return state == transcriptAbsent
+}
+
+// transcriptState is the outcome of looking for a Claude transcript file.
+type transcriptState int
+
+const (
+	// transcriptUnknown: the lookup failed for a reason other than a confirmed
+	// not-exist, so nothing is known about the file.
+	transcriptUnknown transcriptState = iota
+	// transcriptPresent: a transcript file exists.
+	transcriptPresent
+	// transcriptAbsent: the filesystem confirmed that nothing is there (or
+	// that the entry is a directory, which is no transcript).
+	transcriptAbsent
+)
+
+// claudeTranscriptLookup computes the expected transcript path and classifies
+// what is there. Lstat is used first, so an entry that exists (a symlink, a
+// file whose target metadata cannot be read) is never mistaken for absent;
+// only an explicit not-exist result is absence.
+func claudeTranscriptLookup(in TranscriptInput) (string, transcriptState) {
+	project := strings.ReplaceAll(in.CWD, string(filepath.Separator), "-")
+	path := filepath.Join(in.Home, ".claude", "projects", project, in.ConversationID+".jsonl")
+	if _, err := os.Lstat(path); err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return path, transcriptAbsent
+		}
+		return path, transcriptUnknown
+	}
+	info, err := os.Stat(path)
+	switch {
+	case err == nil && info.IsDir():
+		return path, transcriptAbsent
+	case err == nil:
+		return path, transcriptPresent
+	default:
+		// The entry exists but cannot be read (a dangling symlink, a
+		// permission or I/O error on its target): never absent.
+		return path, transcriptUnknown
+	}
 }
 
 // TranscriptPaths locates Claude's on-disk transcript for a conversation,
@@ -91,10 +136,8 @@ func (Claude) TranscriptPaths(in TranscriptInput) (string, bool) {
 	if in.Home == "" || !safeConversationID(in.ConversationID) {
 		return "", false
 	}
-	project := strings.ReplaceAll(in.CWD, string(filepath.Separator), "-")
-	path := filepath.Join(in.Home, ".claude", "projects", project, in.ConversationID+".jsonl")
-	info, err := os.Stat(path)
-	if err != nil || info.IsDir() {
+	path, state := claudeTranscriptLookup(in)
+	if state != transcriptPresent {
 		return "", false
 	}
 	return path, true
