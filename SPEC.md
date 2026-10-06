@@ -2654,9 +2654,11 @@ must be restored afterwards.
 - **Only deck's own pipe directories are reclaimed.** The start-time reclaim scans the shared
   temp directory for `deck-interactive-pipe-*` entries, a place any local user can write to, so
   it removes an entry only when it is a real directory (`lstat`, never a symlink), owned by the
-  current user, with no permission bit beyond `0700` — what deck itself creates. A symlink, a
-  directory owned by someone else and a directory looser than `0700` are left in place and not
-  reported.
+  current user, with no permission bit beyond `0700` — what deck itself creates. Each entry is
+  re-checked with its own `lstat` right before it is touched, never trusted from the scan's
+  listing, so an entry swapped for a symlink after the scan is still recognised as one. A
+  symlink, a directory owned by someone else and a directory looser than `0700` are left in
+  place and not reported.
 - **A displaced client is told, and its keyboard is stopped first.** Losing the pane silently
   is worse than losing it: the next keystrokes would go somewhere the user cannot see, or
   nowhere. Whichever way the loss happens — its claim stolen by `F`, or a full attach arriving

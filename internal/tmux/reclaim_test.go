@@ -322,22 +322,49 @@ func TestReclaimRemovesAnOwned0700Directory(t *testing.T) {
 	}
 }
 
+// TestReclaimLeavesASymlinkAlone plants two deck-interactive-pipe-* symlinks
+// to a directory the reclaim must never reach: one already a symlink when the
+// temp root is scanned, and one that is a real directory at scan time and is
+// swapped for a symlink before the per-entry check runs -- what a local user
+// racing the shared temp root can do. The scan's own entry types are stale by
+// then, so only a fresh Lstat of each entry keeps both links, and the
+// directory behind them, untouched and unreported.
 func TestReclaimLeavesASymlinkAlone(t *testing.T) {
 	withIsolatedInteractivePipeTempRoot(t)
 	target := t.TempDir()
 	if err := os.WriteFile(filepath.Join(target, "precious"), []byte("x"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	link := filepath.Join(interactivePipeTempRoot, interactivePipeTempDirPrefix+"link")
-	if err := os.Symlink(target, link); err != nil {
+	planted := filepath.Join(interactivePipeTempRoot, interactivePipeTempDirPrefix+"link")
+	if err := os.Symlink(target, planted); err != nil {
 		t.Fatalf("symlink: %v", err)
 	}
+	swapped := plantInteractivePipeEntry(t, 0o700)
+
+	previous := interactivePipeReadDir
+	interactivePipeReadDir = func(root string) ([]os.DirEntry, error) {
+		entries, err := os.ReadDir(root)
+		if err != nil {
+			return nil, err
+		}
+		if err := os.RemoveAll(swapped); err != nil {
+			t.Fatalf("remove scanned dir: %v", err)
+		}
+		if err := os.Symlink(target, swapped); err != nil {
+			t.Fatalf("swap scanned dir for a symlink: %v", err)
+		}
+		return entries, nil
+	}
+	t.Cleanup(func() { interactivePipeReadDir = previous })
+
 	reclaimed := reclaimWithOwnerCheck(t, func(os.FileInfo) bool { return true })
 	if len(reclaimed) != 0 {
 		t.Fatalf("reclaimed = %v, want none", reclaimed)
 	}
-	if info, err := os.Lstat(link); err != nil || info.Mode()&os.ModeSymlink == 0 {
-		t.Fatalf("symlink was removed or replaced (err=%v)", err)
+	for _, link := range []string{planted, swapped} {
+		if info, err := os.Lstat(link); err != nil || info.Mode()&os.ModeSymlink == 0 {
+			t.Fatalf("symlink %q was removed or replaced (err=%v)", link, err)
+		}
 	}
 	if _, err := os.Stat(filepath.Join(target, "precious")); err != nil {
 		t.Fatalf("symlink target was touched: %v", err)
