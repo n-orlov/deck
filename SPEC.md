@@ -2219,31 +2219,39 @@ name = "empire"
 appearance = "dark"            # "dark" | "light" — drives contrast direction
 
 [colors]
-background        = "#0f172a"  # the canvas deck paints (§11.3), not the terminal's
-surface           = "#172033"  # elevated rows, footer, dialog interiors
-border            = "#334155"
-border_focus      = "#0d9488"  # the focused panel (§11.3)
-selection         = "#26324b"  # selected row, focused panel
-selection_idle    = "#37415c"  # selected row, unfocused panel
-title             = "#fbbf24"
-text              = "#cbd5e1"
-dimmed            = "#64748b"  # starting rows, elided detail
-hint              = "#94a3b8"  # footer descriptions
-key               = "#d97706"  # footer/help keycaps
-accent            = "#d97706"
-group             = "#cbd5e1"  # group headers
-search_match      = "#fbbf24"
-badge             = "#94a3b8"  # live/sampled, env↻
-badge_warn        = "#fbbf24"  # non-safe permission profiles, yolo
-waiting           = "#fbbf24"  # the seven §7 statuses, one token each
-running           = "#22c55e"
-idle              = "#64748b"
-starting          = "#a16207"
-stopped           = "#64748b"
-error             = "#ef4444"
-archived          = "#475569"
+background        = "#16161a"  # the canvas deck paints (§11.3), not the terminal's
+surface           = "#1f1f24"  # elevated rows, footer, dialog interiors
+border            = "#45403a"
+border_focus      = "#d97706"  # the focused panel (§11.3)
+selection         = "#2e2a26"  # selected row, focused panel
+selection_idle    = "#27231f"  # selected row, unfocused panel
+title             = "#f5c518"
+text              = "#ddd8cf"
+dimmed            = "#8a8378"  # starting rows, elided detail
+hint              = "#aaa396"  # footer descriptions
+key               = "#f59e0b"  # footer/help keycaps
+accent            = "#e2552f"
+group             = "#ddd8cf"  # workspace headers
+search_match      = "#f5c518"
+badge             = "#aaa396"  # live/sampled, env↻
+badge_warn        = "#f59e0b"  # non-safe permission profiles, yolo
+waiting           = "#f5c518"  # the seven §7 statuses, one token each
+running           = "#4ade80"
+idle              = "#8a8378"
+starting          = "#c2761a"
+stopped           = "#8a8378"
+error             = "#e5533d"
+archived          = "#9a9387"
 ```
 
+- **The built-ins stay visibly different from each other.** For every unordered pair of
+  built-in themes, the mean CIEDE2000 ΔE over a fixed token set — `background`, `surface`,
+  `title`, `text`, `key`, `border_focus` and the seven §7 status colours — is at least **15**.
+  The test iterates the registry, so a later built-in is held to the same floor with no new
+  test, and on failure it names the closest pair. Each built-in has its own identity rather than a
+  nudged copy of another: `empire` is near-black charcoal with amber, brick-red and gold
+  accents, and `cobalt` is a saturated cobalt blue with ice, cyan and white accents and one
+  warm warning colour (`badge_warn`), the red `error` status aside.
 - **The seven status tokens are exactly the seven statuses in §7.** If §7 grows a status,
   the theme schema grows a token; a status rendered in a colour borrowed from another
   status is a defect, because the colour is the fastest thing a human reads in the list.

@@ -39,9 +39,9 @@ Feature: Godog harness wiring
   @requirement-1-cell-attributes
   Scenario: a real deck client's own coloured chrome is readable per cell, by name and by matched text
     Given deck client "coloured" is started with colour enabled
-    Then deck client "coloured" text "deck" has foreground "#fbbf24"
-    And deck client "coloured" text "No sessions yet" does not have foreground "#fbbf24"
-    And deck client "coloured" cell at row 0 column 2 has foreground "#fbbf24"
+    Then deck client "coloured" text "deck" has foreground "#f5c518"
+    And deck client "coloured" text "No sessions yet" does not have foreground "#f5c518"
+    And deck client "coloured" cell at row 0 column 2 has foreground "#f5c518"
     And deck client "coloured" exits cleanly
 
   @requirement-1-cell-attributes
