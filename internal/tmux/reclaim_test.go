@@ -280,3 +280,100 @@ func TestReclaimLeakedInteractivePipesIgnoresDirsWithoutTheInteractivePipePrefix
 		t.Fatalf("unrelated dir %q was removed by a scan that should never have touched it: %v", unrelated, err)
 	}
 }
+
+// plantInteractivePipeEntry creates a deck-interactive-pipe-* directory with
+// the given mode under the isolated root and returns its path.
+func plantInteractivePipeEntry(t *testing.T, mode os.FileMode) string {
+	t.Helper()
+	dir, err := os.MkdirTemp(interactivePipeTempRoot, interactivePipeTempDirPrefix)
+	if err != nil {
+		t.Fatalf("create dir: %v", err)
+	}
+	if err := os.Chmod(dir, mode); err != nil {
+		t.Fatalf("chmod %v: %v", mode, err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "marker"), []byte("x"), 0o600); err != nil {
+		t.Fatalf("plant marker: %v", err)
+	}
+	return dir
+}
+
+func reclaimWithOwnerCheck(t *testing.T, check func(os.FileInfo) bool) []string {
+	t.Helper()
+	previous := interactivePipeOwnedByCurrentUser
+	interactivePipeOwnedByCurrentUser = check
+	t.Cleanup(func() { interactivePipeOwnedByCurrentUser = previous })
+	reclaimed, err := ReclaimLeakedInteractivePipes(context.Background())
+	if err != nil {
+		t.Fatalf("ReclaimLeakedInteractivePipes: %v", err)
+	}
+	return reclaimed
+}
+
+func TestReclaimRemovesAnOwned0700Directory(t *testing.T) {
+	withIsolatedInteractivePipeTempRoot(t)
+	dir := plantInteractivePipeEntry(t, 0o700)
+	reclaimed := reclaimWithOwnerCheck(t, func(os.FileInfo) bool { return true })
+	if len(reclaimed) != 1 || reclaimed[0] != dir {
+		t.Fatalf("reclaimed = %v, want [%q]", reclaimed, dir)
+	}
+	if _, err := os.Lstat(dir); !os.IsNotExist(err) {
+		t.Fatalf("owned 0700 dir still present (err=%v)", err)
+	}
+}
+
+func TestReclaimLeavesASymlinkAlone(t *testing.T) {
+	withIsolatedInteractivePipeTempRoot(t)
+	target := t.TempDir()
+	if err := os.WriteFile(filepath.Join(target, "precious"), []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(interactivePipeTempRoot, interactivePipeTempDirPrefix+"link")
+	if err := os.Symlink(target, link); err != nil {
+		t.Fatalf("symlink: %v", err)
+	}
+	reclaimed := reclaimWithOwnerCheck(t, func(os.FileInfo) bool { return true })
+	if len(reclaimed) != 0 {
+		t.Fatalf("reclaimed = %v, want none", reclaimed)
+	}
+	if info, err := os.Lstat(link); err != nil || info.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("symlink was removed or replaced (err=%v)", err)
+	}
+	if _, err := os.Stat(filepath.Join(target, "precious")); err != nil {
+		t.Fatalf("symlink target was touched: %v", err)
+	}
+}
+
+func TestReclaimLeavesAForeignOwnedDirectoryAlone(t *testing.T) {
+	withIsolatedInteractivePipeTempRoot(t)
+	dir := plantInteractivePipeEntry(t, 0o700)
+	reclaimed := reclaimWithOwnerCheck(t, func(os.FileInfo) bool { return false })
+	if len(reclaimed) != 0 {
+		t.Fatalf("reclaimed = %v, want none", reclaimed)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "marker")); err != nil {
+		t.Fatalf("foreign-owned dir was touched: %v", err)
+	}
+}
+
+func TestReclaimLeavesAWorldReadableDirectoryAlone(t *testing.T) {
+	withIsolatedInteractivePipeTempRoot(t)
+	dir := plantInteractivePipeEntry(t, 0o755)
+	reclaimed := reclaimWithOwnerCheck(t, func(os.FileInfo) bool { return true })
+	if len(reclaimed) != 0 {
+		t.Fatalf("reclaimed = %v, want none", reclaimed)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "marker")); err != nil {
+		t.Fatalf("0755 dir was touched: %v", err)
+	}
+}
+
+func TestInteractivePipeOwnedByCurrentUserMatchesTheRealOwner(t *testing.T) {
+	info, err := os.Lstat(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !interactivePipeOwnedByCurrentUser(info) {
+		t.Fatalf("a directory this process just created is not reported as owned by the current user")
+	}
+}

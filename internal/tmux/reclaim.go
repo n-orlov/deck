@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 )
 
 // interactiveClaimFileName is the metadata file SaveInteractiveClaimRecord
@@ -116,10 +117,13 @@ func ReclaimLeakedInteractivePipes(ctx context.Context) ([]string, error) {
 
 	var reclaimed []string
 	for _, entry := range entries {
-		if !entry.IsDir() || !strings.HasPrefix(entry.Name(), interactivePipeTempDirPrefix) {
+		if !strings.HasPrefix(entry.Name(), interactivePipeTempDirPrefix) {
 			continue
 		}
 		dir := filepath.Join(root, entry.Name())
+		if !isReclaimableInteractivePipeDir(dir) {
+			continue
+		}
 		record, err := loadInteractiveClaimRecord(dir)
 		if err != nil {
 			// No usable metadata -- an older/foreign/corrupt dir, or a
@@ -135,6 +139,32 @@ func ReclaimLeakedInteractivePipes(ctx context.Context) ([]string, error) {
 		}
 	}
 	return reclaimed, nil
+}
+
+// interactivePipeOwnedByCurrentUser reports whether info's owner is the
+// current uid. It is a variable so tests can report a directory as
+// foreign-owned without needing a second uid on the machine.
+var interactivePipeOwnedByCurrentUser = func(info os.FileInfo) bool {
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	return ok && int64(stat.Uid) == int64(os.Getuid())
+}
+
+// isReclaimableInteractivePipeDir is the trust check a scan result must
+// pass before anything under it is touched: the entry is a real directory
+// (Lstat, so a symlink is never followed or removed), owned by the current
+// user, and grants no permission bit beyond 0700. The shared temp root is
+// world-writable, so any other local user can plant a deck-interactive-pipe-*
+// entry; only what deck's own os.MkdirTemp (0700, this uid) could have made
+// is reclaimed, and everything else stays in place and unreported.
+func isReclaimableInteractivePipeDir(dir string) bool {
+	info, err := os.Lstat(dir)
+	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+		return false
+	}
+	if info.Mode().Perm()&^0o700 != 0 {
+		return false
+	}
+	return interactivePipeOwnedByCurrentUser(info)
 }
 
 // reclaimOne reclaims a single leaked interactive pipe, or stands down
