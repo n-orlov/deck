@@ -107,7 +107,7 @@ func ReclaimLeakedInteractivePipes(ctx context.Context) ([]string, error) {
 	if root == "" {
 		root = os.TempDir()
 	}
-	entries, err := os.ReadDir(root)
+	entries, err := interactivePipeReadDir(root)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil, nil
@@ -140,6 +140,13 @@ func ReclaimLeakedInteractivePipes(ctx context.Context) ([]string, error) {
 	}
 	return reclaimed, nil
 }
+
+// interactivePipeReadDir lists the temp root for ReclaimLeakedInteractivePipes.
+// A listing's entry types are only what the root held at scan time, so the
+// trust check re-reads each entry with Lstat rather than trusting them; it is
+// a variable so tests can swap an entry for a symlink between the scan and
+// that check.
+var interactivePipeReadDir = os.ReadDir
 
 // interactivePipeOwnedByCurrentUser reports whether info's owner is the
 // current uid. It is a variable so tests can report a directory as
