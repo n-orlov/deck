@@ -123,6 +123,14 @@ type ScenarioHarness struct {
 	// re-reading whatever value happens to be there now.
 	preResumeConversationIDs map[string]string
 
+	// rememberedConversationIDs backs features/agent_session.feature's
+	// early-restart scenario (R207, #70): a step captures a session's
+	// conversation_id right after creation, so later steps can assert every
+	// restart kept exactly that id (in the state row and in the launch
+	// argv) rather than comparing the argv against whatever id the row
+	// holds now, which a restart replacing both would still satisfy.
+	rememberedConversationIDs map[string]string
+
 	// previewContentSnapshots backs features/interactive_sidebar_wheel.feature
 	// (task 003, R149): a step captures the preview panel's own rendered
 	// text (previewRegion's slice of the frame, mouse_bindings_test.go) so

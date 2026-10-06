@@ -60,6 +60,9 @@ func registerAgentSessionSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^the audit log's most recent launch argv for session "([^"]+)" does not contain "([^"]+)"$`, launchArgvForSessionDoesNotContain)
 	sc.Step(`^the audit log's most recent launch argv for session "([^"]+)" does not contain session "([^"]+)"'s conversation id$`, launchArgvForSessionDoesNotContainOthersConversationID)
 	sc.Step(`^the audit log's most recent launch argv for session "([^"]+)" contains session "([^"]+)"'s conversation id$`, launchArgvForSessionContainsOwnConversationID)
+	sc.Step(`^the conversation id of session "([^"]+)" is remembered$`, rememberSessionConversationID)
+	sc.Step(`^the state database session "([^"]+)" still has its remembered conversation id$`, sessionStillHasRememberedConversationID)
+	sc.Step(`^the audit log's most recent launch argv for session "([^"]+)" contains its remembered conversation id$`, launchArgvContainsRememberedConversationID)
 	sc.Step(`^the audit log has ([0-9]+) launch record(?:s)? for session "([^"]+)"$`, auditHasLaunchRecordCountForSession)
 	sc.Step(`^the audit log records session "([^"]+)" entering starting ([0-9]+) times?$`, auditRecordsSessionEnteringStartingNTimes)
 	sc.Step(`^within one configured reconcile interval the audit log has ([0-9]+) launch record(?:s)? for session "([^"]+)"$`, auditHasLaunchRecordCountForSessionWithinReconcileInterval)
@@ -1227,6 +1230,79 @@ func launchArgvForSessionContainsOwnConversationID(ctx context.Context, name, se
 	}
 	if !argvContains(argv, selfID) {
 		return fmt.Errorf("most recent launch argv for session %q = %q, does not contain session %q's own conversation id %q", name, argv, self, selfID)
+	}
+	return nil
+}
+
+// rememberSessionConversationID captures the named session's current,
+// non-empty conversation id so later steps can prove a restart kept that
+// exact id (R207, #70).
+func rememberSessionConversationID(ctx context.Context, name string) error {
+	h, err := assertionHarness(ctx)
+	if err != nil {
+		return err
+	}
+	id, err := sessionConversationID(h, name)
+	if err != nil {
+		return err
+	}
+	if id == "" {
+		return fmt.Errorf("session %q has no conversation id to remember", name)
+	}
+	if h.rememberedConversationIDs == nil {
+		h.rememberedConversationIDs = make(map[string]string)
+	}
+	h.rememberedConversationIDs[name] = id
+	return nil
+}
+
+func rememberedConversationID(h *ScenarioHarness, name string) (string, error) {
+	id, ok := h.rememberedConversationIDs[name]
+	if !ok {
+		return "", fmt.Errorf("session %q's conversation id was never remembered", name)
+	}
+	return id, nil
+}
+
+// sessionStillHasRememberedConversationID asserts the state row's
+// conversation id equals the one rememberSessionConversationID captured.
+func sessionStillHasRememberedConversationID(ctx context.Context, name string) error {
+	h, err := assertionHarness(ctx)
+	if err != nil {
+		return err
+	}
+	want, err := rememberedConversationID(h, name)
+	if err != nil {
+		return err
+	}
+	got, err := sessionConversationID(h, name)
+	if err != nil {
+		return err
+	}
+	if got != want {
+		return fmt.Errorf("session %q conversation id = %q, want the remembered %q", name, got, want)
+	}
+	return nil
+}
+
+// launchArgvContainsRememberedConversationID asserts the most recent launch
+// argv carries the remembered conversation id, not merely the row's current
+// one.
+func launchArgvContainsRememberedConversationID(ctx context.Context, name string) error {
+	h, err := assertionHarness(ctx)
+	if err != nil {
+		return err
+	}
+	want, err := rememberedConversationID(h, name)
+	if err != nil {
+		return err
+	}
+	argv, err := mostRecentLaunchArgvForSession(h, name)
+	if err != nil {
+		return err
+	}
+	if !argvContains(argv, want) {
+		return fmt.Errorf("most recent launch argv for session %q = %q, does not contain the remembered conversation id %q", name, argv, want)
 	}
 	return nil
 }
