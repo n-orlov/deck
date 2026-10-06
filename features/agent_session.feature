@@ -67,18 +67,24 @@ Feature: Real agent session creation and resume through the TUI
     When deck client "A" creates claude session "early restart" with permission profile "safe"
     Then deck client "A" screen contains "early restart"
     And the audit log has 1 launch record for session "early restart"
+    And the state database contains session "early restart" with status "running"
+    And the conversation id of session "early restart" is remembered
     When deck client "A" presses R on session "early restart"
     Then within one configured reconcile interval the audit log has 2 launch records for session "early restart"
     And the audit log's most recent launch argv for session "early restart" contains "--session-id"
     And the audit log's most recent launch argv for session "early restart" does not contain "--resume"
-    And the audit log's most recent launch argv for session "early restart" contains session "early restart"'s conversation id
+    And the audit log's most recent launch argv for session "early restart" contains its remembered conversation id
+    And the state database session "early restart" still has its remembered conversation id
+    And the state database contains session "early restart" with status "running"
     And exactly 1 private tmux sessions match slug "deck_early-restart"
     And deck client "A" screen does not contain "Cannot resume"
     When deck client "A" presses R on session "early restart"
     Then within one configured reconcile interval the audit log has 3 launch records for session "early restart"
     And the audit log's most recent launch argv for session "early restart" contains "--session-id"
-    And the audit log's most recent launch argv for session "early restart" contains session "early restart"'s conversation id
-    And the state database session "early restart" has a non-empty conversation id
+    And the audit log's most recent launch argv for session "early restart" does not contain "--resume"
+    And the audit log's most recent launch argv for session "early restart" contains its remembered conversation id
+    And the state database session "early restart" still has its remembered conversation id
+    And the state database contains session "early restart" with status "running"
     When deck client "A" exits cleanly
 
   Scenario: R restarts a running codex session with the resume argv, never composing --last
