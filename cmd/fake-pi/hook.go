@@ -98,7 +98,7 @@ func (h extensionHooks) fire(stdout io.Writer, event string, payload map[string]
 // and no shell, the payload on stdin and the failed hook's stderr collected
 // into stderr.
 func runHookCommand(executable string, payload []byte, stderr io.Writer) error {
-	process := exec.Command(executable, agent.PiHookArgs...)
+	process := exec.Command(executable, agent.PiHookArgs...) //nolint:gosec // G204: the executable is the deck path deck itself put in the agent's environment, run as the real extension would
 	process.Stdin = bytes.NewReader(payload)
 	process.Stderr = stderr
 	return process.Run()
