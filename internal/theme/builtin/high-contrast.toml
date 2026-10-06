@@ -1,0 +1,27 @@
+name = "high-contrast"
+appearance = "dark"            # "dark" | "light" — drives contrast direction
+
+[colors]
+background        = "#000000"  # panel interiors — pure black
+surface           = "#0d0d0d"  # elevated rows, footer, dialog interiors
+border            = "#ffffff"
+border_focus      = "#ffff00"  # the focused panel (§11.3)
+selection         = "#0000ee"  # selected row, focused panel — white on blue clears 7:1
+selection_idle    = "#262680"  # selected row, unfocused panel
+title             = "#ffff00"
+text              = "#ffffff"  # text on background is 21:1, past WCAG AAA (7:1)
+dimmed            = "#bfbfbf"  # starting rows, elided detail
+hint              = "#e5e5e5"  # footer descriptions
+key               = "#00ffff"  # footer/help keycaps
+accent            = "#ff00ff"
+group             = "#ffffff"  # workspace headers
+search_match      = "#ffff00"
+badge             = "#bfbfbf"  # live/sampled, env↻
+badge_warn        = "#ffaa00"  # non-safe permission profiles, yolo
+waiting           = "#ffff00"  # the seven §7 statuses, one token each
+running           = "#00ff00"
+idle              = "#00ffff"
+starting          = "#6e6eff"
+stopped           = "#ffffff"
+error             = "#ff0000"
+archived          = "#bfbfbf"

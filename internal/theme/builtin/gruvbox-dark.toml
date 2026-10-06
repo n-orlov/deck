@@ -1,0 +1,30 @@
+# Palette after gruvbox by Pavel Pertsev (morhetz), https://github.com/morhetz/gruvbox,
+# released under the MIT licence. The colours follow upstream's dark scheme by name
+# (bg0, bg1, bg2, bg3, fg1, fg3, fg4, gray, bright red/green/yellow/blue/purple/aqua/orange).
+name = "gruvbox-dark"
+appearance = "dark"            # "dark" | "light" — drives contrast direction
+
+[colors]
+background        = "#282828"  # bg0 — panel interiors; the warm brown canvas
+surface           = "#3c3836"  # bg1 — elevated rows, footer, dialog interiors
+border            = "#665c54"  # bg3
+border_focus      = "#b8bb26"  # bright orange — the focused panel (§11.3)
+selection         = "#403a38"  # bg2 — selected row, focused panel
+selection_idle    = "#3c3836"  # bg1 — selected row, unfocused panel
+title             = "#fabd2f"  # bright yellow
+text              = "#ebdbb2"  # fg1
+dimmed            = "#a89984"  # fg4 — starting rows, elided detail
+hint              = "#cabb9a"  # fg3 — footer descriptions
+key               = "#8ec07c"  # bright orange — footer/help keycaps
+accent            = "#83a598"  # bright blue
+group             = "#d5c4a1"  # fg2 — workspace headers
+search_match      = "#fabd2f"  # bright yellow
+badge             = "#a89984"  # fg4 — live/sampled, env↻
+badge_warn        = "#fe8019"  # bright orange — non-safe permission profiles, yolo
+waiting           = "#fe8019"  # the seven §7 statuses, one token each
+running           = "#b8bb26"  # bright green
+idle              = "#8ec07c"  # bright aqua
+starting          = "#83a598"  # bright blue
+stopped           = "#bdae93"  # fg3
+error             = "#fb4934"  # bright red
+archived          = "#928374"  # gray

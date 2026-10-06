@@ -1,0 +1,31 @@
+# Palette after Solarized by Ethan Schoonover, https://ethanschoonover.com/solarized/
+# (reference implementation https://github.com/altercation/solarized), released under
+# the MIT licence. The colours follow upstream's dark scheme by name (base03, base02,
+# base01, base00, base0, base1, base2, yellow, orange, red, magenta, violet, blue, cyan, green).
+name = "solarized-dark"
+appearance = "dark"            # "dark" | "light" — drives contrast direction
+
+[colors]
+background        = "#002b36"  # base03 — panel interiors; the teal-grey canvas
+surface           = "#00303b"  # base02 pulled toward base03 — elevated rows, footer, dialog interiors
+border            = "#586e75"  # base01
+border_focus      = "#2aa198"  # cyan — the focused panel (§11.3)
+selection         = "#0f4553"  # base02 lifted toward base01 — selected row, focused panel
+selection_idle    = "#0a3b48"  # selected row, unfocused panel
+title             = "#b58900"  # yellow
+text              = "#93a1a1"  # base1
+dimmed            = "#839496"  # base0 — starting rows, elided detail
+hint              = "#93a1a1"  # base1 — footer descriptions
+key               = "#2aa198"  # cyan — footer/help keycaps
+accent            = "#268bd2"  # blue
+group             = "#eee8d5"  # base2 — workspace headers
+search_match      = "#b58900"  # yellow
+badge             = "#839496"  # base0 — live/sampled, env↻
+badge_warn        = "#cb4b16"  # red — non-safe permission profiles, yolo
+waiting           = "#b58900"  # the seven §7 statuses, one token each
+running           = "#859900"  # green
+idle              = "#2aa198"  # cyan
+starting          = "#268bd2"  # blue
+stopped           = "#93a1a1"  # base1
+error             = "#dc322f"  # red
+archived          = "#6c71c4"  # violet

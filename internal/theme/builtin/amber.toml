@@ -1,0 +1,27 @@
+name = "amber"
+appearance = "dark"            # "dark" | "light" — drives contrast direction
+
+[colors]
+background        = "#000000"  # panel interiors — black glass; the retro twin of matrix
+surface           = "#140c00"  # elevated rows, footer, dialog interiors — a faint warm glow
+border            = "#7a5200"
+border_focus      = "#ffb000"  # the focused panel (§11.3) — the canonical amber phosphor
+selection         = "#3d2800"  # selected row, focused panel
+selection_idle    = "#291a00"  # selected row, unfocused panel
+title             = "#ffd266"
+text              = "#ffb000"
+dimmed            = "#b37a00"  # starting rows, elided detail
+hint              = "#d99100"  # footer descriptions
+key               = "#ffd266"  # footer/help keycaps
+accent            = "#ffb000"
+group             = "#ffc233"  # workspace headers
+search_match      = "#fff0b3"
+badge             = "#d99100"  # live/sampled, env↻
+badge_warn        = "#ff7a1a"  # non-safe permission profiles, yolo
+waiting           = "#fff0b3"  # the seven §7 statuses, one token each: tone and brightness, not hue
+running           = "#ffb000"
+idle              = "#c98400"
+starting          = "#9c6600"
+stopped           = "#c4a56a"
+error             = "#ff5a1f"
+archived          = "#8a7a5c"

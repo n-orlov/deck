@@ -19,6 +19,10 @@ var builtinFiles = []string{
 	"builtin/matrix.toml",
 	"builtin/cobalt.toml",
 	"builtin/parchment.toml",
+	"builtin/gruvbox-dark.toml",
+	"builtin/solarized-dark.toml",
+	"builtin/amber.toml",
+	"builtin/high-contrast.toml",
 }
 
 var builtins map[string]*Theme
