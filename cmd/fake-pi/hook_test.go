@@ -10,6 +10,22 @@ import (
 	"github.com/n-orlov/deck/internal/agent"
 )
 
+// hookScript writes an executable stand-in for the deck binary at a path with
+// a space, a quote and a ';' in it, running body with the argv it was given
+// in $1, and returns that path.
+func hookScript(t *testing.T, body string) string {
+	t.Helper()
+	dir := filepath.Join(t.TempDir(), "deck builds", "it's; here")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, "deck")
+	if err := os.WriteFile(path, []byte("#!/bin/sh\n[ \"$1\" = _hook ] && [ $# -eq 1 ] || exit 64\n"+body+"\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
 func writeExtension(t *testing.T) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "deck-hook.js")
@@ -36,7 +52,7 @@ func TestParseTakesTheExtensionFlagInBothSpellings(t *testing.T) {
 // directly -- for every event the extension subscribes.
 func TestHookCommandRunsTheLaunchHookCommandForEverySubscribedEvent(t *testing.T) {
 	record := filepath.Join(t.TempDir(), "payloads")
-	hooks := extensionHooks{extension: writeExtension(t), sessionID: "conv-1", command: "cat >> '" + record + "'"}
+	hooks := extensionHooks{extension: writeExtension(t), sessionID: "conv-1", executable: hookScript(t, `cat >> '`+record+`'`)}
 	for _, event := range agent.PiHookEvents {
 		var out bytes.Buffer
 		if err := hooks.fire(&out, event, map[string]any{"reason": "x"}); err != nil {
@@ -63,10 +79,10 @@ func TestHookCommandRunsTheLaunchHookCommandForEverySubscribedEvent(t *testing.T
 func TestHookCommandRefusesAnEventTheExtensionNeverInstalled(t *testing.T) {
 	var out bytes.Buffer
 	for name, hooks := range map[string]extensionHooks{
-		"no extension loaded":    {command: "true"},
-		"unreadable extension":   {extension: filepath.Join(t.TempDir(), "missing.js"), command: "true"},
-		"event not subscribed":   {extension: writeExtension(t), command: "true"},
-		"empty extension source": {extension: func() string { p := filepath.Join(t.TempDir(), "e.js"); _ = os.WriteFile(p, nil, 0o600); return p }(), command: "true"},
+		"no extension loaded":    {executable: hookScript(t, "true")},
+		"unreadable extension":   {extension: filepath.Join(t.TempDir(), "missing.js"), executable: hookScript(t, "true")},
+		"event not subscribed":   {extension: writeExtension(t), executable: hookScript(t, "true")},
+		"empty extension source": {extension: func() string { p := filepath.Join(t.TempDir(), "e.js"); _ = os.WriteFile(p, nil, 0o600); return p }(), executable: hookScript(t, "true")},
 	} {
 		event := "Notification"
 		if name == "empty extension source" {
@@ -88,7 +104,7 @@ func TestHookCommandWithoutALaunchCommandDoesNothing(t *testing.T) {
 // A failing hook shows its stderr as a notification and never stops the fixture.
 func TestFailingHookShowsItsStderrAndCarriesOn(t *testing.T) {
 	var out bytes.Buffer
-	hooks := extensionHooks{extension: writeExtension(t), command: "echo 'restart the session from deck' >&2; exit 1"}
+	hooks := extensionHooks{extension: writeExtension(t), executable: hookScript(t, "echo 'restart the session from deck' >&2; exit 1")}
 	if err := hooks.fire(&out, "Stop", nil); err != nil {
 		t.Fatalf("fire: %v", err)
 	}
@@ -99,7 +115,7 @@ func TestFailingHookShowsItsStderrAndCarriesOn(t *testing.T) {
 
 func TestHookPaneCommandPlaysTheExtensionAndUnknownCommandsStillFail(t *testing.T) {
 	var out bytes.Buffer
-	hooks := extensionHooks{extension: writeExtension(t), sessionID: "c", command: "cat >/dev/null"}
+	hooks := extensionHooks{extension: writeExtension(t), sessionID: "c", executable: hookScript(t, "cat >/dev/null")}
 	err := runCommands(strings.NewReader(`{"command":"hook","event":"SessionStart","payload":{"source":"startup"}}`+"\n"), &out, "", hooks)
 	if err != nil || out.String() != "fake-pi hook fired: SessionStart\n" {
 		t.Fatalf("runCommands = %v, output %q", err, out.String())
@@ -111,55 +127,35 @@ func TestHookPaneCommandPlaysTheExtensionAndUnknownCommandsStillFail(t *testing.
 
 func TestNewExtensionHooksReadsTheLaunchEnvironment(t *testing.T) {
 	getenv := func(key string) string {
-		if key == agent.PiHookCommandEnv {
-			return "'/deck' _hook"
+		if key == agent.PiHookExecutableEnv {
+			return "/deck"
 		}
 		return ""
 	}
 	got := newExtensionHooks(options{sessionID: "s", extension: "/e.js"}, getenv)
-	if got.command != "'/deck' _hook" || got.sessionID != "s" || got.extension != "/e.js" {
+	if got.executable != "/deck" || got.sessionID != "s" || got.extension != "/e.js" {
 		t.Fatalf("newExtensionHooks = %+v", got)
 	}
 }
 
-// TestRunHookCommandHandsTheLineToTheShellVerbatim covers cases beyond the
-// launch's own command: a line with quoting and spaces, a line that reads its
-// stdin, and a line that exits non-zero with stderr output.
-func TestRunHookCommandHandsTheLineToTheShellVerbatim(t *testing.T) {
-	dir := t.TempDir()
-	out := filepath.Join(dir, "out file.txt")
-	cases := []struct {
-		name    string
-		command string
-		stderr  string
-		failure bool
-	}{
-		{name: "quoted path with a space", command: `cat > '` + out + `'`},
-		{name: "shell operators stay in the line", command: `cat > '` + out + `' && echo done >&2`, stderr: "done\n"},
-		{name: "non-zero exit with stderr", command: `echo boom >&2; exit 3`, stderr: "boom\n", failure: true},
+// TestRunHookCommandRunsTheExecutableWithItsPayloadAndNoShell covers an
+// executable whose path holds a space, a quote and a ';' (hookScript's), a
+// hook that reads its stdin, one that fails with stderr, and one the system
+// cannot start.
+func TestRunHookCommandRunsTheExecutableWithItsPayloadAndNoShell(t *testing.T) {
+	out := filepath.Join(t.TempDir(), "out.txt")
+	var stderr bytes.Buffer
+	if err := runHookCommand(hookScript(t, "cat > '"+out+"' && echo done >&2"), []byte("payload\n"), &stderr); err != nil {
+		t.Fatalf("run: %v", err)
 	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			var stderr bytes.Buffer
-			err := runHookCommand("sh", tc.command, []byte("payload\n"), &stderr)
-			if (err != nil) != tc.failure {
-				t.Fatalf("err = %v, want failure=%v", err, tc.failure)
-			}
-			if stderr.String() != tc.stderr {
-				t.Fatalf("stderr = %q, want %q", stderr.String(), tc.stderr)
-			}
-			if !tc.failure {
-				got, readErr := os.ReadFile(out)
-				if readErr != nil || string(got) != "payload\n" {
-					t.Fatalf("stdin payload = %q (%v)", got, readErr)
-				}
-			}
-		})
+	if got, err := os.ReadFile(out); err != nil || string(got) != "payload\n" || stderr.String() != "done\n" {
+		t.Fatalf("stdin payload = %q (%v), stderr %q", got, err, stderr.String())
 	}
-}
-
-func TestRunHookCommandReportsAShellThatCannotStart(t *testing.T) {
-	if err := runHookCommand(filepath.Join(t.TempDir(), "no-such-shell"), "true", nil, &bytes.Buffer{}); err == nil {
-		t.Fatal("a missing shell must be an error")
+	stderr.Reset()
+	if err := runHookCommand(hookScript(t, "echo boom >&2; exit 3"), nil, &stderr); err == nil || stderr.String() != "boom\n" {
+		t.Fatalf("failing hook = %v, stderr %q", err, stderr.String())
+	}
+	if err := runHookCommand(filepath.Join(t.TempDir(), "no-such-deck"), nil, &bytes.Buffer{}); err == nil {
+		t.Fatal("a missing executable must be an error")
 	}
 }

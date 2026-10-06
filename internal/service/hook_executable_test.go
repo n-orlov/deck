@@ -91,7 +91,7 @@ func TestPiLaunchInstallsTheHookCommandOfTheLaunchingBinary(t *testing.T) {
 	cwd := t.TempDir()
 	stubExecutableOnPath(t, "pi")
 	service, db, logger, socket := newAgentTestService(t, nil, "hook-executable-pi")
-	wantCommand := "'" + service.DeckExecutable + "' _hook"
+	wantCommand := service.DeckExecutable
 	wantExtension := agent.PiExtensionPath(service.DeckHome)
 
 	created, err := service.CreateAgent(context.Background(), AgentCreateInput{Name: "Pi: launch", CWD: cwd, Agent: "pi", PermissionProfile: "safe"})
@@ -112,7 +112,7 @@ func TestPiLaunchInstallsTheHookCommandOfTheLaunchingBinary(t *testing.T) {
 	if err != nil || string(source) != agent.PiExtensionSource {
 		t.Fatalf("installed extension = %v, matches source: %v", err, string(source) == agent.PiExtensionSource)
 	}
-	assertTMuxEnvironment(t, socket, created.Slug, agent.PiHookCommandEnv, wantCommand)
+	assertTMuxEnvironment(t, socket, created.Slug, agent.PiHookExecutableEnv, wantCommand)
 	assertTMuxEnvironmentAbsent(t, socket, created.Slug, "DECK_LAUNCH_GENERATION")
 	if created.HookExecutable != service.DeckExecutable {
 		t.Fatalf("pi HookExecutable = %q, want %q", created.HookExecutable, service.DeckExecutable)
@@ -133,7 +133,7 @@ func TestPiLaunchInstallsTheHookCommandOfTheLaunchingBinary(t *testing.T) {
 	if err != nil || outcome != ResumeStarted {
 		t.Fatalf("resume pi: %v, outcome %v", err, outcome)
 	}
-	assertTMuxEnvironment(t, socket, resumed.Slug, agent.PiHookCommandEnv, "'"+upgraded.DeckExecutable+"' _hook")
+	assertTMuxEnvironment(t, socket, resumed.Slug, agent.PiHookExecutableEnv, upgraded.DeckExecutable)
 	assertTMuxEnvironment(t, socket, resumed.Slug, "DECK_LAUNCH_GENERATION", rowLaunchGeneration(t, db, created.ID))
 	if source, err := os.ReadFile(wantExtension); err != nil || string(source) != agent.PiExtensionSource {
 		t.Fatalf("extension after resume = %q, %v; want the agent package's source", source, err)
