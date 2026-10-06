@@ -76,11 +76,12 @@ type actionsRun struct {
 // check run that is also named "suite", and its green must never count.
 const ciWorkflowPath = ".github/workflows/ci.yml"
 
-// fromCIWorkflow reports whether a run came from ci.yml. The API always
-// reports a path; a run that carries none is not second-guessed.
+// fromCIWorkflow reports whether a run positively identifies ci.yml. A run
+// whose path is absent, null, empty or otherwise not ci.yml never counts:
+// the gate cannot tell which workflow published its suite check.
 func fromCIWorkflow(r actionsRun) bool {
 	path, _, _ := strings.Cut(r.Path, "@")
-	return path == "" || path == ciWorkflowPath
+	return path == ciWorkflowPath
 }
 
 type actionsRunsResponse struct {

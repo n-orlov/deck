@@ -42,7 +42,7 @@ func TestEvaluate_Failure(t *testing.T) {
 			{"name": "suite", "status": "completed", "conclusion": "failure", "started_at": "2026-01-01T00:00:00Z", "check_suite": {"id": 501}}
 		]
 	}`)
-	actionsRuns := []byte(`{"workflow_runs":[{"event":"push","check_suite_id":501}]}`)
+	actionsRuns := []byte(`{"workflow_runs":[{"event":"push","check_suite_id":501,"path":".github/workflows/ci.yml"}]}`)
 
 	err := evaluate(body, actionsRuns, shaUnderTest, "suite")
 	if err == nil {
@@ -66,7 +66,7 @@ func TestEvaluate_InProgress(t *testing.T) {
 			{"name": "suite", "status": "in_progress", "conclusion": null, "started_at": "2026-01-01T00:00:00Z", "check_suite": {"id": 502}}
 		]
 	}`)
-	actionsRuns := []byte(`{"workflow_runs":[{"event":"push","check_suite_id":502}]}`)
+	actionsRuns := []byte(`{"workflow_runs":[{"event":"push","check_suite_id":502,"path":".github/workflows/ci.yml"}]}`)
 
 	err := evaluate(body, actionsRuns, shaUnderTest, "suite")
 	if err == nil {
@@ -97,9 +97,9 @@ func TestEvaluate_Success(t *testing.T) {
 		]
 	}`)
 	actionsRuns := []byte(`{"workflow_runs":[
-		{"event":"push","check_suite_id":601},
-		{"event":"push","check_suite_id":602},
-		{"event":"push","check_suite_id":603}
+		{"event":"push","check_suite_id":601,"path":".github/workflows/ci.yml"},
+		{"event":"push","check_suite_id":602,"path":".github/workflows/ci.yml"},
+		{"event":"push","check_suite_id":603,"path":".github/workflows/ci.yml"}
 	]}`)
 
 	if err := evaluate(body, actionsRuns, shaUnderTest, "suite"); err != nil {
@@ -124,8 +124,8 @@ func TestEvaluate_PushSuccess_LaterDispatchFailure_Accepted(t *testing.T) {
 		]
 	}`)
 	actionsRuns := []byte(`{"workflow_runs":[
-		{"event":"push","check_suite_id":701},
-		{"event":"workflow_dispatch","check_suite_id":702}
+		{"event":"push","check_suite_id":701,"path":".github/workflows/ci.yml"},
+		{"event":"workflow_dispatch","check_suite_id":702,"path":".github/workflows/ci.yml"}
 	]}`)
 
 	if err := evaluate(body, actionsRuns, shaUnderTest, "suite"); err != nil {
@@ -145,8 +145,8 @@ func TestEvaluate_PushSuccess_LaterScheduleFailure_Accepted(t *testing.T) {
 		]
 	}`)
 	actionsRuns := []byte(`{"workflow_runs":[
-		{"event":"push","check_suite_id":801},
-		{"event":"schedule","check_suite_id":802}
+		{"event":"push","check_suite_id":801,"path":".github/workflows/ci.yml"},
+		{"event":"schedule","check_suite_id":802,"path":".github/workflows/ci.yml"}
 	]}`)
 
 	if err := evaluate(body, actionsRuns, shaUnderTest, "suite"); err != nil {
@@ -166,7 +166,7 @@ func TestEvaluate_OnlyDispatchOrScheduleSuccess_Refused(t *testing.T) {
 			{"name": "suite", "status": "completed", "conclusion": "success", "started_at": "2026-01-01T00:00:00Z", "check_suite": {"id": 901}}
 		]
 	}`)
-	actionsRuns := []byte(`{"workflow_runs":[{"event":"workflow_dispatch","check_suite_id":901}]}`)
+	actionsRuns := []byte(`{"workflow_runs":[{"event":"workflow_dispatch","check_suite_id":901,"path":".github/workflows/ci.yml"}]}`)
 
 	err := evaluate(body, actionsRuns, shaUnderTest, "suite")
 	if err == nil {

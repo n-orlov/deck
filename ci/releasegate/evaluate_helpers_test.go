@@ -4,13 +4,13 @@ import "testing"
 
 func TestGatingSuiteIDs_KeepsOnlyGatingEvents(t *testing.T) {
 	got := gatingSuiteIDs([]actionsRun{
-		{Event: "push", CheckSuiteID: 1},
-		{Event: "pull_request", CheckSuiteID: 2},
-		{Event: "schedule", CheckSuiteID: 3},
-		{Event: "workflow_dispatch", CheckSuiteID: 4},
+		{Event: "push", CheckSuiteID: 1, Path: ciWorkflowPath},
+		{Event: "pull_request", CheckSuiteID: 2, Path: ciWorkflowPath},
+		{Event: "schedule", CheckSuiteID: 3, Path: ciWorkflowPath},
+		{Event: "workflow_dispatch", CheckSuiteID: 4, Path: ciWorkflowPath},
 		// A re-run on the same suite: any gating run makes the suite gating,
 		// and a later non-gating run never un-gates it.
-		{Event: "schedule", CheckSuiteID: 1},
+		{Event: "schedule", CheckSuiteID: 1, Path: ciWorkflowPath},
 	})
 	for id, want := range map[int64]bool{1: true, 2: true, 3: false, 4: false, 5: false} {
 		if got[id] != want {

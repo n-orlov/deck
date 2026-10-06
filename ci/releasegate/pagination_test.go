@@ -109,7 +109,7 @@ func dispatchCheckRun(id int, startedAt string) string {
 }
 
 func dispatchWorkflowRun(checkSuiteID int) string {
-	return fmt.Sprintf(`{"event":"workflow_dispatch","check_suite_id":%d}`, checkSuiteID)
+	return fmt.Sprintf(`{"event":"workflow_dispatch","check_suite_id":%d,"path":".github/workflows/ci.yml"}`, checkSuiteID)
 }
 
 // TestReviewGateDoesNotLosePushSuccessBehindIgnoredRunPages drives the
@@ -132,7 +132,7 @@ func TestReviewGateDoesNotLosePushSuccessBehindIgnoredRunPages(t *testing.T) {
 		}
 		page1 := `{"total_count":31,"check_runs":[` + strings.Join(dispatchChecks, ",") + `]}`
 		page2 := `{"total_count":31,"check_runs":[{"name":"suite","status":"completed","conclusion":"success","started_at":"2026-01-01T00:05:00Z","check_suite":{"id":31}}]}`
-		actionsRuns := `{"workflow_runs":[` + strings.Join(dispatchRuns, ",") + `,{"event":"push","check_suite_id":31}]}`
+		actionsRuns := `{"workflow_runs":[` + strings.Join(dispatchRuns, ",") + `,{"event":"push","check_suite_id":31,"path":".github/workflows/ci.yml"}]}`
 
 		s := newPageServer(t, []string{page1, page2}, []string{actionsRuns})
 		withAPIBase(t, s.baseURL)
@@ -161,7 +161,7 @@ func TestReviewGateDoesNotLosePushSuccessBehindIgnoredRunPages(t *testing.T) {
 			dispatchRuns = append(dispatchRuns, dispatchWorkflowRun(i))
 		}
 		actionsPage1 := `{"workflow_runs":[` + strings.Join(dispatchRuns, ",") + `]}`
-		actionsPage2 := `{"workflow_runs":[{"event":"push","check_suite_id":99}]}`
+		actionsPage2 := `{"workflow_runs":[{"event":"push","check_suite_id":99,"path":".github/workflows/ci.yml"}]}`
 
 		s := newPageServer(t, []string{checkRuns}, []string{actionsPage1, actionsPage2})
 		withAPIBase(t, s.baseURL)
@@ -185,7 +185,7 @@ func TestReviewGateDoesNotLosePushSuccessBehindIgnoredRunPages(t *testing.T) {
 	t.Run("latest counted failure still refuses across pages", func(t *testing.T) {
 		page1 := `{"total_count":2,"check_runs":[{"name":"suite","status":"completed","conclusion":"success","started_at":"2026-01-01T00:00:00Z","check_suite":{"id":1}}]}`
 		page2 := `{"total_count":2,"check_runs":[{"name":"suite","status":"completed","conclusion":"failure","started_at":"2026-01-01T00:10:00Z","check_suite":{"id":2}}]}`
-		actionsRuns := `{"workflow_runs":[{"event":"push","check_suite_id":1},{"event":"push","check_suite_id":2}]}`
+		actionsRuns := `{"workflow_runs":[{"event":"push","check_suite_id":1,"path":".github/workflows/ci.yml"},{"event":"push","check_suite_id":2,"path":".github/workflows/ci.yml"}]}`
 
 		s := newPageServer(t, []string{page1, page2}, []string{actionsRuns})
 		withAPIBase(t, s.baseURL)

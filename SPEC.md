@@ -2841,7 +2841,9 @@ in the help view.
   or a pull request count: nightly (schedule) and manual (`workflow_dispatch`) runs alert but
   never gate a release, so a flaky or `-race` nightly cannot block a sha whose push run passed.
   Only the `suite` check published by `ci.yml` counts: a check run named `suite` from any other
-  workflow (such as `pages-pr-publish.yml`) is ignored, green or red. `release.yml` pins its
+  workflow (such as `pages-pr-publish.yml`) is ignored, green or red. A run whose workflow path is
+  missing, null, empty or anything other than `.github/workflows/ci.yml` (with or without GitHub's
+  `@<ref>` suffix) is not `ci.yml`'s, so its suite check never gates. `release.yml` pins its
   actions by commit SHA like the other workflows.
   **Main's Actions history is a truthful signal:** every run on `main` is green unless the code
   is broken. Every push to `main` gets its own complete run, never cancelled by a later push; the
