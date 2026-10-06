@@ -23,10 +23,10 @@ const hookReexecEnv = "DECK_HOOK_REEXEC"
 // wedged binary cannot hold the agent's hook past one short wait.
 const writerProbeTimeout = 3 * time.Second
 
-// hookArgv is the argv (past argv[0]) of every hook invocation: run() takes
-// the hook path only for exactly `deck _hook`, so the re-exec passes it on
-// unchanged.
-var hookArgv = []string{"_hook"}
+// hookVerb is the whole argv (past argv[0]) of every hook invocation: run()
+// takes the hook path only for exactly `deck _hook`, so the re-exec passes the
+// same single verb on unchanged.
+const hookVerb = "_hook"
 
 // hookReexecExit is returned when the re-exec'd writer ran and exited
 // non-zero. Its own stderr already said why, so run() prints nothing more and
@@ -57,17 +57,24 @@ func healHook(ctx context.Context, err error, payload []byte) (handled bool, out
 	if selfErr != nil {
 		return false, nil
 	}
-	return reexecHook(ctx, newer, self, hookArgv, payload, os.Stdout, os.Stderr)
+	return reexecHook(ctx, newer, self, payload, os.Stdout, os.Stderr)
 }
 
-// reexecHook runs the recorded writer with the same argv, the buffered stdin
+// reexecHook runs the recorded writer with the same argv (the single hook verb), the buffered stdin
 // payload and the loop-guard marker, once, when the writer is usable.
-func reexecHook(ctx context.Context, newer *store.NewerSchemaError, self string, argv []string, payload []byte, stdout, stderr io.Writer) (bool, error) {
+func reexecHook(ctx context.Context, newer *store.NewerSchemaError, self string, payload []byte, stdout, stderr io.Writer) (bool, error) {
 	writer := newer.WriterBinary
 	if !usableWriter(ctx, writer, self, newer.DB) {
 		return false, nil
 	}
-	cmd := exec.CommandContext(ctx, writer, argv...) //nolint:gosec // G204: the writer is the deck binary the database itself records, vetted by usableWriter
+	return runWriter(ctx, writer, payload, stdout, stderr)
+}
+
+// runWriter runs the vetted writer binary with the hook verb, the buffered
+// payload on stdin and the loop-guard marker in its environment, and maps its
+// exit to the outcome reexecHook reports.
+func runWriter(ctx context.Context, writer string, payload []byte, stdout, stderr io.Writer) (bool, error) {
+	cmd := exec.CommandContext(ctx, writer, hookVerb)
 	cmd.Env = append(os.Environ(), hookReexecEnv+"=1")
 	cmd.Stdin = bytes.NewReader(payload)
 	cmd.Stdout, cmd.Stderr = stdout, stderr

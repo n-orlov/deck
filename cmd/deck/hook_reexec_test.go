@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -260,13 +261,54 @@ func TestReexecRefusesWriterThatIsTheHookItself(t *testing.T) {
 	writer, log, _ := recordingWriter(t, store.SchemaVersion+1, 0)
 	newer := &store.NewerSchemaError{DB: store.SchemaVersion + 1, Supported: store.SchemaVersion, WriterBinary: writer}
 	var out, errOut strings.Builder
-	handled, err := reexecHook(context.Background(), newer, writer, hookArgv, []byte(reexecPayload), &out, &errOut)
+	handled, err := reexecHook(context.Background(), newer, writer, []byte(reexecPayload), &out, &errOut)
 	if handled || err != nil || readFileOrEmpty(t, log) != "" {
 		t.Fatalf("handled = %v, err = %v, writer ran %q; want no re-exec of itself", handled, err, readFileOrEmpty(t, log))
 	}
 	// The same writer, seen as a different hook, is re-exec'd: the refusal above is the self check.
-	handled, err = reexecHook(context.Background(), newer, "/nonexistent-hook", hookArgv, []byte(reexecPayload), &out, &errOut)
+	handled, err = reexecHook(context.Background(), newer, "/nonexistent-hook", []byte(reexecPayload), &out, &errOut)
 	if !handled || err != nil || readFileOrEmpty(t, log) != "_hook|marker=1\n" {
 		t.Fatalf("handled = %v, err = %v, log %q; want one re-exec", handled, err, readFileOrEmpty(t, log))
+	}
+}
+
+// runWriter hands the writer exactly the hook verb, the buffered payload and
+// the loop-guard marker, and reports a clean exit as handled.
+func TestRunWriterPassesVerbPayloadAndMarker(t *testing.T) {
+	writer, log, payload := recordingWriter(t, store.SchemaVersion+1, 0)
+	var out, errOut strings.Builder
+	handled, err := runWriter(context.Background(), writer, []byte(reexecPayload), &out, &errOut)
+	if !handled || err != nil {
+		t.Fatalf("handled = %v, err = %v; want handled and clean", handled, err)
+	}
+	if got := readFileOrEmpty(t, log); got != "_hook|marker=1\n" {
+		t.Fatalf("writer saw %q, want the single _hook verb with the marker", got)
+	}
+	if got := readFileOrEmpty(t, payload); got != reexecPayload {
+		t.Fatalf("writer stdin = %q, want the buffered payload", got)
+	}
+}
+
+// A writer that exits non-zero yields a *hookReexecExit with that exact code,
+// whatever the code is.
+func TestRunWriterReportsEveryNonZeroExitCode(t *testing.T) {
+	for _, code := range []int{1, 7, 42} {
+		writer, _, _ := recordingWriter(t, store.SchemaVersion+1, code)
+		var out, errOut strings.Builder
+		handled, err := runWriter(context.Background(), writer, []byte(reexecPayload), &out, &errOut)
+		var exit *hookReexecExit
+		if !handled || !errors.As(err, &exit) || exit.code != code {
+			t.Fatalf("code %d: handled = %v, err = %v; want a hookReexecExit with that code", code, handled, err)
+		}
+	}
+}
+
+// A writer that cannot start is not handled, so the caller prints the R204
+// message instead of swallowing the hook.
+func TestRunWriterNotHandledWhenWriterCannotStart(t *testing.T) {
+	var out, errOut strings.Builder
+	handled, err := runWriter(context.Background(), filepath.Join(t.TempDir(), "missing"), []byte(reexecPayload), &out, &errOut)
+	if handled || err != nil {
+		t.Fatalf("handled = %v, err = %v; want not handled and no error", handled, err)
 	}
 }
