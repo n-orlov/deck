@@ -12,6 +12,10 @@
 // anything, so a release is never cut, built or published for a commit
 // whose CI suite did not go green on a push or pull request.
 //
+// Before any API call the gate also requires the sha to be an ancestor of
+// origin/main (git merge-base --is-ancestor), so a tag on a side branch
+// never publishes; an unanswerable check fails the gate too.
+//
 //	go run ./ci/releasegate -repo owner/name -sha <sha> [-check suite]
 //
 // The check name defaults to "suite" -- ci.yml's suite job has no
@@ -30,6 +34,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"os/exec"
 	"strings"
 )
 
@@ -285,36 +290,116 @@ func nextPageURL(linkHeader string) string {
 	return ""
 }
 
-func run(args []string, getenv func(string) string) error {
+// mainRef is the ref a release tag's sha must be reachable from. release.yml
+// checks out with fetch-depth 0, so refs/remotes/origin/main is present and
+// its history is complete.
+const mainRef = "origin/main"
+
+// ancestorCheck reports whether sha is reachable from mainRef. It is injected
+// into runGate so the tests never need a real repository to exercise the gate;
+// gitIsAncestor is the production implementation.
+type ancestorCheck func(sha string) (bool, error)
+
+// gitIsAncestor asks git whether sha is an ancestor of origin/main, in the
+// repository of the current working directory.
+func gitIsAncestor(sha string) (bool, error) {
+	return gitMergeBaseIsAncestor("", sha, mainRef)
+}
+
+// gitMergeBaseIsAncestor runs `git merge-base --is-ancestor sha ref` in dir
+// ("" is the current directory). Exit status 0 means reachable, 1 means not
+// reachable; anything else (an unknown sha or ref, a shallow clone, no git)
+// is an error, so the gate never reads an unanswerable question as a pass.
+func gitMergeBaseIsAncestor(dir, sha, ref string) (bool, error) {
+	if sha == "" || strings.HasPrefix(sha, "-") {
+		return false, fmt.Errorf("invalid commit %q", sha)
+	}
+	cmd := exec.Command("git", "merge-base", "--is-ancestor", sha, ref) //nolint:gosec // fixed git binary; sha is non-empty and cannot start with "-", so it is never an option
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		return true, nil
+	}
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) && exitErr.ExitCode() == 1 {
+		return false, nil
+	}
+	return false, fmt.Errorf("%w: %s", err, strings.TrimSpace(string(out)))
+}
+
+// requireOnMain refuses a sha that is not reachable from mainRef, or whose
+// reachability cannot be determined: a tag pushed on a side branch, or on a
+// commit that never went through main's CI, must not publish a release.
+func requireOnMain(sha string, isAncestor ancestorCheck) error {
+	ok, err := isAncestor(sha)
+	if err != nil {
+		return fmt.Errorf("commit %s: could not check that it is reachable from %s: %w", sha, mainRef, err)
+	}
+	if !ok {
+		return fmt.Errorf("commit %s is not an ancestor of %s: a release is only cut from a commit on main", sha, mainRef)
+	}
+	return nil
+}
+
+type options struct {
+	repo, sha, check string
+}
+
+func parseOptions(args []string) (options, error) {
 	fs := flag.NewFlagSet("releasegate", flag.ContinueOnError)
 	repo := fs.String("repo", "", "owner/repo (required)")
 	sha := fs.String("sha", "", "commit sha to check (required)")
 	check := fs.String("check", "suite", "check run name to require (must match ci.yml's job name)")
 	if err := fs.Parse(args); err != nil {
-		return err
+		return options{}, err
 	}
 	if *repo == "" || *sha == "" {
-		return errors.New("releasegate: -repo and -sha are required")
+		return options{}, errors.New("releasegate: -repo and -sha are required")
 	}
+	return options{repo: *repo, sha: *sha, check: *check}, nil
+}
 
+// runGate is the whole release gate: the sha must be reachable from
+// origin/main (through isAncestor), and its ci.yml suite check must be green.
+func runGate(args []string, getenv func(string) string, isAncestor ancestorCheck) error {
+	o, err := parseOptions(args)
+	if err != nil {
+		return err
+	}
+	if err := requireOnMain(o.sha, isAncestor); err != nil {
+		return err
+	}
+	return checkCI(o, getenv)
+}
+
+// run is the CI-status half of the gate alone (no reachability check).
+func run(args []string, getenv func(string) string) error {
+	o, err := parseOptions(args)
+	if err != nil {
+		return err
+	}
+	return checkCI(o, getenv)
+}
+
+func checkCI(o options, getenv func(string) string) error {
 	token := getenv("GITHUB_TOKEN")
 	if token == "" {
 		token = getenv("GH_TOKEN")
 	}
 
-	checkRunsBody, err := fetchCheckRuns(*repo, *sha, token)
+	checkRunsBody, err := fetchCheckRuns(o.repo, o.sha, token)
 	if err != nil {
 		return err
 	}
-	actionsRunsBody, err := fetchActionsRuns(*repo, *sha, token)
+	actionsRunsBody, err := fetchActionsRuns(o.repo, o.sha, token)
 	if err != nil {
 		return err
 	}
-	return evaluate(checkRunsBody, actionsRunsBody, *sha, *check)
+	return evaluate(checkRunsBody, actionsRunsBody, o.sha, o.check)
 }
 
 func main() {
-	if err := run(os.Args[1:], os.Getenv); err != nil {
+	if err := runGate(os.Args[1:], os.Getenv, gitIsAncestor); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}

@@ -1,11 +1,14 @@
 # Quality-gate tools (#54), pinned, built once in their own stage: golangci-lint
 # v2.14.0 needs Go >= 1.26, the product builds on 1.25.x. Bump a version here
-# and nowhere else.
-FROM golang:1.26.4-trixie AS tools
+# and nowhere else. Every FROM is pinned by digest (a tag can be re-pushed); the
+# tag stays in the reference and in the comment above it, so a bump changes both.
+# golang:1.26.4-trixie
+FROM golang:1.26.4-trixie@sha256:68b7145ec43d1820b9a56704554b53d1520aa2a15cb5233e374188a31b2a1bce AS tools
 RUN GOBIN=/out go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.14.0 \
     && GOBIN=/out go install golang.org/x/vuln/cmd/govulncheck@v1.8.0
 
-FROM golang:1.25.14-trixie
+# golang:1.25.14-trixie
+FROM golang:1.25.14-trixie@sha256:2c4c60ef415fbfa5e90300722293bef36c5e63fae17570ce18f580af933dbd73
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \

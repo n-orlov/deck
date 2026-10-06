@@ -2961,14 +2961,18 @@ in the help view.
   never a fork's code on a self-hosted runner). A pull request's suite check gates its
   merge; a red push or nightly run on `main` alerts the operator. A failing test is retried
   once, and a pass on the retry is green but recorded as **flaky**, never hidden. A release
-  tag publishes only for a sha whose suite check is green. Only suite runs triggered by a push
+  tag publishes only for a sha that is an ancestor of `origin/main` (`git merge-base --is-ancestor`,
+  on a checkout that fetched full history) **and** whose suite check is green: a tag on a side branch
+  or an unmerged commit never publishes, and a reachability check that cannot be answered fails the
+  gate rather than passing it. Only suite runs triggered by a push
   or a pull request count: nightly (schedule) and manual (`workflow_dispatch`) runs alert but
   never gate a release, so a flaky or `-race` nightly cannot block a sha whose push run passed.
   Only the `suite` check published by `ci.yml` counts: a check run named `suite` from any other
   workflow (such as `pages-pr-publish.yml`) is ignored, green or red. A run whose workflow path is
   missing, null, empty or anything other than `.github/workflows/ci.yml` (with or without GitHub's
   `@<ref>` suffix) is not `ci.yml`'s, so its suite check never gates. `release.yml` pins its
-  actions by commit SHA like the other workflows.
+  actions by commit SHA like the other workflows. Both `FROM` lines of `ci/Dockerfile` are pinned by `@sha256` digest,
+  with the tag kept in the reference, so a re-pushed tag cannot change the CI image.
   **Main's Actions history is a truthful signal:** every run on `main` is green unless the code
   is broken. Every push to `main` gets its own complete run, never cancelled by a later push; the
   nightly and manual lane never shares a concurrency group with pushes, so a push cannot cancel
