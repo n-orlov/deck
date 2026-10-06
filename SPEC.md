@@ -1137,7 +1137,12 @@ every session reads `stopped · resumable`, and `r` brings one back:
      environment, falling back to deck's own), and **no transcript file** at
      `$HOME/.claude/projects/<cwd with separators as "-">/<conversation id>.jsonl` →
      `--session-id <the same uuid>`. The conversation id on the row is unchanged.
-  2. A transcript file exists → `--resume <uuid>`.
+  2. A transcript file exists → `--resume <uuid>`, even when its metadata cannot be read (a
+     symlink whose target is unreadable still counts as an existing entry). Absence has to be
+     *positively known*: only a filesystem answer of "does not exist" for the transcript path
+     (or a directory sitting where the file should be) selects case 1. Any other lookup
+     failure (permission denied, a path component that is not a directory, a name too long, an
+     I/O error) leaves the transcript state unknown and keeps `--resume`.
   3. The conversation is locked (`resume_state = pinned`) → `--resume`.
   4. `CLAUDE_CONFIG_DIR` is set (the transcript location cannot be known) → `--resume`.
   5. The home directory is unknown → `--resume`.

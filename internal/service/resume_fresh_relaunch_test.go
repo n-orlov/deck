@@ -213,3 +213,33 @@ func TestRestartTwiceBeforeFirstMessageEndsRunningNotError(t *testing.T) {
 		t.Fatalf("live pane = %v, %v, want a live pane after the second restart", live, err)
 	}
 }
+
+// R207 case 2 (conservative): a transcript lookup that fails for a reason other
+// than a confirmed not-exist leaves the state unknown, so the conversation is
+// resumed rather than started again on the same id.
+func TestResumeArgvLookupFailureResumes(t *testing.T) {
+	home := isolateAgentHome(t)
+	if err := os.MkdirAll(filepath.Join(home, ".claude"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// ~/.claude/projects is a regular file, so the lookup fails with ENOTDIR.
+	if err := os.WriteFile(filepath.Join(home, ".claude", "projects"), []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	wantArgvHead(t, relaunchArgv(t, Service{}, claudeRelaunchSession(t.TempDir())), "--resume")
+}
+
+// A dangling symlink at the transcript path is an existing entry whose
+// metadata cannot be read: it is resumed, never relaunched fresh.
+func TestResumeArgvUnreadableTranscriptEntryResumes(t *testing.T) {
+	home := isolateAgentHome(t)
+	session := claudeRelaunchSession(t.TempDir())
+	dir := filepath.Join(home, ".claude", "projects", strings.ReplaceAll(session.CWD, string(filepath.Separator), "-"))
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(home, "gone"), filepath.Join(dir, session.ConversationID+".jsonl")); err != nil {
+		t.Fatal(err)
+	}
+	wantArgvHead(t, relaunchArgv(t, Service{}, session), "--resume")
+}
