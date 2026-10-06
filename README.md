@@ -32,6 +32,13 @@ deck
 
 Config: `~/.config/deck/config.toml`. State: `~/.local/share/deck/`. tmux socket: `tmux -L deck`.
 
+## Themes
+
+Nine built-in themes, chosen with `[ui] theme` in `config.toml`, in settings (`,`) or live
+from the `t` picker: `empire` (default), `daylight`, `parchment`, `matrix`, `cobalt`,
+`gruvbox-dark`, `solarized-dark`, `amber` and `high-contrast`. Your own live in
+`~/.config/deck/themes/*.toml` (see SPEC.md §11.6).
+
 ## Release
 
 ```sh

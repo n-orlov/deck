@@ -109,7 +109,7 @@ func TestBuiltinQuantizationPinned(t *testing.T) {
 			Waiting:       "#cd0000",
 			Running:       "#000000",
 			Idle:          "#7f7f7f",
-			Starting:      "#cd0000",
+			Starting:      "#7f7f7f",
 			Stopped:       "#7f7f7f",
 			Error:         "#cd0000",
 			Archived:      "#7f7f7f",

@@ -2239,9 +2239,9 @@ waiting           = "#f5c518"  # the seven §7 statuses, one token each
 running           = "#4ade80"
 idle              = "#8a8378"
 starting          = "#c2761a"
-stopped           = "#8a8378"
+stopped           = "#6a7a99"
 error             = "#e5533d"
-archived          = "#9a9387"
+archived          = "#b0a898"
 ```
 
 - **The built-ins stay visibly different from each other.** For every unordered pair of
@@ -2258,6 +2258,12 @@ archived          = "#9a9387"
   monochrome amber phosphor, so its seven status colours differ by tone and brightness rather than
   hue alone. `high-contrast` is black and white with saturated primaries, and its `text` on
   `background` clears WCAG AAA (7:1).
+- **The nine built-ins** are `empire` (the default), `daylight`, `parchment`, `matrix`, `cobalt`,
+  `gruvbox-dark`, `solarized-dark`, `amber` and `high-contrast`.
+- **Status colours stay distinguishable within every built-in.** The seven §7 status colours of
+  one theme are pairwise at least **10** apart in CIEDE2000 ΔE, so no two statuses read as the
+  same colour in the list. The test iterates the registry — a later built-in is held to the same
+  floor with no new test — and on failure it names the theme and the offending pair of tokens.
 - **The seven status tokens are exactly the seven statuses in §7.** If §7 grows a status,
   the theme schema grows a token; a status rendered in a colour borrowed from another
   status is a defect, because the colour is the fastest thing a human reads in the list.
