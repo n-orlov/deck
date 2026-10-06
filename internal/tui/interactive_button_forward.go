@@ -50,6 +50,17 @@ func motionReportsWanted(modes interactive.MouseMode) bool {
 	return modes.Has(interactive.MouseButton) || modes.Has(interactive.MouseAny)
 }
 
+// forwardedButtonSlots bounds the per-button press records: the buttons
+// bubbletea names run from MouseButtonNone to MouseButton11.
+const forwardedButtonSlots = int(tea.MouseButton11) + 1
+
+// forwardedPress is where a forwarded button went down and whether the
+// pointer has moved since, so its release can tell a click from a drag.
+type forwardedPress struct {
+	col, row int
+	moved    bool
+}
+
 // buttonBit is the held-button mask bit of a button.
 func buttonBit(b tea.MouseButton) uint16 { return 1 << uint(b) }
 
@@ -128,13 +139,15 @@ func (m Model) forwardInteractiveButtonPress(msg tea.MouseMsg) Model {
 	code, _ := forwardedButtonCode(msg.Button)
 	m.interactiveForwardedButtons |= buttonBit(msg.Button)
 	m.interactiveForwardedLast = msg.Button
+	m.interactiveForwardedPress[msg.Button] = forwardedPress{col: col, row: row}
 	return m.sendMouseReport(code, mouseReportPress, false, col, row, false)
 }
 
 // forwardInteractiveButtonStep forwards the motion or release of a
 // forwarded button at the cell the pointer is over, clamped into the
 // content box so a gesture that runs off the panel's edge keeps reporting
-// its nearest cell. The release ends the gesture whether or not anything
+// its nearest cell. A release that arrives with no motion since the press
+// is a click and is reported at the press cell, for every button. The release ends the gesture whether or not anything
 // could be sent. Shift was judged at the press: a gesture already handed
 // to the program is finished for it, so a Shift pressed mid-drag cannot
 // strand a release.
@@ -143,11 +156,18 @@ func (m Model) forwardInteractiveButtonStep(msg tea.MouseMsg, kind mouseReportKi
 	if m.interactiveForwardedButtons&bit == 0 {
 		return m
 	}
+	press := &m.interactiveForwardedPress[msg.Button]
+	if kind == mouseReportMotion {
+		press.moved = true
+	}
 	if kind == mouseReportRelease {
 		m.interactiveForwardedButtons &^= bit
 	}
 	code, _ := forwardedButtonCode(msg.Button)
 	col, row := m.previewClampToContent(msg.X, msg.Y)
+	if kind == mouseReportRelease && !press.moved {
+		col, row = press.col, press.row
+	}
 	return m.sendMouseReport(code, kind, false, col, row, false)
 }
 

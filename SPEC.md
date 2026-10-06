@@ -2440,7 +2440,7 @@ button code 3), each of these over the preview: the press, the motion while it i
 release of the **middle** and **right** buttons and of the additional buttons 8-11 (codes 128-131,
 SGR only: X10 has no form for them), each as it arrives with that button's code (middle 1, right 2)
 and the cell the pointer is over (motion adds 32 to the code; the release cell is clamped into the
-preview, so a gesture that runs off the edge still ends); motion with **no button** held (code
+preview, so a gesture that runs off the edge still ends; a click, below, releases at its press cell); motion with **no button** held (code
 35); and the sideways wheel (codes 66 and 67). A release that arrives from deck's terminal in the
 X10 form names no button, so each one ends exactly one gesture still held: an ON-mode selection
 first, else the last button pressed while it is still down, else the held button with the lowest
@@ -2454,8 +2454,11 @@ when the terminal delivers it. The **left** button is forwarded the same way as 
 and, with `select_on_drag` false, as a drag. All of it **shares the wheel's routing rule (R183,
 §11.9)**: forwarded only when the program tracks the mouse, the grid is at live and `Shift` is not
 held; a program that does not track the mouse (a plain shell), `Shift` held and a scrolled-back
-grid forward nothing. A left click is forwarded as a press and a release at the press cell when its
-release arrives with no motion since the press; an ON-mode left drag is the selection above and
+grid forward nothing. A click of the left, middle or right button (or of an additional button) is forwarded as a press
+and a release at the **press cell**, in the encoding the program asked for, when its release
+arrives with no motion since that button's press, whatever cell the terminal names for the
+release; a drag that did report motion keeps its real motion cells and ends at its release cell
+(clamped into the preview). Each held button keeps its own press cell. An ON-mode left drag is the selection above and
 the program receives nothing from it. A forwarded event is input to the pane and ends a sidebar
 drift (§11), nothing forwarded is highlighted or copied, and an event the encoding cannot carry
 (X10 past column or row 223, or under mode 1005 or 1015) is dropped. **`[ui] select_on_drag` chooses who owns the left drag.** With it true
