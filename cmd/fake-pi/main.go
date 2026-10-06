@@ -730,7 +730,7 @@ Options:
   --approve           Accept edits/actions without further prompting.
   --extension, -e <path>
                       Load an extension file. A deck-owned extension turns the "hook" pane
-                      command below into the hook command named by DECK_PI_HOOK_COMMAND.
+                      command below into the hook executable named by DECK_PI_HOOK_EXECUTABLE.
   --help, -h          Show this help.
 
 Set FAKE_PI_EXIT_CODE to an integer from 0 through 125 to control this fixture's exit status.
@@ -747,7 +747,7 @@ command has the form {"command":"fixture","name":"pi/waiting.txt"} and copies th
 file from FAKE_AGENT_FIXTURE_DIR to the pane without changing its bytes.
 A hook command has the form {"command":"hook","event":"SessionStart","payload":{...}}. It
 plays the loaded extension: the event must be one the extension file subscribes, and its
-DECK_PI_HOOK_COMMAND command line then runs on sh -c with the payload (and this session's id)
-on stdin and this process's injected environment, never as "deck _hook" directly. A failing
+DECK_PI_HOOK_EXECUTABLE then runs with the single argument "_hook" and no shell, with the
+payload (and this session's id) on stdin and this process's injected environment. A failing
 hook prints its stderr as "fake-pi notify: ..." and never stops this fixture.
 `

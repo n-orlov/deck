@@ -34,22 +34,24 @@ func hookCommandOf(t *testing.T, adapter Adapter, deckExecutable, event string) 
 			}
 		}
 	case Pi:
-		// Pi's hook command rides in the environment its deck-owned extension
-		// reads, and the extension is named in the launch argv.
+		// Pi's hook executable rides, verbatim, in the environment its
+		// deck-owned extension reads (the extension runs it with no shell),
+		// and the extension is named in the launch argv.
 		argv, env := adapter.Instrument(LaunchInput{Profile: "safe", DeckExecutable: deckExecutable, DeckHome: "/deck-home"})
 		if len(argv) != 2 || argv[0] != "-e" || argv[1] != PiExtensionPath("/deck-home") {
 			t.Fatalf("pi Instrument argv = %#v", argv)
 		}
-		return env[PiHookCommandEnv]
+		return env[PiHookExecutableEnv]
 	}
 	return ""
 }
 
 // R204 (#56), the launch-path read for all three harnesses: the hook command a
-// session's agent keeps for its whole life is the single-quoted absolute path
-// of the deck binary that launched it plus ` _hook`, for Claude, Codex and Pi
-// alike, whatever the path holds. Claude and Codex embed it in their launch
-// argv, Pi hands it to its deck-owned extension through the environment.
+// session's agent keeps for its whole life names the deck binary that launched
+// it, whatever the path holds. Claude and Codex embed the single-quoted
+// absolute path plus ` _hook` in their launch argv; Pi hands the raw path to
+// its deck-owned extension through the environment, which runs it with
+// `_hook` as a separate argv element.
 func TestHookCommandNamesTheLaunchingDeckExecutableForEveryHarness(t *testing.T) {
 	paths := map[string]string{
 		"/opt/deck/bin/deck":            `'/opt/deck/bin/deck' _hook`,
@@ -70,6 +72,9 @@ func TestHookCommandNamesTheLaunchingDeckExecutableForEveryHarness(t *testing.T)
 	for _, h := range harnesses {
 		for path, want := range paths {
 			for _, event := range h.events {
+				if h.name == "pi" {
+					want = path // no shell reads Pi's: the path travels unquoted, `_hook` is PiHookArgs
+				}
 				if got := hookCommandOf(t, h.adapter, path, event); got != want {
 					t.Errorf("%s %s hook command for %q = %q, want %q", h.name, event, path, got, want)
 				}

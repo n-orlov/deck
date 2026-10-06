@@ -118,18 +118,18 @@ func assertHasApprove(t *testing.T, argv []string, want bool) {
 // R204 (#56): Pi's launch installs the deck-owned extension and the hook
 // command of the launching deck binary, and carries the launch generation like
 // Claude and Codex do (absent without a lease).
-func TestPiInstrumentInstallsTheExtensionAndTheLaunchingDeckHookCommand(t *testing.T) {
+func TestPiInstrumentInstallsTheExtensionAndTheLaunchingDeckExecutable(t *testing.T) {
 	in := LaunchInput{DeckExecutable: "/opt/deck/bin/deck", DeckHome: "/data/deck", LaunchGeneration: "gen-7"}
 	argv, env := Pi{}.Instrument(in)
 	if len(argv) != 2 || argv[0] != "-e" || argv[1] != "/data/deck/pi/deck-hook.js" {
 		t.Fatalf("pi Instrument argv = %#v, want -e <data root>/pi/deck-hook.js", argv)
 	}
-	if env[PiHookCommandEnv] != `'/opt/deck/bin/deck' _hook` || env[LaunchGenerationEnv] != "gen-7" || len(env) != 2 {
+	if env[PiHookExecutableEnv] != "/opt/deck/bin/deck" || env[LaunchGenerationEnv] != "gen-7" || len(env) != 2 {
 		t.Fatalf("pi Instrument env = %#v", env)
 	}
 	in.LaunchGeneration = ""
-	if _, env := (Pi{}).Instrument(in); len(env) != 1 || env[PiHookCommandEnv] == "" {
-		t.Fatalf("pi Instrument env without a lease = %#v, want only the hook command", env)
+	if _, env := (Pi{}).Instrument(in); len(env) != 1 || env[PiHookExecutableEnv] == "" {
+		t.Fatalf("pi Instrument env without a lease = %#v, want only the hook executable", env)
 	}
 }
 
@@ -145,10 +145,10 @@ func TestPiInstrumentFilesWritesTheExtensionUnderTheDataRootOnly(t *testing.T) {
 }
 
 // The extension fires exactly the events PiHookEvents lists, reads the
-// command from PiHookCommandEnv, and reports the in-session shutdown reasons
+// executable from PiHookExecutableEnv, and reports the in-session shutdown reasons
 // `_hook` keeps from stopping a row.
 func TestPiExtensionSourceSubscribesEveryHookEvent(t *testing.T) {
-	for _, want := range append([]string{PiHookCommandEnv, "session_start", "before_agent_start", "agent_settled", "session_shutdown", "getSessionId", `/bin/sh`}, quoted(PiHookEvents)...) {
+	for _, want := range append([]string{PiHookExecutableEnv, "session_start", "before_agent_start", "agent_settled", "session_shutdown", "getSessionId"}, quoted(PiHookEvents)...) {
 		if !strings.Contains(PiExtensionSource, want) {
 			t.Errorf("pi extension lacks %q", want)
 		}

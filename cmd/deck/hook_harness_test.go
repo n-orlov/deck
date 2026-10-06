@@ -40,7 +40,8 @@ var hookHarnesses = []hookHarness{
 // launchHookCommand returns the exact shell command line the harness's agent
 // would run for a hook, built by that harness's real launch path from deck
 // (Claude: inside --settings JSON; Codex: inside a -c TOML override; Pi: the
-// environment variable its installed extension runs).
+// executable its installed extension runs, written as the shell line that
+// names the same argv).
 func launchHookCommand(t *testing.T, h hookHarness, deck string) string {
 	t.Helper()
 	argv, env := h.adapter.Instrument(agent.LaunchInput{Profile: "safe", DeckExecutable: deck, DeckHome: "/deck-home"})
@@ -67,10 +68,12 @@ func launchHookCommand(t *testing.T, h hookHarness, deck string) string {
 		}
 		t.Fatalf("codex Instrument embedded no PermissionRequest hook: %#v", argv)
 	case agent.Pi:
-		if len(argv) != 2 || argv[0] != "-e" || env[agent.PiHookCommandEnv] == "" {
-			t.Fatalf("pi Instrument = %#v, %#v; want -e <extension> and the hook command", argv, env)
+		if len(argv) != 2 || argv[0] != "-e" || env[agent.PiHookExecutableEnv] != deck {
+			t.Fatalf("pi Instrument = %#v, %#v; want -e <extension> and the hook executable", argv, env)
 		}
-		return env[agent.PiHookCommandEnv]
+		// The extension runs the executable with agent.PiHookArgs and no shell;
+		// this is the shell line that names the same argv.
+		return "'" + strings.ReplaceAll(deck, "'", `'"'"'`) + "' " + strings.Join(agent.PiHookArgs, " ")
 	}
 	t.Fatalf("unknown harness %q", h.name)
 	return ""

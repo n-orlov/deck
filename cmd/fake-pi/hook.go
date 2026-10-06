@@ -15,18 +15,18 @@ import (
 )
 
 // extensionHooks plays the deck-owned Pi extension a real pi would load with
-// -e: it never invokes "deck _hook" itself, it runs the hook command the
+// -e: it never invokes "deck _hook" itself, it runs the hook executable the
 // launch put in the environment, for the events the extension file really
 // subscribes, exactly as cmd/fake-claude and cmd/fake-codex run the commands
 // their launch argv injected.
 type extensionHooks struct {
-	extension string
-	sessionID string
-	command   string
+	extension  string
+	sessionID  string
+	executable string
 }
 
 func newExtensionHooks(opts options, getenv func(string) string) extensionHooks {
-	return extensionHooks{extension: opts.extension, sessionID: opts.sessionID, command: getenv(agent.PiHookCommandEnv)}
+	return extensionHooks{extension: opts.extension, sessionID: opts.sessionID, executable: getenv(agent.PiHookExecutableEnv)}
 }
 
 // checkInstalled fails, like fake-claude's own fireHook, when event could not
@@ -63,13 +63,13 @@ func (h extensionHooks) encodePayload(event string, payload map[string]any) ([]b
 	return append(encoded, '\n'), nil
 }
 
-// fire runs one hook event. With no hook command in the environment it does
+// fire runs one hook event. With no hook executable in the environment it does
 // nothing, as the extension does.
 func (h extensionHooks) fire(stdout io.Writer, event string, payload map[string]any) error {
 	if err := h.checkInstalled(event); err != nil {
 		return err
 	}
-	if h.command == "" {
+	if h.executable == "" {
 		return nil
 	}
 	encoded, err := h.encodePayload(event, payload)
@@ -77,7 +77,7 @@ func (h extensionHooks) fire(stdout io.Writer, event string, payload map[string]
 		return err
 	}
 	var captured bytes.Buffer
-	runErr := runHookCommand(hookShell, h.command, encoded, &captured)
+	runErr := runHookCommand(h.executable, encoded, &captured)
 	var exitErr *exec.ExitError
 	switch {
 	case runErr == nil:
@@ -93,20 +93,12 @@ func (h extensionHooks) fire(stdout io.Writer, event string, payload map[string]
 	return nil
 }
 
-// hookShell is the shell that runs the hook line, as the real extension does.
-const hookShell = "sh"
-
-// hookScript runs the hook line from the environment variable the launch put
-// it in, so the command line itself is data and never part of the argv.
-const hookScript = `eval "$` + agent.PiHookCommandEnv + `"`
-
-// runHookCommand runs the shell line deck itself put in the agent's
-// environment, as the real extension would: the payload on stdin and the
-// failed hook's stderr collected into stderr. The shell is a parameter and the
-// script a constant; the command rides in the child's environment.
-func runHookCommand(shell, command string, payload []byte, stderr io.Writer) error {
-	process := exec.Command(shell, "-c", hookScript)
-	process.Env = append(os.Environ(), agent.PiHookCommandEnv+"="+command)
+// runHookCommand runs the hook executable deck itself put in the agent's
+// environment, as the real extension does: with agent.PiHookArgs as its argv
+// and no shell, the payload on stdin and the failed hook's stderr collected
+// into stderr.
+func runHookCommand(executable string, payload []byte, stderr io.Writer) error {
+	process := exec.Command(executable, agent.PiHookArgs...)
 	process.Stdin = bytes.NewReader(payload)
 	process.Stderr = stderr
 	return process.Run()

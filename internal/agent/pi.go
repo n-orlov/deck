@@ -74,13 +74,13 @@ func (p Pi) Resume(in ResumeInput) ([]string, error) {
 }
 
 // Instrument installs deck's Pi extension (PiExtensionSource) with `-e` and
-// hands it the session's hook command through PiHookCommandEnv: the
-// single-quoted absolute path of the launching deck binary plus ` _hook`,
-// the same command Claude and Codex embed (SPEC §8.1). Like Claude and Codex
+// hands it the launching deck binary's absolute path, verbatim, through
+// PiHookExecutableEnv; the extension runs it with `_hook` as a separate argv
+// element and no shell (SPEC §8.3). Like Claude and Codex
 // it adds DECK_LAUNCH_GENERATION when the launch holds a lease. The extension
 // file itself is written by the launcher (InstrumentFiles), never here.
 func (Pi) Instrument(in LaunchInput) ([]string, map[string]string) {
-	env := map[string]string{PiHookCommandEnv: shellQuote(in.DeckExecutable) + " _hook"}
+	env := map[string]string{PiHookExecutableEnv: in.DeckExecutable}
 	if in.LaunchGeneration != "" {
 		env[LaunchGenerationEnv] = in.LaunchGeneration
 	}
