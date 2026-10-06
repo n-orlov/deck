@@ -112,7 +112,7 @@ func (Pi) TranscriptPaths(in TranscriptInput) (string, bool) {
 		return "", false
 	}
 	dir := filepath.Join(in.Home, ".pi", "agent", "sessions", piEncodeCwd(in.CWD))
-	entries, err := os.ReadDir(dir)
+	entries, err := piReadDir(dir)
 	if err != nil {
 		return "", false
 	}
@@ -124,6 +124,11 @@ func (Pi) TranscriptPaths(in TranscriptInput) (string, bool) {
 	}
 	return "", false
 }
+
+// piReadDir is the directory read Pi's TranscriptPaths performs; a package
+// variable so a test can observe that an unsafe id is declined before the
+// transcript directory is touched at all.
+var piReadDir = os.ReadDir
 
 // piEncodeCwd reproduces pi's own encoding exactly (pi-mono's
 // session-manager.ts getDefaultSessionDirPath, and cmd/fake-pi's own
