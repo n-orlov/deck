@@ -2631,6 +2631,11 @@ must be restored afterwards.
   tick, with the pipe transport's own displacement signal as the fast path; the keystrokes
   typed in the window between the steal and the tick that notices are a **known, accepted
   loss**, deliberately not paid for with a tmux round-trip per keystroke.
+  **A dead pane is not a takeover.** The same tick read also answers whether the pane is
+  gone. When the read fails because the target no longer resolves, or reports the pane dead,
+  the tick reports a dead pane **only**: the claim and attached-client checks are skipped, the
+  dialog is not raised, and the grid is told its pane died, which is the path the operator
+  sees instead. Only a live pane whose window another client holds raises the dialog.
 - **The transport is `pipe-pane -IO` into a `charmbracelet/x/vt` grid**, seeded from
   `capture-pane -e -N` plus the pane state tmux exposes as formats, and **reseeded on every
   resize** — resizing the grid alone leaves it wrong for seconds. The pipe is armed before

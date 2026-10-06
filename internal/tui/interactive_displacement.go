@@ -5,6 +5,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/n-orlov/deck/internal/interactive"
+	"github.com/n-orlov/deck/internal/tmux"
 )
 
 // interactiveDisplacementChecked carries task 118's claim-still-ours /
@@ -68,8 +69,8 @@ func (m Model) interactiveDisplacementFastPath() bool {
 //     invisible to the claim probe on its own.
 //
 // The same read failing means the target no longer resolves: that is as
-// terminal for the pane as pane_dead==1 (paneDead), and, as before, an
-// unreadable claim is not "still mine".
+// terminal for the pane as pane_dead==1 (paneDead). Both are dead-pane
+// reports, never displacements (R208): see interactiveDisplacementVerdict.
 func (m Model) checkInteractiveDisplacementBackstop() tea.Cmd {
 	if !m.interactive || m.interactiveOwnership == nil {
 		return nil
@@ -83,12 +84,26 @@ func (m Model) checkInteractiveDisplacementBackstop() tea.Cmd {
 	}
 	return func() tea.Msg {
 		tick, err := client.InteractiveTickRead(context.Background(), target)
-		if err != nil {
-			return interactiveDisplacementChecked{windowTarget: target, displaced: true, sessionName: name, paneDead: true}
-		}
-		displaced := !ownership.StillMine(tick) || tick.Attached != 0
-		return interactiveDisplacementChecked{windowTarget: target, displaced: displaced, sessionName: name, paneDead: tick.PaneDead}
+		return interactiveDisplacementVerdict(target, name, tick, err, ownership.StillMine)
 	}
+}
+
+// interactiveDisplacementVerdict turns one backstop read into its message.
+// A dead pane is not a takeover (R208): when the read failed (the target no
+// longer resolves) or the tick reports PaneDead, only paneDead is set and
+// displaced stays false, and stillMine and the attached count are never
+// consulted -- a dead pane has no claim or client worth reading, and the
+// "Another client took over" dialog would name the wrong cause. The
+// dead-pane path (Session.NotePaneDead) is what the operator sees instead.
+// Only a live pane is checked for a takeover.
+func interactiveDisplacementVerdict(target, name string, tick tmux.InteractiveTick, err error, stillMine func(tmux.InteractiveTick) bool) interactiveDisplacementChecked {
+	msg := interactiveDisplacementChecked{windowTarget: target, sessionName: name}
+	if err != nil || tick.PaneDead {
+		msg.paneDead = true
+		return msg
+	}
+	msg.displaced = !stillMine(tick) || tick.Attached != 0
+	return msg
 }
 
 // raiseLostAttach is both displacement flavours' one shared exit: leave
