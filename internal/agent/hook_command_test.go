@@ -33,15 +33,23 @@ func hookCommandOf(t *testing.T, adapter Adapter, deckExecutable, event string) 
 				return strings.NewReplacer(`\\`, `\`, `\"`, `"`).Replace(match[1])
 			}
 		}
+	case Pi:
+		// Pi's hook command rides in the environment its deck-owned extension
+		// reads, and the extension is named in the launch argv.
+		argv, env := adapter.Instrument(LaunchInput{Profile: "safe", DeckExecutable: deckExecutable, DeckHome: "/deck-home"})
+		if len(argv) != 2 || argv[0] != "-e" || argv[1] != PiExtensionPath("/deck-home") {
+			t.Fatalf("pi Instrument argv = %#v", argv)
+		}
+		return env[PiHookCommandEnv]
 	}
 	return ""
 }
 
 // R204 (#56), the launch-path read for all three harnesses: the hook command a
 // session's agent keeps for its whole life is the single-quoted absolute path
-// of the deck binary that launched it plus ` _hook`, for Claude and Codex
-// alike, whatever the path holds; Pi builds no hook command at all, so a Pi
-// session is bound to no deck binary and never runs `_hook`.
+// of the deck binary that launched it plus ` _hook`, for Claude, Codex and Pi
+// alike, whatever the path holds. Claude and Codex embed it in their launch
+// argv, Pi hands it to its deck-owned extension through the environment.
 func TestHookCommandNamesTheLaunchingDeckExecutableForEveryHarness(t *testing.T) {
 	paths := map[string]string{
 		"/opt/deck/bin/deck":            `'/opt/deck/bin/deck' _hook`,
@@ -57,6 +65,7 @@ func TestHookCommandNamesTheLaunchingDeckExecutableForEveryHarness(t *testing.T)
 	}{
 		{"claude", Claude{}, claudeHookEvents},
 		{"codex", Codex{}, codexHookEvents},
+		{"pi", Pi{}, PiHookEvents},
 	}
 	for _, h := range harnesses {
 		for path, want := range paths {
@@ -67,11 +76,6 @@ func TestHookCommandNamesTheLaunchingDeckExecutableForEveryHarness(t *testing.T)
 			}
 		}
 	}
-
-	argv, env := (Pi{}).Instrument(LaunchInput{Profile: "safe", DeckExecutable: "/opt/deck/bin/deck", LaunchGeneration: "gen-1"})
-	if len(argv) != 0 || len(env) != 0 {
-		t.Fatalf("pi Instrument = %#v, %#v; want no hook command and no environment", argv, env)
-	}
 }
 
 // The command string is constant per install: the same executable yields the
@@ -79,7 +83,7 @@ func TestHookCommandNamesTheLaunchingDeckExecutableForEveryHarness(t *testing.T)
 // lease generation, so a session's recorded binding is a function of the path
 // alone (R204c compares exactly that path).
 func TestHookCommandDependsOnTheExecutablePathAlone(t *testing.T) {
-	for name, adapter := range map[string]Adapter{"claude": Claude{}, "codex": Codex{}} {
+	for name, adapter := range map[string]Adapter{"claude": Claude{}, "codex": Codex{}, "pi": Pi{}} {
 		event := "SessionEnd"
 		first := hookCommandOf(t, adapter, "/opt/deck/a", event)
 		argv, _ := adapter.Instrument(LaunchInput{Profile: "yolo", DeckExecutable: "/opt/deck/a", LaunchGeneration: "gen-9", DeckSessionID: "row-1", ConversationID: "c"})

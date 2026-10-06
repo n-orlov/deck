@@ -60,6 +60,9 @@ type options struct {
 	sessionID string
 	approve   bool
 	message   string
+	// extension is the file named by -e/--extension: the deck-owned Pi
+	// extension whose events become `deck _hook` calls (hook.go).
+	extension string
 }
 
 func main() {
@@ -113,7 +116,8 @@ func runWithIO(args []string, stdin io.Reader, stdout io.Writer, getenv func(str
 	announceLaunch(stdout, opts, encoded)
 
 	if getenv(commandsEnvironment) == "1" {
-		if err := runCommands(stdin, stdout, getenv(fixtureDirectoryEnvironment)); err != nil {
+		hooks := newExtensionHooks(opts, getenv)
+		if err := runCommands(stdin, stdout, getenv(fixtureDirectoryEnvironment), hooks); err != nil {
 			return 0, err
 		}
 	}
@@ -145,6 +149,9 @@ func announceLaunch(stdout io.Writer, opts options, encodedArgv []byte) {
 	}
 	if opts.approve {
 		sayln(stdout, "fake-pi approve: true")
+	}
+	if opts.extension != "" {
+		sayf(stdout, "fake-pi extension: %s\n", opts.extension)
 	}
 }
 
@@ -359,22 +366,30 @@ func lastMessage(path string) (string, error) {
 }
 
 type fixtureCommand struct {
-	Command string `json:"command"`
-	Name    string `json:"name"`
+	Command string         `json:"command"`
+	Name    string         `json:"name"`
+	Event   string         `json:"event"`
+	Payload map[string]any `json:"payload"`
 }
 
-func runCommands(input io.Reader, output io.Writer, fixtureDirectory string) error {
+func runCommands(input io.Reader, output io.Writer, fixtureDirectory string, hooks extensionHooks) error {
 	scanner := bufio.NewScanner(input)
 	for scanner.Scan() {
 		var request fixtureCommand
 		if err := json.Unmarshal(scanner.Bytes(), &request); err != nil {
 			return fmt.Errorf("decode command: %w", err)
 		}
-		if request.Command != "fixture" {
+		switch request.Command {
+		case "fixture":
+			if err := renderFixture(output, fixtureDirectory, request.Name); err != nil {
+				return err
+			}
+		case "hook":
+			if err := hooks.fire(output, request.Event, request.Payload); err != nil {
+				return err
+			}
+		default:
 			return fmt.Errorf("unknown command %q", request.Command)
-		}
-		if err := renderFixture(output, fixtureDirectory, request.Name); err != nil {
-			return err
 		}
 	}
 	if err := scanner.Err(); err != nil {
@@ -530,6 +545,14 @@ func (r *repainter) onInput() {
 	}
 }
 
+// flagValue returns the argument after the option at args[index].
+func flagValue(args []string, index int) (string, error) {
+	if index+1 >= len(args) {
+		return "", fmt.Errorf("option %q requires a value", args[index])
+	}
+	return args[index+1], nil
+}
+
 func parse(args []string) (options, error) {
 	var result options
 	var message []string
@@ -541,14 +564,23 @@ func parse(args []string) (options, error) {
 		}
 		switch argument {
 		case "--session-id":
-			if index+1 == len(args) {
-				return result, fmt.Errorf("option %q requires a value", argument)
+			value, err := flagValue(args, index)
+			if err != nil {
+				return result, err
 			}
 			index++
-			result.sessionID = args[index]
+			result.sessionID = value
 			continue
 		case "--approve":
 			result.approve = true
+			continue
+		case "-e", "--extension":
+			value, err := flagValue(args, index)
+			if err != nil {
+				return result, err
+			}
+			index++
+			result.extension = value
 			continue
 		}
 		if len(argument) > 1 && argument[0] == '-' {
@@ -696,6 +728,9 @@ Usage: fake-pi [options] [prompt]
 Options:
   --session-id <id>   Use a caller-assigned conversation id (created if missing).
   --approve           Accept edits/actions without further prompting.
+  --extension, -e <path>
+                      Load an extension file. A deck-owned extension turns the "hook" pane
+                      command below into the hook command named by DECK_PI_HOOK_COMMAND.
   --help, -h          Show this help.
 
 Set FAKE_PI_EXIT_CODE to an integer from 0 through 125 to control this fixture's exit status.
@@ -710,4 +745,9 @@ after a SIGWINCH; never: not at all) until stdin reaches EOF.
 Set FAKE_PI_COMMANDS=1 to read newline-delimited commands from the pane. A fixture
 command has the form {"command":"fixture","name":"pi/waiting.txt"} and copies that
 file from FAKE_AGENT_FIXTURE_DIR to the pane without changing its bytes.
+A hook command has the form {"command":"hook","event":"SessionStart","payload":{...}}. It
+plays the loaded extension: the event must be one the extension file subscribes, and its
+DECK_PI_HOOK_COMMAND command line then runs on sh -c with the payload (and this session's id)
+on stdin and this process's injected environment, never as "deck _hook" directly. A failing
+hook prints its stderr as "fake-pi notify: ..." and never stops this fixture.
 `

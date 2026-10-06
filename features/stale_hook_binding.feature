@@ -45,22 +45,27 @@ Feature: a session launched under an older deck binary survives a newer state da
     And the state database session "bound"'s status reason contains "apply_patch"
     When deck client "B" exits cleanly
 
-  Scenario: a pi session under binary A takes the same re-exec when its hook reaches the newer database
-    # Pi builds no hook command (SPEC 8.1), so no Pi agent ever runs binary A's
-    # _hook by itself; binary A's _hook is run for the Pi row directly, which is
-    # the same code path any Pi event source would take.
-    Given a fake "pi" binary is on PATH for future deck clients
+  Scenario: a pi session launched under binary A heals through the re-exec once deck runs as binary B
+    # Pi's launch installs a deck-owned extension with the hook command of the
+    # launching binary; the fake pi plays that extension, so the event below
+    # reaches binary A's _hook through the command the launch recorded, never
+    # through a hook run the scenario starts itself.
+    Given a long-running fake "pi" binary is on PATH for future deck clients
     And the scenario deck binary is the old build "A" claiming schema 7
     And deck client "A" is started
     When deck client "A" creates pi session "bound" with permission profile "safe"
-    Then the state database session "bound" has no hook executable
+    Then the state database session "bound" is bound to the hook executable of binary "A"
+    And fake Pi session "bound" loaded the deck extension from the data root
     When deck client "A" exits cleanly
     And the scenario deck binary is "B", a copy of the current build
     And deck client "B" is started with terminal size 160x40
     Then the state database schema is newer than binary "A"'s
-    When binary "A" runs _hook for session "bound" with a "SessionStart" payload
+    When fake Pi session "bound" fires "SessionStart" through its installed extension
     Then that hook run succeeded and printed nothing
     And session "bound" has 1 "session_start" event
+    When fake Pi session "bound" fires "UserPromptSubmit" through its installed extension
+    Then within 3 seconds deck client "B" row "bound" contains "live"
+    And session "bound" has 1 "user_prompt_submitted" event
     When deck client "B" exits cleanly
 
   Scenario: a claude session whose binary A cannot re-exec shows the stale-binding hint in i
@@ -102,20 +107,17 @@ Feature: a session launched under an older deck binary survives a newer state da
     And deck client "B" exits cleanly
 
   Scenario: a pi session whose binary A cannot re-exec shows the stale-binding hint in i
-    # Pi launches record no hook executable, so the scenario binds the Pi row to
-    # binary A itself, exactly the fact a Claude or Codex launch records.
-    Given a fake "pi" binary is on PATH for future deck clients
+    Given a long-running fake "pi" binary is on PATH for future deck clients
     And the scenario deck binary is the old build "A" claiming schema 7
     And deck client "A" is started
     When deck client "A" creates pi session "bound" with permission profile "safe"
-    Then the state database session "bound" has no hook executable
+    Then the state database session "bound" is bound to the hook executable of binary "A"
     When deck client "A" exits cleanly
     And the scenario deck binary is "B", a copy of the current build
     And deck client "B" is started with terminal size 160x40
     Then the state database schema is newer than binary "A"'s
-    When the scenario binds the state database session "bound" to the hook executable of binary "A"
     When binary "B" is no longer executable
-    And binary "A" runs _hook for session "bound" with a "SessionStart" payload
+    And fake Pi session "bound" fires "SessionStart" through its installed extension
     Then that hook run failed and its output names binary "A" and both schemas and says to restart the session from deck
     And session "bound" has 0 "session_start" events
     When deck client "B" opens detail for session "bound"
@@ -123,16 +125,21 @@ Feature: a session launched under an older deck binary survives a newer state da
     When deck client "B" closes detail
     And deck client "B" exits cleanly
 
-  Scenario: a pi session launched under binary A records no binding and shows no hint
-    Given a fake "pi" binary is on PATH for future deck clients
+  Scenario: restarting a pi session under binary B refreshes its binding and clears the stale-binding hint
+    Given a long-running fake "pi" binary is on PATH for future deck clients
     And the scenario deck binary is the old build "A" claiming schema 7
     And deck client "A" is started
     When deck client "A" creates pi session "bound" with permission profile "safe"
-    Then the state database session "bound" has no hook executable
+    Then the state database session "bound" is bound to the hook executable of binary "A"
     When deck client "A" exits cleanly
     And the scenario deck binary is "B", a copy of the current build
     And deck client "B" is started with terminal size 160x40
-    Then the state database schema is newer than binary "A"'s
+    And deck client "B" opens detail for session "bound"
+    Then deck client "B" screen shows the hint that session binds to binary "A"
+    When deck client "B" closes detail
+    And deck client "B" presses R on session "bound"
+    Then within one configured reconcile interval the audit log has 2 launch records for session "bound"
+    And the state database session "bound" is bound to the hook executable of binary "B"
     When deck client "B" opens detail for session "bound"
     Then deck client "B" screen shows no "hooks: bound to" once the detail's declined-hook lookup has settled
     When deck client "B" closes detail
