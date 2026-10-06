@@ -69,7 +69,7 @@ const claudeConfigDirKey = "CLAUDE_CONFIG_DIR"
 // file exists at the expected path. Every other state answers false, so the
 // caller resumes as it always has.
 func (c Claude) RelaunchFresh(in TranscriptInput) bool {
-	if in.Home == "" || in.ConversationID == "" || in.Env[claudeConfigDirKey] != "" {
+	if in.Home == "" || !safeConversationID(in.ConversationID) || in.Env[claudeConfigDirKey] != "" {
 		return false
 	}
 	_, found := c.TranscriptPaths(in)
@@ -82,12 +82,13 @@ func (c Claude) RelaunchFresh(in TranscriptInput) bool {
 // a real, authenticated Claude Code 2.1.237's own hook payload):
 // $HOME/.claude/projects/<cwd, every path separator replaced with "-">/
 // <conversation id>.jsonl. It returns ok=false -- never an error -- when
-// Home or ConversationID is empty, or when the computed path does not
-// exist: a missing HOME and "no matching file" both degrade to "cannot
+// Home or ConversationID is empty, when ConversationID is not a single safe
+// path component (a separator, "." or ".."), or when the computed path does
+// not exist: a missing HOME and "no matching file" both degrade to "cannot
 // locate", exactly as cmd/fake-claude's transcriptPath already does for its
 // fixture.
 func (Claude) TranscriptPaths(in TranscriptInput) (string, bool) {
-	if in.Home == "" || in.ConversationID == "" {
+	if in.Home == "" || !safeConversationID(in.ConversationID) {
 		return "", false
 	}
 	project := strings.ReplaceAll(in.CWD, string(filepath.Separator), "-")

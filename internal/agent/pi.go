@@ -104,10 +104,11 @@ func (Pi) Probe(pane string) (string, string) { return probe("pi", pane) }
 // predict, locating it means globbing the directory for the "_<id>.jsonl"
 // suffix, mirroring cmd/fake-pi's findExistingTranscript exactly. It
 // returns ok=false -- never an error -- when Home or ConversationID is
-// empty, the directory does not exist, or no entry matches: a missing HOME
+// empty, ConversationID is not a single safe path component (a separator,
+// "." or ".."), the directory does not exist, or no entry matches: a missing HOME
 // and "no matching file" both degrade to "cannot locate".
 func (Pi) TranscriptPaths(in TranscriptInput) (string, bool) {
-	if in.Home == "" || in.ConversationID == "" {
+	if in.Home == "" || !safeConversationID(in.ConversationID) {
 		return "", false
 	}
 	dir := filepath.Join(in.Home, ".pi", "agent", "sessions", piEncodeCwd(in.CWD))
