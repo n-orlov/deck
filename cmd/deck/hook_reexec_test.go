@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/n-orlov/deck/internal/config"
 	"github.com/n-orlov/deck/internal/store"
@@ -310,5 +311,60 @@ func TestRunWriterNotHandledWhenWriterCannotStart(t *testing.T) {
 	handled, err := runWriter(context.Background(), filepath.Join(t.TempDir(), "missing"), []byte(reexecPayload), &out, &errOut)
 	if handled || err != nil {
 		t.Fatalf("handled = %v, err = %v; want not handled and no error", handled, err)
+	}
+}
+
+// hangingWriter answers `_schema` normally but wedges on `_hook`, in a child
+// process that inherits the output pipes (the worst case for a kill).
+func hangingWriter(t *testing.T) string {
+	t.Helper()
+	return writeScript(t, fmt.Sprintf(`if [ "$1" = _schema ]; then echo %d; exit 0; fi
+sleep 5
+`, store.SchemaVersion+1))
+}
+
+func shortenWriterTimeout(t *testing.T, d time.Duration) {
+	t.Helper()
+	saved := writerRunTimeout
+	writerRunTimeout = d
+	t.Cleanup(func() { writerRunTimeout = saved })
+}
+
+// R212 (#71 item 1): a writer still running at the timeout is killed and
+// runWriter returns not-handled and no error, so the caller prints the R204
+// restart message, well before the writer would have finished by itself.
+func TestRunWriterKillsAWriterThatOutlivesTheTimeout(t *testing.T) {
+	shortenWriterTimeout(t, 300*time.Millisecond)
+	writer := hangingWriter(t)
+	var out, errOut strings.Builder
+	start := time.Now()
+	handled, err := runWriter(context.Background(), writer, []byte(reexecPayload), &out, &errOut)
+	if handled || err != nil {
+		t.Fatalf("handled = %v, err = %v; want not handled and no error after the timeout", handled, err)
+	}
+	if elapsed := time.Since(start); elapsed > 3*time.Second {
+		t.Fatalf("runWriter returned after %v, want it bounded by the shortened timeout", elapsed)
+	}
+}
+
+// R212: through the whole hook, a wedged writer yields the R204 restart
+// message and exit 1 within the bound.
+func TestHookPrintsRestartMessageWhenWriterHangs(t *testing.T) {
+	shortenWriterTimeout(t, 300*time.Millisecond)
+	home, _ := stateHomeAt(t, store.SchemaVersion+1, hangingWriter(t), false)
+	start := time.Now()
+	code, stderr := runHookInProcess(t, home)
+	if code != 1 || !strings.Contains(stderr, "Restart the session from deck (R)") {
+		t.Fatalf("hook exit = %d, stderr %q; want exit 1 and the R204.1 message", code, stderr)
+	}
+	if elapsed := time.Since(start); elapsed > 3*time.Second {
+		t.Fatalf("hook returned after %v, want it bounded by the shortened timeout", elapsed)
+	}
+}
+
+// R212: the run timeout is 10 s and the `_schema` probe stays at 3 s.
+func TestWriterTimeoutsKeepTheirBounds(t *testing.T) {
+	if writerRunTimeout != 10*time.Second || writerProbeTimeout != 3*time.Second {
+		t.Fatalf("run timeout %v, probe timeout %v; want 10s and 3s", writerRunTimeout, writerProbeTimeout)
 	}
 }

@@ -23,6 +23,16 @@ const hookReexecEnv = "DECK_HOOK_REEXEC"
 // wedged binary cannot hold the agent's hook past one short wait.
 const writerProbeTimeout = 3 * time.Second
 
+// writerRunTimeout bounds the whole re-exec'd writer run (a package variable
+// so a test can shorten it). A writer that outlives it is killed and the hook
+// falls back to the R204 restart message, so a wedged writer cannot hold the
+// agent's hook open.
+var writerRunTimeout = 10 * time.Second
+
+// writerKillGrace bounds how long a killed writer's inherited output pipes
+// may keep the hook waiting (a grandchild holding stdout open).
+const writerKillGrace = time.Second
+
 // hookVerb is the whole argv (past argv[0]) of every hook invocation: run()
 // takes the hook path only for exactly `deck _hook`, so the re-exec passes the
 // same single verb on unchanged.
@@ -72,15 +82,22 @@ func reexecHook(ctx context.Context, newer *store.NewerSchemaError, self string,
 
 // runWriter runs the vetted writer binary with the hook verb, the buffered
 // payload on stdin and the loop-guard marker in its environment, and maps its
-// exit to the outcome reexecHook reports.
+// exit to the outcome reexecHook reports. The run is bounded by
+// writerRunTimeout: a writer still running at that point is killed and the
+// result is handled=false, so the caller prints the R204 restart message.
 func runWriter(ctx context.Context, writer string, payload []byte, stdout, stderr io.Writer) (bool, error) {
+	ctx, cancel := context.WithTimeout(ctx, writerRunTimeout)
+	defer cancel()
 	cmd := exec.CommandContext(ctx, writer, hookVerb)
+	cmd.WaitDelay = writerKillGrace
 	cmd.Env = append(os.Environ(), hookReexecEnv+"=1")
 	cmd.Stdin = bytes.NewReader(payload)
 	cmd.Stdout, cmd.Stderr = stdout, stderr
 	err := cmd.Run()
 	var exit *exec.ExitError
 	switch {
+	case ctx.Err() != nil:
+		return false, nil
 	case err == nil:
 		return true, nil
 	case errors.As(err, &exit):
