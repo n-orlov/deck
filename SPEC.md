@@ -2643,6 +2643,21 @@ must be restored afterwards.
   first silently; a reader that sees EOF while `pane_pipe` is still 1 has been displaced,
   falls back to passive capture, and **says so**. A dead pane never closes the pipe at all,
   so `pane_dead` is polled rather than inferred from EOF.
+- **An escape string never prints into the grid.** The vt parser is byte-based, so a UTF-8
+  character carrying a byte in `0x80`–`0x9F` inside a string — the `✳` (`E2 9C B3`) of a Claude
+  Code window title `ESC ] 0 ; ✳ name BEL` holds `0x9C`, the C1 string terminator — ends the
+  string early and the rest of the title prints at the cursor, over the input row. One stateful
+  pre-filter sits in front of every grid write, shared by the live pipe drain, the seed write,
+  every reseed and the capture transport's loop. Inside an OSC (`ESC ]`), DCS (`ESC P`), SOS
+  (`ESC X`), PM (`ESC ^`) or APC (`ESC _`) string it drops the bytes that would end the string
+  early: `0x80`–`0x9F` in an OSC and in a DCS's passthrough, every byte `>= 0x80` in an SOS, PM
+  or APC string and in a DCS header, whose payload the parser reads as ASCII only. A string ends
+  where the parser ends it: `BEL` (OSC only), `ESC` (so `ESC \`), `CAN` or `SUB`. Outside a
+  string every byte is forwarded unchanged — ordinary text, including every non-ASCII
+  character, reaches the grid byte for byte — and nothing is buffered: a chunk is forwarded as it
+  arrives, and the filter's state carries across chunks, so a read split anywhere (between `E2`
+  and `9C B3` included) yields the same grid as an unsplit one. The pane never needs a string's
+  payload, and the parser still sees each string's start and end.
 - **Foreign bytes never reach the outer terminal.** Only composed cells are emitted. This is
   not an optimisation: pane bytes passed through leave the *outer* terminal on the alternate
   screen and reprogram its scrolling region. Passive preview gets this property free from

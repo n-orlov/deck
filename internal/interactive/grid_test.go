@@ -4,6 +4,7 @@
 package interactive
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"os"
@@ -315,4 +316,223 @@ func TestExactlyOneGridConstructorCallSite(t *testing.T) {
 	if total != 1 {
 		t.Fatalf("package interactive has %d vt.NewSafeEmulator call sites across its non-test source, want exactly 1 (one long-lived grid per session, PRD II-16)", total)
 	}
+}
+
+// ---- R209 / issue #69: the escape-string pre-filter in front of Grid.Write.
+
+// titleLeakGlyphs are the title prefixes the issue names: each carries a
+// byte in 0x80-0x9F in its UTF-8 encoding (E2 9C xx, E2 9C xx, ...), which the
+// byte-based vt parser mistakes for a C1 control inside an OSC string.
+var titleLeakGlyphs = []string{"✳", "✶", "✻", "✽", "✓"}
+
+// writeChunks writes data into a fresh grid in the given chunks and returns
+// the grid's rendered screen. A drained grid is used because a query inside
+// the bytes would otherwise park the writer (R68).
+func renderAfterChunks(chunks ...[]byte) string {
+	s := &Session{}
+	g := s.newDrainedGrid(40, 4)
+	for _, c := range chunks {
+		_, _ = g.Write(c)
+	}
+	out := g.Render()
+	retireGrid(g)
+	s.replyDrains.Wait()
+	return out
+}
+
+// splitEverywhere returns every two-way split of data, plus the unsplit write.
+func splitEverywhere(data []byte) [][][]byte {
+	cases := [][][]byte{{data}}
+	for i := 1; i < len(data); i++ {
+		cases = append(cases, [][]byte{data[:i], data[i:]})
+	}
+	return cases
+}
+
+func TestOSCTitleAtTheCursorLeavesTheRowUnchanged(t *testing.T) {
+	prompt := []byte("\x1b[2;1H❯ ")
+	want := renderAfterChunks(prompt)
+	got := renderAfterChunks(prompt, []byte("\x1b]0;✳ name\x07"))
+	if got != want {
+		t.Fatalf("row after ESC ]0;✳ name BEL = %q, want unchanged %q", got, want)
+	}
+}
+
+func TestEveryLeakingTitleWithEveryTerminatorLeavesTheGridBlankAtEverySplit(t *testing.T) {
+	blank := renderAfterChunks()
+	for _, glyph := range titleLeakGlyphs {
+		for termName, term := range map[string]string{"BEL": "\x07", "ESC-backslash": "\x1b\\"} {
+			data := []byte("\x1b]0;" + glyph + " Theme options" + term)
+			for _, chunks := range splitEverywhere(data) {
+				if got := renderAfterChunks(chunks...); got != blank {
+					t.Errorf("title %s terminated by %s split into %d chunk(s) %q: grid = %q, want blank %q", glyph, termName, len(chunks), chunks, got, blank)
+				}
+			}
+		}
+	}
+}
+
+func TestTypedSpaceAfterATitleLeavesTheInputRowIntact(t *testing.T) {
+	steps := [][]byte{
+		[]byte("\x1b[2;1H❯ "),
+		[]byte("\x1b]0;✳ Theme options and cobalt\x07"),
+		[]byte("\x1b[2;3Hx\x1b[2;4H\x1b[2;5Hy"),
+	}
+	if got := rowText(renderAfterChunks(steps...), 1); got != "❯ x y" {
+		t.Fatalf("row 2 = %q, want %q", got, "❯ x y")
+	}
+	joined := bytes.Join(steps, nil)
+	for _, chunks := range splitEverywhere(joined) {
+		if got := rowText(renderAfterChunks(chunks...), 1); got != "❯ x y" {
+			t.Fatalf("split %q: row 2 = %q, want %q", chunks, got, "❯ x y")
+		}
+	}
+}
+
+func TestEveryEscapeStringKindDropsC1BytesButOnlyInsideIt(t *testing.T) {
+	blank := renderAfterChunks()
+	for name, intro := range map[string]string{"DCS": "\x1bPq", "SOS": "\x1bX", "PM": "\x1b^", "APC": "\x1b_"} {
+		data := []byte(intro + "✳ payload\x1b\\")
+		for _, chunks := range splitEverywhere(data) {
+			if got := renderAfterChunks(chunks...); got != blank {
+				t.Errorf("%s string split into %q: grid = %q, want blank", name, chunks, got)
+			}
+		}
+	}
+	// A BEL ends an OSC string only: inside a DCS it is payload, so the C1
+	// byte after it is still inside the string and is dropped.
+	if got := renderAfterChunks([]byte("\x1bPqa\x07✳ b\x1b\\")); got != blank {
+		t.Errorf("BEL inside a DCS ended the string early: grid = %q, want blank", got)
+	}
+}
+
+func TestStringFilterRemovedMakesTheTitleLeak(t *testing.T) {
+	// The control: without the filter the same bytes leak the title, so the
+	// tests above are not vacuous.
+	g := newGrid(40, 4)
+	defer retireGrid(g)
+	_, _ = g.SafeEmulator.Write([]byte("\x1b]0;✳ name\x07"))
+	if got := renderBlank(g); got {
+		t.Fatalf("bypassing the filter left the grid blank; the emulator no longer leaks, so the filter's premise changed")
+	}
+}
+
+func renderBlank(g *Grid) bool {
+	return strings.TrimSpace(ansiEscapeRe.ReplaceAllString(g.Render(), "")) == ""
+}
+
+func TestTextOutsideAnEscapeStringIsByteIdenticalToAnUnfilteredWrite(t *testing.T) {
+	for _, text := range []string{
+		"✳ plain ✶ ✻ ✽ ✓",
+		"日本語のテキスト",
+		"café é",
+		"┌──┬──┐\r\n│ a│ b│\r\n└──┴──┘",
+		"emoji 😀 👍🏽",
+		"\x1b[31m✳ red\x1b[0m \x1b[2;1H✳",
+	} {
+		var f stringFilter
+		if got := f.filter([]byte(text)); string(got) != text {
+			t.Errorf("filter(%q) = %q, want the bytes unchanged", text, got)
+		}
+		viaGrid := renderAfterChunks([]byte(text))
+		s := &Session{}
+		g := s.newDrainedGrid(40, 4)
+		_, _ = g.SafeEmulator.Write([]byte(text))
+		bare := g.Render()
+		retireGrid(g)
+		s.replyDrains.Wait()
+		if viaGrid != bare {
+			t.Errorf("text %q: filtered grid %q differs from the no-filter grid %q", text, viaGrid, bare)
+		}
+	}
+	// A finished string hands the stream back unchanged.
+	var f stringFilter
+	in := []byte("\x1b]0;✳ t\x07 after ✳ 日本")
+	out := f.filter(in)
+	if want := "\x1b]0;\xe2\xb3 t\x07 after ✳ 日本"; string(out) != want {
+		t.Errorf("filter(%q) = %q, want %q", in, out, want)
+	}
+}
+
+func TestStringFilterDropsOnlyC1BytesInsideAString(t *testing.T) {
+	cases := []struct {
+		name, in, want string
+	}{
+		{"osc BEL", "\x1b]0;\xe2\x9c\xb3 n\x07\xe2\x9c\xb3", "\x1b]0;\xe2\xb3 n\x07\xe2\x9c\xb3"},
+		{"osc ST", "\x1b]0;\x9c\x1b\\\x9c", "\x1b]0;\x1b\\\x9c"},
+		{"CAN aborts a string", "\x1b]0;a\x18\x9cb", "\x1b]0;a\x18\x9cb"},
+		{"ESC then a new string", "\x1b]0;\x1b]1;\x9c", "\x1b]0;\x1b]1;"},
+		{"ESC intermediate is not a string", "\x1b ]\x9c", "\x1b ]\x9c"},
+		{"raw C1 in ground", "\x9d\x90\x9c", "\x9d\x90\x9c"},
+		{"CSI is not a string", "\x1b[1;2\x9cm", "\x1b[1;2\x9cm"},
+		{"ESC ESC P", "\x1b\x1bP\x9c", "\x1b\x1bP"},
+		{"DCS BEL is payload", "\x1bP\x07\x9c", "\x1bP\x07"},
+		{"SOS drops every non-ASCII byte", "\x1bX日本a\x1b\\日", "\x1bXa\x1b\\日"},
+		{"DCS header drops non-ASCII", "\x1bP1;\xe2\x9c\xb3q\xe2\x9c\xb3", "\x1bP1;q\xe2\xb3"},
+		{"DCS params and intermediate reach the passthrough", "\x1bP1;2$q\x9c\x1b\\\x9c", "\x1bP1;2$q\x1b\\\x9c"},
+		{"DCS entry intermediate then final", "\x1bP$x\x9c", "\x1bP$x"},
+		{"DCS ESC from params ends the header", "\x1bP1\x1b\\\x9c", "\x1bP1\x1b\\\x9c"},
+		{"DCS ESC from intermediate ends the header", "\x1bP$\x1b\\\x9c", "\x1bP$\x1b\\\x9c"},
+		{"DCS entry ESC is payload", "\x1bP\x1b\x9c", "\x1bP\x1b"},
+		{"ESC intermediate then ESC", "\x1b \x1b]\x9c", "\x1b \x1b]"},
+		{"CAN in escape", "\x1b\x18]\x9c", "\x1b\x18]\x9c"},
+		{"C0 inside escape", "\x1b\x01]\x9c", "\x1b\x01]"},
+	}
+	for _, c := range cases {
+		var f stringFilter
+		if got := string(f.filter([]byte(c.in))); got != c.want {
+			t.Errorf("%s: filter(%q) = %q, want %q", c.name, c.in, got, c.want)
+		}
+	}
+}
+
+// TestSeedWriteGoesThroughTheSharedFilter drives the seed write in Start: a
+// seed carrying a leaking title must leave the grid as the prompt alone.
+func TestSeedWriteGoesThroughTheSharedFilter(t *testing.T) {
+	prompt := "\x1b[2;1H❯ "
+	want := renderAfterChunks([]byte(prompt))
+	client := tmux.Client{Socket: "deck-r209-no-such-socket", Timeout: time.Second}
+	session, err := StartWithTransport(context.Background(), client, "%0", 40, 4, func(context.Context) ([]byte, error) {
+		return []byte(prompt + "\x1b]0;✳ name\x07"), nil
+	}, TransportCapture)
+	if err != nil {
+		t.Fatalf("StartWithTransport: %v", err)
+	}
+	defer session.Close()
+	if got := session.Grid().Render(); got != want {
+		t.Fatalf("grid after a seed carrying a title = %q, want the prompt alone %q", got, want)
+	}
+}
+
+// TestCaptureLoopGoesThroughTheSharedFilter drives captureLoop's reseed write.
+func TestCaptureLoopGoesThroughTheSharedFilter(t *testing.T) {
+	prompt := "\x1b[2;1H❯ "
+	want := renderAfterChunks([]byte(prompt))
+	origSeed, origInterval := captureSeedFunc, capturePollInterval
+	captureSeedFunc = func(context.Context, tmux.Client, string) ([]byte, error) {
+		return []byte(prompt + "\x1b]0;✳ name\x1b\\"), nil
+	}
+	capturePollInterval = 5 * time.Millisecond
+	defer func() { captureSeedFunc, capturePollInterval = origSeed, origInterval }()
+
+	client := tmux.Client{Socket: "deck-r209-no-such-socket", Timeout: time.Second}
+	session, err := StartWithTransport(context.Background(), client, "%0", 40, 4, func(context.Context) ([]byte, error) {
+		return nil, nil
+	}, TransportCapture)
+	if err != nil {
+		t.Fatalf("StartWithTransport: %v", err)
+	}
+	defer session.Close()
+	if !waitFor(t, 5*time.Second, func() bool { return session.Grid().Render() == want }) {
+		t.Fatalf("grid after captureLoop reseeded a title = %q, want the prompt alone %q", session.Grid().Render(), want)
+	}
+}
+
+// rowText returns the plain text of row n (0-based) of a rendered screen.
+func rowText(rendered string, n int) string {
+	rows := strings.Split(ansiEscapeRe.ReplaceAllString(rendered, ""), "\n")
+	if n >= len(rows) {
+		return ""
+	}
+	return strings.TrimRight(rows[n], " ")
 }

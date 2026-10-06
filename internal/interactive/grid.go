@@ -50,6 +50,12 @@ const (
 // changing production behaviour.
 var capturePollInterval = 200 * time.Millisecond
 
+// captureSeedFunc is how captureLoop captures; production is CaptureSeed. A
+// test replaces it to feed captureLoop bytes a real tmux capture never
+// carries (a raw escape string), so the loop's write path is exercised
+// through the shared filter.
+var captureSeedFunc = CaptureSeed
+
 // Grid is the SAME emulator instance for the whole life of one Session: the
 // seed capture (task 042/II-17-18) is written into it before the pipe's
 // bytes are drained, and every byte pipe-pane delivers afterward is written
@@ -72,6 +78,22 @@ type Grid struct {
 	*vt.SafeEmulator
 	cursorHidden atomic.Bool
 	mouseModes   atomic.Uint32
+	// escFilter is the escape-string pre-filter (stringfilter.go) every byte
+	// written through Write passes: one filter per grid, so the live drain,
+	// the seed write and both reseed loops share it.
+	escFilter stringFilter
+}
+
+// Write feeds p to the emulator after the escape-string pre-filter has
+// dropped the C1 bytes inside OSC/DCS/SOS/PM/APC strings (R209). It is the
+// only way bytes reach the emulator, so the live drain, the seed write and
+// captureLoop all pass the same filter. It reports len(p) bytes consumed
+// whatever the filter dropped, as io.Writer requires.
+func (g *Grid) Write(p []byte) (int, error) {
+	if _, err := g.SafeEmulator.Write(g.escFilter.filter(p)); err != nil {
+		return 0, err
+	}
+	return len(p), nil
 }
 
 // MouseMode is a bit set of the mouse-reporting modes a pane has enabled.
@@ -613,7 +635,7 @@ func (s *Session) captureLoop(ctx context.Context, client tmux.Client, target st
 			return
 		case <-ticker.C:
 		}
-		data, err := CaptureSeed(ctx, client, target)
+		data, err := captureSeedFunc(ctx, client, target)
 		if err != nil {
 			continue
 		}
