@@ -198,17 +198,17 @@ func (m Model) interactiveSidebarPress(msg tea.MouseMsg) (tea.Model, tea.Cmd, bo
 	return updated, cmd, true
 }
 
-// interactiveSelectionMouse is the interactive preview's non-wheel mouse: a
-// left-button drag selects and copies text; a click of any button is
-// forwarded to a program that tracks the mouse (R202, SPEC §11.8).
+// interactiveSelectionMouse is the interactive preview's non-wheel mouse: an
+// ON-mode left-button drag selects and copies text; every other event (a
+// click, a drag or motion of any other button, motion with no button, a
+// sideways wheel notch) is forwarded to a program that tracks the mouse
+// (R202, SPEC §11.8).
 func (m Model) interactiveSelectionMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
-	switch msg.Button {
-	case tea.MouseButtonLeft:
+	msg = m.normalizeInteractiveRelease(msg)
+	if msg.Button == tea.MouseButtonLeft {
 		return m.interactiveLeftMouse(msg), nil
-	case tea.MouseButtonMiddle, tea.MouseButtonRight:
-		return m.interactiveOtherButtonClick(msg), nil
 	}
-	return m, nil
+	return m.interactiveForwardedMouse(msg), nil
 }
 
 // interactiveLeftMouse: press arms a selection, motion makes it a drag, and
@@ -216,14 +216,14 @@ func (m Model) interactiveSelectionMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) 
 // forwarded at the press cell.
 //
 // With [ui] select_on_drag false the left button is the pane program's
-// instead (interactive_drag_forward.go): a press without Shift, the motion
+// instead (interactive_button_forward.go): a press without Shift, the motion
 // that follows it and the release are forwarded as reports, and nothing is
 // selected. Shift on the press keeps the selection route.
 func (m Model) interactiveLeftMouse(msg tea.MouseMsg) Model {
 	switch msg.Action {
 	case tea.MouseActionPress:
 		if !m.settings.SelectOnDrag && !msg.Shift {
-			return m.forwardInteractiveDragPress(msg)
+			return m.forwardInteractiveButtonPress(msg)
 		}
 		if updated, ok := m.beginInteractiveSelection(msg.X, msg.Y); ok {
 			updated.interactiveSelectRect = rectangularSelectionPress(msg)
@@ -233,30 +233,12 @@ func (m Model) interactiveLeftMouse(msg tea.MouseMsg) Model {
 		if m.interactiveSelecting {
 			return m.updateInteractiveSelection(msg.X, msg.Y)
 		}
-		return m.forwardInteractiveDragStep(msg, mouseReportMotion)
+		return m.forwardInteractiveButtonStep(msg, mouseReportMotion)
 	case tea.MouseActionRelease:
 		if m.interactiveSelecting {
 			return m.commitInteractiveSelection(msg.Shift)
 		}
-		return m.forwardInteractiveDragStep(msg, mouseReportRelease)
+		return m.forwardInteractiveButtonStep(msg, mouseReportRelease)
 	}
 	return m
-}
-
-// interactiveOtherButtonClick forwards a middle or right click as a press
-// and release at the press cell; the release event itself carries nothing
-// more to say.
-func (m Model) interactiveOtherButtonClick(msg tea.MouseMsg) Model {
-	if msg.Action != tea.MouseActionPress {
-		return m
-	}
-	col, row, ok := m.previewCellAt(msg.X, msg.Y)
-	if !ok {
-		return m
-	}
-	button := mouseButtonCodeRight
-	if msg.Button == tea.MouseButtonMiddle {
-		button = mouseButtonCodeMiddle
-	}
-	return m.forwardInteractiveClick(button, msg.Shift, col, row)
 }

@@ -32,8 +32,11 @@ func clickAt(t *testing.T, m Model, button tea.MouseButton, col, row int, shift 
 }
 
 // TestInteractiveClickForwardsEachButtonAsPressAndRelease: with the program
-// tracking the mouse in SGR encoding, a click of each button is one verified
-// send of press (M) then release (m) at the press cell with that button's code.
+// tracking the mouse in SGR encoding, a click of each button is a press (M)
+// then a release (m) at the press cell with that button's code. A left click
+// is held until its release (it may turn into a selection drag), so it is one
+// verified send; a middle or right press is the program's at once, so it is
+// two, the press and the release each as it arrives.
 func TestInteractiveClickForwardsEachButtonAsPressAndRelease(t *testing.T) {
 	m, socket, target := wheelFixtureModel(t, "clickfwd", true)
 	for _, tc := range []struct {
@@ -41,15 +44,16 @@ func TestInteractiveClickForwardsEachButtonAsPressAndRelease(t *testing.T) {
 		button   tea.MouseButton
 		col, row int
 		want     string
+		sends    int
 	}{
-		{"left", tea.MouseButtonLeft, 2, 1, "^[[<0;3;2M^[[<0;3;2m"},
-		{"middle", tea.MouseButtonMiddle, 5, 3, "^[[<1;6;4M^[[<1;6;4m"},
-		{"right", tea.MouseButtonRight, 9, 6, "^[[<2;10;7M^[[<2;10;7m"},
+		{"left", tea.MouseButtonLeft, 2, 1, "^[[<0;3;2M^[[<0;3;2m", 1},
+		{"middle", tea.MouseButtonMiddle, 5, 3, "^[[<1;6;4M^[[<1;6;4m", 2},
+		{"right", tea.MouseButtonRight, 9, 6, "^[[<2;10;7M^[[<2;10;7m", 2},
 	} {
 		before := m.interactiveDispatcher.Verifications()
 		m = clickAt(t, m, tc.button, tc.col, tc.row, false)
-		if v := m.interactiveDispatcher.Verifications(); v != before+1 {
-			t.Fatalf("%s click: Verifications() = %d, want %d (one verified send)", tc.name, v, before+1)
+		if v := m.interactiveDispatcher.Verifications(); v != before+tc.sends {
+			t.Fatalf("%s click: Verifications() = %d, want %d", tc.name, v, before+tc.sends)
 		}
 		waitForPaneJoined(t, socket, target, tc.want)
 		if m.interactiveSelecting || m.selectionCopyNote != "" {

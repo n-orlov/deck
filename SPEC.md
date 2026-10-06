@@ -2399,25 +2399,35 @@ visible.** From the first motion after the press until the release, the selected
 `selection` token — the same treatment a selected sidebar row carries (§11.3) — and the
 marking clears when the release commits the copy. A selection the user cannot see is a
 selection they cannot aim: the gesture is tmux's, and so is the feedback. **A click is not a selection:** a press released without
-motion marks nothing and copies nothing, and the press alone draws no marking — only a drag selects. **A click reaches the pane program that tracks the mouse.** While
-interactive, a click of the left, middle or right button over the preview is forwarded to a pane
-program with mouse reporting on (DEC modes 1000, 1002 or 1003) as a press followed by a release
-at the press cell, with that button's code (0, 1, 2), in the encoding the program asked for: the
-SGR report under mode 1006 (release `m`), the X10 form otherwise (release button code 3). It
-**shares the wheel's routing rule (R183, §11.9)**: forwarded only when the program tracks the
-mouse, the grid is at live and `Shift` is not held; a program that does not track the mouse (a
-plain shell), `Shift` held and a scrolled-back grid forward nothing. A left click is forwarded when
-its release arrives with no motion since the press; a drag is the selection above and the program
-receives nothing from it. A forwarded click is input to the pane and ends a sidebar drift (§11),
-and a click the encoding cannot carry (X10 past column or row 223) is dropped. **`[ui] select_on_drag` chooses who owns the left drag.** With it true
+motion marks nothing and copies nothing, and the press alone draws no marking — only a drag selects. **Every mouse event but the selection drag reaches the pane program that tracks the mouse.** While
+interactive, the program with mouse reporting on (DEC modes 1000, 1002 or 1003) receives, in the
+encoding it asked for (the SGR report under mode 1006, release `m`; the X10 form otherwise, release
+button code 3), each of these over the preview: the press, the motion while it is held and the
+release of the **middle** and **right** buttons and of the additional buttons 8-11 (codes 128-131,
+SGR only: X10 has no form for them), each as it arrives with that button's code (middle 1, right 2)
+and the cell the pointer is over (motion adds 32 to the code; the release cell is clamped into the
+preview, so a gesture that runs off the edge still ends); motion with **no button** held (code
+35); and the sideways wheel (codes 66 and 67). The press of a gesture must begin inside the
+preview and without `Shift`: a gesture that begins on the sidebar, or with `Shift`, is never
+forwarded in part. Motion is sent only to a program that asked for it: held-button motion to mode
+1002 or 1003 (plain 1000 asks for press and release alone), motion with no button to mode 1003
+alone; deck asks its own terminal for cell motion, so no-button motion reaches the program only
+when the terminal delivers it. The **left** button is forwarded the same way as a click (below)
+and, with `select_on_drag` false, as a drag. All of it **shares the wheel's routing rule (R183,
+§11.9)**: forwarded only when the program tracks the mouse, the grid is at live and `Shift` is not
+held; a program that does not track the mouse (a plain shell), `Shift` held and a scrolled-back
+grid forward nothing. A left click is forwarded as a press and a release at the press cell when its
+release arrives with no motion since the press; an ON-mode left drag is the selection above and
+the program receives nothing from it. A forwarded event is input to the pane and ends a sidebar
+drift (§11), nothing forwarded is highlighted or copied, and an event the encoding cannot carry
+(X10 past column or row 223, or under mode 1005 or 1015) is dropped. **`[ui] select_on_drag` chooses who owns the left drag.** With it true
 (default, §6.5, `DECK_SELECT_ON_DRAG`, editable in Settings §11.5 as "Click and drag to select") a
 left drag over the preview selects, highlights and copies on release exactly as above, and a pane
-program that tracks the mouse receives nothing from it. With it false the drag is the program's: the
-press, the motion while the button is held and the release are forwarded as mouse reports in the
-encoding the program asked for (motion carries the button code plus 32 and is sent only to a
-program in mode 1002 or 1003, since 1000 asks for press and release alone; the release carries the
-cell the pointer is over, clamped into the preview), under the same routing rule as the wheel and clicks (the program
-tracks the mouse, the grid is at live), and nothing is highlighted and nothing is copied. A program
+program that tracks the mouse receives nothing from it; every other mouse event is forwarded. With it false deck intercepts
+nothing: the left drag is the program's too, so the press, the motion while the button is held and
+the release are forwarded as mouse reports in the encoding the program asked for (motion carries
+the button code plus 32 and is sent only to a program in mode 1002 or 1003), under the same
+routing rule as the wheel and clicks, and nothing is highlighted and nothing is copied. A program
 that does not track the mouse receives nothing and the drag does nothing. A `Shift` held at the
 press keeps the selection route in both settings. A click is forwarded either way. **The marking is
 linear for a plain drag**, because the copy is: it covers exactly the run `SelectedText`

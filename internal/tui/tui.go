@@ -1180,10 +1180,13 @@ type Model struct {
 	// Alt or Ctrl (rectangularSelectionPress): the selection is the block
 	// between the two corner cells rather than the linear run (R203).
 	interactiveSelectRect bool
-	// interactiveForwardingDrag is true from a left press forwarded to the
-	// pane program ([ui] select_on_drag false) until its release: the motion
-	// and release that follow are forwarded too (interactive_drag_forward.go).
-	interactiveForwardingDrag bool
+	// interactiveForwardedButtons has the bit of every button whose press
+	// began inside the preview and was handed to the pane program, until
+	// its release: the motion and release that follow are forwarded too
+	// (interactive_button_forward.go). interactiveForwardedLast is the
+	// latest of them, the one an X10 release (which names no button) ends.
+	interactiveForwardedButtons uint16
+	interactiveForwardedLast    tea.MouseButton
 	// lostAttach is SPEC §11.9's dialog raised when a client is displaced
 	// out of interactive mode -- its own claim stolen by `F`, or a full
 	// attach arriving and re-expressing its own size (task 118 wires the

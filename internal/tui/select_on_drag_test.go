@@ -105,8 +105,8 @@ func TestSelectOnDragOffForwardsDragAsReportsAndSelectsNothing(t *testing.T) {
 	waitForPaneJoined(t, socket, target, "^[[<0;3;2M^[[<32;8;2M")
 	m = updateModel(t, m, release)
 	waitForPaneJoined(t, socket, target, "^[[<0;3;2M^[[<32;8;2M^[[<0;8;2m")
-	if m.selectionCopyNote != "" || m.interactiveForwardingDrag {
-		t.Fatalf("release left copy/forwarding state behind (note %q, forwarding %v)", m.selectionCopyNote, m.interactiveForwardingDrag)
+	if m.selectionCopyNote != "" || m.interactiveForwardedButtons != 0 {
+		t.Fatalf("release left copy/forwarding state behind (note %q, forwarding %v)", m.selectionCopyNote, m.interactiveForwardedButtons)
 	}
 	if got, err := selectionBufferText(socket); err == nil {
 		t.Fatalf("a forwarded drag copied to the tmux selection buffer: %q", got)
