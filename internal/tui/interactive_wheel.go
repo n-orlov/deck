@@ -38,11 +38,13 @@ const (
 // Base button codes of a mouse report: the three buttons and the two wheel
 // directions, as the xterm protocol numbers them.
 const (
-	mouseButtonCodeLeft      = 0
-	mouseButtonCodeMiddle    = 1
-	mouseButtonCodeRight     = 2
-	mouseButtonCodeWheelUp   = 64
-	mouseButtonCodeWheelDown = 65
+	mouseButtonCodeLeft       = 0
+	mouseButtonCodeMiddle     = 1
+	mouseButtonCodeRight      = 2
+	mouseButtonCodeWheelUp    = 64
+	mouseButtonCodeWheelDown  = 65
+	mouseButtonCodeWheelLeft  = 66
+	mouseButtonCodeWheelRight = 67
 
 	// mouseMotionBit is added to the button code of a motion report;
 	// x10ReleaseButton is the button code an X10 release carries, because
@@ -70,10 +72,16 @@ func encodeMouseReport(modes interactive.MouseMode, button int, kind mouseReport
 	if modes.Has(interactive.MouseSGR) {
 		return encodeSGRMouseReport(button, kind, x, y), true
 	}
-	if modes.Has(interactive.MouseUTF8) || modes.Has(interactive.MouseURXVT) {
+	return encodeX10MouseReport(modes, button, kind, x, y)
+}
+
+// encodeX10MouseReport is encodeMouseReport's non-SGR half for 1-based
+// (x, y): nothing for the encodings or buttons X10 has no form for.
+func encodeX10MouseReport(modes interactive.MouseMode, button int, kind mouseReportKind, x, y int) ([]byte, bool) {
+	if button >= mouseButtonCodeExtraBase || modes.Has(interactive.MouseUTF8) || modes.Has(interactive.MouseURXVT) {
 		return nil, false
 	}
-	if x > x10CoordMax || y > x10CoordMax {
+	if x < 1 || y < 1 || x > x10CoordMax || y > x10CoordMax {
 		return nil, false
 	}
 	code := button
@@ -83,7 +91,7 @@ func encodeMouseReport(modes interactive.MouseMode, button int, kind mouseReport
 	case mouseReportMotion:
 		code += mouseMotionBit
 	}
-	return []byte{0x1b, '[', 'M', byte(32 + code), byte(32 + x), byte(32 + y)}, true
+	return []byte{0x1b, '[', 'M', byte((32 + code) & 0xff), byte(32 + x), byte(32 + y)}, true
 }
 
 // encodeSGRMouseReport builds the mode-1006 report for 1-based (x, y).
