@@ -77,10 +77,7 @@ func (h extensionHooks) fire(stdout io.Writer, event string, payload map[string]
 		return err
 	}
 	var captured bytes.Buffer
-	process := exec.Command("sh", "-c", h.command) //nolint:gosec // G204: a hook command is the shell line deck itself put in the agent's environment, run as the real extension would
-	process.Stdin = bytes.NewReader(encoded)
-	process.Stderr = &captured
-	runErr := process.Run()
+	runErr := runHookCommand(hookShell, h.command, encoded, &captured)
 	var exitErr *exec.ExitError
 	switch {
 	case runErr == nil:
@@ -94,4 +91,23 @@ func (h extensionHooks) fire(stdout io.Writer, event string, payload map[string]
 		return fmt.Errorf("fire %s hook: %w", event, runErr)
 	}
 	return nil
+}
+
+// hookShell is the shell that runs the hook line, as the real extension does.
+const hookShell = "sh"
+
+// hookScript runs the hook line from the environment variable the launch put
+// it in, so the command line itself is data and never part of the argv.
+const hookScript = `eval "$` + agent.PiHookCommandEnv + `"`
+
+// runHookCommand runs the shell line deck itself put in the agent's
+// environment, as the real extension would: the payload on stdin and the
+// failed hook's stderr collected into stderr. The shell is a parameter and the
+// script a constant; the command rides in the child's environment.
+func runHookCommand(shell, command string, payload []byte, stderr io.Writer) error {
+	process := exec.Command(shell, "-c", hookScript)
+	process.Env = append(os.Environ(), agent.PiHookCommandEnv+"="+command)
+	process.Stdin = bytes.NewReader(payload)
+	process.Stderr = stderr
+	return process.Run()
 }

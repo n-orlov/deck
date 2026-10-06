@@ -121,3 +121,45 @@ func TestNewExtensionHooksReadsTheLaunchEnvironment(t *testing.T) {
 		t.Fatalf("newExtensionHooks = %+v", got)
 	}
 }
+
+// TestRunHookCommandHandsTheLineToTheShellVerbatim covers cases beyond the
+// launch's own command: a line with quoting and spaces, a line that reads its
+// stdin, and a line that exits non-zero with stderr output.
+func TestRunHookCommandHandsTheLineToTheShellVerbatim(t *testing.T) {
+	dir := t.TempDir()
+	out := filepath.Join(dir, "out file.txt")
+	cases := []struct {
+		name    string
+		command string
+		stderr  string
+		failure bool
+	}{
+		{name: "quoted path with a space", command: `cat > '` + out + `'`},
+		{name: "shell operators stay in the line", command: `cat > '` + out + `' && echo done >&2`, stderr: "done\n"},
+		{name: "non-zero exit with stderr", command: `echo boom >&2; exit 3`, stderr: "boom\n", failure: true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var stderr bytes.Buffer
+			err := runHookCommand("sh", tc.command, []byte("payload\n"), &stderr)
+			if (err != nil) != tc.failure {
+				t.Fatalf("err = %v, want failure=%v", err, tc.failure)
+			}
+			if stderr.String() != tc.stderr {
+				t.Fatalf("stderr = %q, want %q", stderr.String(), tc.stderr)
+			}
+			if !tc.failure {
+				got, readErr := os.ReadFile(out)
+				if readErr != nil || string(got) != "payload\n" {
+					t.Fatalf("stdin payload = %q (%v)", got, readErr)
+				}
+			}
+		})
+	}
+}
+
+func TestRunHookCommandReportsAShellThatCannotStart(t *testing.T) {
+	if err := runHookCommand(filepath.Join(t.TempDir(), "no-such-shell"), "true", nil, &bytes.Buffer{}); err == nil {
+		t.Fatal("a missing shell must be an error")
+	}
+}
