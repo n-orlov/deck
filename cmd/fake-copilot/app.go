@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
+	"syscall"
 	"time"
 )
 
@@ -19,6 +21,8 @@ type app struct {
 	// turnOpen is a held turn: the prompt was taken and the agent has not stopped.
 	turnOpen bool
 	ended    bool
+	// screen is the rendered TUI, nil unless FAKE_COPILOT_SCREEN=1.
+	screen *screen
 }
 
 type command struct {
@@ -28,6 +32,7 @@ type command struct {
 	Title            string `json:"title"`
 	Message          string `json:"message"`
 	NotificationType string `json:"notification_type"`
+	Kind             string `json:"kind"`
 }
 
 // dispatch runs one pane command. The first result reports a quit.
@@ -48,10 +53,15 @@ func (a *app) dispatch(line string) (bool, error) {
 		})
 		return false, nil
 	case "error":
-		a.fire("errorOccurred", map[string]any{
-			"errorContext": "model_call", "recoverable": true,
-			"error": map[string]any{"message": request.Message, "name": "Error", "stack": "Error: " + request.Message},
-		})
+		a.fail(request.Message)
+		return false, nil
+	case "interrupt":
+		a.interrupt()
+		return false, nil
+	case "dialog":
+		return false, a.dialog(request.Kind, request.Message)
+	case "dismiss":
+		a.dismiss()
 		return false, nil
 	case "exit":
 		a.shutdown()
@@ -92,6 +102,10 @@ func (a *app) fire(event string, fields map[string]any) {
 // A held prompt ("hold":true) leaves the turn open, the agent working, until a
 // "stop" command ends it.
 func (a *app) prompt(text string, hold bool) error {
+	if a.screen != nil {
+		a.screen.add(promptMark + text)
+		a.screen.setMode(modeWorking, "")
+	}
 	a.fire("userPromptSubmitted", map[string]any{"prompt": text})
 	if !a.prompted {
 		a.prompted = true
@@ -121,6 +135,10 @@ func (a *app) stop() error {
 		return fmt.Errorf("no turn is in progress")
 	}
 	a.turnOpen = false
+	if a.screen != nil {
+		a.screen.add(replyMarker + "fake reply")
+		a.screen.setMode(modeIdle, "")
+	}
 	if err := a.sess.record(
 		event{Type: "assistant.message", Data: map[string]any{"content": "fake reply"}},
 		event{Type: "assistant.turn_end", Data: map[string]any{}},
@@ -142,4 +160,91 @@ func (a *app) shutdown() {
 		sayf(a.errOut, "fake-copilot: %v\n", err)
 	}
 	a.fire("sessionEnd", map[string]any{"reason": "user_exit"})
+	if a.screen != nil {
+		a.screen.stop()
+	}
+}
+
+// fail is an error in the turn: errorOccurred fires, and the transcript shows
+// the "✗ " line Copilot draws for a failed model call (the turn's footer
+// returns to idle; a hold, if any, is still ended by "stop").
+func (a *app) fail(message string) {
+	a.fire("errorOccurred", map[string]any{
+		"errorContext": "model_call", "recoverable": true,
+		"error": map[string]any{"message": message, "name": "Error", "stack": "Error: " + message},
+	})
+	if a.screen != nil {
+		a.screen.add(errorMarker + message)
+		a.screen.setMode(modeIdle, "")
+	}
+}
+
+// interrupt is the user's Ctrl-C during work. Copilot aborts the turn and fires
+// no hook for it (the real behaviour deck's pane probe exists to cover), so the
+// turn just closes: the transcript records the cancellation and the footer is
+// idle again. With no turn open it does nothing.
+func (a *app) interrupt() {
+	if !a.turnOpen {
+		return
+	}
+	a.turnOpen = false
+	if a.screen != nil {
+		a.screen.add(replyMarker + abortedLine)
+		a.screen.setMode(modeIdle, "")
+	} else {
+		sayln(a.out, "fake-copilot turn aborted")
+	}
+	if err := a.sess.record(event{Type: "abort", Data: map[string]any{"reason": "user_initiated"}}); err != nil {
+		sayf(a.errOut, "fake-copilot: %v\n", err)
+	}
+}
+
+// dialog shows one of Copilot's modal prompts in place of the composer: the
+// permission dialog (detail names the command), the question dialog (detail is
+// the question) or the folder-trust prompt. It draws only; a hook, if the
+// scenario wants one, is a separate "notification" command.
+func (a *app) dialog(kind, detail string) error {
+	modes := map[string]screenMode{"permission": modePermission, "question": modeQuestion, "trust": modeTrust}
+	mode, known := modes[kind]
+	if !known {
+		return fmt.Errorf("unknown dialog kind %q", kind)
+	}
+	if a.screen == nil {
+		sayf(a.out, "fake-copilot dialog: %s\n", kind)
+		return nil
+	}
+	a.screen.setMode(mode, detail)
+	return nil
+}
+
+// dismiss closes the dialog: back to the working footer while a turn is open,
+// else the idle footer.
+func (a *app) dismiss() {
+	if a.screen == nil {
+		return
+	}
+	if a.turnOpen {
+		a.screen.setMode(modeWorking, "")
+		return
+	}
+	a.screen.setMode(modeIdle, "")
+}
+
+// onSignal handles a signal the serve loop received. SIGWINCH redraws at the
+// new size; SIGINT during an open turn in screen mode is Ctrl-C aborting it;
+// anything else (and SIGINT with no turn) is a clean shutdown. The result is
+// true when the loop must stop.
+func (a *app) onSignal(sig os.Signal) bool {
+	switch {
+	case sig == syscall.SIGWINCH:
+		if a.screen != nil {
+			a.screen.resized()
+		}
+		return false
+	case sig == syscall.SIGINT && a.screen != nil && a.turnOpen:
+		a.interrupt()
+		return false
+	}
+	a.shutdown()
+	return true
 }

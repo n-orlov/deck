@@ -33,6 +33,7 @@ func registerAgentSessionSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^a fake "codex" binary is on PATH for future deck clients$`, fakeCodexOnPATHForFutureClients)
 	sc.Step(`^a long-running fake "codex" binary is on PATH for future deck clients$`, longRunningFakeCodexOnPATHForFutureClients)
 	sc.Step(`^a long-running fake "copilot" binary is on PATH for future deck clients$`, longRunningFakeCopilotOnPATHForFutureClients)
+	sc.Step(`^a long-running fake "copilot" binary rendering its screen is on PATH for future deck clients$`, longRunningFakeCopilotScreenOnPATHForFutureClients)
 	sc.Step(`^the fake "claude" binary is removed from PATH$`, fakeClaudeRemovedFromPATH)
 	sc.Step(`^the fake "pi" binary is removed from PATH$`, fakePiRemovedFromPATH)
 	sc.Step(`^the fake "codex" binary is removed from PATH$`, fakeCodexRemovedFromPATH)
@@ -222,6 +223,17 @@ func installFakeCodexOnPATH(ctx context.Context, longRunning bool) error {
 // directory and fixture HOME; fake-copilot keeps its sessions under that HOME's
 // .copilot, never the operator's.
 func longRunningFakeCopilotOnPATHForFutureClients(ctx context.Context) error {
+	return installFakeCopilotOnPATH(ctx, false)
+}
+
+// longRunningFakeCopilotScreenOnPATHForFutureClients is the same fixture with
+// FAKE_COPILOT_SCREEN=1: it draws Copilot's full-screen TUI (footers, dialogs,
+// the startup sequence), which is what the pane probe reads (R224b).
+func longRunningFakeCopilotScreenOnPATHForFutureClients(ctx context.Context) error {
+	return installFakeCopilotOnPATH(ctx, true)
+}
+
+func installFakeCopilotOnPATH(ctx context.Context, screen bool) error {
 	h, err := scenarioHarness(ctx)
 	if err != nil {
 		return err
@@ -240,7 +252,11 @@ func longRunningFakeCopilotOnPATHForFutureClients(ctx context.Context) error {
 	if output, err := build.CombinedOutput(); err != nil {
 		return fmt.Errorf("build fake copilot fixture: %w\n%s", err, output)
 	}
-	script := "#!/bin/sh\nFAKE_COPILOT_COMMANDS=1 exec \"" + realBinary + "\" \"$@\"\n"
+	environment := "FAKE_COPILOT_COMMANDS=1"
+	if screen {
+		environment += " FAKE_COPILOT_SCREEN=1"
+	}
+	script := "#!/bin/sh\n" + environment + " exec \"" + realBinary + "\" \"$@\"\n"
 	if err := os.WriteFile(filepath.Join(dir, "copilot"), []byte(script), 0o700); err != nil {
 		return fmt.Errorf("write copilot fixture wrapper: %w", err)
 	}
