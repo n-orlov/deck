@@ -276,9 +276,10 @@ workspace.yaml at launch, events.jsonl at the first prompt or at a clean shutdow
 
 Set FAKE_COPILOT_EXIT_CODE to an integer from 0 through 125 to control this fixture's exit status.
 Set FAKE_COPILOT_COMMANDS=1 to stay up and read newline-delimited JSON commands from the pane:
-  {"command":"prompt","text":"..."}
+  {"command":"prompt","text":"...","hold":true}   (hold keeps the turn open: no agentStop)
+  {"command":"stop"}                               (ends a held turn: agentStop)
   {"command":"notification","notification_type":"permission_prompt","title":"...","message":"..."}
   {"command":"error","message":"..."}
   {"command":"exit"}
-A prompt fires userPromptSubmitted, sessionStart (the first prompt only) and agentStop.
+A prompt fires userPromptSubmitted, sessionStart (the first prompt only) and, unless held, agentStop.
 `

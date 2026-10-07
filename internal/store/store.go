@@ -1237,6 +1237,24 @@ func (s *Store) RecordSessionNote(ctx context.Context, sessionID, reason string,
 	return nil
 }
 
+// RecordTranscript records, as an event on the row, the transcript file an
+// agent's own hook named for it (Copilot's agentStop transcriptPath). The
+// caller has already established that the path is a regular file under the
+// agent's root; the store keeps the evidence and never opens it.
+func (s *Store) RecordTranscript(ctx context.Context, sessionID, path string, at int64) error {
+	if sessionID == "" || path == "" {
+		return errors.New("session id and transcript path are required")
+	}
+	if at == 0 {
+		return errors.New("event timestamp is required")
+	}
+	if _, err := s.db.ExecContext(ctx, `INSERT INTO events (session_id, at, kind, reason, payload)
+		VALUES (?, ?, 'transcript', 'hook', ?)`, sessionID, at, path); err != nil {
+		return fmt.Errorf("record transcript: %w", err)
+	}
+	return nil
+}
+
 // RecordOrphanEvent preserves a hook event which could not be resolved to a
 // session. NULL (not an empty id) is used so the foreign key remains honest.
 func (s *Store) RecordOrphanEvent(ctx context.Context, input EventInput) error {
