@@ -497,6 +497,12 @@ permissive is not a profile, it is a wish.
 - Prefer the structured mode flag over a `--dangerously-*` flag where both exist: same
   effect, less flag-name churn. Unsupported profiles degrade to the nearest safe one and
   say so in the row detail rather than silently lying.
+- **Copilot's `edits` is narrower than Claude's.** `--allow-tool=write` lets Copilot's file
+  edits through without prompting, while shell commands still prompt: a copilot `edits` session
+  can still go `waiting` on a shell command, which is correct, not a stuck session. The create
+  dialog offers `copilot` with exactly `safe`, `edits` and `yolo` (no `plan`), and only when
+  `copilot` resolves on `PATH`; a host without it lists `copilot` under "not on PATH" like a
+  missing `codex`.
 - **Persisted**, so a `yolo` session comes back `yolo` on resume. That's the point, and
   that's why it needs a badge visible in the list, in the detail pane, and in every
   event-hook payload.
