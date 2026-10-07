@@ -18,11 +18,23 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+
+	"github.com/creack/pty"
+	"golang.org/x/sys/unix"
 )
 
 const (
 	exitCodeEnvironment = "FAKE_COPILOT_EXIT_CODE"
 	commandsEnvironment = "FAKE_COPILOT_COMMANDS"
+	// screenEnvironment=1 renders the TUI (startup sequence, alternate screen,
+	// footers, dialogs, SIGWINCH redraws) instead of plain progress lines.
+	screenEnvironment = "FAKE_COPILOT_SCREEN"
+	// trustEnvironment=1 starts a rendered screen on the folder-trust prompt;
+	// a "dismiss" command answers it.
+	trustEnvironment = "FAKE_COPILOT_TRUST"
+	// sizesLogName is appended, under $DECK_HOME/log, one "COLSxROWS" line for
+	// the size at launch and for every SIGWINCH-observed size.
+	sizesLogName = "fake-copilot-sizes.log"
 )
 
 // uuidPattern is the shape Copilot accepts for --session-id: a canonical
@@ -41,7 +53,7 @@ type options struct {
 
 func main() {
 	signals := make(chan os.Signal, 1)
-	signal.Notify(signals, syscall.SIGHUP, syscall.SIGTERM, syscall.SIGINT)
+	signal.Notify(signals, syscall.SIGHUP, syscall.SIGTERM, syscall.SIGINT, syscall.SIGWINCH)
 	os.Exit(runWithIO(os.Args[1:], os.Stdin, os.Stdout, os.Stderr, os.Getenv, os.Getwd, signals))
 }
 
@@ -73,6 +85,9 @@ func runWithIO(args []string, stdin io.Reader, stdout, stderr io.Writer, getenv 
 		return code
 	}
 	if getenv(commandsEnvironment) == "1" {
+		if app.screen != nil {
+			disableStdinEcho(stdin)
+		}
 		if err := app.serve(stdin, signals); err != nil {
 			sayf(stderr, "fake-copilot: %v\n", err)
 			return 2
@@ -116,8 +131,17 @@ func startApp(opts options, args []string, stdout, stderr io.Writer, getenv func
 		sayf(stderr, "fake-copilot: encode argv: %v\n", err)
 		return nil, 2
 	}
+	var scr *screen
+	if getenv(screenEnvironment) == "1" {
+		scr = &screen{out: stdout, size: terminalSize(stdout), record: sizeRecorder(getenv), cwd: cwd, allowAll: opts.allowAll, sessionID: sess.id}
+		if getenv(trustEnvironment) == "1" {
+			scr.mode = modeTrust
+		}
+		scr.start()
+		stdout = scr
+	}
 	announceLaunch(stdout, opts, sess, encoded)
-	return &app{opts: opts, sess: sess, out: stdout, errOut: stderr, hooks: newHookRunner(opts.pluginDir, cwd)}, 0
+	return &app{opts: opts, sess: sess, out: stdout, errOut: stderr, hooks: newHookRunner(opts.pluginDir, cwd), screen: scr}, 0
 }
 
 // copilotRoot is Copilot's own home: $COPILOT_HOME, else $HOME/.copilot.
@@ -179,6 +203,12 @@ func (a *app) serve(stdin io.Reader, signals <-chan os.Signal) error {
 				a.shutdown()
 				return nil
 			}
+			if a.screen != nil {
+				// A terminal answers the startup queries on stdin.
+				if line = stripTerminalReplies(line); line == "" {
+					continue
+				}
+			}
 			quit, err := a.dispatch(line)
 			if err != nil {
 				return err
@@ -186,9 +216,10 @@ func (a *app) serve(stdin io.Reader, signals <-chan os.Signal) error {
 			if quit {
 				return nil
 			}
-		case <-signals:
-			a.shutdown()
-			return nil
+		case sig := <-signals:
+			if a.onSignal(sig) {
+				return nil
+			}
 		}
 	}
 }
@@ -274,12 +305,73 @@ is rejected with exit 1.
 The session lives in $COPILOT_HOME/session-state/<id>/ (HOME/.copilot when COPILOT_HOME is unset):
 workspace.yaml at launch, events.jsonl at the first prompt or at a clean shutdown, never after SIGKILL.
 
+Set FAKE_COPILOT_SCREEN=1 to render Copilot's full-screen TUI (alternate screen, the startup
+queries, mouse and focus modes, the idle/Working footers, dialogs, "✗ " error lines) and redraw it on
+SIGWINCH; FAKE_COPILOT_TRUST=1 starts it on the folder-trust prompt. Sizes go to
+$DECK_HOME/log/fake-copilot-sizes.log. Ctrl-C (SIGINT) during a turn aborts it: no hook fires.
+
 Set FAKE_COPILOT_EXIT_CODE to an integer from 0 through 125 to control this fixture's exit status.
 Set FAKE_COPILOT_COMMANDS=1 to stay up and read newline-delimited JSON commands from the pane:
   {"command":"prompt","text":"...","hold":true}   (hold keeps the turn open: no agentStop)
   {"command":"stop"}                               (ends a held turn: agentStop)
   {"command":"notification","notification_type":"permission_prompt","title":"...","message":"..."}
   {"command":"error","message":"..."}
+  {"command":"interrupt"}                          (Ctrl-C during a turn: aborts it, fires no hook)
+  {"command":"dialog","kind":"permission|question|trust","message":"..."}   {"command":"dismiss"}
   {"command":"exit"}
 A prompt fires userPromptSubmitted, sessionStart (the first prompt only) and, unless held, agentStop.
 `
+
+// terminalSize reads the size of the pane's own terminal (stdout's pty) each
+// time it is asked. A stdout that is not a terminal (a unit test) is 80x24.
+func terminalSize(stdout io.Writer) func() (int, int) {
+	return func() (int, int) {
+		if file, ok := stdout.(*os.File); ok {
+			if rows, cols, err := pty.Getsize(file); err == nil {
+				return cols, rows
+			}
+		}
+		return 80, 24
+	}
+}
+
+// sizeRecorder is the sizes-log writer under $DECK_HOME/log, nil when
+// DECK_HOME is unset.
+func sizeRecorder(getenv func(string) string) func(cols, rows int) {
+	home := getenv("DECK_HOME")
+	if home == "" {
+		return nil
+	}
+	path := filepath.Join(home, "log", sizesLogName)
+	return func(cols, rows int) { appendSizeLine(path, cols, rows) }
+}
+
+// appendSizeLine appends one "COLSxROWS" line to path, creating its directory;
+// recording is scaffolding for a test, so every failure is dropped.
+func appendSizeLine(path string, cols, rows int) {
+	if os.MkdirAll(filepath.Dir(path), 0o750) != nil {
+		return
+	}
+	file, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600) //nolint:gosec // G304: the path is DECK_HOME/log, set by the test that launches this fixture
+	if err != nil {
+		return
+	}
+	defer func() { _ = file.Close() }() // scaffolding: see the doc comment
+	sayf(file, "%dx%d\n", cols, rows)
+}
+
+// disableStdinEcho turns off ECHO/ECHONL on stdin's tty, when it is one, so a
+// terminal's replies to the startup queries are not echoed into the frame.
+func disableStdinEcho(stdin io.Reader) {
+	file, ok := stdin.(*os.File)
+	if !ok {
+		return
+	}
+	fd := int(file.Fd())
+	term, err := unix.IoctlGetTermios(fd, unix.TCGETS)
+	if err != nil {
+		return
+	}
+	term.Lflag &^= unix.ECHO | unix.ECHONL
+	_ = unix.IoctlSetTermios(fd, unix.TCSETS, term)
+}

@@ -3153,7 +3153,12 @@ in the help view.
   `events.jsonl` only at the first prompt or a clean shutdown, and the hook commands of the
   `--plugin-dir` `hooks.json` run with Copilot's camelCase payloads, `sessionStart` at the first
   prompt only (a held prompt leaves the turn open until a `stop` command fires `agentStop`); it rejects `--continue`, `--resume`, `--connect`, `--remote`, `--acp` and `--yolo`
-  as unknown arguments),
+  as unknown arguments; with `FAKE_COPILOT_SCREEN=1` it draws Copilot's full-screen TUI instead of plain
+  progress lines: the real start sequence (colour/version/kitty-keyboard queries, `DECRQM` 12 and 1007, alternate
+  screen 1049, mouse 1003+1006, focus 1004, a BEL-terminated `OSC 0` title), the idle and `Working` footers,
+  the permission and question dialogs, the folder-trust prompt (`FAKE_COPILOT_TRUST=1` starts on it) and a `✗`
+  error line, each with the substrings §8.4's probe rules match; it redraws at the new size on `SIGWINCH`, and
+  `Ctrl-C` during a turn aborts it back to the idle footer **without firing any hook**, as Copilot does),
   write transcript files in the real on-disk layout, print recognisable pane text on
   demand, fire hook payloads at `deck _hook` on command, and can be told to hang, crash,
   or exit. They are the *contract* under test — real-agent conformance is a separate,

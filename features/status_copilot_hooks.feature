@@ -40,3 +40,21 @@ Feature: Copilot hook status truth
     Then the state database session "copilot truth" has hook status "stopped" with reason "user_exit"
 
     When deck client "A" exits cleanly
+
+  Scenario: An aborted Copilot turn is demoted from running to idle by the probe
+    # Copilot fires no hook when a turn is aborted with Ctrl-C (R219c, R224b), so
+    # the hook-derived "running" can only be corrected by reading the pane.
+    Given the deck config probes agent panes quickly
+    And a long-running fake "copilot" binary rendering its screen is on PATH for future deck clients
+    And deck client "A" is started
+    When deck client "A" creates copilot session "aborted turn" with permission profile "safe"
+    And fake Copilot session "aborted turn" starts working on "a very long job"
+    Then the state database session "aborted turn" has hook status "running" with reason "new"
+
+    When fake Copilot session "aborted turn" is interrupted with Ctrl-C
+    Then the state database session "aborted turn" has probe status "idle" with reason "ready"
+    And session "aborted turn" has no "stop" event
+    And within 3 seconds deck client "A" row "aborted turn" contains "sampled"
+
+    When fake Copilot session "aborted turn" exits
+    And deck client "A" exits cleanly

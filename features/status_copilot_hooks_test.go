@@ -21,6 +21,8 @@ func registerCopilotHookStatusSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^fake Copilot session "([^"]+)" exits$`, fakeCopilotExits)
 	sc.Step(`^the state database session "([^"]+)" has hook status "([^"]+)" with reason "([^"]*)"$`, sessionHasHookStatusWithReason)
 	sc.Step(`^session "([^"]+)" has a "([^"]+)" event$`, sessionHasAnEventOfKind)
+	sc.Step(`^session "([^"]+)" has no "([^"]+)" event$`, sessionHasNoEventOfKind)
+	sc.Step(`^fake Copilot session "([^"]+)" is interrupted with Ctrl-C$`, fakeCopilotInterruptedWithCtrlC)
 }
 
 // copilotEventCounts reads how many events of each kind the row has.
@@ -189,6 +191,46 @@ func sessionHasAnEventOfKind(ctx context.Context, name, kind string) error {
 	}
 	if counts[kind] == 0 {
 		return fmt.Errorf("session %q has no %q event", name, kind)
+	}
+	return nil
+}
+
+// sessionHasNoEventOfKind proves a hook did not fire: the row's event log holds
+// nothing of the kind.
+func sessionHasNoEventOfKind(ctx context.Context, name, kind string) error {
+	h, err := assertionHarness(ctx)
+	if err != nil {
+		return err
+	}
+	sessionID, err := sessionIDByName(h, name)
+	if err != nil {
+		return err
+	}
+	counts, err := copilotEventCounts(ctx, h, sessionID, []string{kind})
+	if err != nil {
+		return err
+	}
+	if counts[kind] != 0 {
+		return fmt.Errorf("session %q has %d %q events, want none", name, counts[kind], kind)
+	}
+	return nil
+}
+
+// fakeCopilotInterruptedWithCtrlC presses Ctrl-C in the pane, the real key: the
+// pty delivers SIGINT to the fixture, which aborts the open turn and, as the
+// real Copilot does, fires no hook for it.
+func fakeCopilotInterruptedWithCtrlC(ctx context.Context, name string) error {
+	h, err := assertionHarness(ctx)
+	if err != nil {
+		return err
+	}
+	slug, err := sessionSlugByName(h, name)
+	if err != nil {
+		return err
+	}
+	target := "deck_" + slug
+	if _, err := tmuxOutput(ctx, h, "send-keys", "-t", target, "C-c"); err != nil {
+		return fmt.Errorf("press Ctrl-C in fake Copilot pane %q: %w", target, err)
 	}
 	return nil
 }
