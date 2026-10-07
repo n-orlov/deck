@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -84,7 +85,9 @@ func TestCopilotLaunchInstallsThePluginDirectoryUnderTheDataRoot(t *testing.T) {
 }
 
 // R217: a relaunch leaves a plugin directory whose content already matches
-// untouched (same inode, same mtime), and replaces a stale file atomically.
+// untouched (same inode, same mtime), and replaces a stale file atomically: a
+// reader holding the stale file open keeps its bytes while the path resolves to
+// a new inode.
 func TestCopilotRelaunchLeavesAMatchingPluginUntouchedAndRepairsAStaleOne(t *testing.T) {
 	svc, _, _, home := newCopilotTestService(t, "copilot-plugin-idem")
 	created, err := svc.CreateAgent(context.Background(), AgentCreateInput{Name: "Copilot: idem", CWD: t.TempDir(), Agent: "copilot", PermissionProfile: "safe"})
@@ -111,17 +114,51 @@ func TestCopilotRelaunchLeavesAMatchingPluginUntouchedAndRepairsAStaleOne(t *tes
 	if err := os.WriteFile(hooks, []byte("{}"), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	// Hold the stale file open across the relaunch, the way a running copilot
+	// reading hooks.json would: an atomic replacement swaps the directory
+	// entry to a new inode and leaves the open file's bytes intact, while an
+	// in-place truncate-and-write would change them under the reader.
+	stale, err := os.Open(hooks)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = stale.Close() }()
+	staleInfo, err := stale.Stat()
+	if err != nil {
+		t.Fatal(err)
+	}
 	if _, outcome, err := svc.Restart(context.Background(), created.ID); err != nil || outcome != ResumeStarted {
 		t.Fatalf("second restart: %v, outcome %v", err, outcome)
 	}
 	if got, err := os.ReadFile(hooks); err != nil || string(got) != agent.CopilotHooksConfig() {
 		t.Fatalf("stale hooks.json = %q, %v; want it replaced", got, err)
 	}
+	assertReplacedNotRewritten(t, stale, staleInfo, hooks, "{}")
 	assertNothingUnderCopilotHome(t, home)
 }
 
-// writeFileAtomic holds an existing directory to the requested mode and never
-// leaves a temporary file behind.
+// assertReplacedNotRewritten proves path was replaced atomically (a rename of
+// a new file over it) rather than truncated and rewritten in place: path now
+// resolves to a different inode than the one held open, and the held file
+// still reads its original bytes.
+func assertReplacedNotRewritten(t *testing.T, held *os.File, heldInfo os.FileInfo, path, original string) {
+	t.Helper()
+	now, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if os.SameFile(heldInfo, now) {
+		t.Fatalf("%s was rewritten in place (same inode), want an atomic replacement", path)
+	}
+	got, err := io.ReadAll(io.NewSectionReader(held, 0, 1<<20))
+	if err != nil || string(got) != original {
+		t.Fatalf("the open stale file reads %q, %v; want its original %q untouched", got, err, original)
+	}
+}
+
+// writeFileAtomic holds an existing directory to the requested mode, replaces
+// a differing file atomically (new inode, an open reader keeps the old bytes)
+// and never leaves a temporary file behind.
 func TestWriteFileAtomicHoldsTheDirectoryModeAndKeepsMatchingContent(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "plugin")
 	if err := os.Mkdir(dir, 0o755); err != nil {
@@ -134,9 +171,19 @@ func TestWriteFileAtomicHoldsTheDirectoryModeAndKeepsMatchingContent(t *testing.
 	if info, err := os.Stat(dir); err != nil || info.Mode().Perm() != 0o700 {
 		t.Fatalf("dir = %v, %v; want mode 0700", info, err)
 	}
+	held, err := os.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = held.Close() }()
+	heldInfo, err := held.Stat()
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := writeFileAtomic(path, []byte("two"), 0o700); err != nil {
 		t.Fatal(err)
 	}
+	assertReplacedNotRewritten(t, held, heldInfo, path, "one")
 	if got, _ := os.ReadFile(path); string(got) != "two" {
 		t.Fatalf("content = %q", got)
 	}
