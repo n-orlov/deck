@@ -3068,11 +3068,16 @@ in the help view.
   outside the app. Two of those facts carry §11's central preview guarantee and are
   therefore named here: **`list-clients` is empty** while a preview is live, and
   `#{window_width}x#{window_height}` is unchanged across any amount of previewing.
-- **Fake agents.** `fake-claude`, `fake-pi`, `fake-codex` on `PATH`: tiny programs that
+- **Fake agents.** `fake-claude`, `fake-pi`, `fake-codex`, `fake-copilot` on `PATH`: tiny programs that
   honour the real argument contracts (`--session-id`, `--resume`, `--permission-mode` — and,
   for `fake-codex`, the differently-shaped one codex actually has: no id at launch,
   `resume <id>`, `-a`/`-s`, and hooks arriving as an inline `-c hooks.…` override instead of
-  a settings file),
+  a settings file; and for `fake-copilot`, `--session-id <uuid>` that creates or resumes, a
+  `session-state/<id>/` directory under `$COPILOT_HOME` with `workspace.yaml` at launch and
+  `events.jsonl` only at the first prompt or a clean shutdown, and the hook commands of the
+  `--plugin-dir` `hooks.json` run with Copilot's camelCase payloads, `sessionStart` at the first
+  prompt only; it rejects `--continue`, `--resume`, `--connect`, `--remote`, `--acp` and `--yolo`
+  as unknown arguments),
   write transcript files in the real on-disk layout, print recognisable pane text on
   demand, fire hook payloads at `deck _hook` on command, and can be told to hang, crash,
   or exit. They are the *contract* under test — real-agent conformance is a separate,

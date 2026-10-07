@@ -127,6 +127,33 @@ Feature: Real agent session creation and resume through the TUI
     And the audit log's most recent launch argv for session "restart codex" contains session "restart codex"'s conversation id
     When deck client "A" exits cleanly
 
+  Scenario: R before the first message restarts a copilot session on the same conversation id
+    # R216/R224: `copilot --resume <id>` fails for a session killed before its
+    # first message, so deck relaunches a copilot session with the very argv it
+    # was created with, `--session-id <same id>`, which creates-or-resumes.
+    # No message is sent; fake-copilot writes workspace.yaml at launch and finds
+    # it again on the second launch, so it announces a resume of that id.
+    Given a long-running fake "copilot" binary is on PATH for future deck clients
+    And deck client "A" is started
+    When deck client "A" creates copilot session "early copilot" with permission profile "safe"
+    Then deck client "A" screen contains "early copilot"
+    And the audit log has 1 launch record for session "early copilot"
+    And the state database session "early copilot" has a non-empty conversation id
+    And the conversation id of session "early copilot" is remembered
+    And the audit log's most recent launch argv for session "early copilot" contains "--session-id"
+    And the state database session "early copilot" has status "starting" from "tmux"
+    When deck client "A" presses R on session "early copilot"
+    Then within one configured reconcile interval the audit log has 2 launch records for session "early copilot"
+    And the audit log's most recent launch argv for session "early copilot" contains "--session-id"
+    And the audit log's most recent launch argv for session "early copilot" does not contain "--resume"
+    And the audit log's most recent launch argv for session "early copilot" does not contain "--continue"
+    And the audit log's most recent launch argv for session "early copilot" contains its remembered conversation id
+    And the state database session "early copilot" still has its remembered conversation id
+    And the private tmux session for "early copilot" shows "fake-copilot session: resume" before "fake-copilot plugin-dir:"
+    And the state database session "early copilot" has status "starting" from "tmux"
+    And exactly 1 private tmux sessions match slug "deck_early-copilot"
+    When deck client "A" exits cleanly
+
   Scenario: login_shell marks captured_path advisory in the row and its detail
     # SPEC §6.3: enabling login_shell is mutually exclusive with relying on
     # captured_path (rc files may rewrite PATH), so the two are always
