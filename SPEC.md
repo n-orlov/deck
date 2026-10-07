@@ -2871,6 +2871,15 @@ must be restored afterwards.
   re-decided at every notch, so a program that turns reporting off (or exits back to its shell)
   hands the wheel back immediately. A forwarded notch is input to the pane, so it ends a sidebar
   drift exactly as a forwarded key does (§11).
+  **Copilot is one of these programs.** `copilot` runs on the alternate screen (1049) with mouse
+  modes 1003 + 1006 and focus reporting 1004, hides and shows the cursor around every move
+  (`CSI ? 25 l/h`) and may set scroll regions (`CSI t ; b r`); the grid follows the stream, so
+  after the program exits the main screen is back with the summary it printed, the cursor bit is the
+  stream's final state rather than an intermediate one, and 1003 + 1006 route wheel notches, clicks
+  and hover exactly as for any mouse-tracking full-screen app. The grid reports mode 1004
+  (`Grid.FocusReporting`) from the live stream, separately from the mouse modes: it never makes a
+  pane look mouse-tracking. deck does not act on it: it never writes a focus-in or focus-out report
+  (`CSI I`, `CSI O`) into the pane.
 - **The pane's text cursor is drawn.** A full `tmux attach` shows where the program's cursor
   is, and editing a prompt in the middle of a line — arrows, word jumps, a deletion — is
   guesswork without it. deck draws the grid's cursor cell in **reverse video**: it survives
