@@ -172,14 +172,16 @@ func (f *stringFilter) advanceDCSEntry(b byte) {
 	}
 }
 
-// advanceDCSEntryEscape follows ESC P ESC: a backslash is ST and ends the
-// (empty) string; another ESC may still precede it; anything else is payload.
+// advanceDCSEntryEscape follows ESC P ESC. The vt table has read that first ESC
+// as payload, so a second ESC is a real one: it starts an escape sequence
+// (ESC ESC ] is an OSC, ESC ESC \ is ST). A backslash straight after the first
+// ESC is ST too; anything else is payload.
 func (f *stringFilter) advanceDCSEntryEscape(b byte) {
 	switch b {
 	case '\\':
 		f.state = filterGround
 	case byteESC:
-		// stays: ESC ESC \ is still ST
+		f.state = filterEscape
 	default:
 		f.state = filterDCSData
 	}

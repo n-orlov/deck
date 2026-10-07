@@ -2697,7 +2697,8 @@ must be restored afterwards.
   where the parser ends it: `BEL` (OSC only), `ESC` (so `ESC \`), `CAN` or `SUB`. `ESC \`
   ends every kind from every header and payload state, an empty DCS (`ESC P ESC \`) included —
   there the parser reads the `ESC` as payload, but the filter still treats the string as ended.
-  Outside a
+  A second `ESC` after `ESC P`, like an `ESC` in a later DCS header state, starts an escape
+  sequence, so `ESC P ESC ESC ]` opens an OSC whose `BEL` ends it. Outside a
   string every byte is forwarded unchanged — ordinary text, including every non-ASCII
   character, reaches the grid byte for byte — and nothing is buffered: a chunk is forwarded as it
   arrives, and the filter's state carries across chunks, so a read split anywhere (between `E2`
