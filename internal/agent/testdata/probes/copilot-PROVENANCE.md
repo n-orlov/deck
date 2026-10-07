@@ -86,6 +86,16 @@ exit banner is a random UUID, and the provider key was a dummy value that never
 appears on screen. A test greps the directory and this file for the GitHub token
 prefixes and the HTTP authorization scheme name (spelled in the test, not here).
 
+## Re-checking the fixtures against a live CLI
+
+`features/real_agent_copilot.feature` (`@real-agents`, opt-in) drives the installed
+`copilot` with a temporary `COPILOT_HOME` and asserts that a live pane carries the key
+substrings of the `trust`, `permission`, `question`, `working`, `error` and `idle` fixtures
+above, so a CLI newer than 1.0.93 that redraws those screens fails loudly there. A unit test
+checks the same substrings against the recorded files. `allow-all-footer`, `warning`,
+`idle-draft`, `idle-wrapped-80` and `working-edit-prompt` are variants of those six and are
+covered by the probe unit tests only.
+
 ## What the corpus shows that a rule must not trip on
 
 - **The `✗ ` glyph is not only an API error.** Copilot also starts a line with

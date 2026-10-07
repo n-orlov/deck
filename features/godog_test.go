@@ -143,6 +143,7 @@ func initializeScenario(sc *godog.ScenarioContext) {
 	})
 	registerFakeAgentDriftSteps(sc)
 	registerRealAgentHookSteps(sc)
+	registerRealAgentCopilotSteps(sc)
 	registerFakeAgentFeatureSteps(sc)
 	registerFakeAgentSizeSteps(sc)
 	registerAgentSessionSteps(sc)
