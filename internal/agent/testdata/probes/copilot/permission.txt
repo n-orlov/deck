@@ -1,0 +1,40 @@
+ [Current]  Sessions   Issues   Pull requests   Gists
+
+ ● MCP Servers reloaded: 0 servers connected                                                                           ┃
+                                                                                                                       ┃
+ ❯ say hello                                                                                                     17:53 ┃
+                                                                                                                       ┃
+ ● Stand-in reply: hello from the local model provider.                                                                ┃
+                                                                                                                       ┃
+ ❯ go slow please                                                                                                17:53 ┃
+                                                                                                                       ┃
+ ● stand-in streaming word 0 stand-in streaming word 1 stand-in streaming word 2 stand-in streaming word 3 stand-in    ┃
+   streaming word 4 stand-in streaming word 5 stand-in streaming word 6 stand-in streaming word 7                      ┃
+                                                                                                                       ┃
+ ● Operation cancelled by user                                                                                         ┃
+                                                                                                                       ┃
+ ❯ please fail                                                                                                   17:53 ┃
+                                                                                                                       ┃
+ ✗ Failed to get response from the AI model; retried 5 times (total retry wait time: 14.95 seconds) Last error: 500    ┃
+   stand-in provider refused the request                                                                               ┃
+                                                                                                                       ┃
+ ❯ be sleepy                                                                                                     17:54 ┃
+                                                                                                                       ┃
+ $ Shell Pause for 90 seconds                                                                                       5s ┃
+   sleep 90                                                                                                            ┃
+                                                                                                                       ┃
+╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ Pause for 90 seconds                                                                                                 │
+│ ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────── │
+│ ╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮ │
+│ │ sleep 90                                                                                                         │ │
+│ ╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯ │
+│                                                                                                                      │
+│ Do you want to run this command?                                                                                     │
+│                                                                                                                      │
+│ ❯ 1. Yes                                                                                                             │
+│   2. Yes, and don't ask again for `sleep` in this directory (/tmp/work)                                              │
+│   3. No, and tell Copilot what to do differently (Esc to stop)                                                       │
+│                                                                                                                      │
+│ ↑/↓ to navigate · enter to select · esc to cancel                                                                    │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯

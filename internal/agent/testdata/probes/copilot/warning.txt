@@ -1,0 +1,40 @@
+ [Current]  Sessions   Issues   Pull requests   Gists
+
+  ╭─╮╭─╮
+  ╰─╯╰─╯  Copilot v1.0.93 uses AI.
+  █ ▘▝ █  Check for mistakes.
+   ▔▔▔▔
+
+ ! no plugin.json or SKILL.md found in /tmp/nonexistent-plugin
+
+ ● Tip: /allow-all
+   └ Enable all permissions (tools, paths, and URLs)
+
+ ! Failed to connect to MCP server "bad": failed to spawn MCP server process: No such file or directory (os error 2):
+   No such file or directory (os error 2). Execute '/mcp show bad' to inspect or check the logs.
+
+ ● MCP Servers reloaded: 0 servers connected, 1 failed (bad)
+
+ ● MCP Servers reloaded: 0 servers connected, 1 failed (bad)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ /tmp/work
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ ← open sidebar · Interactive · Manual Approval · / commands · ? help · tab next tab                           stand-in

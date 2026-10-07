@@ -1,0 +1,40 @@
+ [Current]  Sessions   Issues   Pull requests   Gists
+
+ ● stand-in streaming word 0 stand-in streaming word 1 stand-in streaming word 2 stand-in streaming word 3 stand-in    ┃
+   streaming word 4 stand-in streaming word 5 stand-in streaming word 6 stand-in streaming word 7                      ┃
+                                                                                                                       ┃
+ ● Operation cancelled by user                                                                                         ┃
+                                                                                                                       ┃
+ ❯ please fail                                                                                                   17:53 ┃
+                                                                                                                       ┃
+ ✗ Failed to get response from the AI model; retried 5 times (total retry wait time: 14.95 seconds) Last error: 500    ┃
+   stand-in provider refused the request                                                                               ┃
+                                                                                                                       ┃
+ ❯ be sleepy                                                                                                     17:54 ┃
+                                                                                                                       ┃
+ ✗ Shell Pause for 90 seconds Operation aborted by user                                                             9s ┃
+   sleep 90                                                                                                            ┃
+                                                                                                                       ┃
+ ● Operation cancelled by user                                                                                         ┃
+                                                                                                                       ┃
+ ❯ please ask me something                                                                                       17:54 ┃
+                                                                                                                       ┃
+ ✗ Asked user … This session uses the structured ask_user format. Call ask_user again with {message, requestedSchema}. ┃
+                                                                                                                       ┃
+ ● Stand-in reply: hello from the local model provider.                                                                ┃
+                                                                                                                       ┃
+ ❯ please ask me something                                                                                       17:54 ┃
+                                                                                                                       ┃
+ ○ Asking user Waiting for response                                                                                 5s ┃
+                                                                                                                       ┃
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ Copilot needs information.
+ Which colour do you prefer?
+
+ Colour:
+ ❯ red
+   blue
+   Other (type your answer)
+
+ ↑/↓ select · enter accept · ctrl+d decline · esc cancel
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
