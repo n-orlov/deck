@@ -78,6 +78,10 @@ type Grid struct {
 	*vt.SafeEmulator
 	cursorHidden atomic.Bool
 	mouseModes   atomic.Uint32
+	// focusEvents is DEC mode 1004 (focus reporting), set by the program in
+	// the pane. It is reported, never acted on: deck does not tell the pane
+	// about focus (no CSI I / CSI O is ever written).
+	focusEvents atomic.Bool
 	// escFilter is the escape-string pre-filter (stringfilter.go) every byte
 	// written through Write passes: one filter per grid, so the live drain,
 	// the seed write and both reseed loops share it.
@@ -150,6 +154,12 @@ func (g *Grid) setMouse(bit MouseMode, on bool) {
 // (DECTCEM; visible until a program hides it).
 func (g *Grid) CursorVisible() bool { return !g.cursorHidden.Load() }
 
+// FocusReporting reports whether the pane's program has turned focus
+// reporting (DEC mode 1004) on. It is deliberately not one of the MouseMode
+// bits: it reports nothing about the mouse, so it never makes
+// MouseModes().Any() true and never routes a wheel notch or a click.
+func (g *Grid) FocusReporting() bool { return g.focusEvents.Load() }
+
 // MouseModes returns the mouse-reporting modes currently enabled.
 func (g *Grid) MouseModes() MouseMode { return MouseMode(g.mouseModes.Load()) }
 
@@ -200,6 +210,10 @@ func newGrid(width, height int) *Grid {
 func (g *Grid) modeChanged(mode ansi.Mode, on bool) {
 	if mode == ansi.ModeTextCursorEnable {
 		g.cursorHidden.Store(!on)
+		return
+	}
+	if mode == ansi.ModeFocusEvent {
+		g.focusEvents.Store(on)
 		return
 	}
 	if bit, ok := mouseBit(mode); ok {
