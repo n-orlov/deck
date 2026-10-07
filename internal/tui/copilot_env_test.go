@@ -172,4 +172,3 @@ func TestEnvEditorEditsACopilotVariableThroughSetSessionEnv(t *testing.T) {
 		t.Fatalf("setSessionEnv calls=%d (%q, %q, %q), want one call (s1, COPILOT_MODEL, after)", calls, gotID, gotKey, gotValue)
 	}
 }
-
