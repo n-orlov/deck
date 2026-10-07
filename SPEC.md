@@ -772,6 +772,15 @@ Rules:
   probe is what corrects it. This does not violate precedence — by the time a `waiting` row
   is probe-eligible, the hook verdict it would override is at least `stale_after` old, and
   "a probe never overwrites a *fresher* hook verdict" is unchanged.
+- **Copilot rows.** A `copilot` row's hook statuses are the table in §8.4: `userPromptSubmitted`
+  → `running` (`prompt`), `sessionStart` → `running` (the payload's `source`), `notification`
+  of type `permission_prompt` or `elicitation_dialog` → `waiting` (that type), `agentStop` →
+  `idle` (`end_turn` or the payload's `stopReason`), `sessionEnd` → `stopped` (the payload's
+  `reason`). `errorOccurred` and a `notification` of any other type change nothing: errors are
+  recoverable and repeat, so only the pane probe's `✗` line sets `error`. **The `starting`
+  window.** Copilot fires `sessionStart` at the first prompt, never at launch, so a copilot
+  row is `starting` from launch until its first hook or probe verdict, and that is not an
+  error: it stays `starting` and probe-eligible after `stale_after` like any other row.
 - Probe heuristics live in one table-driven file with golden-file tests over captured pane
   text — a fixture corpus per agent, so a spinner or prompt redesign upstream is a
   one-fixture fix.
@@ -1130,6 +1139,32 @@ Each entry is a bash command with a 5 s timeout that runs `"$DECK_EXE" _hook` wi
 name in `DECK_HOOK_EVENT` and Copilot's JSON payload on stdin, prints nothing on stdout and
 exits 0 whether `DECK_EXE` is unset or the hook fails. The deck row identity comes from the
 pane environment the launch already exports (§6.1).
+
+**Hook table.** `deck _hook` reads the event name from `DECK_HOOK_EVENT` when it is set (Copilot's
+payloads carry none; the environment's event wins over a `hook_event_name` the payload also carries) and the conversation from the payload's camelCase `sessionId`.
+Every other call keeps the payload's own `hook_event_name` and `session_id`. The finite set:
+
+| event | status | reason |
+|---|---|---|
+| `userPromptSubmitted` | `running` | `prompt` |
+| `sessionStart` | `running` | the payload's `source` (`new` or `resume`) |
+| `notification`, `notification_type` `permission_prompt` | `waiting` | `permission_prompt` |
+| `notification`, `notification_type` `elicitation_dialog` | `waiting` | `elicitation_dialog` |
+| `notification`, any other `notification_type` | no change | none |
+| `agentStop` | `idle` | `end_turn`, or the payload's `stopReason` |
+| `errorOccurred` | no change | none |
+| `sessionEnd` | `stopped` | the payload's `reason` |
+
+A no-change event still leaves its event-log entry; the row is untouched. An `agentStop`
+whose `transcriptPath` is a regular file under the resolved Copilot root (`COPILOT_HOME`, else
+`<home>/.copilot`, symlinks resolved) is recorded on the row as a `transcript` event; a path
+outside the root, or one that is not a regular file, is ignored. **Identity.** A payload whose
+`sessionId` differs from the row's conversation id (Copilot's `/clear`, `/new`, `/resume` and
+`/fork` swap the live id) is not applied: the row keeps its deck-assigned id and status and
+exactly one event, kind `<event kind>.identity_mismatch`, records it; the row never follows
+the new id. A payload with no `sessionId` is applied through the `DECK_SESSION_ID` row
+identity like any other kind's. The superseded-launch rule (R74), the budgets, the stale-binary
+message and the auto-heal apply unchanged.
 
 A launch whose plugin directory cannot be written is **not failed**: it starts without
 `--plugin-dir`, records a `note` event on the session naming the cause, and the row's status
@@ -3076,7 +3111,7 @@ in the help view.
   `session-state/<id>/` directory under `$COPILOT_HOME` with `workspace.yaml` at launch and
   `events.jsonl` only at the first prompt or a clean shutdown, and the hook commands of the
   `--plugin-dir` `hooks.json` run with Copilot's camelCase payloads, `sessionStart` at the first
-  prompt only; it rejects `--continue`, `--resume`, `--connect`, `--remote`, `--acp` and `--yolo`
+  prompt only (a held prompt leaves the turn open until a `stop` command fires `agentStop`); it rejects `--continue`, `--resume`, `--connect`, `--remote`, `--acp` and `--yolo`
   as unknown arguments),
   write transcript files in the real on-disk layout, print recognisable pane text on
   demand, fire hook payloads at `deck _hook` on command, and can be told to hang, crash,

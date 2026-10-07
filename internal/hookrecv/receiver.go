@@ -27,6 +27,8 @@ type Store interface {
 	// names a different conversation than the row currently holds moves the
 	// row's stored identity, recording the change as its own durable event.
 	SetConversationID(ctx context.Context, sessionID, conversationID, source string, at int64) error
+	// RecordTranscript stores the transcript file a Copilot agentStop named.
+	RecordTranscript(ctx context.Context, sessionID, path string, at int64) error
 }
 
 // Mapping combines SPEC §8.1's hook-to-status mapping with the event's own
@@ -52,6 +54,9 @@ type Mapping struct {
 	Kind         string
 	ReasonField  string
 	MessageField string
+	// Reason is the fixed reason of an event with no reason field, or the
+	// default when the ReasonField is absent from the payload (Copilot only).
+	Reason string
 }
 
 // Mappings is the single hook mapping table. Its keys are the upstream hook
@@ -125,6 +130,16 @@ type payload struct {
 	// see Mappings). Not a codex-only payload struct: this is the same
 	// generic payload every hook decodes into, one more field on it.
 	ToolName string `json:"tool_name"`
+
+	// Copilot's camelCase payload. All optional: no field here is required of
+	// any hook.
+	CopilotSessionID string `json:"sessionId"`
+	StopReason       string `json:"stopReason"`
+	TranscriptPath   string `json:"transcriptPath"`
+
+	// copilot is set by decodeHook for a call whose Origin names a Copilot
+	// event; ConversationID then holds the payload's sessionId.
+	copilot bool
 }
 
 // supersededLaunch decides, for the whole hook class at once, whether a hook
@@ -194,7 +209,14 @@ func supersededReason(rowGeneration, hookGeneration string) string {
 // carries (empty when it carries none); see supersededLaunch for what a
 // mismatch means and how the token-absent cases are decided.
 func Receive(ctx context.Context, db Store, raw []byte, injectedSessionID, injectedLaunchGeneration string, at int64) (Result, error) {
-	p, mapping, err := decodeHook(db, raw, at)
+	return ReceiveFrom(ctx, db, raw, Origin{SessionID: injectedSessionID, LaunchGeneration: injectedLaunchGeneration}, at)
+}
+
+// ReceiveFrom is Receive for a call that may also be Copilot's: origin.Event
+// names the Copilot event the payload does not.
+func ReceiveFrom(ctx context.Context, db Store, raw []byte, origin Origin, at int64) (Result, error) {
+	injectedSessionID, injectedLaunchGeneration := origin.SessionID, origin.LaunchGeneration
+	p, mapping, err := decodeHook(db, raw, origin.Event, at)
 	if err != nil {
 		return Result{}, err
 	}
@@ -203,7 +225,7 @@ func Receive(ctx context.Context, db Store, raw []byte, injectedSessionID, injec
 	// which case it is overridden to supersededEventKind's distinct name.
 	eventKind := mapping.Kind
 
-	reason := payloadField(p, mapping.ReasonField)
+	reason := payloadReason(p, mapping)
 	var allowedFrom []string
 	if p.EventName == "SessionEnd" && sessionEndInSessionReasons[reason] {
 		// Requirement 43: this is not the process going away. Keep the event
@@ -217,6 +239,16 @@ func Receive(ctx context.Context, db Store, raw []byte, injectedSessionID, injec
 	}
 
 	result.SessionID = session.ID
+	if copilotMismatch(p, session.ConversationID) {
+		return receiveMismatch(ctx, db, p, mapping, session, raw, at, result)
+	}
+	write := hookWrite{status: mapping.Status, reason: reason, eventKind: eventKind, allowedFrom: allowedFrom}
+	if write.status == "" {
+		// A Copilot event that is not a status (errorOccurred, a notification
+		// of another type): recorded, never applied.
+		write.status = session.Status
+		write.allowedFrom = noCurrentStatusMatches
+	}
 	if supersededLaunch(session.LaunchGeneration, injectedLaunchGeneration) {
 		// Recorded, never applied -- the same mechanism requirement 43 uses
 		// for an in-session SessionEnd. The event keeps the evidence that a
@@ -224,10 +256,22 @@ func Receive(ctx context.Context, db Store, raw []byte, injectedSessionID, injec
 		// status write a no-op inside the store's own transaction, so the row
 		// is never wrong even momentarily and nothing has to repair it after.
 		result.Superseded = true
-		allowedFrom = noCurrentStatusMatches
-		eventKind = supersededEventKind(mapping.Kind)
-		reason = supersededReason(session.LaunchGeneration, injectedLaunchGeneration)
+		write.allowedFrom = noCurrentStatusMatches
+		write.eventKind = supersededEventKind(mapping.Kind)
+		write.reason = supersededReason(session.LaunchGeneration, injectedLaunchGeneration)
 	}
+	return persistHook(ctx, db, p, mapping, session, raw, origin, at, write, result)
+}
+
+// hookWrite is the status write one hook resolves to.
+type hookWrite struct {
+	status, reason, eventKind string
+	allowedFrom               []string
+}
+
+// persistHook follows the conversation, writes the status and its event, and
+// records a Copilot transcript. A superseded launch does only the write.
+func persistHook(ctx context.Context, db Store, p payload, mapping Mapping, session store.Session, raw []byte, origin Origin, at int64, w hookWrite, result Result) (Result, error) {
 	if !result.Superseded {
 		if err := followConversation(ctx, db, p, session, at); err != nil {
 			return result, err
@@ -235,16 +279,40 @@ func Receive(ctx context.Context, db Store, raw []byte, injectedSessionID, injec
 	}
 	if err := db.UpdateSessionStatus(ctx, store.StatusUpdateInput{
 		SessionID:              session.ID,
-		Status:                 mapping.Status,
-		Reason:                 reason,
+		Status:                 w.status,
+		Reason:                 w.reason,
 		Source:                 "hook",
 		At:                     at,
-		EventKind:              eventKind,
+		EventKind:              w.eventKind,
 		Payload:                string(raw),
 		LastMessage:            payloadField(p, mapping.MessageField),
-		AllowedCurrentStatuses: allowedFrom,
+		AllowedCurrentStatuses: w.allowedFrom,
 	}); err != nil {
 		return result, fmt.Errorf("apply %s hook: %w", p.EventName, err)
+	}
+	if result.Superseded {
+		return result, nil
+	}
+	return result, recordCopilotTranscript(ctx, db, p, origin.CopilotRoot, session.ID, at)
+}
+
+// receiveMismatch records the single event of a Copilot payload whose sessionId
+// is not the row's conversation id, and applies nothing: result keeps the
+// row's own id and reports no status.
+func receiveMismatch(ctx context.Context, db Store, p payload, mapping Mapping, session store.Session, raw []byte, at int64, result Result) (Result, error) {
+	result.Status = ""
+	result.Reason = mismatchReason(session.ConversationID, p.ConversationID)
+	if err := db.UpdateSessionStatus(ctx, store.StatusUpdateInput{
+		SessionID:              session.ID,
+		Status:                 session.Status,
+		Reason:                 result.Reason,
+		Source:                 "hook",
+		At:                     at,
+		EventKind:              mapping.Kind + identityMismatchSuffix,
+		Payload:                string(raw),
+		AllowedCurrentStatuses: noCurrentStatusMatches,
+	}); err != nil {
+		return result, fmt.Errorf("record %s identity mismatch: %w", p.EventName, err)
 	}
 	return result, nil
 }
@@ -252,7 +320,7 @@ func Receive(ctx context.Context, db Store, raw []byte, injectedSessionID, injec
 // decodeHook validates Receive's preconditions in their fixed order (store,
 // timestamp, JSON payload, supported event name) and returns the decoded
 // payload with the event's mapping.
-func decodeHook(db Store, raw []byte, at int64) (payload, Mapping, error) {
+func decodeHook(db Store, raw []byte, event string, at int64) (payload, Mapping, error) {
 	if db == nil {
 		return payload{}, Mapping{}, errors.New("hook store is required")
 	}
@@ -263,11 +331,35 @@ func decodeHook(db Store, raw []byte, at int64) (payload, Mapping, error) {
 	if err := json.Unmarshal(raw, &p); err != nil {
 		return payload{}, Mapping{}, fmt.Errorf("decode hook payload: %w", err)
 	}
+	if event != "" {
+		return decodeCopilot(p, event)
+	}
 	mapping, ok := Mappings[p.EventName]
 	if !ok {
 		return payload{}, Mapping{}, fmt.Errorf("unsupported hook event %q", p.EventName)
 	}
 	return p, mapping, nil
+}
+
+// decodeCopilot reads p as Copilot's payload for the event deck's plugin named:
+// the event comes from the environment, the conversation from sessionId.
+func decodeCopilot(p payload, event string) (payload, Mapping, error) {
+	p.copilot = true
+	p.EventName = event
+	p.ConversationID = p.CopilotSessionID
+	mapping, ok := copilotMapping(event, p)
+	if !ok {
+		return payload{}, Mapping{}, fmt.Errorf("unsupported hook event %q", event)
+	}
+	return p, mapping, nil
+}
+
+// payloadReason is the reason an event is stored with.
+func payloadReason(p payload, mapping Mapping) string {
+	if reason := payloadField(p, mapping.ReasonField); reason != "" {
+		return reason
+	}
+	return mapping.Reason
 }
 
 // resolveHookTarget finds the row a hook addresses. An unresolved hook is
@@ -325,6 +417,8 @@ func payloadField(p payload, name string) string {
 		return p.LastMessage
 	case "tool_name":
 		return p.ToolName
+	case "stopReason":
+		return p.StopReason
 	default:
 		return ""
 	}

@@ -661,7 +661,12 @@ func runHook(ctx context.Context, settings config.Settings, stdin io.Reader) (ru
 	// receiver can tell a hook from the current launch apart from a late hook
 	// from a launch deck has already replaced (issue #11, R74). Absent when
 	// this pane's launch took no lease, which Receive reads as "no token".
-	result, err := hookrecv.Receive(ctx, timed, trimmed, os.Getenv("DECK_SESSION_ID"), os.Getenv(agent.LaunchGenerationEnv), settings.Clock.Now().UnixMilli())
+	result, err := hookrecv.ReceiveFrom(ctx, timed, trimmed, hookrecv.Origin{
+		SessionID:        os.Getenv("DECK_SESSION_ID"),
+		LaunchGeneration: os.Getenv(agent.LaunchGenerationEnv),
+		Event:            os.Getenv(agent.CopilotHookEventEnv),
+		CopilotRoot:      hookrecv.CopilotRoot(os.Getenv, os.UserHomeDir),
+	}, settings.Clock.Now().UnixMilli())
 	if err != nil {
 		return err
 	}

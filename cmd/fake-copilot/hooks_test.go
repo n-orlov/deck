@@ -279,3 +279,37 @@ func TestASignalShutsDownThroughTheServeLoop(t *testing.T) {
 		t.Fatalf("run = %d, hooks %v, want a clean shutdown with sessionEnd", code, h.capturedEvents(t))
 	}
 }
+
+// A held prompt leaves the turn open (the agent is working, no agentStop) until
+// a stop command ends it; a stop with no turn open is refused and fires nothing.
+func TestAHeldPromptFiresAgentStopOnlyWhenStopped(t *testing.T) {
+	h := newHarness(t)
+	plugin := h.installPlugin(t)
+	got := h.runCommands(t, plugin,
+		`{"command":"prompt","text":"work","hold":true}`,
+		`{"command":"stop"}`,
+	)
+	if got.code != 0 {
+		t.Fatalf("exit %d: %s", got.code, got.stderr)
+	}
+	if events := h.capturedEvents(t); !equal(events, []string{"userPromptSubmitted", "sessionStart", "agentStop", "sessionEnd"}) {
+		t.Fatalf("hook events = %v", events)
+	}
+	held := newHarness(t)
+	heldPlugin := held.installPlugin(t)
+	held.runCommands(t, heldPlugin, `{"command":"prompt","text":"work","hold":true}`)
+	if events := held.capturedEvents(t); !equal(events, []string{"userPromptSubmitted", "sessionStart", "sessionEnd"}) {
+		t.Fatalf("a held turn fired agentStop: %v", events)
+	}
+	idle := newHarness(t)
+	idlePlugin := idle.installPlugin(t)
+	refused := idle.runCommands(t, idlePlugin, `{"command":"stop"}`)
+	if refused.code == 0 || !strings.Contains(refused.stderr, "no turn is in progress") {
+		t.Fatalf("stop with no turn: exit %d, stderr %q", refused.code, refused.stderr)
+	}
+	for _, event := range idle.capturedEvents(t) {
+		if event == "agentStop" {
+			t.Fatal("stop with no turn fired agentStop")
+		}
+	}
+}

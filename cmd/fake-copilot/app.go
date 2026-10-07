@@ -16,12 +16,15 @@ type app struct {
 	hooks  hookRunner
 	// prompted is set by the first prompt, the moment sessionStart fires.
 	prompted bool
+	// turnOpen is a held turn: the prompt was taken and the agent has not stopped.
+	turnOpen bool
 	ended    bool
 }
 
 type command struct {
 	Command          string `json:"command"`
 	Text             string `json:"text"`
+	Hold             bool   `json:"hold"`
 	Title            string `json:"title"`
 	Message          string `json:"message"`
 	NotificationType string `json:"notification_type"`
@@ -35,7 +38,9 @@ func (a *app) dispatch(line string) (bool, error) {
 	}
 	switch request.Command {
 	case "prompt":
-		return false, a.prompt(request.Text)
+		return false, a.prompt(request.Text, request.Hold)
+	case "stop":
+		return false, a.stop()
 	case "notification":
 		a.fire("notification", map[string]any{
 			"message": request.Message, "title": request.Title,
@@ -84,7 +89,9 @@ func (a *app) fire(event string, fields map[string]any) {
 // prompt plays one turn: userPromptSubmitted, then sessionStart if this is the
 // process's first prompt (Copilot fires it at the first prompt, never at
 // launch), then agentStop with the transcript path. events.jsonl appears here.
-func (a *app) prompt(text string) error {
+// A held prompt ("hold":true) leaves the turn open, the agent working, until a
+// "stop" command ends it.
+func (a *app) prompt(text string, hold bool) error {
 	a.fire("userPromptSubmitted", map[string]any{"prompt": text})
 	if !a.prompted {
 		a.prompted = true
@@ -97,6 +104,24 @@ func (a *app) prompt(text string) error {
 	if err := a.sess.record(
 		event{Type: "user.message", Data: map[string]any{"content": text}},
 		event{Type: "assistant.turn_start", Data: map[string]any{}},
+	); err != nil {
+		return err
+	}
+	a.turnOpen = true
+	if hold {
+		return nil
+	}
+	return a.stop()
+}
+
+// stop ends the open turn: the reply is recorded and agentStop fires with the
+// transcript path.
+func (a *app) stop() error {
+	if !a.turnOpen {
+		return fmt.Errorf("no turn is in progress")
+	}
+	a.turnOpen = false
+	if err := a.sess.record(
 		event{Type: "assistant.message", Data: map[string]any{"content": "fake reply"}},
 		event{Type: "assistant.turn_end", Data: map[string]any{}},
 	); err != nil {

@@ -44,6 +44,7 @@ func TestStoreOperationsSurfaceDatabaseFailure(t *testing.T) {
 		"RecordAttachment":   func(s *Store) error { return s.RecordAttachment(ctx, id, at) },
 		"AcknowledgeSession": func(s *Store) error { return s.AcknowledgeSession(ctx, id) },
 		"RecordSessionNote":  func(s *Store) error { return s.RecordSessionNote(ctx, id, "note", at) },
+		"RecordTranscript":   func(s *Store) error { return s.RecordTranscript(ctx, id, "/t/events.jsonl", at) },
 		"RecordOrphanEvent": func(s *Store) error {
 			return s.RecordOrphanEvent(ctx, EventInput{Kind: "orphan", At: at})
 		},

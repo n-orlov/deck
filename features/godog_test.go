@@ -149,6 +149,7 @@ func initializeScenario(sc *godog.ScenarioContext) {
 	registerHookContractSteps(sc)
 	registerClaudeHookStatusSteps(sc)
 	registerCodexHooksSteps(sc)
+	registerCopilotHookStatusSteps(sc)
 	registerPermissionModesCodexSteps(sc)
 	registerProbeStatusSteps(sc)
 	registerCrashStatusSteps(sc)
