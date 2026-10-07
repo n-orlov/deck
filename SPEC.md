@@ -1172,6 +1172,19 @@ function of the launch input; the plugin files are written by the launch path in
 replaced through a temporary file and a rename, the directory is mode 0700, and a file that
 already holds the constant content is left untouched.
 
+**Environment and isolation.** A session's `COPILOT_HOME` is an ordinary entry of the §6.1 layers
+(server env, then config `[env]`, then session env): it moves the transcript root above and
+nothing else, because the plugin directory stays under deck's data root whatever the session
+sets, and deck never writes under it. Deck's launch never sets, clears or edits
+`COPILOT_GITHUB_TOKEN`, `GH_TOKEN`, `GITHUB_TOKEN`, `COPILOT_MODEL` or `HTTPS_PROXY`, and
+sets `COPILOT_ALLOW_ALL` only for `yolo` (above); a value the operator put in a layer reaches the
+pane as written. The session env editor (§6.2) has no copilot-specific rule: a `COPILOT_*`
+variable is listed, edited and persisted like any other, and one whose name looks secret (for
+example `COPILOT_GITHUB_TOKEN`) is masked by §6.4. A pane that prints nothing at all for the
+launch window, such as a Copilot waiting on a dead proxy, stays `starting` (§7) and is never
+marked `error` by deck; it leaves `starting` when its first output gives the pane probe or a
+hook a verdict.
+
 The directory holds a `plugin.json` and a `hooks.json` whose content is a constant of the deck
 binary. `hooks.json` subscribes to exactly six observational events: `userPromptSubmitted`,
 `sessionStart`, `notification`, `agentStop`, `errorOccurred` and `sessionEnd`. It never
