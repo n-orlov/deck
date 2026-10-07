@@ -1577,6 +1577,7 @@ func settingsEditsFromSettings(s config.Settings) config.FileConfig {
 		Theme:                s.File.Theme,
 		PreLaunch:            s.File.PreLaunch,
 		PostDestroy:          s.File.PostDestroy,
+		Agent:                s.File.Agent,
 		Env:                  settingsCloneEnv(s.File.Env),
 	}
 }
@@ -1933,6 +1934,8 @@ func settingsStringValue(f config.Field, cfg config.FileConfig) string {
 		return cfg.PreLaunch
 	case "post_destroy":
 		return cfg.PostDestroy
+	case "agent":
+		return cfg.Agent
 	default:
 		s, _ := f.Default.(string)
 		return s
@@ -1963,6 +1966,8 @@ func settingsSetString(cfg *config.FileConfig, f config.Field, v string) {
 		cfg.PreLaunch = v
 	case "post_destroy":
 		cfg.PostDestroy = v
+	case "agent":
+		cfg.Agent = v
 	}
 }
 

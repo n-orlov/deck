@@ -91,9 +91,9 @@ func (s Service) planAgentCreate(input AgentCreateInput) (agentCreatePlan, error
 	if err := s.checkAgentCreate(input); err != nil {
 		return agentCreatePlan{}, err
 	}
-	adapter, ok := s.Agents.Lookup(input.Agent)
-	if !ok {
-		return agentCreatePlan{}, fmt.Errorf("unknown agent kind %q", input.Agent)
+	adapter, err := s.Agents.Require(input.Agent)
+	if err != nil {
+		return agentCreatePlan{}, err
 	}
 	caps := adapter.Capabilities()
 	profile, _, degradationReason := caps.ResolveProfile(adapter.Kind(), input.PermissionProfile)

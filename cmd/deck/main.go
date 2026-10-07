@@ -41,6 +41,9 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	if isProfilesRequest(args) {
 		return runProfilesListing(os.Getenv, os.UserHomeDir, stdout)
 	}
+	if isNewCreateRequest(args) {
+		return runNewCommand(args, stdin, stdout, stderr)
+	}
 	isHook := len(args) == 2 && args[1] == "_hook"
 	positional, code, proceed := resolveStartupProfile(args, isHook, stdin, stderr)
 	if !proceed {
@@ -151,22 +154,8 @@ func runTUI(settings config.Settings, stderr io.Writer) int {
 	// failure here must never stop deck from starting, since this is a
 	// backlog catch-up, not part of any promise made at open time.
 	reclaimLeakedPipesBestEffort(stderr)
-	registry := agent.NewRegistry()
-	registry.Register(agent.NewShell())
-	registry.Register(agent.NewClaude())
-	registry.Register(agent.NewPi())
-	registry.Register(agent.NewCodex())
-	registry.Register(agent.NewCopilot())
-	sessions := service.Service{
-		Store: db, TMux: client, Audit: logger,
-		Clock: settings.Clock, IDs: settings.IDs, Agents: registry,
-		ConfigEnv: settings.Env, DeckExecutable: executable, DeckHome: settings.Paths.Home,
-		DataRoot:          settings.DataRoot,
-		Profile:           settings.Profile,
-		GlobalPreLaunch:   settings.PreLaunch,
-		GlobalPostDestroy: settings.PostDestroy,
-		RecentCwdLimit:    settings.RecentCwdLimit,
-	}
+	registry := newAgentRegistry()
+	sessions := newSessionService(db, settings, logger, client, registry, executable)
 	// The TUI owns pane-text sampling. Its reconcile callback performs liveness
 	// first and then probes stale eligible agents; the hidden hook command below
 	// deliberately wires only ReconcileWithin and can therefore never probe. It

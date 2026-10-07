@@ -6,7 +6,8 @@ tmux as the only runtime dependency.
 
 Interaction model: **`deck` is a TUI. Every user action happens in the UI.** There is no
 user-facing command line: the only arguments choose *which* deck opens — `deck [<profile>]`
-(§3.4) — plus `--profiles` and `--version`, and none of them performs an action.
+(§3.4) — plus `--profiles` and `--version`, and none of them performs an action. The one
+exception is `deck new --agent <kind>` (§3.4), a detached shortcut for the create dialog.
 
 **deck is the primary way to control a session; direct `tmux` is the fallback for the awkward
 cases.** Where deck's own view and a bare `tmux attach` elsewhere want different things from
@@ -64,7 +65,7 @@ worktree per task. What's actually needed is three things:
 Git worktrees, branches, PRs, CI · web UI / HTTP server / PWA / tunnels · Docker or
 sandboxing · ACP or any structured-render protocol · plugins · **a theme *engine***
 (themes are colour-only data files, and a theme can change nothing but colour — §11.6) · **a
-user-facing CLI or scripting surface** (choosing a profile at launch, §3.4, is not one) ·
+user-facing CLI or scripting surface** (choosing a profile at launch, and `deck new --agent <kind>`, §3.4, are not one) ·
 **multi-host / remote sessions** · declarative config files describing the session set · multiple windows or a shell drawer per session
 (one agent or shell per session, full stop) · orchestration, task queues, kanban,
 auto-approval · env profiles or secret-manager integrations · auto-restart on crash ·
@@ -288,6 +289,19 @@ so that work and home, or two organisations, never share a session list. (It is 
   positional argument (`deck work home` is an error), and flags are recognised before it, so an
   unknown `-x` is `error: unknown flag -x`, never a profile name. `--version` and the hidden
   verbs (§3.1) are unchanged. `deck --profiles` lists profiles and exits.
+- **`deck new` is the profile `new`; `deck new <option>…` creates a session.** Bare `deck new`
+  is exactly what the first bullet says -- the profile named `new` is a valid profile name, so
+  it stays reachable. `new` followed by options is instead the creation form, which opens no
+  TUI: `deck new --agent <kind> [--name <n>] [--cwd <dir>] [--permission <p>]` (each option
+  also as `--option=value`) creates one detached session on the resolved profile
+  (`DECK_PROFILE`, else `default`) through the same service as the create dialog and prints its
+  name. `--cwd` defaults to the working directory, `--name` to its basename, `--permission`
+  to `safe`. `<kind>` is any registered agent -- `claude`, `codex`, `copilot`, `pi`, `shell` --
+  and is taken from `--agent`, else from config.toml's `agent` key (§6.5); neither is exit 2
+  `error: deck new needs --agent KIND (or an agent key in config.toml)`. An unregistered kind
+  is exit 2 `error: unknown agent kind "<kind>"` -- the create service's own message, before
+  anything on disk is opened -- and an unknown option is `error: unknown flag <arg>`. A kind
+  whose executable is not on `PATH` is refused by the create service (§6.3) with exit 1.
 - **A deck stays on the profile it launched on.** There is no switcher and no in-place
   switch: changing profile is quitting and starting `deck <other>`, and decks on different
   profiles run side by side in different terminals. Several clients on one profile behave
@@ -693,7 +707,7 @@ schema:
 
 | where | keys |
 |---|---|
-| top level | `allow_yolo` (default false, §5), `yolo_default` (default false, §5 — inert unless `allow_yolo`), `stale_after` (default 45 s, §7), `capture_min_interval` (§9.4), `tmux_mouse` (default true, §3.2 — `false` restores tmux's own default and with it the arrow-key behaviour), `event_retention_days` (default 30, §12), `pre_launch` (empty by default, §6.4 — the global launch hook), `post_destroy` (empty by default, §9.2 — the global teardown hook), `event_hook` (empty by default, §10.1 — the one event script; empty makes §10 inert), `event_hook_default` (default false, §10.2), `event_hook_events` (default `["waiting","error","ended"]`, §10.2), `event_hook_timeout` (default 3 s, §10.3) |
+| top level | `allow_yolo` (default false, §5), `yolo_default` (default false, §5 — inert unless `allow_yolo`), `stale_after` (default 45 s, §7), `capture_min_interval` (§9.4), `tmux_mouse` (default true, §3.2 — `false` restores tmux's own default and with it the arrow-key behaviour), `event_retention_days` (default 30, §12), `pre_launch` (empty by default, §6.4 — the global launch hook), `agent` (empty by default, §3.4 — the kind `deck new` creates when `--agent` is absent; it is a string stored verbatim and checked against the registered kinds only when `deck new` uses it, so a kind deck does not know fails there with `unknown agent kind`; the create dialog ignores it), `post_destroy` (empty by default, §9.2 — the global teardown hook), `event_hook` (empty by default, §10.1 — the one event script; empty makes §10 inert), `event_hook_default` (default false, §10.2), `event_hook_events` (default `["waiting","error","ended"]`, §10.2), `event_hook_timeout` (default 3 s, §10.3) |
 | `[env]` | the middle PATH/env layer (§6.1) |
 | `[ui]` | `theme` (§11.6), `ascii` (§11), `mouse` (default true, §11.8), `preview_fit` (default true, §11), `preview_paint` (default `"fit"`, one of `fit`/`nofit`/`bg`/`off`, §11.3), `sort_order` (default `"attention"`, one of `attention`/`created`/`activity`/`name`, §11), `default_group_first` (default false, §11), `attach_on_new` (default true, §11), `attach_on_click` (default true, §11.8), `select_on_drag` (default true, §11.8), `attach_on_resume` (default false, §9.1), `recent_cwd_limit` (default 5, §11.7). **Not** `layout_mode`, `sidebar_width` or the recent-directory list itself — those are machine-local UI state/history and live in `state.db` (§11.2, §11.7), so a keypress never rewrites this file |
 
@@ -1782,7 +1796,9 @@ hold them side by side.
   the §11.3 gutter, the status glyph, the pin marker `✦` (ASCII `*`) on a pinned row only,
   the name, then the unseen marker, the live/sampled
   quality badge (§3) and the status word. Line 2 carries the gutter, `env↻` and `launch↻`
-  when either is dirty, the row's age, and the permission badge for non-`safe` **last**. The
+  when either is dirty, the row's age, the kind word of an agent that declares one (only `copilot`
+does; `claude`, `codex`, `pi` and `shell` rows carry no agent word and render exactly as they
+always did), and the permission badge for non-`safe` **last**. The
   transient badges come before the age because they are news; the permission badge is
   standing configuration and goes at the end, where it is still visible without displacing
   anything that changes.

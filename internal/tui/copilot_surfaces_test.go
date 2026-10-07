@@ -85,13 +85,12 @@ func TestCreateDialogOffersCopilotWithSafeEditsAndYolo(t *testing.T) {
 	}
 }
 
-// R220.2: this product's session row carries no agent-kind text at all (the
-// sidebar omits it by design, see sidebarRowLines); what identifies a copilot
-// row is its permission-profile badge, and the `i` detail pane carries the
-// Agent line. Both are asserted for copilot.
+// R220.2: a copilot session's row names its agent kind (the registry's
+// optional Caps.RowBadge) independently of the session's name and permission
+// profile, and the `i` detail pane's Agent line names copilot.
 func TestCopilotRowBadgeAndDetailAgentLineRenderCopilot(t *testing.T) {
 	session := store.Session{
-		ID: "s1", Name: "cop", Slug: "cop", Agent: "copilot", CWD: "/repo/cop",
+		ID: "s1", Name: "neutral", Slug: "neutral", Agent: "copilot", CWD: "/repo/neutral",
 		Status: "running", PermissionProfile: "edits", ResumeState: "auto",
 	}
 	m := NewWithShellCreatorAttacherKillerResumerProfileSwitcherResumeModerAgentCreatorAndRegistry(
@@ -103,8 +102,18 @@ func TestCopilotRowBadgeAndDetailAgentLineRenderCopilot(t *testing.T) {
 
 	lines, _, _ := m.sidebarRowLines(0, session, false)
 	row := strings.Join(lines, "\n")
-	if !strings.Contains(row, "cop") || !strings.Contains(row, "[edits]") {
-		t.Fatalf("copilot row lacks its name or its [edits] profile badge:\n%s", row)
+	if !strings.Contains(lines[1], "copilot") || !strings.Contains(lines[1], "[edits]") || strings.Contains(lines[0], "copilot") {
+		t.Fatalf("copilot row's second line lacks the copilot badge before the [edits] profile badge:\n%s", row)
+	}
+	if strings.Index(lines[1], "copilot") > strings.Index(lines[1], "[edits]") {
+		t.Fatalf("copilot badge must precede the profile badge:\n%s", row)
+	}
+	// Independent of the profile: a safe copilot row (no profile badge) still names it.
+	safe := session
+	safe.PermissionProfile = "safe"
+	safeLines, _, _ := m.sidebarRowLines(0, safe, false)
+	if !strings.Contains(safeLines[1], "copilot") || strings.Contains(safeLines[1], "[safe]") {
+		t.Fatalf("safe copilot row second line = %q", safeLines[1])
 	}
 	if got := m.profileBadge(session); got != "[edits]" {
 		t.Fatalf("profileBadge(copilot edits) = %q, want [edits]", got)
@@ -195,5 +204,54 @@ func TestExistingKindsCreateDialogBadgeAndAvailabilityAreUnchanged(t *testing.T)
 	}
 	if got := only.createAvailableAgentKinds; !reflect.DeepEqual(got, []string{"shell"}) {
 		t.Fatalf("nothing installed: Agent field offers %v, want [shell]", got)
+	}
+}
+
+// R220 (unchanged half): the other kinds' rows carry no agent word, so a row of
+// each is exactly the row it was before copilot existed -- identical to the same
+// session rendered by a registry that has never heard of copilot.
+func TestExistingKindsRowsAreByteIdenticalWithAndWithoutCopilotRegistered(t *testing.T) {
+	without := agent.NewRegistry()
+	without.Register(agent.NewShell())
+	without.Register(agent.NewClaude())
+	without.Register(agent.NewPi())
+	without.Register(agent.NewCodex())
+	build := func(r *agent.Registry) Model {
+		m := NewWithShellCreatorAttacherKillerResumerProfileSwitcherResumeModerAgentCreatorAndRegistry(
+			nil, config.Settings{}, "", nil, nil, nil, nil, nil, nil, nil, nil, r,
+		)
+		m.width, m.height = 120, 40
+		return m
+	}
+	with, base := build(allKindsRegistry()), build(without)
+	for _, kind := range []string{"claude", "codex", "pi", "shell"} {
+		for _, profile := range []string{"safe", "edits", "yolo"} {
+			session := store.Session{ID: "s-" + kind, Name: "row", Slug: "row", Agent: kind, CWD: "/repo",
+				Status: "running", PermissionProfile: profile, ResumeState: "auto"}
+			a, _, _ := with.sidebarRowLines(0, session, false)
+			b, _, _ := base.sidebarRowLines(0, session, false)
+			if !reflect.DeepEqual(a, b) {
+				t.Errorf("%s/%s row changed by registering copilot:\n%q\nvs\n%q", kind, profile, a, b)
+			}
+			if strings.Contains(a[1], kind) {
+				t.Errorf("%s row grew an agent word: %q", kind, a[1])
+			}
+		}
+	}
+}
+
+// R220.3: the settings takeover reads and stages the agent key like every other
+// free-text key, for copilot and for any other kind.
+func TestSettingsStageTheAgentKey(t *testing.T) {
+	field, ok := config.FieldByFullKey("agent")
+	if !ok {
+		t.Fatal("agent is not a settings field")
+	}
+	for _, kind := range []string{"copilot", "codex", ""} {
+		var cfg config.FileConfig
+		settingsSetString(&cfg, field, kind)
+		if cfg.Agent != kind || settingsStringValue(field, cfg) != kind {
+			t.Errorf("staging agent=%q: FileConfig.Agent=%q, read back %q", kind, cfg.Agent, settingsStringValue(field, cfg))
+		}
 	}
 }

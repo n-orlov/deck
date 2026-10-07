@@ -691,6 +691,21 @@ var Schema = []Field{
 	},
 	{
 		Section: "",
+		Key:     "agent",
+		Kind:    KindString,
+		Default: "",
+		Description: "The agent kind `deck new` creates when --agent is not given " +
+			"(R220, SPEC \u00a73.4): claude, codex, copilot, pi or shell. Empty by " +
+			"default -- `deck new --name x` then refuses and asks for --agent. A kind " +
+			"deck has no adapter for is refused with the same `unknown agent kind` " +
+			"diagnostic the create service gives. The TUI's create dialog is unaffected. " +
+			"Restart-to-apply: `deck new` reads it once at invocation.",
+		// requirement 19: the only consumer is the `deck new` command, which
+		// reads config.toml once per invocation; no running client re-reads it.
+		Scope: ScopeRestartToApply,
+	},
+	{
+		Section: "",
 		Key:     "post_destroy",
 		Kind:    KindString,
 		Default: "",
