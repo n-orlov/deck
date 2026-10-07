@@ -279,6 +279,18 @@ func copilotTranscript(pane string) []string {
 	return nonBlankLines(strings.Join(lines[:end], "\n"))
 }
 
+// copilotFooterLines returns the non-blank lines below the composer's last
+// separator, or nil when the pane shows no composer.
+func copilotFooterLines(pane string) []string {
+	lines := strings.Split(strings.ReplaceAll(pane, "\r\n", "\n"), "\n")
+	for i := len(lines) - 1; i >= 0; i-- {
+		if isSeparatorLine(strings.TrimSpace(lines[i])) {
+			return nonBlankLines(strings.Join(lines[i+1:], "\n"))
+		}
+	}
+	return nil
+}
+
 // nonBlankLines splits pane into its non-blank lines, trimmed of surrounding
 // whitespace.
 func nonBlankLines(pane string) []string {

@@ -1335,6 +1335,17 @@ func (s *Store) RecordProbeMiss(ctx context.Context, sessionID string, at int64)
 	return nil
 }
 
+// SetPermissionProfileReason stores the reason the detail pane shows on its
+// `degraded:` line, with a matching event, without touching status. It is how
+// a sampled pane that contradicts the launched profile is reported.
+func (s *Store) SetPermissionProfileReason(ctx context.Context, sessionID, reason, source string, at int64) error {
+	if sessionID == "" || reason == "" {
+		return errors.New("session id and reason are required")
+	}
+	return s.mutateSessionWithEvent(ctx, sessionID, "permission profile reason", "profile.elevated", source, reason, at,
+		`UPDATE sessions SET permission_profile_reason = ? WHERE id = ?`, reason)
+}
+
 // SetConversationID records the conversation identity assigned to (or
 // pinned for) a session, alongside an event so observers can see when and by
 // what source the identity was set.

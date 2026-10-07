@@ -508,6 +508,19 @@ permissive is not a profile, it is a wish.
   a confirm on every create trains the user to press it, and the safeguard that survives
   habituation is that the profile is *visible* everywhere it applies (below), not that it is
   tedious to choose.
+- **Copilot's own settings can elevate a `safe` or `edits` launch.** Copilot reads user
+  settings of its own, and deck writes nothing under `~/.copilot` (§8.4), so a session launched
+  `safe` (no flag) or `edits` can still start in Copilot's `Allow All` mode, and deck cannot stop
+  it. The profile deck stores is the one it launched with; it is never rewritten. When the
+  pane probe (§7) samples a copilot row launched `safe` or `edits` whose footer, below the
+  composer, shows `Allow All` (the footer of a normal launch shows `Manual Approval`), it stores
+  a reason saying Copilot's own settings elevated the profile, which the detail pane shows on
+  the same `degraded:` line an unsupported profile uses (an existing reason is kept and
+  extended, and a pane already reported is not rewritten). A `yolo` launch is `Allow All` by
+  design and is never flagged, and Claude, Codex and Pi rows are never audited this way. The
+  **folder-trust screen** (`Confirm folder trust`) is not a profile question: it is a `waiting`
+  state with reason `folder trust` (§8.4), which only `yolo` suppresses (it sets
+  `COPILOT_ALLOW_ALL=true`), and attaching to answer it is the user's step, as for any prompt.
 - Claude hook payloads carry `permission_mode`, so if the user changes it in-session the
   row is reconciled from the hook instead of drifting. **Codex's payloads carry a field of
   the same name and it must not be used this way.** Verified on 0.154.0 it reports only
@@ -781,6 +794,14 @@ Rules:
   window.** Copilot fires `sessionStart` at the first prompt, never at launch, so a copilot
   row is `starting` from launch until its first hook or probe verdict, and that is not an
   error: it stays `starting` and probe-eligible after `stale_after` like any other row.
+- **Copilot abort demotion.** Interrupting a Copilot turn with Ctrl-C fires no hook (no
+  `agentStop` follows an abort), so a row `userPromptSubmitted` left `running` would stay
+  `running` while the pane shows the idle footer. Nothing new corrects it: the ordinary probe
+  does, under the rules above and with the same `stale_after` window every other hook kind
+  uses (no copilot-specific constant). Once the row's hook verdict is at least `stale_after`
+  old and the pane shows the idle footer, the probe records `idle` (`ready`); while the pane
+  shows the `Working` footer the row stays `running`, and a hook verdict younger than the window
+  is never probed over.
 - Probe heuristics live in one table-driven file with golden-file tests over captured pane
   text — a fixture corpus per agent, so a spinner or prompt redesign upstream is a
   one-fixture fix.
