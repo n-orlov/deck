@@ -67,3 +67,34 @@ func TestEmptyDCSEndsOnEscBackslashButKeepsEscAsPayload(t *testing.T) {
 		}
 	}
 }
+
+// TestEscapeAfterEscInDCSHeaderStartsAnEscapeSequence asserts that a second
+// ESC after ESC P (and an ESC in any later DCS header state) is a real escape
+// whose next byte is read as one: a following OSC is recognised, so its BEL
+// ends it and the text after it is forwarded unchanged (R209).
+func TestEscapeAfterEscInDCSHeaderStartsAnEscapeSequence(t *testing.T) {
+	const after = "é✳日本\x9c\x9d ok"
+	osc := "\x1b]0;a✳b\x07"
+	oscWant := "\x1b]0;a\xe2\xb3b\x07"
+	cases := []struct{ name, in, want string }{
+		{"ESC P ESC ESC OSC BEL", "\x1bP\x1b\x1b" + osc + after, "\x1bP\x1b\x1b" + oscWant + after},
+		{"ESC P ESC ESC ESC OSC BEL", "\x1bP\x1b\x1b\x1b" + osc + after, "\x1bP\x1b\x1b\x1b" + oscWant + after},
+		{"DCS params ESC OSC BEL", "\x1bP1;2\x1b" + osc + after, "\x1bP1;2\x1b" + oscWant + after},
+		{"DCS intermediate ESC OSC BEL", "\x1bP$\x1b" + osc + after, "\x1bP$\x1b" + oscWant + after},
+		{"ESC P ESC ESC SOS ST", "\x1bP\x1b\x1b\x1bX✳\x1b\\" + after, "\x1bP\x1b\x1b\x1bX\x1b\\" + after},
+		{"ESC P ESC ESC DCS final then payload", "\x1bP\x1b\x1bPq✳\x1b\\" + after, "\x1bP\x1b\x1bPq\xe2\xb3\x1b\\" + after},
+		{"ESC P ESC ESC CSI is no string", "\x1bP\x1b\x1b[0m" + after, "\x1bP\x1b\x1b[0m" + after},
+	}
+	for _, c := range cases {
+		for _, chunks := range splitEverywhere([]byte(c.in)) {
+			var f stringFilter
+			var got []byte
+			for _, ch := range chunks {
+				got = append(got, f.filter(append([]byte(nil), ch...))...)
+			}
+			if string(got) != c.want {
+				t.Fatalf("%s: split %q: got %q, want %q", c.name, chunks, got, c.want)
+			}
+		}
+	}
+}
