@@ -105,21 +105,36 @@ func transcriptUnderRoot(path, root string) (string, bool) {
 	if path == "" || root == "" || !filepath.IsAbs(path) {
 		return "", false
 	}
-	resolvedRoot, err := filepath.EvalSymlinks(root)
-	if err != nil {
-		return "", false
-	}
-	resolved, err := filepath.EvalSymlinks(path)
-	if err != nil {
-		return "", false
-	}
-	rel, err := filepath.Rel(resolvedRoot, resolved)
-	if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-		return "", false
-	}
-	info, err := os.Stat(resolved)
-	if err != nil || !info.Mode().IsRegular() {
+	resolvedRoot, resolved, ok := resolveBoth(root, path)
+	if !ok || !strictlyInside(resolvedRoot, resolved) || !isRegularFile(resolved) {
 		return "", false
 	}
 	return path, true
+}
+
+// resolveBoth resolves the symlinks of root and path; ok is false when
+// either does not resolve.
+func resolveBoth(root, path string) (resolvedRoot, resolved string, ok bool) {
+	resolvedRoot, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		return "", "", false
+	}
+	resolved, err = filepath.EvalSymlinks(path)
+	if err != nil {
+		return "", "", false
+	}
+	return resolvedRoot, resolved, true
+}
+
+// strictlyInside reports whether path lies below root (root itself and
+// anything outside it do not count).
+func strictlyInside(root, path string) bool {
+	rel, err := filepath.Rel(root, path)
+	return err == nil && rel != "." && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
+}
+
+// isRegularFile reports whether path stats as a regular file.
+func isRegularFile(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && info.Mode().IsRegular()
 }
