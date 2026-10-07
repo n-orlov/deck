@@ -80,6 +80,44 @@ Feature: Nothing installed means the Agent field offers only shell (requirement 
     When deck client "A" closes the create modal
     And deck client "A" exits cleanly
 
+  @requirement-220-only-copilot-installed
+  Scenario: with only copilot installed the Agent field offers shell and copilot but not claude, codex or pi
+    Given a long-running fake "copilot" binary is on PATH for future deck clients
+    And deck client "A" is started
+    When deck client "A" opens the create modal
+    Then deck client "A" screen contains "Agent: shell (left/right cycles: copilot, shell)"
+    And deck client "A" screen contains "not on PATH: claude,"
+    And deck client "A" screen contains "codex, pi"
+    When deck client "A" presses down 2 times in the open dialog
+    And deck client "A" cycles the open dialog's field right
+    Then deck client "A" screen contains "Agent: copilot (left/right cycles: copilot, shell)"
+    When deck client "A" cycles the open dialog's field right
+    Then deck client "A" screen contains "Agent: shell (left/right cycles: copilot, shell)"
+    When deck client "A" closes the create modal
+    And deck client "A" exits cleanly
+
+  @requirement-220-copilot-missing-like-codex
+  Scenario: a host with no copilot on PATH reports it unavailable the way a missing codex is, and offers no launch that cannot start
+    # codex and copilot are both absent here: the help line names them in the
+    # same "not on PATH" sentence, and the Agent cycle never reaches either.
+    Given a fake "claude" binary is on PATH for future deck clients
+    And a fake "pi" binary is on PATH for future deck clients
+    And deck client "A" is started
+    When deck client "A" opens the create modal
+    Then deck client "A" screen contains "Agent: shell (left/right cycles: claude, pi, shell)"
+    # The wrapped help line breaks after "codex," here, so the check is split.
+    And deck client "A" screen contains "not on PATH: codex,"
+    And deck client "A" screen contains "copilot"
+    When deck client "A" presses down 2 times in the open dialog
+    And deck client "A" cycles the open dialog's field right
+    And deck client "A" cycles the open dialog's field right
+    And deck client "A" cycles the open dialog's field right
+    Then deck client "A" screen contains "Agent: shell (left/right cycles: claude, pi, shell)"
+    And deck client "A" screen does not contain "Agent: copilot"
+    And deck client "A" screen does not contain "Agent: codex"
+    When deck client "A" closes the create modal
+    And deck client "A" exits cleanly
+
   @requirement-114-create-preflight-refusal
   Scenario: an agent removed from PATH after the create modal opens is refused at submit, in-dialog, with nothing persisted
     # The Agent field's cycle list is only ever probed once, at client
