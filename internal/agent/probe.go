@@ -18,6 +18,10 @@ type probeRule struct {
 	// bare "Error:" rule would otherwise flip a healthy session to error the
 	// moment any command it ran printed that word to stdout).
 	tailPrefix string
+	// match, when set, is an additional line-aware test the pane must pass
+	// (copilot's working footer and `✗ ` error line are positional, which a
+	// bare substring cannot express).
+	match func(pane string) bool
 }
 
 var probeRules = []probeRule{
@@ -115,27 +119,53 @@ var probeRules = []probeRule{
 	{kind: "codex", contains: []string{"Ask Codex to do anything"}, status: "starting", reason: "startup"},
 }
 
+// copilotProbeRules are copilot's rules, kept apart from probeRules because
+// they are an ordered precedence list (several rules share a status) rather
+// than one rule per verdict.
+var copilotProbeRules = []probeRule{
+	// Copilot CLI 1.0.93 (SPEC §8.4). Hooks carry its status; these rules are
+	// the pane's say where no hook fires (folder trust, an aborted turn, an
+	// error line) and the fallback when the plugin could not be installed.
+	// Fitted to the real captures in testdata/probes/copilot/ (see
+	// copilot-PROVENANCE.md). FIRST MATCH WINS and the order below is the
+	// R219 precedence: trust, permission, question, working, error, idle.
+	// Every marker is a substring that survives an 80-column wrap; none is a
+	// whole footer line (the wrap splits "Manual Approval").
+	{kind: "copilot", contains: []string{"Confirm folder trust", "Do you trust the files in this folder?"}, status: "waiting", reason: "folder trust"},
+	{kind: "copilot", contains: []string{"Do you want to ", "↑/↓ to navigate · enter to select · esc to cancel"}, status: "waiting", reason: "permission prompt"},
+	{kind: "copilot", contains: []string{"Copilot needs information."}, status: "waiting", reason: "question"},
+	{kind: "copilot", match: copilotWorkingFooter, status: "running", reason: "working indicator"},
+	{kind: "copilot", match: copilotErrorLine, status: "error", reason: "error line"},
+	{kind: "copilot", contains: []string{"· / commands"}, status: "idle", reason: "ready"},
+	{kind: "copilot", contains: []string{"@ files · # issues"}, status: "idle", reason: "ready"},
+}
+
 func probe(kind, pane string) (status, reason string) {
 	tail := lastContentLine(pane)
-	for _, rule := range probeRules {
-		if rule.kind != kind {
-			continue
-		}
-		matched := true
-		for _, marker := range rule.contains {
-			if !strings.Contains(pane, marker) {
-				matched = false
-				break
-			}
-		}
-		if matched && rule.tailPrefix != "" && !strings.HasPrefix(tail, rule.tailPrefix) {
-			matched = false
-		}
-		if matched {
+	rules := probeRules
+	if kind == "copilot" {
+		rules = copilotProbeRules
+	}
+	for _, rule := range rules {
+		if rule.kind == kind && rule.matches(pane, tail) {
 			return rule.status, rule.reason
 		}
 	}
 	return "", ""
+}
+
+// matches reports whether every one of the rule's conditions holds for pane.
+// tail is the pane's lastContentLine, computed once by the caller.
+func (rule probeRule) matches(pane, tail string) bool {
+	for _, marker := range rule.contains {
+		if !strings.Contains(pane, marker) {
+			return false
+		}
+	}
+	if rule.match != nil && !rule.match(pane) {
+		return false
+	}
+	return rule.tailPrefix == "" || strings.HasPrefix(tail, rule.tailPrefix)
 }
 
 // lastContentLine returns the pane's last non-blank transcript line,
@@ -184,4 +214,88 @@ func isSeparatorLine(line string) bool {
 		}
 	}
 	return true
+}
+
+// copilotFooterWindow is how many trailing content lines copilotWorkingFooter
+// searches: the footer is the pane's last line (or lines, when an 80-column
+// wrap splits it), so a "● Working ..." line quoted further up the transcript
+// never reads as the live footer.
+const copilotFooterWindow = 6
+
+// copilotWorkingFooter reports whether the pane's footer is Copilot's busy
+// footer: a line led by one of the spinner glyphs ○ ◎ ● ◉ carrying "Working"
+// and either "esc interrupt" or "esc edit prompt".
+func copilotWorkingFooter(pane string) bool {
+	lines := nonBlankLines(pane)
+	if len(lines) > copilotFooterWindow {
+		lines = lines[len(lines)-copilotFooterWindow:]
+	}
+	for _, line := range lines {
+		if !hasAnyPrefix(line, "○ ", "◎ ", "● ", "◉ ") || !strings.Contains(line, "Working") {
+			continue
+		}
+		if strings.Contains(line, "esc interrupt") || strings.Contains(line, "esc edit prompt") {
+			return true
+		}
+	}
+	return false
+}
+
+// copilotErrorLine reports whether a line starting "✗ " sits in the
+// transcript after the last turn and above the context line (the cwd line
+// copilot draws over the composer). A "! " line is a warning, never an error.
+func copilotErrorLine(pane string) bool {
+	transcript := copilotTranscript(pane)
+	if len(transcript) > 0 {
+		transcript = transcript[:len(transcript)-1] // the context line
+	}
+	for i := len(transcript) - 1; i >= 0; i-- {
+		line := transcript[i]
+		if strings.HasPrefix(line, "✗ ") {
+			return true
+		}
+		if strings.HasPrefix(line, "❯ ") {
+			return false // the last turn: nothing newer carries an error
+		}
+	}
+	return false
+}
+
+// copilotTranscript returns the pane's non-blank lines with the composer
+// chrome (the two separators framing the input and the footer below them)
+// removed, each trimmed on the right only so a leading glyph stays visible.
+func copilotTranscript(pane string) []string {
+	lines := strings.Split(strings.ReplaceAll(pane, "\r\n", "\n"), "\n")
+	end, separators := len(lines), 0
+	for i := len(lines) - 1; i >= 0 && separators < 2; i-- {
+		if isSeparatorLine(strings.TrimSpace(lines[i])) {
+			separators++
+			end = i
+		}
+	}
+	if separators < 2 {
+		end = len(lines)
+	}
+	return nonBlankLines(strings.Join(lines[:end], "\n"))
+}
+
+// nonBlankLines splits pane into its non-blank lines, trimmed of surrounding
+// whitespace.
+func nonBlankLines(pane string) []string {
+	var out []string
+	for _, line := range strings.Split(strings.ReplaceAll(pane, "\r\n", "\n"), "\n") {
+		if line = strings.TrimSpace(line); line != "" {
+			out = append(out, line)
+		}
+	}
+	return out
+}
+
+func hasAnyPrefix(s string, prefixes ...string) bool {
+	for _, prefix := range prefixes {
+		if strings.HasPrefix(s, prefix) {
+			return true
+		}
+	}
+	return false
 }

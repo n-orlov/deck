@@ -1166,6 +1166,26 @@ the new id. A payload with no `sessionId` is applied through the `DECK_SESSION_I
 identity like any other kind's. The superseded-launch rule (R74), the budgets, the stale-binary
 message and the auto-heal apply unchanged.
 
+**Pane probe.** Copilot's pane verdicts come from `internal/agent/probe.go` and are matched on
+substrings that survive an 80-column wrap (the wrap splits `Manual Approval` across rows), never on a
+whole footer line. The rules, in **precedence order** (the first match wins):
+
+| # | rule (all of it must hold) | status | reason |
+|---|---|---|---|
+| 1 | `Confirm folder trust` and `Do you trust the files in this folder?` | `waiting` | `folder trust` |
+| 2 | `Do you want to ` and `↑/↓ to navigate · enter to select · esc to cancel` | `waiting` | `permission prompt` |
+| 3 | `Copilot needs information.` | `waiting` | `question` |
+| 4 | one of the last few lines starts with a spinner glyph (`○ ◎ ● ◉`) and holds `Working` and `esc interrupt` or `esc edit prompt` | `running` | `working indicator` |
+| 5 | a line starting `✗ ` after the last turn (`❯ `) and above the context line (the cwd line over the composer) | `error` | `error line` |
+| 6 | the idle footer: `· / commands`, or `@ files · # issues` when a draft is typed | `idle` | `ready` |
+| 7 | anything else | no verdict | none |
+
+A line starting `! ` is a warning and never an error. The trust dialog and the permission dialog share
+the navigation line, so the trust sentences are tested first. A `✗ ` line is also how Copilot prints a
+declined tool call or a failed slash command; any such line after the last turn reads as `error`
+until the next turn scrolls it away. The rules are fitted to the real 1.0.93 captures in
+`internal/agent/testdata/probes/copilot/`.
+
 A launch whose plugin directory cannot be written is **not failed**: it starts without
 `--plugin-dir`, records a `note` event on the session naming the cause, and the row's status
 then comes from the probe alone (§7).
