@@ -3208,7 +3208,8 @@ in the help view.
   write transcript files in the real on-disk layout, print recognisable pane text on
   demand, fire hook payloads at `deck _hook` on command, and can be told to hang, crash,
   or exit. They are the *contract* under test — real-agent conformance is a separate,
-  tagged suite (§13.5). They also **record every terminal size they observe** — the initial
+  tagged suite (§13.5); `fake_agent_drift_copilot.feature` is untagged, so CI itself holds fake-copilot to
+  the recorded probe fixtures' key strings and to #72's payload keys. They also **record every terminal size they observe** — the initial
   one and each `SIGWINCH` — where a step can read it, which is what makes §11's fit and
   §11.9's restore assertions about the agent's own experience rather than inferences from
   tmux's bookkeeping. It is also what a scenario reads to prove the negatives: that a fit is
@@ -3301,6 +3302,9 @@ features/
   health.feature                §9.5 — no tmux, old tmux, missing agent, PATH unresolvable
   real_agent_smoke.feature      @real-agents — the thin conformance subset (§13.5)
   real_agent_copilot.feature    @real-agents — the installed Copilot CLI (§8.4, §13.5)
+  fake_agent_drift_copilot.feature  untagged — fake-copilot's footer/dialog/error strings hold the key
+                                substrings of the recorded probe fixtures and its hook payloads carry the
+                                keys #72 recorded, so a changed fake string or key fails normal CI
 ```
 
 Tags: `@reboot`, `@slow`, `@multiclient`, `@nightly`, `@real-agents`. Default CI run
