@@ -2908,7 +2908,9 @@ must be restored afterwards.
   and hover exactly as for any mouse-tracking full-screen app. The grid reports mode 1004
   (`Grid.FocusReporting`) from the live stream, separately from the mouse modes: it never makes a
   pane look mouse-tracking. deck does not act on it: it never writes a focus-in or focus-out report
-  (`CSI I`, `CSI O`) into the pane.
+  (`CSI I`, `CSI O`) into the pane. A resize while copilot is working is the ordinary full reseed of
+  a fresh grid: copilot redraws on `SIGWINCH`, and the reflowed grid is the new size with none of
+  the old size's cells left.
 - **The pane's text cursor is drawn.** A full `tmux attach` shows where the program's cursor
   is, and editing a prompt in the middle of a line — arrows, word jumps, a deletion — is
   guesswork without it. deck draws the grid's cursor cell in **reverse video**: it survives
