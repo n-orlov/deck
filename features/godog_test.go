@@ -142,6 +142,7 @@ func initializeScenario(sc *godog.ScenarioContext) {
 		return harness.KillTMuxServer(ctx)
 	})
 	registerFakeAgentDriftSteps(sc)
+	registerFakeCopilotDriftSteps(sc)
 	registerRealAgentHookSteps(sc)
 	registerRealAgentCopilotSteps(sc)
 	registerFakeAgentFeatureSteps(sc)
