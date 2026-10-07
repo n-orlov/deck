@@ -58,6 +58,12 @@ type Caps struct {
 	// adding a new adapter with its own transcript-location env need
 	// never requires a change under internal/tui.
 	TranscriptEnvKeys []string
+	// RowBadge is an optional short word the session list's second line
+	// shows for a session of this kind (SPEC §11.3). Empty -- the zero
+	// value, and what claude, codex, pi and shell declare -- renders
+	// nothing, so those kinds' rows are byte-identical to before; copilot
+	// declares "copilot" (R220).
+	RowBadge string
 }
 
 // SupportsProfile reports whether p is one of the profiles Caps declares.
@@ -229,6 +235,24 @@ func (r *Registry) Register(a Adapter) {
 func (r *Registry) Lookup(kind string) (Adapter, bool) {
 	a, ok := r.adapters[kind]
 	return a, ok
+}
+
+// Require is Lookup that reports a missing kind with the one diagnostic every
+// surface that names an agent kind shares -- the create service, resume, the
+// `deck new` command line and the config file's agent key -- so an unknown
+// kind reads identically wherever it was written.
+func (r *Registry) Require(kind string) (Adapter, error) {
+	a, ok := r.adapters[kind]
+	if !ok {
+		return nil, UnknownKindError(kind)
+	}
+	return a, nil
+}
+
+// UnknownKindError is the error for an agent kind no adapter is registered
+// under.
+func UnknownKindError(kind string) error {
+	return fmt.Errorf("unknown agent kind %q", kind)
 }
 
 // Kinds returns a stable, sorted list of every registered kind.

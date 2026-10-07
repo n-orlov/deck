@@ -6270,6 +6270,14 @@ func (m Model) sidebarRowLine2Segments(session store.Session) []settingsRowSegme
 	// the permission-profile badge moves here, to the line's LAST segment,
 	// after the age, instead of leading the line the way it used to.
 	line2Segs = append(line2Segs, settingsRowSegment{Text: m.relativeTime(session.CreatedAt), Tok: line2Tok})
+	// R220: a kind that declares Caps.RowBadge (copilot) names itself between
+	// the age and the permission badge; every other kind declares none and
+	// its row is untouched.
+	if adapter, found := m.registry().Lookup(session.Agent); found {
+		if word := adapter.Capabilities().RowBadge; word != "" {
+			line2Segs = append(line2Segs, settingsRowSegment{Text: " ", Tok: theme.Text}, settingsRowSegment{Text: word, Tok: theme.Badge})
+		}
+	}
 	// SPEC.md:1339: line 2 carries "the permission badge for non-`safe`
 	// last" -- a `safe` profile renders no badge here at all. This is the
 	// sidebar row only; profileBadgeSegment/profileBadge's other callers

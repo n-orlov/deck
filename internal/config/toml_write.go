@@ -289,6 +289,7 @@ var fieldRenderers = map[string]func(FileConfig) string{
 	"ui.theme":               func(c FileConfig) string { return strconv.Quote(c.Theme) },
 	"pre_launch":             func(c FileConfig) string { return strconv.Quote(c.PreLaunch) },
 	"post_destroy":           func(c FileConfig) string { return strconv.Quote(c.PostDestroy) },
+	"agent":                  func(c FileConfig) string { return strconv.Quote(c.Agent) },
 }
 
 // atomicWrite writes data to a temp file created alongside path, then

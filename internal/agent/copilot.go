@@ -52,6 +52,7 @@ func (Copilot) Capabilities() Caps {
 		HasTranscript:         true,
 		Executable:            "copilot",
 		TranscriptEnvKeys:     []string{"COPILOT_HOME"},
+		RowBadge:              "copilot",
 	}
 }
 

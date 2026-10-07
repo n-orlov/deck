@@ -43,6 +43,7 @@ type FileConfig struct {
 	Theme                string
 	PreLaunch            string
 	PostDestroy          string
+	Agent                string
 	Env                  map[string]string
 }
 
@@ -209,6 +210,7 @@ var stringSetters = map[string]func(*FileConfig, string){
 	"interactive_transport": func(c *FileConfig, v string) { c.InteractiveTransport = v },
 	"pre_launch":            func(c *FileConfig, v string) { c.PreLaunch = v },
 	"post_destroy":          func(c *FileConfig, v string) { c.PostDestroy = v },
+	"agent":                 func(c *FileConfig, v string) { c.Agent = v },
 }
 
 // setField parses raw against field's declared Kind and, once valid,

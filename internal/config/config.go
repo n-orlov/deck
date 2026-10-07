@@ -134,6 +134,11 @@ type Settings struct {
 	// pane is gone, in addition to (never instead of) a session's own
 	// post_destroy. Empty by default. Defaults per internal/config.Schema.
 	PostDestroy string
+	// Agent mirrors config.toml's top-level agent key (R220): the agent kind
+	// `deck new` creates when --agent is absent. Empty by default. It is
+	// stored verbatim; cmd/deck checks it against the adapter registry when
+	// `deck new` uses it, with the create service's own unknown-kind error.
+	Agent string
 	// Mouse mirrors config.toml's [ui] mouse key (default true). DECK_MOUSE, when
 	// set, overrides whatever the file said; both control SGR mouse reporting.
 	Mouse bool
@@ -386,6 +391,7 @@ func applyFileConfig(settings *Settings, fileCfg FileConfig) {
 	settings.DefaultGroupFirst = fileCfg.DefaultGroupFirst
 	settings.PreLaunch = fileCfg.PreLaunch
 	settings.PostDestroy = fileCfg.PostDestroy
+	settings.Agent = fileCfg.Agent
 	settings.SortOrder = fileCfg.SortOrder
 	settings.RecentCwdLimit = fileCfg.RecentCwdLimit
 	settings.Mouse = fileCfg.Mouse

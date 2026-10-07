@@ -44,6 +44,7 @@ func TestSchemaPinsKeySet(t *testing.T) {
 		"ui.sort_order",
 		"ui.recent_cwd_limit",
 		"pre_launch",
+		"agent",
 		"post_destroy",
 		"[env]",
 	}
@@ -193,6 +194,7 @@ func TestSchemaScopes(t *testing.T) {
 		"ui.sort_order":          ScopeGlobal,
 		"ui.recent_cwd_limit":    ScopeRestartToApply,
 		"pre_launch":             ScopeRestartToApply,
+		"agent":                  ScopeRestartToApply,
 		"post_destroy":           ScopeRestartToApply,
 		"[env]":                  ScopeRestartToApply,
 	}

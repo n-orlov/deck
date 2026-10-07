@@ -229,9 +229,9 @@ func (s Service) resumeEligibility(ctx context.Context, sessionID string) (store
 		return session, nil, &resumeVerdict{session, ResumeAlreadyRunning, nil}
 	}
 
-	adapter, ok := s.Agents.Lookup(session.Agent)
-	if !ok {
-		return session, nil, &resumeVerdict{session, ResumeStartingElsewhere, fmt.Errorf("unknown agent kind %q", session.Agent)}
+	adapter, err := s.Agents.Require(session.Agent)
+	if err != nil {
+		return session, nil, &resumeVerdict{session, ResumeStartingElsewhere, err}
 	}
 	return session, adapter, nil
 }
