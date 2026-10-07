@@ -156,6 +156,7 @@ func runTUI(settings config.Settings, stderr io.Writer) int {
 	registry.Register(agent.NewClaude())
 	registry.Register(agent.NewPi())
 	registry.Register(agent.NewCodex())
+	registry.Register(agent.NewCopilot())
 	sessions := service.Service{
 		Store: db, TMux: client, Audit: logger,
 		Clock: settings.Clock, IDs: settings.IDs, Agents: registry,

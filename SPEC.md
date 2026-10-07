@@ -55,7 +55,7 @@ worktree per task. What's actually needed is three things:
 | **R3** | **Durable identity.** A named session and its conversation outlive a reboot, an agent upgrade, and `tmux kill-server`. Nothing is auto-restarted; **resume is one keypress, on demand.** | Durable store of `name → cwd → agent → conversation id`. `stopped` is a normal, first-class state, not an error. No boot-time restore service, no autostart. |
 | **R4** | **N concurrent TUIs, one host.** Desktop plus several SSH ttys, hopping between machines mid-task. | State lives in tmux + SQLite (WAL). No process is authoritative, no process is required. Whole-list rewrites from in-memory state are a forbidden pattern; every mutation is a targeted `UPDATE`. Launches take a row lease so two TUIs can't double-start one session. |
 | **R5** | **Lightweight, portable.** One static binary plus tmux, on any Linux. | Go, no cgo, no node, no browser, no Docker, no root, no daemon. systemd is *optional*. No assumption about shell, distro, terminal, or network. |
-| **R6** | **Four agents:** Claude Code, Pi / oh-my-pi, Codex CLI, and a plain `bash` shell session. | Adapter interface with capability degradation — hooks where they exist, pane heuristics where they don't, and honest UI about the difference. |
+| **R6** | **Five agents:** Claude Code, Pi / oh-my-pi, Codex CLI, GitHub Copilot CLI, and a plain `bash` shell session. | Adapter interface with capability degradation — hooks where they exist, pane heuristics where they don't, and honest UI about the difference. |
 | **R7** | **TUI-only.** All actions in the UI: create, resume, kill, delete, env edit, permission mode, conversation lock, sidebar pin, search, config. | Discoverability is a feature, not a nicety: inline help, no hidden verbs a user needs. |
 | **R8** | **Black-box testable, BDD-specified.** Every behaviour in this spec is expressed as Gherkin and verified against the **real binary** driven through a real terminal, with no in-process hooks and no test-only code paths in the product. | The binary must be *drivable* (keystrokes in) and *observable* (rendered screen, tmux state, files, event-hook invocations, structured log) from outside. Determinism controls — state dir redirection, frozen clock, fixed tick, no animation, no colour — are documented, supported configuration, not test scaffolding (§13). |
 
@@ -186,7 +186,7 @@ undocumented in the UI, excluded from help, and prefixed `_`:
 
 | verb | invoked by | contract |
 |---|---|---|
-| `deck _hook` | agent hook config | reads one JSON object on stdin, writes one status update + one event, then spawns the event hook (§10), then — on the non-session-end path only — runs one bounded liveness pass before exiting, which is what "lazily by `_hook`" in §3 and "the next `_hook` invocation" in §7 mean. It never probes: pane heuristics are the TUI's, and putting them on the agent's critical path would also falsify §10.3's second limitation. **Two separate budgets:** the store write completes in < 20 ms **uncontended** (measured on a monotonic clock, §13.1 — under multi-client write contention SQLite may legally hold a writer up to `busy_timeout`, so the budget assertion belongs in a single-writer scenario, not a `@multiclient` one; it is a budget for a normal build, so a `-race` build, several times slower by design, does not assert it); event-hook dispatch is bounded separately by `event_hook_timeout` (§10.3) and never waits on the session-end path. **A state database newer than the hook binary** (the agent keeps the hook command of the deck that launched it, so after deck is upgraded an older `_hook` can meet a newer schema) exits 1 without touching the database and prints, on stderr, a message naming the hook executable's absolute path, its version and its schema, and the database's schema, and saying to restart the session from deck (`R`) so it gets the current hook command. It never says "upgrade deck": that wording stays on the TUI's own store-open path, where the user can upgrade the binary they are running. **Auto-heal:** every store open records, in the `meta` table's `writer_binary` row, the absolute path of the deck binary that last migrated or opened the database for writing (an additive row, not a schema change; the write is skipped when the row already names the running binary, and a failed write never fails the open). Before printing that message, an older `_hook` that has already buffered its stdin payload re-execs the recorded binary once, with the same argv (`_hook`), the buffered payload on stdin and `DECK_HOOK_REEXEC=1` in the environment, and exits with the re-exec'd process's exit code, so the status update lands and the session never notices. The re-exec happens only when the recorded file exists, is an executable regular file, is not the hook's own file, and reports a schema at least as new as the database's (asked with the hidden `deck _schema` verb, which prints the newest schema that binary supports, bounded at 3 s). The re-exec'd writer itself runs under a 10 s timeout: a writer still running at that point is killed and `_hook` prints the restart message above instead, so a wedged writer cannot hold the agent's hook open. `DECK_HOOK_REEXEC` is the loop guard: a process that carries it never re-execs. When any condition fails, `_hook` prints the restart message above and does not re-exec. **The message, the auto-heal with its loop guard and the stale-binding hint (§11.4) hold the same way for Claude, Codex and Pi.** `_hook` does not tell the agent kinds apart (it applies the payload to the row it names), and Claude and Codex embed the identical command, the single-quoted absolute path of the launching deck binary followed by ` _hook`, in `--settings` JSON and in each `-c hooks.<Event>` override respectively; Pi gets the same binary through `DECK_PI_HOOK_EXECUTABLE` for its deck-owned extension (§8.3), which runs it with `_hook` as a separate argv element and no shell, so a Pi session is bound to its launching deck binary and goes stale the same way. |
+| `deck _hook` | agent hook config | reads one JSON object on stdin, writes one status update + one event, then spawns the event hook (§10), then — on the non-session-end path only — runs one bounded liveness pass before exiting, which is what "lazily by `_hook`" in §3 and "the next `_hook` invocation" in §7 mean. It never probes: pane heuristics are the TUI's, and putting them on the agent's critical path would also falsify §10.3's second limitation. **Two separate budgets:** the store write completes in < 20 ms **uncontended** (measured on a monotonic clock, §13.1 — under multi-client write contention SQLite may legally hold a writer up to `busy_timeout`, so the budget assertion belongs in a single-writer scenario, not a `@multiclient` one; it is a budget for a normal build, so a `-race` build, several times slower by design, does not assert it); event-hook dispatch is bounded separately by `event_hook_timeout` (§10.3) and never waits on the session-end path. **A state database newer than the hook binary** (the agent keeps the hook command of the deck that launched it, so after deck is upgraded an older `_hook` can meet a newer schema) exits 1 without touching the database and prints, on stderr, a message naming the hook executable's absolute path, its version and its schema, and the database's schema, and saying to restart the session from deck (`R`) so it gets the current hook command. It never says "upgrade deck": that wording stays on the TUI's own store-open path, where the user can upgrade the binary they are running. **Auto-heal:** every store open records, in the `meta` table's `writer_binary` row, the absolute path of the deck binary that last migrated or opened the database for writing (an additive row, not a schema change; the write is skipped when the row already names the running binary, and a failed write never fails the open). Before printing that message, an older `_hook` that has already buffered its stdin payload re-execs the recorded binary once, with the same argv (`_hook`), the buffered payload on stdin and `DECK_HOOK_REEXEC=1` in the environment, and exits with the re-exec'd process's exit code, so the status update lands and the session never notices. The re-exec happens only when the recorded file exists, is an executable regular file, is not the hook's own file, and reports a schema at least as new as the database's (asked with the hidden `deck _schema` verb, which prints the newest schema that binary supports, bounded at 3 s). The re-exec'd writer itself runs under a 10 s timeout: a writer still running at that point is killed and `_hook` prints the restart message above instead, so a wedged writer cannot hold the agent's hook open. `DECK_HOOK_REEXEC` is the loop guard: a process that carries it never re-execs. When any condition fails, `_hook` prints the restart message above and does not re-exec. **The message, the auto-heal with its loop guard and the stale-binding hint (§11.4) hold the same way for Claude, Codex and Pi.** A `copilot` agent session is launched with no hook command of its own (§8.4), so no `_hook` binds it to a deck binary and its status comes from the probe (§7). `_hook` does not tell the agent kinds apart (it applies the payload to the row it names), and Claude and Codex embed the identical command, the single-quoted absolute path of the launching deck binary followed by ` _hook`, in `--settings` JSON and in each `-c hooks.<Event>` override respectively; Pi gets the same binary through `DECK_PI_HOOK_EXECUTABLE` for its deck-owned extension (§8.3), which runs it with `_hook` as a separate argv element and no shell, so a Pi session is bound to its launching deck binary and goes stale the same way. |
 | `deck _serve-tmux` | optional systemd unit | starts the `deck` tmux server with the right server options and exits. |
 | `deck _debug ...` | developers | inspection helpers, built only with the `debug` build tag. Not in release binaries. |
 
@@ -365,7 +365,7 @@ CREATE TABLE sessions (
   slug               TEXT NOT NULL UNIQUE,  -- tmux session = deck_<slug>
   cwd                TEXT NOT NULL,         -- create-time, never overwritten; NOT unique (R2)
   last_cwd           TEXT,                  -- pane's cwd at the last capture (§9.4); resume target
-  agent              TEXT NOT NULL,         -- claude | pi | codex | shell
+  agent              TEXT NOT NULL,         -- claude | pi | codex | copilot | shell
   launch_args        TEXT NOT NULL DEFAULT '[]', -- JSON array, extra agent args
   env                TEXT NOT NULL DEFAULT '{}', -- JSON map, per-session overrides
   env_dirty          INTEGER NOT NULL DEFAULT 0, -- env edited while running → restart to apply (§6.2)
@@ -487,12 +487,12 @@ the user's `~/.codex/config.toml` can — and on real installations do — set `
 inherit full access. A profile named `safe` that depends on the user's config not being
 permissive is not a profile, it is a wish.
 
-| deck profile | Claude Code | Pi | Codex | shell |
-|---|---|---|---|---|
-| `safe` (default) | **no flag** — Claude's own default mode | default | `-a on-request -s workspace-write` (explicit, never the CLI default) | n/a |
-| `plan` | `--permission-mode plan` | n/a → falls back to `safe`, shown in UI | n/a → falls back to `safe`, shown in UI | n/a |
-| `edits` | `--permission-mode acceptEdits` | `--approve` | `-a never -s workspace-write` | n/a |
-| `yolo` | `--permission-mode bypassPermissions` | `--approve` | `-a never -s danger-full-access` | n/a |
+| deck profile | Claude Code | Pi | Codex | Copilot CLI | shell |
+|---|---|---|---|---|---|
+| `safe` (default) | **no flag** — Claude's own default mode | default | `-a on-request -s workspace-write` (explicit, never the CLI default) | **no flag** | n/a |
+| `plan` | `--permission-mode plan` | n/a → falls back to `safe`, shown in UI | n/a → falls back to `safe`, shown in UI | n/a → falls back to `safe`, shown in UI | n/a |
+| `edits` | `--permission-mode acceptEdits` | `--approve` | `-a never -s workspace-write` | `--allow-tool=write` | n/a |
+| `yolo` | `--permission-mode bypassPermissions` | `--approve` | `-a never -s danger-full-access` | `--allow-all` | n/a |
 
 - Prefer the structured mode flag over a `--dangerously-*` flag where both exist: same
   effect, less flag-name churn. Unsupported profiles degrade to the nearest safe one and
@@ -550,7 +550,7 @@ session it is running for:
 | `DECK_SESSION_NAME` | the display `name` as of this launch |
 | `DECK_SESSION_SLUG` | `slug`, which is tmux's `deck_<slug>` identity (§3.2) |
 | `DECK_SESSION_CWD` | the directory the pane was launched in |
-| `DECK_SESSION_AGENT` | the adapter kind: `claude`, `pi`, `codex` or `shell` |
+| `DECK_SESSION_AGENT` | the adapter kind: `claude`, `pi`, `codex`, `copilot` or `shell` |
 | `DECK_SESSION_GROUP` | the manual group's name (§11), empty for the implicit `default` group |
 | `DECK_SESSION_PROFILE` | the **resolved** permission profile in force (§5), never the requested one |
 | `DECK_SESSION_CONVERSATION_ID` | the agent's own conversation id where the adapter assigns one before launch (§8), empty otherwise |
@@ -871,7 +871,7 @@ adding an agent kind is one file plus one registry entry and no TUI change (R1).
 
 ```go
 type Adapter interface {
-    Kind() string                                      // claude | pi | codex | shell
+    Kind() string                                      // claude | pi | codex | copilot | shell
     Capabilities() Caps                                // declared, never assumed
     Launch(in LaunchInput) (argv []string, err error)
     Resume(in ResumeInput) (argv []string, err error)
@@ -899,16 +899,16 @@ than faking it:
 | `Probe(pane string) (status, reason string)` | pane-text classification where no hook exists (§7) |
 | `TranscriptPaths(in) ([]string, error)` | cross-session search over transcripts (§12) |
 
-| | Claude Code | Pi / oh-my-pi | Codex CLI | shell (bash/zsh/fish) |
-|---|---|---|---|---|
-| **conversation id** | **deck assigns**: `--session-id <uuid>` | **deck assigns**: `--session-id <id>` (created if missing), plus a display name | agent mints it; deck adopts it from the first hook (§8.2) | none |
-| **resume** | `--resume <uuid>` (fork = new id, offered explicitly); `--session-id <uuid>` while the conversation has no transcript yet (§9.1) | `--session-id <id>` | `resume <id>` by id | recreate shell (§9.1) |
-| **id discovery** | not needed | not needed | **§8.2** — `SessionStart` reports it; no filesystem search, no lease | n/a |
-| **status** | **hooks → `deck _hook`** (live) | **extension → `deck _hook`** (live), probe until its first event (§8.3) | **hooks → `deck _hook`** (live), probe until the first prompt (§8.2) | probe (sampled) |
-| **banned** | `--continue` | `--continue` | `resume --last` | — |
+| | Claude Code | Pi / oh-my-pi | Codex CLI | Copilot CLI | shell (bash/zsh/fish) |
+|---|---|---|---|---|---|
+| **conversation id** | **deck assigns**: `--session-id <uuid>` | **deck assigns**: `--session-id <id>` (created if missing), plus a display name | agent mints it; deck adopts it from the first hook (§8.2) | **deck assigns**: `--session-id <uuid>` (a UUID; any other id is refused by `Launch`) | none |
+| **resume** | `--resume <uuid>` (fork = new id, offered explicitly); `--session-id <uuid>` while the conversation has no transcript yet (§9.1) | `--session-id <id>` | `resume <id>` by id | `--session-id <uuid>`, the launch argv again (§8.4) | recreate shell (§9.1) |
+| **id discovery** | not needed | not needed | **§8.2** — `SessionStart` reports it; no filesystem search, no lease | not needed | n/a |
+| **status** | **hooks → `deck _hook`** (live) | **extension → `deck _hook`** (live), probe until its first event (§8.3) | **hooks → `deck _hook`** (live), probe until the first prompt (§8.2) | probe (sampled), §7 | probe (sampled) |
+| **banned** | `--continue` | `--continue` | `resume --last` | `--continue`, `--resume`, `--connect`, `--remote`, `--acp` | — |
 
 **A conversation id is one path component.** A conversation id reaches deck in a hook payload, so
-it is untrusted. Claude's, Codex's and Pi's `TranscriptPaths` decline (`ok = false`, no file
+it is untrusted. Claude's, Codex's, Copilot's and Pi's `TranscriptPaths` decline (`ok = false`, no file
 opened) for an id that is empty, is `.` or `..`, or contains a path separator (`/` or `\`); only
 an id that is a single plain path component is joined into a transcript path, and a valid id
 resolves to the same path as ever. Claude's relaunch decision (§9.1) treats such an id as
@@ -1078,6 +1078,42 @@ has one: for a database newer than the hook binary, that is the R204 restart mes
 Pi has no event for a permission prompt or a failed turn, so a Pi row never reports `waiting` or
 `error` from a hook; those verdicts still come from the probe (§7) and from reconcile.
 
+### 8.4 Copilot CLI
+
+GitHub Copilot CLI is the fifth agent kind, `copilot` (executable `copilot`). Deck assigns the
+conversation id, which must be a UUID: `Launch` refuses any other id with an error, because
+Copilot exits 1 on it and the failure is then deck's, not a dead pane's.
+
+**Argv.** `copilot --session-id <conversation-id>`, then the profile's flags (§5), then
+`--no-auto-update`, then the row's `launch_args` verbatim:
+
+| profile | flags |
+|---|---|
+| `safe` | none |
+| `edits` | `--allow-tool=write` |
+| `yolo` | `--allow-all` |
+
+`--session-id` creates the session when it is new and resumes it when it exists. **`Resume`
+therefore returns the identical argv to `Launch`** for the same conversation id, profile and
+`launch_args`. It never emits `--resume`, which fails for a session killed before its first
+message, so no relaunch special case exists: the adapter does not implement
+`FreshRelauncher` (§9.1) and the service always takes the resume path. No argv built here
+contains `--continue`, `--resume`, `--connect`, `--remote`, `--acp` or `--yolo`.
+
+**Capabilities.** Profiles `safe`, `edits` and `yolo` (no `plan`: it falls back to `safe`, §5);
+`AssignsConversationID`, `Resumable` and `HasTranscript` are true; the declared transcript
+environment key is `COPILOT_HOME`, resolved from the session's own layering (§6.1), never
+from deck's ambient environment.
+
+**Transcript path.** `<root>/session-state/<conversation-id>/events.jsonl`, where `<root>` is
+the session's resolved `COPILOT_HOME` when it is non-empty and `<home>/.copilot` otherwise. The
+lookup declines (`ok = false`, never an error, never a guess) when neither a `COPILOT_HOME`
+nor a home directory is known, when the id is not one path component, and when the file does
+not exist.
+
+**Instrumentation.** A copilot launch adds no instrumentation argv or environment, so the row's
+status comes from the probe (§7).
+
 ## 9. Lifecycle
 
 ### 9.1 Resume, on demand
@@ -1146,7 +1182,7 @@ every session reads `stopped · resumable`, and `r` brings one back:
   3. The conversation is locked (`resume_state = pinned`) → `--resume`.
   4. `CLAUDE_CONFIG_DIR` is set (the transcript location cannot be known) → `--resume`.
   5. The home directory is unknown → `--resume`.
-  6. Codex and Pi → their resume argv from the table in §8, whatever the transcript state.
+  6. Codex, Copilot and Pi → their resume argv from the table in §8, whatever the transcript state. Copilot's resume argv is its launch argv (§8.4), so a copilot session restarted before its first message comes back on the same conversation id and is never relaunched fresh.
 
   `resume_state = fresh-once` is unchanged: it launches a new conversation id once.
 - `shell` sessions "resume" by recreating the shell with their history file, replayed

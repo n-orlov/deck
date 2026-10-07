@@ -10,12 +10,12 @@ Feature: Nothing installed means the Agent field offers only shell (requirement 
     Given deck client "A" is started
     When deck client "A" opens the create modal
     Then deck client "A" screen contains "Agent: shell (left/right cycles: shell)"
-    # "not on PATH: claude, codex, pi" no longer fits framedDialog's wrapped
-    # help line as one substring now that codex is a 3rd missing kind (it
-    # wraps between "claude," and "codex, pi"), so the check is split across
+    # "not on PATH: claude, codex, copilot, pi" no longer fits framedDialog's
+    # wrapped help line as one substring now that codex and copilot are missing
+    # kinds too (it wraps between "claude," and "codex, copilot, pi"), so the check is split across
     # the wrap point rather than asserted as one contiguous string.
     And deck client "A" screen contains "not on PATH: claude,"
-    And deck client "A" screen contains "codex, pi"
+    And deck client "A" screen contains "codex, copilot, pi"
     When deck client "A" presses down 2 times in the open dialog
     And deck client "A" cycles the open dialog's field right
     And deck client "A" cycles the open dialog's field right
@@ -42,12 +42,14 @@ Feature: Nothing installed means the Agent field offers only shell (requirement 
     And deck client "B" exits cleanly
 
   @requirement-114-only-claude-installed
-  Scenario: with only claude installed the Agent field offers shell and claude but not codex or pi
+  Scenario: with only claude installed the Agent field offers shell and claude but not codex, copilot or pi
     Given a fake "claude" binary is on PATH for future deck clients
     And deck client "A" is started
     When deck client "A" opens the create modal
     Then deck client "A" screen contains "Agent: shell (left/right cycles: claude, shell)"
-    And deck client "A" screen contains "not on PATH: codex, pi"
+    # The wrapped help line breaks after "codex," here, so the check is split.
+    And deck client "A" screen contains "not on PATH: codex,"
+    And deck client "A" screen contains "copilot, pi"
     When deck client "A" presses down 2 times in the open dialog
     And deck client "A" cycles the open dialog's field right
     Then deck client "A" screen contains "Agent: claude (left/right cycles: claude, shell)"
@@ -68,7 +70,8 @@ Feature: Nothing installed means the Agent field offers only shell (requirement 
     And deck client "A" is started
     When deck client "A" opens the create modal
     Then deck client "A" screen contains "Agent: shell (left/right cycles: codex, shell)"
-    And deck client "A" screen contains "not on PATH: claude, pi"
+    And deck client "A" screen contains "not on PATH: claude,"
+    And deck client "A" screen contains "copilot, pi"
     When deck client "A" presses down 2 times in the open dialog
     And deck client "A" cycles the open dialog's field right
     Then deck client "A" screen contains "Agent: codex (left/right cycles: codex, shell)"
@@ -126,7 +129,7 @@ Feature: Nothing installed means the Agent field offers only shell (requirement 
     Then deck client "B" screen contains "Agent: shell (left/right cycles: shell)"
     # Same wrap split as the "with nothing installed" scenario above.
     And deck client "B" screen contains "not on PATH: claude,"
-    And deck client "B" screen contains "codex, pi"
+    And deck client "B" screen contains "codex, copilot, pi"
     # Disambiguated exactly like settings.feature's clear-recent-cwds
     # scenario: "(last used) " prefixes whichever field's help currently
     # carries a remembered value, so this must pin the Agent field's own
