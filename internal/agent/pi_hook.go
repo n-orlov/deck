@@ -1,6 +1,9 @@
 package agent
 
-import "path/filepath"
+import (
+	"os"
+	"path/filepath"
+)
 
 // PiHookExecutableEnv names the environment variable that carries the Pi
 // session's hook executable: the absolute path of the deck binary that
@@ -80,10 +83,19 @@ var PiHookEvents = []string{"SessionStart", "UserPromptSubmit", "Stop", "Session
 type InstrumentFile struct {
 	Path    string
 	Content []byte
+	// DirMode is the mode of the file's directory when the launcher has to
+	// create it; zero means 0750.
+	DirMode os.FileMode
+	// Optional marks a file whose installation failing must not fail the
+	// launch: the launcher then drops DropArgv from the instrumentation argv
+	// and carries on (Copilot's --plugin-dir, whose absence the pane probe
+	// covers).
+	Optional bool
+	DropArgv []string
 }
 
 // FileInstrumenter is implemented by an adapter whose Instrument argv names a
-// file deck must have written (only Pi's extension today). Instrument itself
+// file deck must have written (Pi's extension and Copilot's plugin). Instrument itself
 // stays pure; the launcher writes these files, once per launch, in front of
 // the argv that names them.
 type FileInstrumenter interface {

@@ -84,8 +84,24 @@ func copilotArgv(conversationID, profile string, extra []string) ([]string, erro
 	return append(argv, extra...), nil
 }
 
-// Instrument adds nothing yet: hook instrumentation is a separate concern.
-func (Copilot) Instrument(LaunchInput) ([]string, map[string]string) { return nil, nil }
+// Instrument loads deck's static plugin directory (CopilotPluginDir) with
+// --plugin-dir and names the deck binary its hooks run in DECK_EXE. Only the
+// yolo profile also sets COPILOT_ALLOW_ALL=true, which suppresses the
+// folder-trust screen and grants nothing yolo (--allow-all) does not already
+// grant. The launch generation, when the launch holds one, rides along as for
+// the other kinds. It is pure: the plugin files are written by the launcher
+// (InstrumentFiles). The deck row identity reaches the hooks through the pane
+// environment the launch already exports.
+func (Copilot) Instrument(in LaunchInput) ([]string, map[string]string) {
+	env := map[string]string{CopilotDeckExeEnv: in.DeckExecutable}
+	if in.LaunchGeneration != "" {
+		env[LaunchGenerationEnv] = in.LaunchGeneration
+	}
+	if in.Profile == "yolo" {
+		env["COPILOT_ALLOW_ALL"] = "true"
+	}
+	return []string{"--plugin-dir", CopilotPluginDir(in.DeckHome)}, env
+}
 
 // Probe declines every pane until copilot's probe rules exist (probeRules).
 func (Copilot) Probe(pane string) (string, string) { return probe("copilot", pane) }

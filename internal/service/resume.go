@@ -124,7 +124,7 @@ func (s Service) Resume(ctx context.Context, sessionID string) (store.Session, R
 		// R74); the adapter exports it so the pane's hooks carry it.
 		LaunchGeneration: lease.LaunchGeneration,
 	}
-	paneCommand, launchEnv, err := s.buildResumeLaunch(session, adapter, caps, launchInput, freshOnce)
+	paneCommand, launchEnv, err := s.buildResumeLaunch(ctx, session, adapter, caps, launchInput, freshOnce)
 	if err != nil {
 		return s.resumeFailed(ctx, session, err)
 	}
@@ -420,7 +420,7 @@ func (s Service) resolveTranscriptKey(key string, session store.Session) string 
 
 // buildResumeLaunch resolves the pane command and environment of the resumed
 // launch; every error is the launch-failure cause Resume records.
-func (s Service) buildResumeLaunch(session store.Session, adapter agent.Adapter, caps agent.Caps, launchInput agent.LaunchInput, freshOnce bool) ([]string, map[string]string, error) {
+func (s Service) buildResumeLaunch(ctx context.Context, session store.Session, adapter agent.Adapter, caps agent.Caps, launchInput agent.LaunchInput, freshOnce bool) ([]string, map[string]string, error) {
 	argv, err := s.resumeArgv(session, adapter, caps, launchInput, freshOnce)
 	if err != nil {
 		return nil, nil, err
@@ -433,10 +433,11 @@ func (s Service) buildResumeLaunch(session store.Session, adapter agent.Adapter,
 		envCapturedPath = ""
 	}
 	launchEnv := s.resolveLaunchEnv(envCapturedPath, session.Env)
-	argv, launchEnv, err = applyInstrumentation(adapter, launchInput, argv, launchEnv)
+	argv, launchEnv, note, err := applyInstrumentationNoted(adapter, launchInput, argv, launchEnv)
 	if err != nil {
 		return nil, nil, fmt.Errorf("instrument resumed session %q: %w", session.Name, err)
 	}
+	s.recordInstrumentNote(ctx, session.ID, note)
 	// SPEC section 6.1 (R104): deck's own session context is merged last,
 	// above the instrumentation adapters own; the launch kind is "resume"
 	// for every relaunch, including a fresh-once one, and the conversation
