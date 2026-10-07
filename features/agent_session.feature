@@ -152,7 +152,10 @@ Feature: Real agent session creation and resume through the TUI
     And the private tmux session for "early copilot" shows "fake-copilot session: resume" before "fake-copilot plugin-dir:"
     And the state database session "early copilot" has status "starting" from "tmux"
     And exactly 1 private tmux sessions match slug "deck_early-copilot"
-    When deck client "A" exits cleanly
+    # The fake writes events.jsonl into DECK_HOME when it shuts down; ending it
+    # before the client exits keeps that write from racing the scenario teardown.
+    When fake Copilot session "early copilot" exits
+    And deck client "A" exits cleanly
 
   Scenario: login_shell marks captured_path advisory in the row and its detail
     # SPEC §6.3: enabling login_shell is mutually exclusive with relying on
