@@ -3300,6 +3300,7 @@ features/
   search.feature                §12 — metadata/events/transcripts, resume from a hit
   health.feature                §9.5 — no tmux, old tmux, missing agent, PATH unresolvable
   real_agent_smoke.feature      @real-agents — the thin conformance subset (§13.5)
+  real_agent_copilot.feature    @real-agents — the installed Copilot CLI (§8.4, §13.5)
 ```
 
 Tags: `@reboot`, `@slow`, `@multiclient`, `@nightly`, `@real-agents`. Default CI run
@@ -3405,6 +3406,17 @@ does `--session-id` still exist, does the hook payload still carry the fields §
 on, is the transcript still where the adapter looks. It is expected to break when an agent
 upgrades: that's its job. Kept out of the default run so upstream churn never blocks a
 commit.
+
+The Copilot half (`real_agent_copilot.feature`) runs against the installed `copilot` with a
+temporary `COPILOT_HOME` (never `~/.copilot`). It asserts that `--session-id <uuid>` creates
+the session directory and that the same argv resumes it with no second directory, that a
+session SIGKILLed before its first message is relaunched by Resume's argv, that deck's plugin
+hooks deliver `userPromptSubmitted` and `agentStop`, and that a live pane carries the key
+substrings of each of the six probe fixtures (trust, permission, question, working, error,
+idle); a unit test keeps those substrings inside the recorded fixtures. Its first step skips
+the scenario with a stated reason when `copilot` is not on `PATH` or cannot answer one
+non-interactive prompt (not logged in), and no reason or log line ever carries a token. A
+unit test proves the skip fires for a missing binary, so the default run cannot fail for it.
 
 **Fixture corpus.** Probe heuristics (§7) are driven by captured pane text per agent per
 state, stored as fixtures and asserted through the UI badge, so a spinner or prompt
