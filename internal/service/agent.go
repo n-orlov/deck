@@ -465,6 +465,19 @@ func dropArgvRun(argv, drop []string) []string {
 // or existing directory is held to dirMode when one is requested.
 func writeFileAtomic(path string, content []byte, dirMode os.FileMode) error {
 	dir := filepath.Dir(path)
+	if err := ensureInstrumentDir(dir, dirMode); err != nil {
+		return err
+	}
+	existing, readErr := os.ReadFile(path) //nolint:gosec // G304: path is a deck-owned instrumentation file under the data root, never user input
+	if readErr == nil && bytes.Equal(existing, content) {
+		return nil
+	}
+	return replaceFile(dir, path, content)
+}
+
+// ensureInstrumentDir creates dir (mode dirMode, 0750 when zero) and, when a
+// mode was requested, holds an already-existing directory to exactly it.
+func ensureInstrumentDir(dir string, dirMode os.FileMode) error {
 	mode := dirMode
 	if mode == 0 {
 		mode = 0o750
@@ -472,19 +485,22 @@ func writeFileAtomic(path string, content []byte, dirMode os.FileMode) error {
 	if err := os.MkdirAll(dir, mode); err != nil {
 		return err
 	}
-	if dirMode != 0 {
-		if info, err := os.Stat(dir); err != nil {
-			return err
-		} else if info.Mode().Perm() != dirMode {
-			if err := os.Chmod(dir, dirMode); err != nil {
-				return err
-			}
-		}
-	}
-	existing, readErr := os.ReadFile(path) //nolint:gosec // G304: path is a deck-owned instrumentation file under the data root, never user input
-	if readErr == nil && bytes.Equal(existing, content) {
+	if dirMode == 0 {
 		return nil
 	}
+	info, err := os.Stat(dir)
+	if err != nil {
+		return err
+	}
+	if info.Mode().Perm() == dirMode {
+		return nil
+	}
+	return os.Chmod(dir, dirMode)
+}
+
+// replaceFile writes content to a temporary file in dir and renames it over
+// path, removing the temporary file when either step fails.
+func replaceFile(dir, path string, content []byte) error {
 	tmp, err := os.CreateTemp(dir, ".instrument-*")
 	if err != nil {
 		return err
