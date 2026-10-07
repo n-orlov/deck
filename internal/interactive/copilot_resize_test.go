@@ -27,7 +27,7 @@ func startWorkingCopilot(t *testing.T, width, height int) (socket, deckHome stri
 	t.Helper()
 	dir := t.TempDir()
 	binary := filepath.Join(dir, "fake-copilot")
-	build := exec.Command("go", "build", "-o", binary, "./cmd/fake-copilot") //nolint:gosec // G204: fixed arguments
+	build := exec.Command("go", "build", "-o", binary, "./cmd/fake-copilot")
 	build.Dir = "../.."
 	if out, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("build fake-copilot: %v\n%s", err, out)
@@ -47,7 +47,7 @@ func startWorkingCopilot(t *testing.T, width, height int) (socket, deckHome stri
 		"DECK_HOME=" + deckHome, "COPILOT_HOME=" + copilotHome,
 		binary, "--session-id", copilotResizeSessionID,
 	}
-	if out, err := exec.Command("tmux", args...).CombinedOutput(); err != nil { //nolint:gosec // G204: test-owned arguments
+	if out, err := exec.Command("tmux", args...).CombinedOutput(); err != nil {
 		t.Fatalf("start the fake copilot pane: %v: %s", err, out)
 	}
 	t.Cleanup(func() { _ = exec.Command("tmux", "-L", socket, "kill-server").Run() })
