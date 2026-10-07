@@ -32,6 +32,7 @@ func registerAgentSessionSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^a fake "pi" binary is on PATH for future deck clients$`, fakePiOnPATHForFutureClients)
 	sc.Step(`^a fake "codex" binary is on PATH for future deck clients$`, fakeCodexOnPATHForFutureClients)
 	sc.Step(`^a long-running fake "codex" binary is on PATH for future deck clients$`, longRunningFakeCodexOnPATHForFutureClients)
+	sc.Step(`^a long-running fake "copilot" binary is on PATH for future deck clients$`, longRunningFakeCopilotOnPATHForFutureClients)
 	sc.Step(`^the fake "claude" binary is removed from PATH$`, fakeClaudeRemovedFromPATH)
 	sc.Step(`^the fake "pi" binary is removed from PATH$`, fakePiRemovedFromPATH)
 	sc.Step(`^the fake "codex" binary is removed from PATH$`, fakeCodexRemovedFromPATH)
@@ -204,6 +205,44 @@ func installFakeCodexOnPATH(ctx context.Context, longRunning bool) error {
 	}
 	if err := os.WriteFile(codexWrapper, []byte(script), 0o700); err != nil {
 		return fmt.Errorf("write codex fixture wrapper: %w", err)
+	}
+	h.agentPATHDir = dir
+	homeDir := filepath.Join(h.Home, "agent-fixture-home")
+	if err := os.MkdirAll(homeDir, 0o700); err != nil {
+		return fmt.Errorf("create fixture HOME directory: %w", err)
+	}
+	h.agentHOMEDir = homeDir
+	return nil
+}
+
+// longRunningFakeCopilotOnPATHForFutureClients builds the repository's
+// fake-copilot fixture into the scenario's shared fake agent PATH directory as
+// a binary named exactly "copilot", in its commands mode so the pane stays up
+// like a real Copilot waiting for input (R224). It shares installFakeClaudeOnPATH's
+// directory and fixture HOME; fake-copilot keeps its sessions under that HOME's
+// .copilot, never the operator's.
+func longRunningFakeCopilotOnPATHForFutureClients(ctx context.Context) error {
+	h, err := scenarioHarness(ctx)
+	if err != nil {
+		return err
+	}
+	root, err := repositoryRoot()
+	if err != nil {
+		return err
+	}
+	dir := filepath.Join(h.Home, "fake-agent-path")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return fmt.Errorf("create fake agent PATH directory: %w", err)
+	}
+	realBinary := filepath.Join(dir, "fake-copilot-real")
+	build := exec.CommandContext(ctx, "go", "build", "-o", realBinary, "./cmd/fake-copilot")
+	build.Dir = root
+	if output, err := build.CombinedOutput(); err != nil {
+		return fmt.Errorf("build fake copilot fixture: %w\n%s", err, output)
+	}
+	script := "#!/bin/sh\nFAKE_COPILOT_COMMANDS=1 exec \"" + realBinary + "\" \"$@\"\n"
+	if err := os.WriteFile(filepath.Join(dir, "copilot"), []byte(script), 0o700); err != nil {
+		return fmt.Errorf("write copilot fixture wrapper: %w", err)
 	}
 	h.agentPATHDir = dir
 	homeDir := filepath.Join(h.Home, "agent-fixture-home")
