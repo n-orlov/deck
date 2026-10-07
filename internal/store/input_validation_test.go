@@ -40,6 +40,8 @@ func TestMutatorsRejectMissingIdentityOrTimestamp(t *testing.T) {
 		{"probe miss without id", func(s *Store) error { return s.RecordProbeMiss(ctx, "", at) }, "session id is required"},
 		{"probe miss without timestamp", func(s *Store) error { return s.RecordProbeMiss(ctx, id, 0) }, "event timestamp is required"},
 		{"conversation id without conversation", func(s *Store) error { return s.SetConversationID(ctx, id, "", "hook", at) }, "session id and conversation id are required"},
+		{"profile reason without reason", func(s *Store) error { return s.SetPermissionProfileReason(ctx, id, "", "probe", at) }, "session id and reason are required"},
+		{"profile reason without timestamp", func(s *Store) error { return s.SetPermissionProfileReason(ctx, id, "why", "probe", 0) }, "event timestamp is required"},
 		{"permission profile without profile", func(s *Store) error { return s.SetPermissionProfile(ctx, id, "", "ui", at) }, "session id and permission profile are required"},
 		{"env value without key", func(s *Store) error { return s.SetSessionEnvValue(ctx, id, "", "v", "ui", at) }, "session id and environment key are required"},
 		{"env value without timestamp", func(s *Store) error { return s.SetSessionEnvValue(ctx, id, "K", "v", "ui", 0) }, "event timestamp is required"},

@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 )
 
 // copilotProfileFlags maps SPEC §5 permission profile names to the flags
@@ -103,7 +104,29 @@ func (Copilot) Instrument(in LaunchInput) ([]string, map[string]string) {
 	return []string{"--plugin-dir", CopilotPluginDir(in.DeckHome)}, env
 }
 
-// Probe declines every pane until copilot's probe rules exist (probeRules).
+// CopilotElevatedReason is the profile-honesty reason stored when a session
+// launched as safe or edits shows Copilot's Allow All footer.
+const CopilotElevatedReason = "Copilot's own settings elevated the profile to Allow All; deck launched it with this profile"
+
+// AuditProfile reports a safe or edits launch whose footer shows "Allow All"
+// (Copilot's own user settings can turn it on, which deck cannot override). A
+// yolo launch is already Allow All, so nothing is reported for it, and a
+// pane with no footer makes no claim. Only the footer below the composer is
+// read, so "Allow All" quoted in the transcript never counts.
+func (Copilot) AuditProfile(profile, pane string) string {
+	if profile != "safe" && profile != "edits" {
+		return ""
+	}
+	for _, line := range copilotFooterLines(pane) {
+		// "Allow All" can wrap at 80 columns, so the stable prefix is matched.
+		if strings.Contains(line, "Interactive · Allow") {
+			return CopilotElevatedReason
+		}
+	}
+	return ""
+}
+
+// Probe classifies a pane with copilot's own rule table (copilotProbeRules).
 func (Copilot) Probe(pane string) (string, string) { return probe("copilot", pane) }
 
 // TranscriptPaths returns <root>/session-state/<id>/events.jsonl, where root is

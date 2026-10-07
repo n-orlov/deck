@@ -206,3 +206,32 @@ func TestCopilotWorkingFooterNeedsAGlyphWorkingAndAnEscHint(t *testing.T) {
 		}
 	}
 }
+
+func TestCopilotAuditProfileReadsOnlyTheFooterBelowTheComposer(t *testing.T) {
+	allowAll := copilotPane(t, "allow-all-footer.txt")
+	manual := copilotPane(t, "idle.txt")
+	copilot := NewCopilot()
+	for _, profile := range []string{"safe", "edits"} {
+		if copilot.AuditProfile(profile, allowAll) != CopilotElevatedReason {
+			t.Fatalf("%s with the Allow All footer not reported", profile)
+		}
+		if got := copilot.AuditProfile(profile, manual); got != "" {
+			t.Fatalf("%s with Manual Approval reported: %q", profile, got)
+		}
+	}
+	if got := copilot.AuditProfile("yolo", allowAll); got != "" {
+		t.Fatalf("yolo reported: %q", got)
+	}
+	// "Allow All" quoted in the transcript, or a pane with no composer, is no claim.
+	if got := copilot.AuditProfile("safe", "Interactive · Allow All quoted\n"+manual); got != "" {
+		t.Fatalf("a transcript line was read as the footer: %q", got)
+	}
+	if got := copilot.AuditProfile("safe", "← Interactive · Allow All"); got != "" {
+		t.Fatalf("a pane without a composer was read as a footer: %q", got)
+	}
+	// An 80-column wrap splits "Allow All"; the stable prefix still matches.
+	wrapped := strings.Replace(copilotPane(t, "idle-wrapped-80.txt"), "Manual", "Allow ", 1)
+	if got := copilot.AuditProfile("edits", wrapped); got != CopilotElevatedReason {
+		t.Fatalf("wrapped Allow All footer not reported: %q", got)
+	}
+}

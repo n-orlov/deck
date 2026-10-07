@@ -166,6 +166,16 @@ type FreshRelauncher interface {
 	RelaunchFresh(in TranscriptInput) bool
 }
 
+// ProfileAuditor is an optional interface of an adapter whose agent can run
+// with a more permissive profile than deck launched it with (Copilot's own
+// settings can turn on Allow All). AuditProfile compares the profile deck
+// launched with and the sampled pane; a non-empty reason says the live profile
+// is more permissive than launched, in words fit for the detail pane's
+// `degraded:` line. An adapter that does not implement it is never audited.
+type ProfileAuditor interface {
+	AuditProfile(profile, pane string) (reason string)
+}
+
 // Adapter is implemented by each supported agent kind. It declares its
 // capabilities and turns launch/resume requests into argv — it never runs
 // anything itself; internal/service is responsible for the pane.

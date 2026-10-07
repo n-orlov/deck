@@ -8,6 +8,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/n-orlov/deck/internal/agent"
 	"github.com/n-orlov/deck/internal/store"
 	"github.com/n-orlov/deck/internal/tmux"
 )
@@ -256,8 +257,34 @@ func (s Service) probeLivePane(ctx context.Context, session store.Session, obser
 	if !ok {
 		return fmt.Errorf("probe session %q: unknown agent %q", session.ID, session.Agent)
 	}
+	if err := s.auditProfile(ctx, session, adapter, string(captured)); err != nil {
+		return err
+	}
 	status, reason := adapter.Probe(string(captured))
 	return s.recordProbe(ctx, session, status, reason, staleAfter)
+}
+
+// auditProfile reports, through the stored permission-profile reason the
+// detail pane shows as `degraded:`, a live pane that is more permissive than
+// the profile deck launched. An existing reason (an unsupported profile that
+// fell back to safe) is kept and extended, and an already-reported pane is not
+// rewritten on every pass.
+func (s Service) auditProfile(ctx context.Context, session store.Session, adapter agent.Adapter, pane string) error {
+	auditor, ok := adapter.(agent.ProfileAuditor)
+	if !ok {
+		return nil
+	}
+	reason := auditor.AuditProfile(session.PermissionProfile, pane)
+	if reason == "" || strings.Contains(session.PermissionProfileReason, reason) {
+		return nil
+	}
+	if session.PermissionProfileReason != "" {
+		reason = session.PermissionProfileReason + "; " + reason
+	}
+	if err := s.Store.SetPermissionProfileReason(ctx, session.ID, reason, "probe", s.Clock.Now().UnixMilli()); err != nil {
+		return fmt.Errorf("record elevated profile for session %q: %w", session.ID, err)
+	}
+	return nil
 }
 
 // recordProbe stores a probe verdict. A total miss (no probeRule matched at
