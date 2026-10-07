@@ -1,11 +1,13 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 
 	"github.com/n-orlov/deck/internal/agent"
 	"github.com/n-orlov/deck/internal/store"
@@ -201,7 +203,7 @@ func (s Service) insertAgentRow(ctx context.Context, input AgentCreateInput, pla
 // "starting" row, launches it in tmux and records the ready transition. Every
 // failure leaves a durable error row through launchFailed.
 func (s Service) launchAgent(ctx context.Context, input AgentCreateInput, plan agentCreatePlan, session store.Session) (store.Session, error) {
-	paneCommand, launchEnv, err := s.buildAgentLaunch(input, plan, session)
+	paneCommand, launchEnv, err := s.buildAgentLaunch(ctx, input, plan, session)
 	if err != nil {
 		return s.launchFailed(ctx, session, err)
 	}
@@ -244,7 +246,7 @@ func (s Service) recordAgentReady(ctx context.Context, session store.Session) er
 // buildAgentLaunch resolves the pane command and environment a created row
 // launches with. Its errors are already the final, wrapped launch-failure
 // messages.
-func (s Service) buildAgentLaunch(input AgentCreateInput, plan agentCreatePlan, session store.Session) ([]string, map[string]string, error) {
+func (s Service) buildAgentLaunch(ctx context.Context, input AgentCreateInput, plan agentCreatePlan, session store.Session) ([]string, map[string]string, error) {
 	// No LaunchGeneration here: a brand-new row's first launch takes no launch
 	// lease (the row is created directly as `starting`), so there is no earlier
 	// launch of it that a hook could be confused with (issue #11, R74). The
@@ -274,10 +276,11 @@ func (s Service) buildAgentLaunch(input AgentCreateInput, plan agentCreatePlan, 
 		envCapturedPath = ""
 	}
 	launchEnv := s.resolveLaunchEnv(envCapturedPath, input.Env)
-	argv, launchEnv, err = applyInstrumentation(plan.adapter, launchInput, argv, launchEnv)
+	argv, launchEnv, note, err := applyInstrumentationNoted(plan.adapter, launchInput, argv, launchEnv)
 	if err != nil {
 		return nil, nil, fmt.Errorf("instrument agent session %q: %w", session.Name, err)
 	}
+	s.recordInstrumentNote(ctx, session.ID, note)
 	// SPEC §6.1 (R104): deck's own session context is merged last, above the
 	// instrumentation adapters own, so a session `env` or config `[env]` key
 	// of the same name can never lie to a hook about which session it is.
@@ -371,18 +374,28 @@ func preLaunchScript(globalPreLaunch, preLaunch string) string {
 // applyInstrumentation appends adapter-owned argv and merges its environment
 // last, so deck's hook routing facts cannot be replaced by user configuration.
 func applyInstrumentation(adapter agent.Adapter, input agent.LaunchInput, argv []string, launchEnv map[string]string) ([]string, map[string]string, error) {
+	argv, launchEnv, _, err := applyInstrumentationNoted(adapter, input, argv, launchEnv)
+	return argv, launchEnv, err
+}
+
+// applyInstrumentationNoted is applyInstrumentation that also reports the
+// non-fatal note of an optional instrumentation file it could not install
+// (empty when everything installed): the launch goes ahead without that
+// file's argv, and the caller records the note against the session.
+func applyInstrumentationNoted(adapter agent.Adapter, input agent.LaunchInput, argv []string, launchEnv map[string]string) ([]string, map[string]string, string, error) {
 	instrumentArgv, instrumentEnv := adapter.Instrument(input)
 	if len(instrumentArgv) == 0 && len(instrumentEnv) == 0 {
-		return argv, launchEnv, nil
+		return argv, launchEnv, "", nil
 	}
 	if !filepath.IsAbs(input.DeckExecutable) {
-		return nil, nil, errors.New("deck executable for instrumentation must be absolute")
+		return nil, nil, "", errors.New("deck executable for instrumentation must be absolute")
 	}
 	if input.DeckHome == "" {
-		return nil, nil, errors.New("deck home for instrumentation is required")
+		return nil, nil, "", errors.New("deck home for instrumentation is required")
 	}
-	if err := writeInstrumentFiles(adapter, input); err != nil {
-		return nil, nil, err
+	instrumentArgv, note, err := installInstrumentFiles(adapter, input, instrumentArgv)
+	if err != nil {
+		return nil, nil, "", err
 	}
 	argv = append(argv, instrumentArgv...)
 	// Instrumentation is deck-owned and wins over config/session keys with
@@ -390,32 +403,87 @@ func applyInstrumentation(adapter agent.Adapter, input agent.LaunchInput, argv [
 	for key, value := range instrumentEnv {
 		launchEnv[key] = value
 	}
-	return argv, launchEnv, nil
+	return argv, launchEnv, note, nil
 }
 
-// writeInstrumentFiles puts the deck-owned files an adapter's instrumentation
-// names on disk before the agent starts (Pi's extension). Each file is
-// replaced through a temporary file and a rename, so a concurrent launch or a
-// running agent never reads a half-written file.
-func writeInstrumentFiles(adapter agent.Adapter, input agent.LaunchInput) error {
+// recordInstrumentNote stores a degraded-instrumentation note on the session,
+// best effort: a note that cannot be recorded never fails the launch.
+func (s Service) recordInstrumentNote(ctx context.Context, sessionID, note string) {
+	if note == "" || s.Store == nil || s.Clock == nil {
+		return
+	}
+	_ = s.Store.RecordSessionNote(ctx, sessionID, note, s.Clock.Now().UnixMilli())
+}
+
+// installInstrumentFiles puts the deck-owned files an adapter's instrumentation
+// names on disk before the agent starts (Pi's extension, Copilot's plugin).
+// A file is only rewritten when its bytes differ, through a temporary file
+// and a rename, so a concurrent launch or a running agent never reads a
+// half-written file. A failure on a required file fails the launch; a failure
+// on an Optional one removes that file's DropArgv from the returned argv and
+// is reported as a note instead.
+func installInstrumentFiles(adapter agent.Adapter, input agent.LaunchInput, instrumentArgv []string) ([]string, string, error) {
 	provider, ok := adapter.(agent.FileInstrumenter)
 	if !ok {
-		return nil
+		return instrumentArgv, "", nil
 	}
+	var note string
 	for _, file := range provider.InstrumentFiles(input) {
-		if err := writeFileAtomic(file.Path, file.Content); err != nil {
-			return fmt.Errorf("install %s instrumentation: %w", adapter.Kind(), err)
+		err := writeFileAtomic(file.Path, file.Content, file.DirMode)
+		if err == nil {
+			continue
+		}
+		if !file.Optional {
+			return nil, "", fmt.Errorf("install %s instrumentation: %w", adapter.Kind(), err)
+		}
+		instrumentArgv = dropArgvRun(instrumentArgv, file.DropArgv)
+		note = fmt.Sprintf("%s hook instrumentation unavailable, launched without it: %v", adapter.Kind(), err)
+	}
+	return instrumentArgv, note, nil
+}
+
+// writeInstrumentFiles is installInstrumentFiles for a caller that only needs
+// to know whether a required file could not be installed.
+func writeInstrumentFiles(adapter agent.Adapter, input agent.LaunchInput) error {
+	_, _, err := installInstrumentFiles(adapter, input, nil)
+	return err
+}
+
+// dropArgvRun returns argv without the first contiguous run equal to drop.
+func dropArgvRun(argv, drop []string) []string {
+	for i := 0; i+len(drop) <= len(argv) && len(drop) > 0; i++ {
+		if slices.Equal(argv[i:i+len(drop)], drop) {
+			return append(slices.Clone(argv[:i]), argv[i+len(drop):]...)
 		}
 	}
-	return nil
+	return argv
 }
 
 // writeFileAtomic writes content to path through a sibling temporary file and
-// a rename, creating the directory when needed.
-func writeFileAtomic(path string, content []byte) error {
+// a rename, creating the directory (mode dirMode, 0750 when zero) when needed.
+// A file that already holds exactly content is left untouched, and a created
+// or existing directory is held to dirMode when one is requested.
+func writeFileAtomic(path string, content []byte, dirMode os.FileMode) error {
 	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0o750); err != nil {
+	mode := dirMode
+	if mode == 0 {
+		mode = 0o750
+	}
+	if err := os.MkdirAll(dir, mode); err != nil {
 		return err
+	}
+	if dirMode != 0 {
+		if info, err := os.Stat(dir); err != nil {
+			return err
+		} else if info.Mode().Perm() != dirMode {
+			if err := os.Chmod(dir, dirMode); err != nil {
+				return err
+			}
+		}
+	}
+	existing, readErr := os.ReadFile(path) //nolint:gosec // G304: path is a deck-owned instrumentation file under the data root, never user input
+	if readErr == nil && bytes.Equal(existing, content) {
+		return nil
 	}
 	tmp, err := os.CreateTemp(dir, ".instrument-*")
 	if err != nil {
