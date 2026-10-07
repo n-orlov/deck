@@ -1,6 +1,6 @@
 # deck
 
-TUI session manager for CLI coding agents (Claude Code, pi, plain shell) on tmux.
+TUI session manager for CLI coding agents (Claude Code, pi, Codex CLI, Copilot CLI, plain shell) on tmux.
 Named sessions, durable conversations, resume on demand.
 
 ## Install
@@ -10,7 +10,7 @@ curl -fsSL https://raw.githubusercontent.com/n-orlov/deck/main/install.sh | sh
 ```
 
 - Installs to `~/.local/bin/deck`. Override: `DECK_INSTALL_DIR`, `DECK_VERSION=vX.Y.Z`.
-- Requires **tmux >= 3.2**. Agents (`claude`, `pi`) only appear if they are on `PATH`.
+- Requires **tmux >= 3.2**. Agents (`claude`, `pi`, `codex`, `copilot`) only appear if they are on `PATH`.
 - Linux and macOS, amd64 and arm64. **No Windows** (needs tmux) -- use WSL.
 - Check: `deck --version`. Update: rerun the same line.
 
@@ -22,7 +22,7 @@ deck
 
 | key | action |
 |-----|--------|
-| `n` | new session (shell / claude / pi) |
+| `n` | new session (shell / claude / pi / codex / copilot) |
 | `↵` | interactive mode in the preview; `Ctrl+Q` leaves |
 | `a` | full tmux attach |
 | `r` / `x` / `u` | resume / kill / undo |

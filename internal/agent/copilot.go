@@ -1,0 +1,115 @@
+package agent
+
+import (
+	"fmt"
+	"os"
+	"path/filepath"
+	"regexp"
+)
+
+// copilotProfileFlags maps SPEC §5 permission profile names to the flags
+// GitHub Copilot CLI accepts for them. Only these three entries exist: no
+// "plan" entry (Copilot's plan and autopilot modes are not deck profiles) and
+// no aliasing of an unsupported profile onto "safe" -- that resolution is the
+// caller's, through Caps.ResolveProfile, before Launch or Resume sees it.
+//
+// "safe" carries no flag: Copilot's own default asks before every tool use.
+var copilotProfileFlags = map[string][]string{
+	"safe":  nil,
+	"edits": {"--allow-tool=write"},
+	"yolo":  {"--allow-all"},
+}
+
+// copilotProfiles is the stable, declared list of profiles the Copilot adapter
+// honestly supports (SPEC §5).
+var copilotProfiles = []string{"safe", "edits", "yolo"}
+
+// copilotUUID is the only conversation id shape `copilot --session-id`
+// accepts; Copilot exits 1 on any other.
+var copilotUUID = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
+
+// Copilot is the adapter for GitHub Copilot CLI. Deck assigns the
+// conversation id (a UUID) at launch with `--session-id`, which creates the
+// session when it is new and resumes it when it exists, so Resume is the same
+// argv as Launch and the adapter needs no FreshRelauncher.
+type Copilot struct{}
+
+// NewCopilot returns the Copilot adapter.
+func NewCopilot() Copilot { return Copilot{} }
+
+// Kind returns the registry name of the Copilot adapter.
+func (Copilot) Kind() string { return "copilot" }
+
+// Capabilities declares what Copilot can honestly do: deck assigns its
+// conversation id, it can be resumed and it writes a transcript under its home
+// directory, which a session-level COPILOT_HOME override relocates.
+func (Copilot) Capabilities() Caps {
+	return Caps{
+		Profiles:              copilotProfiles,
+		AssignsConversationID: true,
+		Resumable:             true,
+		HasTranscript:         true,
+		Executable:            "copilot",
+		TranscriptEnvKeys:     []string{"COPILOT_HOME"},
+	}
+}
+
+// Launch returns `copilot --session-id <id>` plus the profile's flags, then
+// --no-auto-update, then ExtraArgs verbatim. A conversation id that is not a
+// UUID is refused here, because Copilot would exit 1 on it and the failure
+// would otherwise surface as a dead pane.
+func (Copilot) Launch(in LaunchInput) ([]string, error) {
+	return copilotArgv(in.ConversationID, in.Profile, in.ExtraArgs)
+}
+
+// Resume returns exactly the argv Launch returns for the same conversation id,
+// profile and ExtraArgs. `--session-id` resumes an existing session, whereas
+// `--resume` fails for one killed before its first message, so Resume never
+// emits `--resume` (nor --continue, --connect, --remote or --acp).
+func (Copilot) Resume(in ResumeInput) ([]string, error) {
+	return copilotArgv(in.ConversationID, in.Profile, in.ExtraArgs)
+}
+
+func copilotArgv(conversationID, profile string, extra []string) ([]string, error) {
+	flags, ok := copilotProfileFlags[profile]
+	if !ok {
+		return nil, fmt.Errorf("copilot: unsupported permission profile %q", profile)
+	}
+	if !copilotUUID.MatchString(conversationID) {
+		return nil, fmt.Errorf("copilot: conversation id %q is not a UUID", conversationID)
+	}
+	argv := []string{"copilot", "--session-id", conversationID}
+	argv = append(argv, flags...)
+	argv = append(argv, "--no-auto-update")
+	return append(argv, extra...), nil
+}
+
+// Instrument adds nothing yet: hook instrumentation is a separate concern.
+func (Copilot) Instrument(LaunchInput) ([]string, map[string]string) { return nil, nil }
+
+// Probe declines every pane until copilot's probe rules exist (probeRules).
+func (Copilot) Probe(pane string) (string, string) { return probe("copilot", pane) }
+
+// TranscriptPaths returns <root>/session-state/<id>/events.jsonl, where root is
+// in.Env["COPILOT_HOME"] when the caller resolved a non-empty value for that
+// declared key and in.Home + "/.copilot" otherwise. It never reads the ambient
+// environment. ok=false -- never an error, never a guess -- when the id is not
+// one safe path component, when neither a COPILOT_HOME nor a Home is known, or
+// when the file does not exist.
+func (Copilot) TranscriptPaths(in TranscriptInput) (string, bool) {
+	if !safeConversationID(in.ConversationID) {
+		return "", false
+	}
+	root := in.Env["COPILOT_HOME"]
+	if root == "" {
+		if in.Home == "" {
+			return "", false
+		}
+		root = filepath.Join(in.Home, ".copilot")
+	}
+	path := filepath.Join(root, "session-state", in.ConversationID, "events.jsonl")
+	if info, err := os.Stat(path); err != nil || !info.Mode().IsRegular() {
+		return "", false
+	}
+	return path, true
+}
