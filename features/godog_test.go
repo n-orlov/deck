@@ -114,6 +114,7 @@ func initializeScenario(sc *godog.ScenarioContext) {
 	registerCellAttributeSteps(sc)
 	registerFrameBudgetSteps(sc)
 	registerConfigFileSteps(sc)
+	registerConfigReloadSteps(sc)
 	registerDeterminismSteps(sc)
 	registerStoreFeatureSteps(sc)
 	registerCreateTildeCWDSteps(sc)

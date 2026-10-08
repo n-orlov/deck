@@ -443,10 +443,22 @@ func (m *Model) settingsSave() tea.Cmd {
 		m.settingsNote = "save failed: no config file path is configured"
 		return nil
 	}
+	// A reload held back for this open edit is folded into the write: keys the
+	// user did not touch take the reloaded values (SPEC §6.5).
+	if m.reloadHeld != nil {
+		m.settingsEdits = mergeHeldReload(m.settingsEdits, m.settingsSavedEdits, m.reloadHeld.File)
+	}
 	if err := config.WriteConfigFile(path, m.settingsEdits); err != nil {
 		m.settingsNote = "save failed: " + err.Error()
 		return nil
 	}
+	m.reloadHeld = nil
+	// Our own write is not an external change: the poller must not report it
+	// back as a second apply.
+	if m.configReloader != nil {
+		m.configReloader.MarkOwnWrite()
+	}
+	m.reloadErr = nil
 	previous := m.settings.File
 	saved := settingsCloneFileConfig(m.settingsEdits)
 	m.settings.File = saved

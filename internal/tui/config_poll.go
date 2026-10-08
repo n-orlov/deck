@@ -3,6 +3,7 @@ package tui
 import (
 	"os"
 	"reflect"
+	"strings"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -53,10 +54,13 @@ func (m Model) onConfigPollTick(_ configPollTick) (tea.Model, tea.Cmd) {
 	}
 }
 
-// onConfigPolled records a reload's result, applies every live key of a
-// good one to the running model (applyReloadedSettings, SPEC §6.5) and
-// schedules the next poll. An unchanged poll leaves the model untouched; a
-// reload that failed to parse keeps the running settings as they were.
+// onConfigPolled records a reload's result and schedules the next poll. An
+// unchanged poll leaves the model untouched. A reload that failed to parse
+// keeps the running settings exactly as they were and raises a one-line
+// notice (configReloadBanner); the next valid write clears it. A good reload
+// is applied to the running model (applyReloadedSettings, SPEC §6.5) unless
+// the settings takeover holds an unsaved edit, in which case it is held back
+// and applied when that edit is saved (merged into the write) or cancelled.
 func (m Model) onConfigPolled(msg configPolled) (tea.Model, tea.Cmd) {
 	tick := m.configPollTickCmd()
 	if !msg.changed {
@@ -68,7 +72,62 @@ func (m Model) onConfigPolled(msg configPolled) (tea.Model, tea.Cmd) {
 	}
 	reloaded := msg.settings
 	m.reloaded = &reloaded
+	if m.settingsEditPending() {
+		m.reloadHeld = &reloaded
+		return m, tick
+	}
+	m.reloadHeld = nil
 	return m, tea.Batch(m.applyReloadedSettings(reloaded), tick)
+}
+
+// settingsEditPending reports whether the settings takeover is holding
+// something a reload must not clobber: a staged edit not yet saved, the
+// discard prompt, or a text editor that is open.
+func (m Model) settingsEditPending() bool {
+	if !m.settingsOpen {
+		return false
+	}
+	return m.settingsDirty() || m.settingsDiscardConfirm || m.settingsStringEditing || m.settingsEnvEditing
+}
+
+// releaseHeldReload applies a reload that was held back for an open edit as
+// soon as the edit is no longer pending (it was cancelled or reverted). A
+// save consumes the held reload itself (settingsSave), so by then it is nil.
+func (m Model) releaseHeldReload(next tea.Model, cmd tea.Cmd) (tea.Model, tea.Cmd) {
+	model, ok := next.(Model)
+	if !ok || model.reloadHeld == nil || model.settingsEditPending() {
+		return next, cmd
+	}
+	held := *model.reloadHeld
+	model.reloadHeld = nil
+	return model, tea.Batch(cmd, model.applyReloadedSettings(held))
+}
+
+// mergeHeldReload folds a held reload into a save: every key the user did not
+// touch in this editing session (edits equals baseline) takes the reloaded
+// file's value, every key the user changed keeps their value, so the write
+// neither drops the other instance's change nor the user's own.
+func mergeHeldReload(edits, baseline, reloaded config.FileConfig) config.FileConfig {
+	merged := settingsCloneFileConfig(edits)
+	mv := reflect.ValueOf(&merged).Elem()
+	ev, bv, rv := reflect.ValueOf(edits), reflect.ValueOf(baseline), reflect.ValueOf(reloaded)
+	for i := 0; i < mv.NumField(); i++ {
+		if reflect.DeepEqual(ev.Field(i).Interface(), bv.Field(i).Interface()) {
+			mv.Field(i).Set(rv.Field(i))
+		}
+	}
+	return settingsCloneFileConfig(merged)
+}
+
+// configReloadBanner is the one-line, non-fatal notice raised while the last
+// changed config.toml could not be read: the previous settings stay in force.
+func (m Model) configReloadBanner(width int) []string {
+	if m.reloadErr == nil {
+		return nil
+	}
+	text, _, _ := strings.Cut(m.reloadErr.Error(), "\n")
+	text = "config.toml not reloaded, keeping the previous settings: " + text
+	return []string{truncateToWidth(text, width), ""}
 }
 
 // applyReloadedSettings re-applies a freshly reloaded Settings to the running
@@ -88,5 +147,12 @@ func (m *Model) applyReloadedSettings(next config.Settings) tea.Cmd {
 		m.settings.ThemeReason = next.ThemeReason
 	}
 	m.settings.File = settingsCloneFileConfig(next.File)
+	m.reloadApplied++
+	if m.settingsOpen && !m.settingsDirty() {
+		// An open but untouched takeover shows the reloaded values, and its
+		// later save writes them back rather than the stale ones.
+		m.settingsEdits = settingsEditsFromSettings(m.settings)
+		m.settingsSavedEdits = settingsEditsFromSettings(m.settings)
+	}
 	return cmd
 }
