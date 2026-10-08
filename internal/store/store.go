@@ -1162,27 +1162,33 @@ func (s *Store) RecordAttachment(ctx context.Context, sessionID string, at int64
 	}
 	defer rollbackTx(tx)
 
-	status, err := attachmentStatusTx(ctx, tx, sessionID)
-	if err != nil {
+	applied, err := recordAttachmentTx(ctx, tx, sessionID, at)
+	if err != nil || !applied {
 		return err
-	}
-
-	applied, err := applyAttachmentToStatusTx(ctx, tx, sessionID, status, at)
-	if err != nil {
-		return err
-	}
-	if !applied {
-		return nil
-	}
-
-	if _, err := tx.ExecContext(ctx, `INSERT INTO events (session_id, at, kind, reason, payload)
-		VALUES (?, ?, 'attached', '', '')`, sessionID, at); err != nil {
-		return fmt.Errorf("record attachment event: %w", err)
 	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit attachment: %w", err)
 	}
 	return nil
+}
+
+// recordAttachmentTx is RecordAttachment's transaction body: it reads the
+// status, applies the status-side effect and, only when one applied, appends
+// the 'attached' event. applied is false for a status that changes nothing.
+func recordAttachmentTx(ctx context.Context, tx *sql.Tx, sessionID string, at int64) (applied bool, err error) {
+	status, err := attachmentStatusTx(ctx, tx, sessionID)
+	if err != nil {
+		return false, err
+	}
+	applied, err = applyAttachmentToStatusTx(ctx, tx, sessionID, status, at)
+	if err != nil || !applied {
+		return false, err
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO events (session_id, at, kind, reason, payload)
+		VALUES (?, ?, 'attached', '', '')`, sessionID, at); err != nil {
+		return false, fmt.Errorf("record attachment event: %w", err)
+	}
+	return true, nil
 }
 
 // attachmentStatusTx reads the session's current status inside
