@@ -1232,7 +1232,7 @@ whole footer line. The rules, in **precedence order** (the first match wins):
 | 1 | `Confirm folder trust` and `Do you trust the files in this folder?` | `waiting` | `folder trust` |
 | 2 | `Do you want to ` and `↑/↓ to navigate · enter to select · esc to cancel` | `waiting` | `permission prompt` |
 | 3 | `Copilot needs information.` | `waiting` | `question` |
-| 4 | one of the last few lines starts with a spinner glyph (`○ ◎ ● ◉`) and holds `Working` and `esc interrupt` or `esc edit prompt` | `running` | `working indicator` |
+| 4 | a line of the live footer (the lines below the composer's last separator rule, never a transcript line above it) starts with a spinner glyph (`○ ◎ ● ◉`) and holds `Working` and `esc interrupt` or `esc edit prompt` | `running` | `working indicator` |
 | 5 | a line starting `✗ ` after the last turn (`❯ `) and above the context line (the cwd line over the composer) | `error` | `error line` |
 | 6 | the idle footer: `· / commands`, or `@ files · # issues` when a draft is typed | `idle` | `ready` |
 | 7 | anything else | no verdict | none |
