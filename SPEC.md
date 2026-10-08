@@ -954,7 +954,7 @@ than faking it:
 | **conversation id** | **deck assigns**: `--session-id <uuid>` | **deck assigns**: `--session-id <id>` (created if missing), plus a display name | agent mints it; deck adopts it from the first hook (§8.2) | **deck assigns**: `--session-id <uuid>` (a UUID; any other id is refused by `Launch`) | none |
 | **resume** | `--resume <uuid>` (fork = new id, offered explicitly); `--session-id <uuid>` while the conversation has no transcript yet (§9.1) | `--session-id <id>` | `resume <id>` by id | `--session-id <uuid>`, the launch argv again (§8.4) | recreate shell (§9.1) |
 | **id discovery** | not needed | not needed | **§8.2** — `SessionStart` reports it; no filesystem search, no lease | not needed | n/a |
-| **status** | **hooks → `deck _hook`** (live) | **extension → `deck _hook`** (live), probe until its first event (§8.3) | **hooks → `deck _hook`** (live), probe until the first prompt (§8.2) | probe (sampled), §7 | probe (sampled) |
+| **status** | **hooks → `deck _hook`** (live) | **extension → `deck _hook`** (live), probe until its first event (§8.3) | **hooks → `deck _hook`** (live), probe until the first prompt (§8.2) | **hooks → `deck _hook`** (live, §8.4); the pane probe (§7) covers the window before the first prompt, aborted turns, error lines and degraded launches (no `--plugin-dir`) | probe (sampled) |
 | **banned** | `--continue` | `--continue` | `resume --last` | `--continue`, `--resume`, `--connect`, `--remote`, `--acp` | — |
 
 **A conversation id is one path component.** A conversation id reaches deck in a hook payload, so
