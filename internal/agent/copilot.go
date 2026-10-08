@@ -72,6 +72,25 @@ func (Copilot) Resume(in ResumeInput) ([]string, error) {
 	return copilotArgv(in.ConversationID, in.Profile, in.ExtraArgs)
 }
 
+// copilotForbiddenExtra lists the flags R216 bans from every copilot argv:
+// alternate identity (--continue, --resume), remote and ACP launch modes
+// (--connect, --remote, --acp) and the --yolo spelling of a permission bypass
+// (deck's yolo profile is --allow-all, chosen through the profile, never
+// through ExtraArgs).
+var copilotForbiddenExtra = []string{"--continue", "--resume", "--connect", "--remote", "--acp", "--yolo"}
+
+// copilotForbiddenExtraFlag returns the forbidden flag arg spells, bare or in
+// --flag=value form, and "" when arg is allowed.
+func copilotForbiddenExtraFlag(arg string) string {
+	name, _, _ := strings.Cut(arg, "=")
+	for _, bad := range copilotForbiddenExtra {
+		if name == bad {
+			return bad
+		}
+	}
+	return ""
+}
+
 func copilotArgv(conversationID, profile string, extra []string) ([]string, error) {
 	flags, ok := copilotProfileFlags[profile]
 	if !ok {
@@ -79,6 +98,11 @@ func copilotArgv(conversationID, profile string, extra []string) ([]string, erro
 	}
 	if !copilotUUID.MatchString(conversationID) {
 		return nil, fmt.Errorf("copilot: conversation id %q is not a UUID", conversationID)
+	}
+	for _, arg := range extra {
+		if bad := copilotForbiddenExtraFlag(arg); bad != "" {
+			return nil, fmt.Errorf("copilot: extra argument %q is refused: %s is not allowed in launch args", arg, bad)
+		}
 	}
 	argv := []string{"copilot", "--session-id", conversationID}
 	argv = append(argv, flags...)
