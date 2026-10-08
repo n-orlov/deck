@@ -1184,7 +1184,7 @@ func TestBlackBoxAssertionsObserveRealSession(t *testing.T) {
 	// The pinned version is internal/store.SchemaVersion (10 as of schemaV10);
 	// this pin must track that constant exactly, as it has every time the
 	// constant moved before it.
-	if err := databaseSchemaVersion(stepCtx, 9); err != nil {
+	if err := databaseSchemaVersion(stepCtx, 10); err != nil {
 		t.Fatal(err)
 	}
 	if err := databaseJournalMode(stepCtx, "wal"); err != nil {
