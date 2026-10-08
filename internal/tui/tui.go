@@ -9896,6 +9896,35 @@ Hooks (pre_launch/post_destroy, global in config.toml or per-session)
   session sensitive (in the env editor) if a hook cannot be that
   careful.
 
+Event hook (script set in config.toml or settings; SPEC §10)
+  One script, run when a session changes state. No script set means the
+  whole feature is inert. deck filters before it spawns: an event whose
+  kind is not enabled for the session never starts a process.
+  argv      script <kind> [fixed args...]; kind is argv[1], one of
+            started resumed waiting idle error ended killed.
+  env       every DECK_SESSION_* variable (as pre_launch sees them), plus
+            DECK_EVENT_KIND, DECK_EVENT_REASON, DECK_EVENT_MESSAGE
+            (truncated, secrets redacted; withheld for a sensitive
+            session) and DECK_EVENT_AT (RFC 3339). Env values never appear.
+  stdin     the whole payload as one JSON object: version, session,
+            event, deck. A script that needs only the kind ignores it.
+  timeout   the hook timeout setting (default 3s); the script's whole process
+            group is killed when it expires. Exit status and an output
+            tail are recorded on the event and shown in the detail.
+  no retry  deck keeps no outbox and never retries: a script that wants
+            retries owns them, and a failure at 02:00 has failed.
+  dedupe    per attention episode (notify_epoch): a (kind, reason) pair
+            spawns once, and the same prompt tomorrow spawns again. A
+            script that must not act twice has to be idempotent.
+  A session's own event list replaces the global one; it is not merged.
+  Three limits:
+   1. There is no retry and no outbox; the exit status is the only record.
+   2. Probe-classified agents (shell sessions, a Pi change its extension
+      did not report) fire only while a deck TUI is running. Claude, Codex
+      and Pi fire unattended; only Claude reports turn failures that way.
+   3. Process death is detected late: a SIGKILLed or OOM-killed agent
+      fires no hook, so its error waits for the next tick or hook.
+
 Settings takeover (opened with ,)
   Tab or Left/Right      switch focus between the category list and the
                          field list

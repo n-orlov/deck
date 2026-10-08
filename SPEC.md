@@ -1738,6 +1738,12 @@ The three limits this accepts, all of which belong in the help view rather than 
 3. **Process death is detected late.** A `SIGKILL`ed or OOM-killed agent of any kind fires no
    hook, so its `error` event waits for the next tick or hook (§7).
 
+The help view (`?`) carries this contract under "Event hook": argv, the environment names,
+stdin, the timeout, no retry, the epoch dedupe and the three limits above, and the README
+carries a Telegram (`curl`) and a desktop (`notify-send`) example script with the idempotency
+and no-retry notes. Both are pinned by tests (`internal/tui/event_hook_help_test.go`), the
+scripts by a `sh -n` syntax check.
+
 ### 10.5 Out of scope
 
 **Inbound remote control.** Replying into a session from a phone would require a
