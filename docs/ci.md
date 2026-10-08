@@ -882,3 +882,56 @@ documentation for the operator's own step. `GET
 `main` as of this writing; applying the command turns the first of those
 from a 404 ("Branch not protected") into the settings above, and never
 touches the second.
+
+## Release attestation and the `v*` tag ruleset (R236, an operator step)
+
+`release.yml` attests the release tarballs and `checksums.txt` with
+`actions/attest-build-provenance` (pinned by 40-hex commit SHA, the tag in a
+trailing comment), between the Smoke and Publish steps. The release job holds
+exactly the three permissions it had before plus `id-token: write` and
+`attestations: write`; `ci/workflowcheck` fails if the step is unpinned or the
+permissions widen. `install.sh` runs `gh attestation verify --repo n-orlov/deck`
+on the downloaded archive after the checksum check when an authenticated `gh`
+is present: a failure aborts with nothing installed, while no `gh`, or a release
+published before attestations, prints one checksum-only note and continues
+(`DECK_REQUIRE_ATTESTATION=1` aborts instead). The first real attested release
+is the maintainer's next tag; this phase proves the script only with fake `gh`
+and download tools.
+
+**Operator step -- protect the `v*` tags.** Attestation says a tarball came from
+this repository's workflow, so the tags that trigger that workflow should not be
+creatable, movable or deletable casually. This job never runs the command below
+(changing repository rulesets is out of scope for it); the maintainer applies it
+once, with an account that administers the repository. It creates a tag ruleset
+that blocks deleting or force-moving any `v*` tag and blocks updating one once
+created, with the repository admin role allowed to bypass so the maintainer can
+still cut a release:
+
+```sh
+gh api \
+  --method POST \
+  -H "Accept: application/vnd.github+json" \
+  -H "X-GitHub-Api-Version: 2022-11-28" \
+  repos/n-orlov/deck/rulesets \
+  --input - <<'JSON'
+{
+  "name": "protect-release-tags",
+  "target": "tag",
+  "enforcement": "active",
+  "conditions": {
+    "ref_name": { "include": ["refs/tags/v*"], "exclude": [] }
+  },
+  "rules": [
+    { "type": "deletion" },
+    { "type": "non_fast_forward" },
+    { "type": "update" }
+  ],
+  "bypass_actors": [
+    { "actor_id": 5, "actor_type": "RepositoryRole", "bypass_mode": "always" }
+  ]
+}
+JSON
+```
+
+`actor_id` 5 is the built-in repository admin role. Check the result with `gh api
+repos/n-orlov/deck/rulesets`.

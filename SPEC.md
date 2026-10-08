@@ -3243,7 +3243,16 @@ in the help view.
   workflow (such as `pages-pr-publish.yml`) is ignored, green or red. A run whose workflow path is
   missing, null, empty or anything other than `.github/workflows/ci.yml` (with or without GitHub's
   `@<ref>` suffix) is not `ci.yml`'s, so its suite check never gates. `release.yml` pins its
-  actions by commit SHA like the other workflows. Both `FROM` lines of `ci/Dockerfile` are pinned by `@sha256` digest,
+  actions by commit SHA like the other workflows. **Release attestation (R236):** `release.yml`
+  attests the four tarballs and `checksums.txt` with `actions/attest-build-provenance` (pinned by
+  commit SHA, tag in a trailing comment), the job holding exactly the extra `id-token: write` and
+  `attestations: write` permissions. `install.sh`, after the checksum check, runs
+  `gh attestation verify --repo n-orlov/deck` on the archive when an authenticated `gh` is present,
+  and a verification failure always aborts with a non-zero exit and nothing installed. Without a
+  usable `gh`, or for a release published before attestations existed, it prints one line saying
+  only the checksum was verified and continues, unless `DECK_REQUIRE_ATTESTATION=1`, which aborts
+  instead. The maintainer's `v*` tag ruleset is an operator step documented in `docs/ci.md`, never
+  applied by the build. Both `FROM` lines of `ci/Dockerfile` are pinned by `@sha256` digest,
   with the tag kept in the reference, so a re-pushed tag cannot change the CI image.
   **Main's Actions history is a truthful signal:** every run on `main` is green unless the code
   is broken. Every push to `main` gets its own complete run, never cancelled by a later push; the
