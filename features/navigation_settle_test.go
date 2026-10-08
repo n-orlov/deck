@@ -40,6 +40,16 @@ func navigateToRowByName(ctx context.Context, client *ScreenDriver, want string)
 	// frameHasSelectedRowNamed skips the row's status glyph and pin marker
 	// (SPEC §11 line 1: gutter, status glyph, pin marker, name).
 	selected := func() bool { return frameHasSelectedRowNamed(client.Frame(false), want) }
+	// When want's row is already the selected one, send nothing: a "g" that
+	// cannot move the selection is a no-op that any unrelated repaint (a
+	// badge or order refresh still in flight) is taken for the "g"'s own,
+	// and the caller's action key then follows within milliseconds and is
+	// coalesced with it into one ignored "gr" KeyMsg. That is how
+	// filter.feature:97 went flaky again in the ci.yml dispatch run
+	// 37844873731 (de263c8a72e), U, g and r 28 ms apart.
+	if selected() {
+		return nil
+	}
 	for attempt := 0; attempt < 50; attempt++ {
 		if err := sendNavKeySettled(ctx, client, "g"); err != nil {
 			return err
