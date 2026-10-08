@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/n-orlov/deck/internal/audit"
 	"github.com/n-orlov/deck/internal/config"
 	"github.com/n-orlov/deck/internal/notify"
 	"github.com/n-orlov/deck/internal/store"
@@ -33,6 +34,9 @@ type EventHookDispatcher struct {
 	// Spawn runs an attached spawn; nil is notify.Spawn. It is the seam a
 	// test uses to look at the store at the instant of the spawn.
 	Spawn func(context.Context, notify.Request) (notify.Result, error)
+	// Audit, when set, receives one "event_hook" line per invocation (SPEC
+	// §13.1): the offered kind, the exit status and the script's duration.
+	Audit *audit.Logger
 }
 
 // offerHook is the one call every service-side event write makes after its
@@ -54,7 +58,7 @@ func (s Service) offerHook(ctx context.Context, ev HookEvent) {
 		return
 	}
 	d := s.EventHook()
-	d.Store = s.Store
+	d.Store, d.Audit = s.Store, s.Audit
 	_ = d.Dispatch(ctx, ev, false)
 }
 
@@ -147,14 +151,36 @@ func (d EventHookDispatcher) Dispatch(ctx context.Context, ev HookEvent, detache
 	req := d.request(session, state, ev, kind)
 	if detached {
 		err := notify.Start(req)
-		return HookOutcome{Spawned: err == nil, Detached: true, Err: err}
+		logErr := d.log(ev.SessionID, hookInvocation(kind, true, notify.Result{ExitCode: -1}, err))
+		return HookOutcome{Spawned: err == nil, Detached: true, Err: errors.Join(err, logErr)}
 	}
 	spawn := d.Spawn
 	if spawn == nil {
 		spawn = notify.Spawn
 	}
 	res, err := spawn(ctx, req)
-	return HookOutcome{Spawned: err == nil, Result: res, Err: errors.Join(err, d.record(ctx, ev, kind, res, err))}
+	logErr := d.log(ev.SessionID, hookInvocation(kind, false, res, err))
+	return HookOutcome{Spawned: err == nil, Result: res, Err: errors.Join(err, d.record(ctx, ev, kind, res, err), logErr)}
+}
+
+// hookInvocation is the structured-log view of one spawn: its result, or the
+// text of the error that kept the script from starting (exit status -1).
+func hookInvocation(kind string, detached bool, res notify.Result, spawnErr error) audit.EventHookInvocation {
+	inv := audit.EventHookInvocation{Kind: kind, Detached: detached, ExitCode: res.ExitCode, TimedOut: res.TimedOut, Duration: res.Duration}
+	if spawnErr != nil {
+		inv.ExitCode, inv.Error = -1, spawnErr.Error()
+	}
+	return inv
+}
+
+// log appends the invocation to the structured log; a dispatcher with no
+// logger (a test, a bare dispatcher) logs nothing. A failed append is returned
+// with the outcome and, like every hook failure, never fails the event.
+func (d EventHookDispatcher) log(sessionID string, inv audit.EventHookInvocation) error {
+	if d.Audit == nil {
+		return nil
+	}
+	return d.Audit.EventHook(sessionID, inv)
 }
 
 // record stores an attached spawn's outcome against the event row the writer
