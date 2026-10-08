@@ -10,6 +10,10 @@ curl -fsSL https://raw.githubusercontent.com/n-orlov/deck/main/install.sh | sh
 ```
 
 - Installs to `~/.local/bin/deck`. Override: `DECK_INSTALL_DIR`, `DECK_VERSION=vX.Y.Z`.
+- Verifies the download against `checksums.txt`, then, when an authenticated `gh` is installed, its
+  build attestation (`gh attestation verify --repo n-orlov/deck`); a failed verification aborts with
+  nothing installed. Without `gh` (or for a release that predates attestations) it prints one note
+  that only the checksum was verified; `DECK_REQUIRE_ATTESTATION=1` makes that case abort instead.
 - Requires **tmux >= 3.2**. Agents (`claude`, `pi`, `codex`, `copilot`) only appear if they are on `PATH`.
 - Linux and macOS, amd64 and arm64. **No Windows** (needs tmux) -- use WSL.
 - Check: `deck --version`. Update: rerun the same line.
@@ -46,7 +50,7 @@ git tag v0.2.0 && git push origin v0.2.0
 ```
 
 GitHub Actions ([release.yml](.github/workflows/release.yml)) builds the four binaries,
-stamps the tag into `deck --version` and publishes the release with `checksums.txt`.
+stamps the tag into `deck --version`, attests the tarballs and `checksums.txt`, and publishes the release.
 
 ## Develop
 
