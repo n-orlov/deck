@@ -24,15 +24,23 @@ func waitFile(t *testing.T, path string) string {
 	return ""
 }
 
+// requireScriptStillRunning fails when the script already ran to its end by
+// the time Start returned, i.e. when Start waited for it. It asserts the
+// ordering, not a wall-clock budget, so a loaded machine cannot flip it: the
+// script sleeps far longer than any Start the suite sees.
+func requireScriptStillRunning(t *testing.T, dir string) {
+	t.Helper()
+	if _, err := os.Stat(filepath.Join(dir, "finished")); err == nil {
+		t.Fatal("the script had finished when Start returned: it waited for the script")
+	}
+}
+
 func TestStartRunsTheScriptDetachedWithTheSamePayloadAsSpawn(t *testing.T) {
-	path, dir := captureScript(t, "sleep 1\necho finished > \"$d/finished\"")
-	started := time.Now()
+	path, dir := captureScript(t, "sleep 4\necho finished > \"$d/finished\"")
 	if err := Start(baseRequest(path, "--fixed")); err != nil {
 		t.Fatal(err)
 	}
-	if elapsed := time.Since(started); elapsed >= time.Second {
-		t.Fatalf("Start took %s: it waited for the script", elapsed)
-	}
+	requireScriptStillRunning(t, dir)
 	var p struct {
 		Version int
 		Event   struct{ Kind string }
@@ -56,11 +64,10 @@ func TestStartRunsTheScriptDetachedWithTheSamePayloadAsSpawn(t *testing.T) {
 func TestStartHandsOverAPayloadLargerThanAPipeWithoutWaiting(t *testing.T) {
 	tmp := t.TempDir()
 	t.Setenv("TMPDIR", tmp)
-	path, dir := captureScript(t, "sleep 1\necho finished > \"$d/finished\"")
+	path, dir := captureScript(t, "sleep 4\necho finished > \"$d/finished\"")
 	req := baseRequest(path)
 	req.Session.Reason = strings.Repeat("r", 3<<20/2)
 	done := make(chan error, 1)
-	started := time.Now()
 	go func() { done <- Start(req) }()
 	select {
 	case err := <-done:
@@ -70,9 +77,7 @@ func TestStartHandsOverAPayloadLargerThanAPipeWithoutWaiting(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("Start blocked handing over a payload larger than a pipe")
 	}
-	if elapsed := time.Since(started); elapsed >= time.Second {
-		t.Fatalf("Start took %s: it waited for the script", elapsed)
-	}
+	requireScriptStillRunning(t, dir)
 	if entries, err := os.ReadDir(tmp); err != nil || len(entries) != 0 {
 		t.Errorf("TMPDIR after Start = %v, %v; want the payload file already unlinked", entries, err)
 	}
