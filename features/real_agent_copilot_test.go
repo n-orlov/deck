@@ -111,8 +111,19 @@ func copilotAnswersProbePrompt(path string) error {
 	return command.Run()
 }
 
+// realCopilotTrustGrace is how long a trust answer is given to repaint before
+// a still-visible trust frame is taken to be an unanswered prompt.
+const realCopilotTrustGrace = 3 * time.Second
+
 type realCopilotScenario struct {
 	home string
+	// trustAnswered records, per session name, when the folder-trust prompt was
+	// last answered, so the explicit answer step and the readiness wait share
+	// one answer instead of each sending its own.
+	trustAnswered map[string]time.Time
+	// capture and keys replace the tmux pane when set (unit tests only).
+	capture func(ctx context.Context, name string) (string, error)
+	keys    func(ctx context.Context, name string, args ...string) error
 }
 
 func registerRealAgentCopilotSteps(sc *godog.ScenarioContext) {
@@ -231,6 +242,10 @@ func pollUntil(timeout time.Duration, check func() error) error {
 }
 
 func (s *realCopilotScenario) pane(ctx context.Context, name string) (string, string, error) {
+	if s.capture != nil {
+		pane, err := s.capture(ctx, name)
+		return "", pane, err
+	}
 	h, err := assertionHarness(ctx)
 	if err != nil {
 		return "", "", err
@@ -278,6 +293,9 @@ func (s *realCopilotScenario) waitForPane(ctx context.Context, name, want string
 }
 
 func (s *realCopilotScenario) sendKeys(ctx context.Context, name string, args ...string) error {
+	if s.keys != nil {
+		return s.keys(ctx, name, args...)
+	}
 	h, err := assertionHarness(ctx)
 	if err != nil {
 		return err
@@ -293,18 +311,31 @@ func (s *realCopilotScenario) sendKeys(ctx context.Context, name string, args ..
 func (s *realCopilotScenario) answerTrust(ctx context.Context, name string) error {
 	// Option 2 is "Yes, and remember this folder for future sessions": the CLI
 	// records it in the temporary COPILOT_HOME, so later launches do not ask.
-	return s.sendKeys(ctx, name, "Down", "Enter")
+	if err := s.sendKeys(ctx, name, "Down", "Enter"); err != nil {
+		return err
+	}
+	if s.trustAnswered == nil {
+		s.trustAnswered = map[string]time.Time{}
+	}
+	s.trustAnswered[name] = time.Now()
+	return nil
+}
+
+// trustNeedsAnswer reports whether a visible trust frame is a prompt nobody has
+// answered: no answer was sent for the session, or the last one is older than
+// the grace. A frame still on screen within the grace is the answer repainting.
+func (s *realCopilotScenario) trustNeedsAnswer(name string) bool {
+	answered, ok := s.trustAnswered[name]
+	return !ok || time.Since(answered) > realCopilotTrustGrace
 }
 
 func (s *realCopilotScenario) reachIdle(ctx context.Context, name string) error {
 	idle := realCopilotFixtureKeys["idle"]
 	trust := realCopilotFixtureKeys["trust"]
-	answered := time.Time{}
 	return s.waitForPane(ctx, name, fmt.Sprintf("the idle footer %q", idle), func(pane string) bool {
 		if copilotPaneSatisfies(pane, trust) {
-			if time.Since(answered) > 3*time.Second {
+			if s.trustNeedsAnswer(name) {
 				_ = s.answerTrust(ctx, name)
-				answered = time.Now()
 			}
 			return false
 		}
