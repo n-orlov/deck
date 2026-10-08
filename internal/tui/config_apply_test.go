@@ -235,6 +235,10 @@ var reloadEdits = map[string]string{
 	"pre_launch":             "pre_launch = \"echo hi\"\n",
 	"agent":                  "agent = \"shell\"\n",
 	"post_destroy":           "post_destroy = \"echo bye\"\n",
+	"event_hook":             "event_hook = \"/opt/hook\"\n",
+	"event_hook_default":     "event_hook_default = true\n",
+	"event_hook_events":      "event_hook_events = [\"idle\"]\n",
+	"event_hook_timeout":     "event_hook_timeout = 8\n",
 	"[env]":                  "[env]\nDECK_RELOAD_PROBE = \"1\"\n",
 }
 

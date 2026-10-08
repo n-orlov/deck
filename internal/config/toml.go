@@ -44,6 +44,10 @@ type FileConfig struct {
 	PreLaunch            string
 	PostDestroy          string
 	Agent                string
+	EventHook            string
+	EventHookDefault     bool
+	EventHookEvents      []string
+	EventHookTimeout     time.Duration
 	Env                  map[string]string
 }
 
@@ -174,6 +178,10 @@ func seedDefault(cfg *FileConfig, field Field) {
 		value, _ := field.Default.(string)
 		set(cfg, value)
 	}
+	if set := listSetters[key]; set != nil {
+		value, _ := field.Default.([]string)
+		set(cfg, slices.Clone(value)) // never alias the Schema's own default slice
+	}
 }
 
 // toggleSetters, integerSetters and stringSetters map a field's FullKey to
@@ -193,6 +201,7 @@ var toggleSetters = map[string]func(*FileConfig, bool){
 	"ui.attach_on_click":     func(c *FileConfig, v bool) { c.AttachOnClick = v },
 	"ui.select_on_drag":      func(c *FileConfig, v bool) { c.SelectOnDrag = v },
 	"ui.attach_on_resume":    func(c *FileConfig, v bool) { c.AttachOnResume = v },
+	"event_hook_default":     func(c *FileConfig, v bool) { c.EventHookDefault = v },
 }
 
 var integerSetters = map[string]func(*FileConfig, int){
@@ -201,6 +210,7 @@ var integerSetters = map[string]func(*FileConfig, int){
 	"interactive_ms":       func(c *FileConfig, v int) { c.InteractiveInterval = time.Duration(v) * time.Millisecond },
 	"ui.recent_cwd_limit":  func(c *FileConfig, v int) { c.RecentCwdLimit = v },
 	"event_retention_days": func(c *FileConfig, v int) { c.EventRetentionDays = v },
+	"event_hook_timeout":   func(c *FileConfig, v int) { c.EventHookTimeout = time.Duration(v) * time.Second },
 }
 
 var stringSetters = map[string]func(*FileConfig, string){
@@ -211,6 +221,13 @@ var stringSetters = map[string]func(*FileConfig, string){
 	"pre_launch":            func(c *FileConfig, v string) { c.PreLaunch = v },
 	"post_destroy":          func(c *FileConfig, v string) { c.PostDestroy = v },
 	"agent":                 func(c *FileConfig, v string) { c.Agent = v },
+	"event_hook":            func(c *FileConfig, v string) { c.EventHook = v },
+}
+
+// listSetters is the KindListOfStrings counterpart of stringSetters for the
+// flat list keys ([env] is a table and never goes through here).
+var listSetters = map[string]func(*FileConfig, []string){
+	"event_hook_events": func(c *FileConfig, v []string) { c.EventHookEvents = v },
 }
 
 // setField parses raw against field's declared Kind and, once valid,
@@ -223,6 +240,8 @@ func setField(cfg *FileConfig, field Field, raw, path string, line int) error {
 		return setIntegerField(cfg, field, raw, path, line)
 	case KindEnum, KindString, KindPath:
 		return setStringField(cfg, field, raw, path, line)
+	case KindListOfStrings:
+		return setListField(cfg, field, raw, path, line)
 	default:
 		return fmt.Errorf("%s:%d: %s: unsupported field kind %q for a flat key", path, line, field.FullKey(), field.Kind)
 	}
@@ -252,6 +271,63 @@ func setIntegerField(cfg *FileConfig, field Field, raw, path string, line int) e
 		set(cfg, value)
 	}
 	return nil
+}
+
+// setListField parses raw as a one-line TOML array of quoted strings,
+// checks every element against the field's ElementValues and writes the
+// list through the list setter table.
+func setListField(cfg *FileConfig, field Field, raw, path string, line int) error {
+	items, err := parseStringArray(raw)
+	if err != nil {
+		return fmt.Errorf("%s:%d: %s must be an array of quoted strings: %w", path, line, field.FullKey(), err)
+	}
+	if err := CheckListElements(field, items); err != nil {
+		return fmt.Errorf("%s:%d: %w", path, line, err)
+	}
+	if set := listSetters[field.FullKey()]; set != nil {
+		set(cfg, items)
+	}
+	return nil
+}
+
+// CheckListElements reports the first element of items outside field's
+// ElementValues, as an error naming the key. A field with no ElementValues
+// accepts any element. The settings dialog uses it to refuse the same
+// words the file loader refuses.
+func CheckListElements(field Field, items []string) error {
+	if len(field.ElementValues) == 0 {
+		return nil
+	}
+	for _, item := range items {
+		if !slices.Contains(field.ElementValues, item) {
+			return fmt.Errorf("%s: unknown event kind %q, must be one of %s", field.FullKey(), item, strings.Join(field.ElementValues, ", "))
+		}
+	}
+	return nil
+}
+
+// parseStringArray reads a one-line TOML array of quoted strings such as
+// ["waiting", "error"]; [] is the empty list and a trailing comma is allowed.
+func parseStringArray(raw string) ([]string, error) {
+	if len(raw) < 2 || raw[0] != '[' || raw[len(raw)-1] != ']' {
+		return nil, fmt.Errorf("not an array: %q", raw)
+	}
+	body := strings.TrimSpace(raw[1 : len(raw)-1])
+	items := []string{}
+	if body == "" {
+		return items, nil
+	}
+	for _, part := range strings.Split(strings.TrimSuffix(body, ","), ",") {
+		item, err := unquoteString(strings.TrimSpace(part))
+		if err != nil {
+			return nil, err
+		}
+		if strings.Contains(item, "\"") {
+			return nil, fmt.Errorf("elements must be separated by commas, got %q", part)
+		}
+		items = append(items, item)
+	}
+	return items, nil
 }
 
 // setStringField unquotes and validates raw and writes it through the

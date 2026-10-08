@@ -57,6 +57,10 @@ type settingsResolvedSnapshot struct {
 	Env                map[string]string
 	ThemeName          string
 	ThemeReason        string
+	EventHook          string
+	EventHookDefault   bool
+	EventHookEvents    string
+	EventHookTimeout   string
 }
 
 func snapshotResolvedSettings(s config.Settings) settingsResolvedSnapshot {
@@ -87,6 +91,10 @@ func snapshotResolvedSettings(s config.Settings) settingsResolvedSnapshot {
 		Env:                env,
 		ThemeName:          themeName,
 		ThemeReason:        s.ThemeReason,
+		EventHook:          s.EventHook,
+		EventHookDefault:   s.EventHookDefault,
+		EventHookEvents:    strings.Join(s.EventHookEvents, ","),
+		EventHookTimeout:   s.EventHookTimeout.String(),
 	}
 }
 
@@ -125,6 +133,18 @@ func settingsStageRealEdit(m *Model, f config.Field) {
 	case config.KindInteger:
 		updated, _ := m.Update(key("+"))
 		*m = updated.(Model)
+	case config.KindString, config.KindListOfStrings:
+		// Only the event-hook keys are ScopeGlobal free-text/list fields;
+		// the restart-to-apply strings and [env] stay unedited, as the doc
+		// comment above says. Type a value into the real editor, then enter.
+		if f.Scope != config.ScopeGlobal {
+			return
+		}
+		text := map[string]string{"event_hook": "/opt/hooks/ping", "event_hook_events": "idle"}[f.FullKey()]
+		for _, press := range []string{"enter", text, "enter"} {
+			updated, _ := m.Update(key(press))
+			*m = updated.(Model)
+		}
 	case config.KindEnum:
 		// A single "+" is not always enough: config.Schema's one enum
 		// field today (ui.theme) starts staged at "" (nothing configured),

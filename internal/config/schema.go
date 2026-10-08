@@ -92,6 +92,10 @@ type Field struct {
 	// listed statically here because they depend on runtime discovery
 	// (the theme picker's built-in-plus-user-theme list, §11.6).
 	DynamicEnum bool
+	// ElementValues lists the only values a KindListOfStrings field's
+	// elements may take (event_hook_events: the offered event kinds,
+	// SPEC §10.1). Empty means any string; [env] is not a flat list.
+	ElementValues []string
 	// Description states what the field does and what changes when it
 	// changes, per §11.5's "Each field states what it does and what
 	// changes when it changes."
@@ -722,6 +726,65 @@ var Schema = []Field{
 		// then. A save changes config.toml immediately but the already-running
 		// client keeps tearing down with the old value until deck restarts.
 		Scope: ScopeRestartToApply,
+	},
+	{
+		Section: "",
+		Key:     "event_hook",
+		Kind:    KindString,
+		Default: "",
+		Description: "The one event script (SPEC \u00a710.1): an executable path, or an " +
+			"executable followed by arguments separated by spaces, run without a " +
+			"shell with the event kind as its next argument whenever a session " +
+			"reaches an event kind enabled for it. Empty by default, and empty makes " +
+			"the whole event-hook feature inert whatever any other event_hook key or " +
+			"a session says. Applies immediately: it is read when an event is " +
+			"dispatched, so a save (or an edit to config.toml) takes effect on the " +
+			"next event with no restart.",
+		// R229: the dispatcher reads the configured script at dispatch time, in
+		// `deck _hook` (a fresh process that loads config.toml on every
+		// invocation) and in the running client from m.settings, which a save
+		// or a config reload refreshes (settingsApplyLiveEventHook).
+		Scope: ScopeGlobal,
+	},
+	{
+		Section: "",
+		Key:     "event_hook_default",
+		Kind:    KindToggle,
+		Default: false,
+		Description: "Whether the event hook is on for a session whose own " +
+			"event_hook_enabled flag is inherit (SPEC \u00a710.2). Off by default, so no " +
+			"session fires the hook until it is switched on here or in the session " +
+			"itself. Inert while event_hook is empty. Applies immediately.",
+		Scope: ScopeGlobal,
+	},
+	{
+		Section:       "",
+		Key:           "event_hook_events",
+		Kind:          KindListOfStrings,
+		Default:       []string{"waiting", "error", "ended"},
+		ElementValues: EventHookKinds,
+		Description: "The event kinds the hook is offered by default (SPEC \u00a710.1-\u00a710.2), " +
+			"edited here as comma-separated text, e.g. waiting, error, ended. Any of " +
+			"started, resumed, waiting, idle, error, ended, killed; any other word " +
+			"is refused. A session's own list replaces this one entirely, never " +
+			"merges with it. Applies immediately.",
+		Scope: ScopeGlobal,
+	},
+	{
+		Section: "",
+		Key:     "event_hook_timeout",
+		Kind:    KindInteger,
+		Default: int(DefaultEventHookTimeout.Seconds()),
+		Unit:    "seconds",
+		IntBounds: Bounds{
+			Min: 1, // a non-positive timeout is a load error naming the key.
+		},
+		Description: "How long the event script may run before deck kills its whole " +
+			"process group (SPEC \u00a710.3). Fire-and-forget: deck never retries. Lower " +
+			"values cut a slow script off sooner; higher values let it run longer " +
+			"while `deck _hook` waits for it (never on the session-end path). " +
+			"Applies immediately.",
+		Scope: ScopeGlobal,
 	},
 	{
 		Section:     "env",

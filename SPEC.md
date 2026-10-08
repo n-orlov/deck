@@ -729,13 +729,25 @@ theme files exactly once, then adopts the new fingerprint (an invalid file is th
 once, not on every poll, and the next write is picked up). The reload opens these files
 read-only and calls no config writer: it never rewrites `config.toml`, whatever it finds there.
 
+**The event-hook keys (§10).** `event_hook` is a string (an executable path, or an executable
+and its arguments separated by spaces; no shell), `event_hook_default` a boolean,
+`event_hook_events` a one-line array of quoted event kinds (`["waiting", "error", "ended"]`
+by default; `[]` is a real value, no kind offered) and `event_hook_timeout` whole seconds, or a
+quoted duration, of at least 1 (3 by default). Validation is at load, like every key: a word in
+`event_hook_events` outside the offered set of §10.1 (`started`, `resumed`, `waiting`, `idle`,
+`error`, `ended`, `killed`; `prompt`, `env` and `note` are not offered), a malformed array, or an
+`event_hook_timeout` below 1 is an error naming the file, the line and the key. Settings
+writes them back through the same atomic writer.
+
 **Applied live, no restart.** When a poll finds a change, the running TUI re-applies every
 key of the schema above that is not listed below, through the same path a save in the settings
 view (§11.5) uses: `allow_yolo`, `yolo_default`, `ui.theme`, `ui.ascii`, `ui.mouse` (the
 terminal's mouse reporting is switched on or off with it), `ui.preview_fit`, `ui.preview_paint`,
 `ui.sort_order` (the loaded sessions are re-sorted, the selection stays on its session),
-`ui.default_group_first`, `ui.attach_on_new`, `ui.attach_on_click`, `ui.select_on_drag` and
-`ui.attach_on_resume`. A key the file did not change is left as it is, and a key a `DECK_*`
+`ui.default_group_first`, `ui.attach_on_new`, `ui.attach_on_click`, `ui.select_on_drag`,
+`ui.attach_on_resume`, `event_hook`, `event_hook_default`, `event_hook_events` and
+`event_hook_timeout` (the dispatcher reads them from the running settings when an event fires,
+so the next event follows them). A key the file did not change is left as it is, and a key a `DECK_*`
 variable overrides stays pinned to the environment. A changed user theme file re-resolves the
 active theme too, so editing its colours takes effect on the next poll without touching
 `[ui] theme`.
@@ -2360,6 +2372,14 @@ the TUI must be the place it is edited.
 - Field kinds are explicit: toggle, integer with bounds, string, path (with a picker),
   enum (cycled), list-of-strings, and *link* (opens the owning dialog, per the exception
   above). Each field states what it does and what changes when it changes.
+- **`event_hook_events` is a comma-separated text field.** `enter` opens the §11.11 text editor
+  on the staged list written as `waiting, error, ended`; `enter` commits it (spaces around
+  words and empty words are dropped, and empty text is the empty list, not a cancel). A word
+  outside the offered kinds of §10.1 is refused with a note naming `event_hook_events` and the
+  word: the editor stays open on the typed text, nothing is staged, and `esc` abandons it. The
+  other three keys use the ordinary editors (`event_hook` the text editor, `event_hook_default`
+  a toggle, `event_hook_timeout` an integer stepped by `+`/`-`, never below 1 s). All four are
+  global scope and apply to the running client on save (§6.5), so none says *restart-to-apply*.
 - Navigation, spelled out because the takeover is not a §11.4 dialog and the main view has
   no `tab` binding for it to echo (§11.3): `tab`/`←`/`→` switch between the category list
   and the field list, `↑`/`↓` move within the focused list, `/` searches, `ctrl+s` saves,

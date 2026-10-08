@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -28,12 +29,20 @@ const (
 	DefaultStaleAfter    = 45 * time.Second
 	DefaultUndoMS        = 10000
 	DefaultDeleteGraceMS = 60000
+	// DefaultEventHookTimeout is how long the event script (SPEC §10.3) may
+	// run before it is killed when config.toml sets no event_hook_timeout.
+	DefaultEventHookTimeout = 3 * time.Second
 	// DefaultProfile is the flat, unnamed layout and socket "deck" (SPEC
 	// §3.4): the profile `deck`/`deck default`/an unset DECK_PROFILE all
 	// resolve to, byte-for-byte, with no migration and profiles/default/
 	// never created.
 	DefaultProfile = "default"
 )
+
+// EventHookKinds is the offered set of SPEC §10.1: the only event kinds
+// event_hook_events (and a session's own list) may name. The remaining §4
+// kinds (prompt, env, note) are the audit trail's and are never offered.
+var EventHookKinds = []string{"started", "resumed", "waiting", "idle", "error", "ended", "killed"}
 
 // Paths are the locations used by deck at runtime. DECK_HOME deliberately
 // supplies a single root for all mutable state, making isolated runs simple.
@@ -138,6 +147,19 @@ type Settings struct {
 	// pane is gone, in addition to (never instead of) a session's own
 	// post_destroy. Empty by default. Defaults per internal/config.Schema.
 	PostDestroy string
+	// EventHook mirrors config.toml's top-level event_hook key (R229, SPEC
+	// §10.1): the one event script, a path or an argv separated by spaces,
+	// run without a shell. Empty by default, which makes §10 inert.
+	EventHook string
+	// EventHookDefault mirrors event_hook_default (SPEC §10.2): whether the
+	// hook is on for a session whose own flag is inherit. False by default.
+	EventHookDefault bool
+	// EventHookEvents mirrors event_hook_events (SPEC §10.2): the offered
+	// kinds the hook fires for by default. Defaults to waiting, error, ended.
+	EventHookEvents []string
+	// EventHookTimeout mirrors event_hook_timeout (SPEC §10.3): the bound on
+	// one script run. Defaults to DefaultEventHookTimeout.
+	EventHookTimeout time.Duration
 	// Agent mirrors config.toml's top-level agent key (R220): the agent kind
 	// `deck new` creates when --agent is absent. Empty by default. It is
 	// stored verbatim; cmd/deck checks it against the adapter registry when
@@ -397,6 +419,10 @@ func applyFileConfig(settings *Settings, fileCfg FileConfig) {
 	settings.PreLaunch = fileCfg.PreLaunch
 	settings.PostDestroy = fileCfg.PostDestroy
 	settings.Agent = fileCfg.Agent
+	settings.EventHook = fileCfg.EventHook
+	settings.EventHookDefault = fileCfg.EventHookDefault
+	settings.EventHookEvents = slices.Clone(fileCfg.EventHookEvents)
+	settings.EventHookTimeout = fileCfg.EventHookTimeout
 	settings.SortOrder = fileCfg.SortOrder
 	settings.RecentCwdLimit = fileCfg.RecentCwdLimit
 	settings.Mouse = fileCfg.Mouse
