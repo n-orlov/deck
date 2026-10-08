@@ -475,8 +475,8 @@ Invariants:
   missing row degrades to the documented default rather than to an error.
 - Every column above is reachable by migration from schema version 1 — the store is never
   rebuilt and a session row is never recreated to gain a field.
-- Schema version 10 retires `notify_rules` and `snoozed_until` (and an `outbox` table, which
-  no shipped schema creates) and adds the nullable `event_hook_enabled`, `event_hook_events`
+- Schema version 10 retires the earlier notification-rule and snooze columns (and an outbox
+  table, which no shipped schema creates) and adds the nullable `event_hook_enabled`, `event_hook_events`
   and `hook_fired` columns shown above; every migrated row reads back "inherit, nothing
   fired". `hook_fired` is cleared (set to `NULL`) in the same write that advances
   `notify_epoch`, so a new attention episode may fire its hooks again (§10.3).
@@ -3411,11 +3411,16 @@ in the help view.
   coalesced to one `SIGWINCH` per settled selection rather than one per row walked, that no
   fit reaches a pane below the 7-row floor, and that `preview_fit = false` produces none at
   all.
-- **Capture script.** A script registered as `event_hook` that appends its argv, its
-  `DECK_*` environment and its stdin to a file; steps assert on invocations received, the
-  payload, dedupe collapses, and non-invocation for a disabled or filtered kind. Event-hook
-  behaviour is fully black-box because §10 has no built-in service. A slow variant (sleeps past
-  the timeout) and a failing variant (exits non-zero) cover §10.3.
+- **Capture script.** A script registered as `event_hook` that appends its argv, a fixed set
+  of `DECK_SESSION_*` and `DECK_EVENT_*` variables and its stdin payload to a file, prints one
+  output line, and spawns nothing itself (shell builtins only); steps assert on invocations
+  received, the payload, dedupe collapses, and non-invocation for a disabled or filtered kind.
+  It is the only program any scenario makes deck run for the hook, and none reaches a
+  notification service. Event-hook behaviour is fully black-box because §10 has no built-in
+  service. A slow variant (it holds each invocation open on a fifo past the timeout, and is
+  asserted dead after the kill) covers §10.3; the recorded exit status is asserted on the
+  event's row for the clean exit, and a non-zero exit is pinned where the spawner lives
+  (`internal/notify`) and in the session detail (§11.4).
 - **Resize and attributes.** §11.2's "a resize re-chooses the mode" requires the driver to
   resize the pty mid-scenario (`TIOCSWINSZ` + `SIGWINCH`) and re-read the grid; §11.6's
   theme assertions require the emulator's per-cell SGR attributes, not only its text. Both
@@ -3471,7 +3476,11 @@ features/
   kill_delete_undo.feature      §9.2 — x/dd, undo windows, tombstone, cwd never touched,
                                 reap leaves no trace, the agent's transcript survives `dd`
   shell_state.feature           §9.4 — history, scrollback replay, cwd restore, sensitive
-  event_hooks.feature           §10 — contract, per-session replace-not-merge, epoch dedupe, timeout
+  event_hooks.feature           §10 — a capture script as the hook: enable/disable, allow-list
+                                filtering before the spawn, a session's list replacing the
+                                global one, inert with no script, timeout kill recorded on the
+                                event, session-end never waited for, epoch dedupe, and the
+                                TUI's own killed event
   codex_hooks.feature           §8.2 — inline hook injection, the id adopted from
                                 SessionStart, PermissionRequest → waiting, and no id (so no
                                 resume) before the first prompt
