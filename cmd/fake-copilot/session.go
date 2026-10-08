@@ -47,16 +47,30 @@ func openSession(root, id, cwd string) (*session, error) {
 }
 
 // eventsPath is the transcript Copilot hands to agentStop hooks.
-func (s *session) eventsPath() string { return filepath.Join(s.dir, "events.jsonl") }
+func (s *session) eventsPath() string { return filepath.Join(s.dir, eventsName) }
+
+// eventsName is the transcript's file name inside the session directory.
+const eventsName = "events.jsonl"
+
+// openAppend opens (creating) the file called name in dir for appending,
+// through an os.Root on dir so name can only ever resolve inside it.
+func openAppend(dir, name string) (*os.File, error) {
+	scope, err := os.OpenRoot(dir)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = scope.Close() }() // the opened file stays valid after the root closes
+	return scope.OpenFile(name, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+}
 
 // record appends events to events.jsonl, first opening the file for this
 // process: a missing file gets session.start and session.model_change, an
 // existing one a session.resume. Each event is {type, data, id, timestamp,
 // parentId}, the shape the real file has.
 func (s *session) record(events ...event) error {
-	file, err := os.OpenFile(s.eventsPath(), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600) //nolint:gosec // G304: the path is built by this fake from its own session id and Copilot home
+	file, err := openAppend(s.dir, eventsName)
 	if err != nil {
-		return fmt.Errorf("open events.jsonl: %w", err)
+		return fmt.Errorf("open %s: %w", eventsName, err)
 	}
 	defer func() { _ = file.Close() }() // the write errors below are the ones that matter
 	if !s.eventsOpened {

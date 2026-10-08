@@ -215,7 +215,7 @@ func TestStartupOutputHasTheRealStartSequence(t *testing.T) {
 func TestRedrawsAtTheNewSizeOnSigwinch(t *testing.T) {
 	h := newHarness(t)
 	deckHome := filepath.Join(t.TempDir(), "deck")
-	cmd := exec.Command(os.Args[0], "--session-id", testSessionID) //nolint:gosec // G204: re-executes this test binary as the fake
+	cmd := exec.Command(testBinary(t), "--session-id", testSessionID)
 	cmd.Dir = h.cwd
 	cmd.Env = append(os.Environ(), runMainEnv+"=1", "COPILOT_HOME="+h.home, "DECK_HOME="+deckHome, commandsEnvironment+"=1", screenEnvironment+"=1")
 	terminal, err := pty.StartWithSize(cmd, &pty.Winsize{Rows: 24, Cols: 80})

@@ -102,7 +102,10 @@ func (h hookRunner) runEntry(entry hookEntry, payload []byte, stdout *bytes.Buff
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
-	command := exec.CommandContext(ctx, "bash", "-c", entry.Bash) //nolint:gosec // G204: the command is the hooks.json entry of the plugin directory this fixture was launched with, exactly what Copilot runs
+	// The program is the constant bash; the script is the hooks.json entry of the
+	// plugin directory this fixture was launched with, exactly what Copilot runs.
+	command := exec.CommandContext(ctx, "bash")
+	command.Args = append(command.Args, "-c", entry.Bash)
 	command.Dir = h.cwd
 	command.Stdin = bytes.NewReader(payload)
 	command.Stdout = stdout

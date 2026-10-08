@@ -468,11 +468,23 @@ func writeFileAtomic(path string, content []byte, dirMode os.FileMode) error {
 	if err := ensureInstrumentDir(dir, dirMode); err != nil {
 		return err
 	}
-	existing, readErr := os.ReadFile(path) //nolint:gosec // G304: path is a deck-owned instrumentation file under the data root, never user input
-	if readErr == nil && bytes.Equal(existing, content) {
+	if sameContent(dir, filepath.Base(path), content) {
 		return nil
 	}
 	return replaceFile(dir, path, content)
+}
+
+// sameContent reports whether the file called name in dir already holds
+// exactly content. The read goes through an os.Root on dir, so name can only
+// ever resolve inside it; an unreadable or missing file is simply not equal.
+func sameContent(dir, name string, content []byte) bool {
+	scope, err := os.OpenRoot(dir)
+	if err != nil {
+		return false
+	}
+	defer func() { _ = scope.Close() }() // nothing is written through this handle
+	existing, err := scope.ReadFile(name)
+	return err == nil && bytes.Equal(existing, content)
 }
 
 // ensureInstrumentDir creates dir (mode dirMode, 0750 when zero) and, when a

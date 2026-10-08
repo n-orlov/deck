@@ -177,11 +177,22 @@ func waitFor(t *testing.T, what string, condition func() bool) {
 	}
 }
 
+// testBinary is the path of this running test binary, which the tests
+// re-execute as the fake.
+func testBinary(t *testing.T) string {
+	t.Helper()
+	self, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return self
+}
+
 // startProcess runs this test binary as the fake, in commands mode, with a
 // stdin the test keeps open.
 func (h *harness) startProcess(t *testing.T, args ...string) (*exec.Cmd, io.WriteCloser) {
 	t.Helper()
-	cmd := exec.Command(os.Args[0], args...) //nolint:gosec // G204: re-executes this test binary as the fake
+	cmd := exec.Command(testBinary(t), args...)
 	cmd.Dir = h.cwd
 	cmd.Env = append(os.Environ(), runMainEnv+"=1", "COPILOT_HOME="+h.home, commandsEnvironment+"=1")
 	stdin, err := cmd.StdinPipe()
