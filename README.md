@@ -43,6 +43,67 @@ from the `t` picker: `empire` (default), `daylight`, `parchment`, `matrix`, `cob
 `gruvbox-dark`, `solarized-dark`, `amber` and `high-contrast`. Your own live in
 `~/.config/deck/themes/*.toml` (see SPEC.md §11.6).
 
+## Event hook
+
+One script gets told when a session needs you. Set it in `config.toml`, then turn it on:
+
+```toml
+event_hook = "/home/me/bin/deck-notify"
+event_hook_default = true
+event_hook_events = ["waiting", "error", "ended"]
+event_hook_timeout = 3
+```
+
+deck runs `script <kind> [fixed args]` (`started`, `resumed`, `waiting`, `idle`, `error`, `ended`,
+`killed`) with `DECK_SESSION_*`, `DECK_EVENT_KIND`, `DECK_EVENT_REASON`, `DECK_EVENT_MESSAGE` and
+`DECK_EVENT_AT` in the environment and the full JSON payload on stdin (SPEC.md §10, and `?` in deck).
+A session's own `event_hook_events` replaces the global list. Two notes apply to every script:
+
+- **No retry.** deck keeps no outbox: a script that fails, or is killed after `event_hook_timeout`
+  (3 s), has failed. The exit status and an output tail are on the event, in the session detail.
+  Keep the script quick and send in the background if the service is slow.
+- **Idempotency.** deck spawns once per `(kind, reason)` in an attention episode, but it makes no
+  promise across episodes, restarts or two deck processes racing, so a script that must not act
+  twice has to deduplicate itself (the examples key on session id, kind and time).
+
+Telegram, with `curl`:
+
+```sh
+#!/bin/sh
+# deck-notify-telegram: needs TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID in the environment deck runs in.
+# No retry from deck: --max-time keeps this inside event_hook_timeout, and a failure is just a non-zero exit.
+set -eu
+kind=$1
+key="${DECK_SESSION_ID:-unknown}-$kind-${DECK_EVENT_AT:-now}"
+state="${XDG_STATE_HOME:-$HOME/.local/state}/deck-notify-seen"
+mkdir -p "$state"
+[ -e "$state/$key" ] && exit 0
+text="deck: ${DECK_SESSION_NAME:-session} $kind"
+[ -n "${DECK_EVENT_REASON:-}" ] && text="$text ($DECK_EVENT_REASON)"
+curl -fsS --max-time 2 \
+  --data-urlencode "chat_id=$TELEGRAM_CHAT_ID" \
+  --data-urlencode "text=$text" \
+  "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendMessage" >/dev/null
+: > "$state/$key"
+```
+
+Desktop, with `notify-send`:
+
+```sh
+#!/bin/sh
+# deck-notify-desktop: a notification per event; deck gives no retry, so a failure is simply lost.
+set -eu
+kind=$1
+case "$kind" in
+  error) urgency=critical ;;
+  *) urgency=normal ;;
+esac
+# notify-send replaces the previous bubble with the same id, so a repeat is harmless.
+notify-send --urgency="$urgency" --app-name=deck \
+  --hint="string:x-canonical-private-synchronous:deck-${DECK_SESSION_ID:-x}" \
+  "deck: ${DECK_SESSION_NAME:-session} $kind" "${DECK_EVENT_REASON:-}"
+```
+
 ## Release
 
 ```sh
