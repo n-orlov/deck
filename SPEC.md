@@ -729,6 +729,23 @@ theme files exactly once, then adopts the new fingerprint (an invalid file is th
 once, not on every poll, and the next write is picked up). The reload opens these files
 read-only and calls no config writer: it never rewrites `config.toml`, whatever it finds there.
 
+**Applied live, no restart.** When a poll finds a change, the running TUI re-applies every
+key of the schema above that is not listed below, through the same path a save in the settings
+view (§11.5) uses: `allow_yolo`, `yolo_default`, `ui.theme`, `ui.ascii`, `ui.mouse` (the
+terminal's mouse reporting is switched on or off with it), `ui.preview_fit`, `ui.preview_paint`,
+`ui.sort_order` (the loaded sessions are re-sorted, the selection stays on its session),
+`ui.default_group_first`, `ui.attach_on_new`, `ui.attach_on_click`, `ui.select_on_drag` and
+`ui.attach_on_resume`. A key the file did not change is left as it is, and a key a `DECK_*`
+variable overrides stays pinned to the environment. A changed user theme file re-resolves the
+active theme too, so editing its colours takes effect on the next poll without touching
+`[ui] theme`.
+
+**Restart-required keys.** `stale_after`, `capture_min_interval`, `event_retention_days`, `tmux_mouse`, `interactive_ms`, `interactive_transport`, `pre_launch`, `agent`, `post_destroy`, `ui.recent_cwd_limit`, `[env]`
+A reload refreshes only these keys' file value (so the settings view shows what is on disk); the
+running process keeps using the value it started with until deck restarts, which is also what the
+settings view labels *restart-to-apply* (§11.5). A new schema key is classified as one or the
+other in the same change that adds it.
+
 Environment always outranks the file: `DECK_ASCII` set in the environment overrides
 `[ui] ascii`, as every `DECK_*` knob overrides its file counterpart (§13.1 depends on
 this — the harness must be able to pin behaviour regardless of what a config file says).
