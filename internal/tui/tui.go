@@ -1214,6 +1214,10 @@ type Model struct {
 	// at the moment the dialog opens so the view never has to look it up
 	// again (the session may no longer be m.sessions[m.selected] by then).
 	lostAttachSession string
+
+	// eventHookLive carries the running event-hook settings to the service
+	// that dispatches probe, process-death and kill events (WithEventHookLive).
+	eventHookLive *service.LiveEventHook
 }
 
 // WithTmuxClient attaches the tmux.Client §11.9 interactive mode (task

@@ -21,6 +21,7 @@ import (
 	"github.com/n-orlov/deck/internal/audit"
 	"github.com/n-orlov/deck/internal/config"
 	"github.com/n-orlov/deck/internal/hookrecv"
+	"github.com/n-orlov/deck/internal/notify"
 	"github.com/n-orlov/deck/internal/service"
 	"github.com/n-orlov/deck/internal/store"
 	"github.com/n-orlov/deck/internal/tmux"
@@ -156,6 +157,11 @@ func runTUI(settings config.Settings, stderr io.Writer) int {
 	reclaimLeakedPipesBestEffort(stderr)
 	registry := newAgentRegistry()
 	sessions := newSessionService(db, settings, logger, client, registry, executable)
+	// The events deck detects by itself (a probe verdict, a process death, the
+	// user's kill) dispatch the event hook from this running TUI (SPEC §10.4).
+	host, _ := os.Hostname()
+	eventHook := service.NewLiveEventHook(settings, notify.Deck{Host: host, Version: buildVersion()}, os.Environ())
+	sessions.EventHook = eventHook.Dispatcher
 	// The TUI owns pane-text sampling. Its reconcile callback performs liveness
 	// first and then probes stale eligible agents; the hidden hook command below
 	// deliberately wires only ReconcileWithin and can therefore never probe. It
@@ -165,7 +171,7 @@ func runTUI(settings config.Settings, stderr io.Writer) int {
 	// restart-to-apply: a save changes config.toml immediately, but this already
 	// running client keeps enforcing the OLD window until deck restarts.
 	tuiReconcile := newTUIReconcile(db, sessions, settings)
-	model := newDeckModel(db, settings, sessions, client, registry, tuiReconcile)
+	model := newDeckModel(db, settings, sessions, client, registry, tuiReconcile).WithEventHookLive(eventHook)
 	// wrapForInteractiveShutdownOnPanic is deliberately the OUTERMOST wrap
 	// (applied last, around everything else): its own recover must see a
 	// panic thrown by any of the layers below it too, not only one from

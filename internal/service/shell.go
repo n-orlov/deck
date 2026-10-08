@@ -51,6 +51,14 @@ type Service struct {
 	Clock *config.Clock
 	IDs   *config.IDGenerator
 
+	// EventHook supplies the event-hook dispatcher (policy, timeout, deck
+	// facts, environment) the service-side event writers offer their events
+	// to (SPEC §10.4). It is called per event, so a live settings change
+	// applies to the next event; its Store field is ignored (the service's
+	// own is used). nil is the common case of a Service that never
+	// dispatches: `deck new` and the post-hook liveness pass.
+	EventHook func() EventHookDispatcher
+
 	// Agents looks up an adapter by its declared kind (e.g. "claude", "pi")
 	// for CreateAgent and, later, Resume. Only CreateShell tolerates it
 	// being nil; agent creation requires it.

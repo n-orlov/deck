@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/n-orlov/deck/internal/config"
+	"github.com/n-orlov/deck/internal/service"
 )
 
 // settingsEventKindsText renders the offered-kinds list as the
@@ -44,4 +45,18 @@ func (m *Model) settingsApplyLiveEventHook(edited, previous config.FileConfig) {
 	if edited.EventHookTimeout != previous.EventHookTimeout {
 		m.settings.EventHookTimeout = edited.EventHookTimeout
 	}
+	if m.eventHookLive != nil {
+		m.eventHookLive.Set(m.settings)
+	}
+}
+
+// WithEventHookLive attaches the event-hook settings the service-side event
+// writers read per event (probe verdicts, process death, the user's kill; SPEC
+// §10.4). The model keeps it in step with every save and config reload, so an
+// event recorded after a change already follows the new value. A Model built
+// without it (every unit test that does not set it) simply has no service-side
+// dispatcher to keep current.
+func (m Model) WithEventHookLive(live *service.LiveEventHook) Model {
+	m.eventHookLive = live
+	return m
 }

@@ -22,7 +22,7 @@ import (
 )
 
 // SchemaVersion is the newest schema understood by this binary.
-const SchemaVersion = 10
+const SchemaVersion = 11
 
 // SupportedSchemaVersion is the newest schema this binary opens: SchemaVersion
 // in every shipped build. A test build (-tags deckoldschema, see
@@ -496,6 +496,11 @@ type StatusUpdateInput struct {
 	// of this transaction. A non-matching event is still recorded, but cannot
 	// mutate any session metadata.
 	AllowedCurrentStatuses []string
+	// EventSeq, when non-nil, receives the seq of the event row this update
+	// appended, so a caller that dispatches the event hook (SPEC §10.4) can
+	// record the script's result against that very row. It is an output: the
+	// store writes it after the row is inserted and before commit returns.
+	EventSeq *int64
 }
 
 // EventInput records an event which could not be resolved to a session. It is
@@ -1106,9 +1111,15 @@ func (s *Store) UpdateSessionStatus(ctx context.Context, input StatusUpdateInput
 // recordStatusEventTx appends the status update's source event and commits
 // UpdateSessionStatus's transaction.
 func recordStatusEventTx(ctx context.Context, tx *sql.Tx, input StatusUpdateInput) error {
-	if _, err := tx.ExecContext(ctx, `INSERT INTO events (session_id, at, kind, reason, payload)
-		VALUES (?, ?, ?, ?, ?)`, input.SessionID, input.At, input.EventKind, input.Reason, input.Payload); err != nil {
+	res, err := tx.ExecContext(ctx, `INSERT INTO events (session_id, at, kind, reason, payload)
+		VALUES (?, ?, ?, ?, ?)`, input.SessionID, input.At, input.EventKind, input.Reason, input.Payload)
+	if err != nil {
 		return fmt.Errorf("record session status event: %w", err)
+	}
+	if input.EventSeq != nil {
+		if *input.EventSeq, err = res.LastInsertId(); err != nil {
+			return fmt.Errorf("read session status event seq: %w", err)
+		}
 	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit session status update: %w", err)
@@ -2739,7 +2750,7 @@ func (s *Store) migrate(version int) error {
 // the schemaVN variables at call time (tests substitute them); a version
 // outside 0..SchemaVersion-1 has no migration path.
 func applySchemaLadder(tx *sql.Tx, version int) error {
-	rungs := [][]string{schemaV1, schemaV2, schemaV3, schemaV4, schemaV5, schemaV6, schemaV7, schemaV8, schemaV9, schemaV10}
+	rungs := [][]string{schemaV1, schemaV2, schemaV3, schemaV4, schemaV5, schemaV6, schemaV7, schemaV8, schemaV9, schemaV10, schemaV11}
 	if version < 0 || version >= len(rungs) {
 		return fmt.Errorf("no migration path from schema version %d", version)
 	}
@@ -2935,6 +2946,19 @@ var schemaV10 = []string{
 	`ALTER TABLE sessions ADD COLUMN event_hook_enabled INTEGER`,
 	`ALTER TABLE sessions ADD COLUMN event_hook_events TEXT`,
 	`ALTER TABLE sessions ADD COLUMN hook_fired TEXT`,
+}
+
+// schemaV11 stores the event hook's result against the event it ran for
+// (R232b, SPEC §10.3): the offered kind, the exit status, whether the bound
+// expired, the capped output tail and the not-started error. All columns are
+// nullable, so every existing event, and every event nothing was spawned for,
+// reads back "no hook ran".
+var schemaV11 = []string{
+	`ALTER TABLE events ADD COLUMN hook_kind TEXT`,
+	`ALTER TABLE events ADD COLUMN hook_exit INTEGER`,
+	`ALTER TABLE events ADD COLUMN hook_timed_out INTEGER`,
+	`ALTER TABLE events ADD COLUMN hook_output TEXT`,
+	`ALTER TABLE events ADD COLUMN hook_error TEXT`,
 }
 
 // getUIState returns the persisted value for key, or def when no row exists

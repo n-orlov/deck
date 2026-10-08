@@ -42,6 +42,7 @@ func dispatchHookEvent(ctx context.Context, db *store.Store, settings config.Set
 		Message:       result.Message,
 		At:            settings.Clock.Now(),
 		AppliedStatus: result.Status,
+		EventSeq:      result.EventSeq,
 	}, result.Kind == "session_end")
 }
 
