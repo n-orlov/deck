@@ -33,6 +33,12 @@ type Model struct {
 	// one a session's recorded hook executable is compared with (R204c).
 	deckExecutable string
 	settings       config.Settings
+	// configReloader is the §6.5 config/theme poller (nil: polling off);
+	// reloaded is the last successfully re-read Settings and reloadErr the
+	// last failed re-read. Detection only: R226b applies, R227 guards.
+	configReloader *config.Reloader
+	reloaded       *config.Settings
+	reloadErr      error
 	sessions       []store.Session
 	startupNote    string
 	// sessionsReloadNote (R140/GH #36) is the RUNTIME counterpart to
@@ -1899,7 +1905,7 @@ type sessionGroupMoved struct {
 // New creates a list model. tmux failures are intentionally retained as a
 // rendered health state: users must be able to read and quit it.
 func New(db *store.Store, settings config.Settings, tmuxNote string) Model {
-	m := Model{store: db, settings: settings, startupNote: tmuxNote, createCWDRecentIndex: -1, interactiveScroll: &interactiveScrollState{}, deckExecutable: runningExecutable()}
+	m := Model{store: db, settings: settings, startupNote: tmuxNote, createCWDRecentIndex: -1, interactiveScroll: &interactiveScrollState{}, deckExecutable: runningExecutable(), configReloader: newConfigReloader(settings)}
 	if wd, err := os.Getwd(); err == nil {
 		m.startCWD = wd
 	}
@@ -2188,6 +2194,9 @@ func (m Model) Init() tea.Cmd {
 		m.loadSessions,
 		tea.Tick(m.settings.Reconcile, func(t time.Time) tea.Msg { return reconcileTick(t) }),
 		tea.Tick(m.settings.Preview, func(t time.Time) tea.Msg { return previewTick(t) }),
+	}
+	if m.configReloader != nil {
+		commands = append(commands, m.configPollTickCmd())
 	}
 	if m.settings.Animation {
 		commands = append(commands, tea.Tick(m.settings.Preview, func(t time.Time) tea.Msg { return animationTick(t) }))
@@ -2685,6 +2694,8 @@ func init() {
 		reflect.TypeFor[envEdited]():                       handlerFor(Model.onEnvEdited),
 		reflect.TypeFor[reconcileTick]():                   handlerFor(Model.onReconcileTick),
 		reflect.TypeFor[previewTick]():                     handlerFor(Model.onPreviewTick),
+		reflect.TypeFor[configPollTick]():                  handlerFor(Model.onConfigPollTick),
+		reflect.TypeFor[configPolled]():                    handlerFor(Model.onConfigPolled),
 		reflect.TypeFor[interactiveDisplacementChecked]():  handlerFor(Model.onInteractiveDisplacementChecked),
 		reflect.TypeFor[previewFitDone]():                  handlerFor(Model.onPreviewFitDone),
 		reflect.TypeFor[entryRefusalHolderRecheckDone]():   handlerFor(Model.onEntryRefusalHolderRecheckDone),
@@ -9848,6 +9859,8 @@ Runtime controls
   DECK_ID_SEED          deterministic generated UUIDs
   DECK_RECONCILE_MS     list/reconciliation interval in milliseconds
   DECK_PREVIEW_MS       pane-preview interval in milliseconds
+  DECK_CONFIG_POLL_MS   config/theme reload poll interval in milliseconds
+                        (test-only; default and production: 30000)
   DECK_UNDO_MS          undo-toast window after x, in milliseconds
   DECK_DELETE_GRACE_MS  undo/reap window after dd, in milliseconds
   DECK_ASCII=1          use ASCII instead of optional glyphs
