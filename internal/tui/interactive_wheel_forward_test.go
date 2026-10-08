@@ -94,7 +94,7 @@ func wheelFixtureModelScript(t *testing.T, name, script, wantFlags string) (Mode
 	next, _ := m.enterInteractive()
 	got, ok := next.(Model)
 	if !ok || got.attachError != "" || !got.interactive || got.interactiveGrid == nil || got.interactiveDispatcher == nil {
-		t.Fatalf("enterInteractive did not enter interactive mode (attachError=%q)", got.attachError)
+		t.Fatalf("enterInteractive did not enter interactive mode (attachError=%q, refusal=%+v)", got.attachError, got.entryRefusal)
 	}
 	t.Cleanup(func() { got.exitInteractive() })
 	return got, socket, target
