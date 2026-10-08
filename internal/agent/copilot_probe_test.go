@@ -189,20 +189,51 @@ func TestCopilotErrorLineIsOnlyAnErrorAfterTheLastTurnAboveTheContextLine(t *tes
 }
 
 func TestCopilotWorkingFooterNeedsAGlyphWorkingAndAnEscHint(t *testing.T) {
+	rule := "─────────"
+	// frame draws a composer under a transcript, with footer as the line below it.
+	frame := func(footer string) string {
+		return " ❯ hi\n /tmp/work\n" + rule + "\n❯\n" + rule + "\n" + footer
+	}
 	cases := []struct {
 		name, pane string
 		want       bool
 	}{
-		{"interrupt", " ◉ Working · 130 B esc interrupt    x\n", true},
-		{"edit prompt", " ● Working esc edit prompt\n", true},
-		{"other glyphs", " ○ Working esc interrupt\n\n ◎ Working esc interrupt\n", true},
-		{"no esc hint", " ◉ Working\n", false},
-		{"no glyph", " Working esc interrupt\n", false},
-		{"scrolled far above the footer", " ● Working esc interrupt\n a\n b\n c\n d\n e\n f\n", false},
+		{"interrupt", frame(" ◉ Working · 130 B esc interrupt    x\n"), true},
+		{"edit prompt", frame(" ● Working esc edit prompt\n"), true},
+		{"other glyphs", frame(" ○ Working esc interrupt\n\n ◎ Working esc interrupt\n"), true},
+		{"no esc hint", frame(" ◉ Working\n"), false},
+		{"no glyph", frame(" Working esc interrupt\n"), false},
+		{"no composer, so no footer", " ◉ Working · 130 B esc interrupt\n", false},
 	}
 	for _, tc := range cases {
 		if got := copilotWorkingFooter(tc.pane); got != tc.want {
 			t.Errorf("%s: got %v, want %v", tc.name, got, tc.want)
+		}
+	}
+}
+
+// F2/R219: the Working verdict is read from the live footer only. A transcript
+// line that quotes the busy footer, however close above the context line,
+// leaves an idle pane idle.
+func TestCopilotProbeIgnoresAWorkingLineInTheTranscript(t *testing.T) {
+	idle := copilotPane(t, "idle.txt")
+	const context = "\n /tmp/work\n"
+	if !strings.Contains(idle, context) {
+		t.Fatal("idle fixture has no context line to insert above")
+	}
+	for _, quoted := range []string{
+		" ◉ Working · 130 B esc interrupt",
+		" ● Working · esc edit prompt",
+		" ○ Working esc interrupt",
+	} {
+		pane := strings.Replace(idle, context, "\n"+quoted+context, 1)
+		if status, reason := (Copilot{}).Probe(pane); status != "idle" || reason != "ready" {
+			t.Errorf("transcript %q: got (%q, %q), want (idle, ready)", quoted, status, reason)
+		}
+	}
+	for _, file := range []string{"working.txt", "working-edit-prompt.txt"} {
+		if status, reason := (Copilot{}).Probe(copilotPane(t, file)); status != "running" || reason != "working indicator" {
+			t.Errorf("%s: got (%q, %q), want (running, working indicator)", file, status, reason)
 		}
 	}
 }

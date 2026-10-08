@@ -216,21 +216,15 @@ func isSeparatorLine(line string) bool {
 	return true
 }
 
-// copilotFooterWindow is how many trailing content lines copilotWorkingFooter
-// searches: the footer is the pane's last line (or lines, when an 80-column
-// wrap splits it), so a "● Working ..." line quoted further up the transcript
-// never reads as the live footer.
-const copilotFooterWindow = 6
-
-// copilotWorkingFooter reports whether the pane's footer is Copilot's busy
-// footer: a line led by one of the spinner glyphs ○ ◎ ● ◉ carrying "Working"
-// and either "esc interrupt" or "esc edit prompt".
+// copilotWorkingFooter reports whether the pane's live footer is Copilot's
+// busy footer: a line led by one of the spinner glyphs ○ ◎ ● ◉ carrying
+// "Working" and either "esc interrupt" or "esc edit prompt". Only the region
+// below the composer's last separator rule is read (copilotFooterLines), so a
+// "● Working ... esc interrupt" line quoted in the transcript above the
+// composer never reads as the live footer; a pane with no composer has no
+// footer and so no working verdict.
 func copilotWorkingFooter(pane string) bool {
-	lines := nonBlankLines(pane)
-	if len(lines) > copilotFooterWindow {
-		lines = lines[len(lines)-copilotFooterWindow:]
-	}
-	for _, line := range lines {
+	for _, line := range copilotFooterLines(pane) {
 		if !hasAnyPrefix(line, "○ ", "◎ ", "● ", "◉ ") || !strings.Contains(line, "Working") {
 			continue
 		}

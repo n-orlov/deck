@@ -19,24 +19,30 @@ import (
 // "prompt", the userPromptSubmitted mapping) one probe window ago.
 func copilotProbeRow(t *testing.T, svc Service, db *store.Store, kind, profile, fixture string, n int) store.Session {
 	t.Helper()
+	pane, err := os.ReadFile(filepath.Join("..", "agent", "testdata", "probes", "copilot", fixture))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return copilotProbeRowWithPane(t, svc, db, kind, profile, fixture, string(pane), n)
+}
+
+// copilotProbeRowWithPane is copilotProbeRow for a pane the test built itself.
+func copilotProbeRowWithPane(t *testing.T, svc Service, db *store.Store, kind, profile, label, pane string, n int) store.Session {
+	t.Helper()
 	cwd := t.TempDir()
 	now := svc.Clock.Now().UnixMilli()
 	stale := now - config.DefaultStaleAfter.Milliseconds()
 	session, err := db.CreateSession(context.Background(), store.CreateSessionInput{
-		ID: fmt.Sprintf("00000000-0000-4000-8000-%012d", 700+n), Name: kind + " " + fixture, CWD: cwd,
+		ID: fmt.Sprintf("00000000-0000-4000-8000-%012d", 700+n), Name: kind + " " + label, CWD: cwd,
 		Agent: kind, CapturedPath: "/bin", Status: "running", StatusSource: "hook",
 		StatusAt: stale, CreatedAt: stale, PermissionProfile: profile,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	pane, err := os.ReadFile(filepath.Join("..", "agent", "testdata", "probes", "copilot", fixture))
-	if err != nil {
-		t.Fatal(err)
-	}
 	if _, err := svc.TMux.Create(context.Background(), tmux.Launch{
 		Slug: session.Slug, CWD: cwd,
-		Command: []string{"/bin/sh", "-c", `printf '%s' "$1"; sleep 30`, "probe-fixture", string(pane)},
+		Command: []string{"/bin/sh", "-c", `printf '%s' "$1"; sleep 30`, "probe-fixture", pane},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -159,5 +165,22 @@ func TestClaudeCodexAndPiRowsAreNeverFlaggedByTheCopilotProfileAudit(t *testing.
 		if got := probeCopilotRow(t, svc, db, row); got.PermissionProfileReason != "" {
 			t.Fatalf("%s row flagged: %q", kind, got.PermissionProfileReason)
 		}
+	}
+}
+
+// F2/R219: a row a hook left running is demoted when the pane is idle, even
+// though the transcript above the context line quotes a busy footer: the
+// Working verdict is read from the live footer only. The frame fits the
+// 80-column test pane without wrapping, so the quoted line sits inside the
+// last six lines an unrestricted scan would read.
+func TestCopilotTranscriptWorkingLineDoesNotKeepAHookRunningRowRunning(t *testing.T) {
+	svc, db := newCopilotProbeService(t, "copilot-transcript-working")
+	rule := strings.Repeat("─", 78)
+	pane := " ❯ hi\n ● ok\n ◉ Working · 130 B esc interrupt\n /tmp/work\n" + rule + "\n❯\n" + rule +
+		"\n ← open sidebar · Interactive · Manual Approval · / commands · ? help\n"
+	row := copilotProbeRowWithPane(t, svc, db, "copilot", "safe", "idle-with-transcript-working", pane, 20)
+	got := probeCopilotRow(t, svc, db, row)
+	if got.Status != "idle" || got.StatusSource != "probe" || got.StatusReason != "ready" {
+		t.Fatalf("row = status %q source %q reason %q, want idle/probe/ready", got.Status, got.StatusSource, got.StatusReason)
 	}
 }
