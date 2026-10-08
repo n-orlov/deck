@@ -349,10 +349,11 @@ func sizeRecorder(getenv func(string) string) func(cols, rows int) {
 // appendSizeLine appends one "COLSxROWS" line to path, creating its directory;
 // recording is scaffolding for a test, so every failure is dropped.
 func appendSizeLine(path string, cols, rows int) {
-	if os.MkdirAll(filepath.Dir(path), 0o750) != nil {
+	dir := filepath.Dir(path)
+	if os.MkdirAll(dir, 0o750) != nil {
 		return
 	}
-	file, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600) //nolint:gosec // G304: the path is DECK_HOME/log, set by the test that launches this fixture
+	file, err := openAppend(dir, filepath.Base(path))
 	if err != nil {
 		return
 	}
