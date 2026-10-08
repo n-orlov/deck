@@ -675,11 +675,15 @@ func runHook(ctx context.Context, settings config.Settings, stdin io.Reader) (ru
 	if result.Kind == "session_end" {
 		return nil
 	}
+	// A process death this pass records is the "next `_hook` invocation" of
+	// SPEC §7: it is offered to the event hook here, the same way the TUI's
+	// reconcile offers it (SPEC §10.4), so an unattended crash still fires.
 	liveness := service.Service{
-		Store: db,
-		TMux:  tmux.Client{Socket: settings.Socket},
-		Audit: logger,
-		Clock: settings.Clock,
+		Store:     db,
+		TMux:      tmux.Client{Socket: settings.Socket},
+		Audit:     logger,
+		Clock:     settings.Clock,
+		EventHook: hookEventHookSource(settings),
 	}
 	if err := liveness.ReconcileWithin(ctx, settings.Reconcile); err != nil {
 		return fmt.Errorf("post-hook liveness pass: %w", err)

@@ -510,11 +510,17 @@ func (s Service) RunReconciler(ctx context.Context, interval time.Duration) erro
 // ReconcileWithin runs one liveness-only pass with a hard budget. It is shared
 // by the TUI loop and the post-hook path: neither caller may be held forever by
 // a stalled tmux command, and this surface deliberately contains no probing.
+// The event hook for a process death the pass records is spawned after the
+// pass returns (SPEC §10.4): its event_hook_timeout is its own bound, never
+// charged against the pass's budget.
 func (s Service) ReconcileWithin(ctx context.Context, budget time.Duration) error {
 	if budget <= 0 {
 		return errors.New("reconciliation budget must be positive")
 	}
-	passCtx, cancel := context.WithTimeout(ctx, budget)
-	defer cancel()
-	return s.Reconcile(passCtx)
+	queued, hooks := withDeferredHooks(ctx)
+	passCtx, cancel := context.WithTimeout(queued, budget)
+	err := s.Reconcile(passCtx)
+	cancel()
+	s.dispatchDeferred(ctx, hooks)
+	return err
 }

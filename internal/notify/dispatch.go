@@ -151,7 +151,7 @@ func DecodeFired(text string) []Fired {
 
 // OfferedKind maps a recorded status change to the SPEC §10.1 offered kind
 // its event offers the hook. storedKind is the events.kind the writer
-// stored (not the §4 vocabulary: session_start, stop, session_end,
+// stored (SPEC §4, not an offered kind: session_start, stop, session_end,
 // probe.<status>, tmux.pane_dead, killed, ...) and reason its status
 // reason. ok is false for a change that offers nothing (a prompt, a launch
 // bookkeeping row, a superseded or identity-mismatched hook, ...), so a

@@ -38,18 +38,55 @@ type EventHookDispatcher struct {
 // offerHook is the one call every service-side event write makes after its
 // event row is committed (SPEC §10.4): the TUI's probe verdict, the reconcile
 // pass's process death and the user's kill. A Service with no EventHook source
-// (`deck new`, the post-hook liveness pass, a test) is inert. The outcome is
-// dropped on purpose: whatever the script does, the operation that recorded
-// the event has already succeeded and stays succeeded. The attached spawn is
-// bounded by the dispatcher's Timeout and its result is stored against the
-// event by Dispatch.
+// (`deck new`, a `deck _hook` with no script configured, a test) is inert. The
+// outcome is dropped on purpose: whatever the script does, the operation that
+// recorded the event has already succeeded and stays succeeded. The attached
+// spawn is bounded by the dispatcher's Timeout and its result is stored
+// against the event by Dispatch. Inside a budgeted pass (ReconcileWithin) the
+// offer is queued and dispatched once the pass returns, so a script never
+// spends the pass's budget and the pass never cuts a script short.
 func (s Service) offerHook(ctx context.Context, ev HookEvent) {
 	if s.EventHook == nil {
+		return
+	}
+	if queue, ok := ctx.Value(deferredHooksKey{}).(*deferredHooks); ok {
+		queue.add(ev)
 		return
 	}
 	d := s.EventHook()
 	d.Store = s.Store
 	_ = d.Dispatch(ctx, ev, false)
+}
+
+// deferredHooks holds the offers a budgeted pass recorded, in order.
+type deferredHooks struct {
+	mu     sync.Mutex
+	events []HookEvent
+}
+
+type deferredHooksKey struct{}
+
+func (q *deferredHooks) add(ev HookEvent) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	q.events = append(q.events, ev)
+}
+
+// withDeferredHooks returns ctx carrying a fresh queue for offerHook.
+func withDeferredHooks(ctx context.Context) (context.Context, *deferredHooks) {
+	queue := &deferredHooks{}
+	return context.WithValue(ctx, deferredHooksKey{}, queue), queue
+}
+
+// dispatchDeferred offers every queued event, outside the pass's budget.
+func (s Service) dispatchDeferred(ctx context.Context, queue *deferredHooks) {
+	queue.mu.Lock()
+	events := queue.events
+	queue.events = nil
+	queue.mu.Unlock()
+	for _, ev := range events {
+		s.offerHook(ctx, ev)
+	}
 }
 
 // HookEvent is one recorded change to offer the hook.

@@ -23,18 +23,11 @@ func dispatchHookEvent(ctx context.Context, db *store.Store, settings config.Set
 	if !hookResultOffersEvent(result) {
 		return
 	}
-	policy := notify.PolicyFromSettings(settings)
-	if len(policy.Command) == 0 {
+	dispatcher := hookDispatcher(settings)
+	if len(dispatcher.Policy.Command) == 0 {
 		return
 	}
-	host, _ := os.Hostname()
-	dispatcher := service.EventHookDispatcher{
-		Store:   db,
-		Policy:  policy,
-		Timeout: settings.EventHookTimeout,
-		Deck:    notify.Deck{Host: host, Version: buildVersion()},
-		BaseEnv: os.Environ(),
-	}
+	dispatcher.Store = db
 	_ = dispatcher.Dispatch(ctx, service.HookEvent{
 		SessionID:     result.SessionID,
 		StoredKind:    result.Kind,
@@ -53,4 +46,29 @@ func dispatchHookEvent(ctx context.Context, db *store.Store, settings config.Set
 func hookResultOffersEvent(result hookrecv.Result) bool {
 	return !result.Orphan && !result.Superseded && !result.InSession &&
 		result.Status != "" && result.SessionID != ""
+}
+
+// hookDispatcher is the event-hook dispatcher of one `deck _hook` run: the
+// settings it started with, this host and build, and its own environment. Its
+// Store is set by the caller (the Service sets its own).
+func hookDispatcher(settings config.Settings) service.EventHookDispatcher {
+	host, _ := os.Hostname()
+	return service.EventHookDispatcher{
+		Policy:  notify.PolicyFromSettings(settings),
+		Timeout: settings.EventHookTimeout,
+		Deck:    notify.Deck{Host: host, Version: buildVersion()},
+		BaseEnv: os.Environ(),
+	}
+}
+
+// hookEventHookSource is the post-hook liveness pass's Service.EventHook: a
+// process death that pass records (SPEC §7, "the next `_hook` invocation")
+// is offered to the event hook like the TUI's reconcile offers it. With no
+// script configured it is nil, so the pass stays inert and reads nothing.
+func hookEventHookSource(settings config.Settings) func() service.EventHookDispatcher {
+	dispatcher := hookDispatcher(settings)
+	if len(dispatcher.Policy.Command) == 0 {
+		return nil
+	}
+	return func() service.EventHookDispatcher { return dispatcher }
 }
