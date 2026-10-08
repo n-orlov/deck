@@ -664,6 +664,7 @@ func runHook(ctx context.Context, settings config.Settings, stdin io.Reader) (ru
 	// pass after (and therefore outside) the measured store callback. This is
 	// the unattended path that notices and collects a different crashed pane;
 	// ReconcileWithin is liveness-only and never runs pane-text probes.
+	dispatchHookEvent(ctx, db, settings, result)
 	if result.Kind == "session_end" {
 		return nil
 	}

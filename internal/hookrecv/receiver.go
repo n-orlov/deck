@@ -106,6 +106,14 @@ type Result struct {
 	Kind      string
 	Reason    string
 	Orphan    bool
+	// Message is the hook's last assistant message (the Stop payload's
+	// last_assistant_message), the text an event hook receives as
+	// DECK_EVENT_MESSAGE. Empty for every other event.
+	Message string
+	// InSession marks a SessionEnd that only ended one conversation inside a
+	// pane that lives on (requirement 43: /resume and /clear). The event is
+	// recorded and the row is not stopped, so it is not an `ended` event.
+	InSession bool
 	// Superseded means the hook named a launch generation that is not the
 	// one the row currently holds, so its status write was recorded as an
 	// event but deliberately never applied (issue #11, R74). The stored
@@ -232,7 +240,11 @@ func ReceiveFrom(ctx context.Context, db Store, raw []byte, origin Origin, at in
 		// (kind session_end, this reason) but never let it stop the row.
 		allowedFrom = noCurrentStatusMatches
 	}
-	result := Result{Status: mapping.Status, Kind: mapping.Kind, Reason: reason}
+	result := Result{
+		Status: mapping.Status, Kind: mapping.Kind, Reason: reason,
+		Message:   payloadField(p, mapping.MessageField),
+		InSession: allowedFrom != nil,
+	}
 	session, err := resolveHookTarget(ctx, db, p, mapping, raw, injectedSessionID, at, &result)
 	if err != nil {
 		return result, err
