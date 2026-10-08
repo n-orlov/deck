@@ -8,8 +8,8 @@ import (
 	"github.com/n-orlov/deck/internal/tui/lineedit"
 )
 
-// The create modal's field positions (createFieldRows' own order). Six of the
-// ten are text, held in the shared line editor (§11.11, Model.createEdits);
+// The create modal's field positions (createFieldRows' own order). Seven of the
+// twelve are text, held in the shared line editor (§11.11, Model.createEdits);
 // the rest are selections that left, right and space cycle.
 const (
 	createFieldName = iota
@@ -21,13 +21,17 @@ const (
 	createFieldPreLaunch
 	createFieldPostDestroy
 	createFieldLoginShell
+	// The next two are the session's own event-hook controls (SPEC §10.2).
+	createFieldEventHook
+	createFieldEventHookEvents
 	createFieldGroup
 )
 
-// createFieldLabels are the ten rows' labels, in field order.
+// createFieldLabels are the twelve rows' labels, in field order.
 var createFieldLabels = [createFieldCount]string{
 	"Name", "Working directory", "Agent", "Permission profile", "Launch args (JSON array)",
-	"Env (key=value, comma-separated)", "Pre-launch command", "Post-destroy command", "Login shell", "Group",
+	"Env (key=value, comma-separated)", "Pre-launch command", "Post-destroy command", "Login shell",
+	"Event hook (event_hook_enabled)", "Event hook kinds (event_hook_events)", "Group",
 }
 
 // createText is a text field's current value as typed ("" for a selection).

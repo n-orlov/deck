@@ -124,12 +124,12 @@ Feature: The create modal's §11.7 cwd prefill (requirement 12)
   Scenario: submitting a name that collides with an existing slug names the collision and keeps the modal open
     Given deck client "A" is started in a fresh directory labelled "slug-start"
     # The create modal's field set plus a rejection's own two lines (task
-    # 016 added a tenth field, Group) just clears the default 100x30
-    # harness geometry's budget; two extra rows give framedDialogScrollable
-    # (internal/tui/panel.go) enough room to show the rejection without
-    # scrolling the typed Name row out of view, rather than trimming any
-    # field's own content to fit.
-    And deck client "A" terminal is resized to 100x32
+    # 016 added a tenth field, Group; R233a added the two event-hook
+    # fields) clears the default 100x30 harness geometry's budget; the
+    # extra rows give framedDialogScrollable (internal/tui/panel.go) enough
+    # room to show the rejection without scrolling the typed Name row out
+    # of view, rather than trimming any field's own content to fit.
+    And deck client "A" terminal is resized to 100x38
     When deck client "A" creates shell session "cv-slug original" with a fresh working directory labelled "slug-original"
     And deck client "A" attempts to create shell session "cv-slug  original" with a fresh working directory labelled "slug-second", expecting rejection
     Then deck client "A" screen contains "collides with existing slug"

@@ -149,11 +149,13 @@ func (m *Model) detailOpenLaunchInputs() {
 	// (§11.11): a printable key or a paste replaces it, a caret or
 	// editing key accepts it and edits it in place.
 	m.launchInputsEdits = [launchInputsTextFieldCount]lineedit.Editor{
-		launchInputsFieldPreLaunch:   lineedit.NewOffered(session.PreLaunch),
-		launchInputsFieldPostDestroy: lineedit.NewOffered(session.PostDestroy),
-		launchInputsFieldLaunchArgs:  lineedit.NewOffered(launchArgsToText(session.LaunchArgs)),
+		launchInputsFieldPreLaunch:       lineedit.NewOffered(session.PreLaunch),
+		launchInputsFieldPostDestroy:     lineedit.NewOffered(session.PostDestroy),
+		launchInputsFieldLaunchArgs:      lineedit.NewOffered(launchArgsToText(session.LaunchArgs)),
+		launchInputsFieldEventHookEvents: lineedit.NewOffered(eventKindsText(session.EventHookEvents)),
 	}
 	m.launchInputsLoginShell = session.LoginShell
+	m.launchInputsEventHook = eventHookModeOf(session.EventHookEnabled)
 	m.launchInputsNote = ""
 	m.launchInputsScroll = 0
 }

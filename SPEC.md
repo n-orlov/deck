@@ -2409,6 +2409,23 @@ snooze duration · theme picker (§11.6) · event log · health view ·
 find (§12) · **lost attach (§11.9)** · help overlay. Settings is deliberately *not* a dialog
 — see below.
 
+**The per-session event-hook fields (§10.2).** Two fields carry a session's own event-hook
+controls, in the same order and wording in both dialogs: `event_hook_enabled`, a cycled
+selection (`←`/`→`/`space`) of *inherit* (the default; follow `event_hook_default`), *on* and
+*off*, and `event_hook_events`, a text field (§11.11) holding comma-separated offered kinds
+(`waiting, error, ended`). An **empty** `event_hook_events` field is *inherit* (the global list
+applies, stored as NULL); the word `none` is the empty list (the hook is offered nothing, stored
+as `[]`); anything else must be a word of the offered set of §10.1, and a word outside it is
+refused in the dialog with a note naming `event_hook_events` and the word, the typed text kept.
+The **create dialog** lists them after *Login shell* and before *Group*, for every agent kind
+including `shell`, both defaulting to inherit. The **launch-inputs editor** lists them after
+the four launch inputs (`Event hook (event_hook_enabled)`, `Event hook kinds
+(event_hook_events)`), and unlike those four their help says *applies immediately, no
+restart*: submitting writes them through their own mutator, which sets neither `env_dirty` nor
+`launch_dirty`, so no `env↻`/`launch↻` badge appears for an edit of only these two (an edit of
+a launch input beside them still sets `launch_dirty`, for the launch input). No top-level key
+is added; both dialogs are reached exactly as before.
+
 **A session bound to an older deck binary gets a hint, never an error.** An agent keeps the hook
 command of the deck that launched it (§3.1), so after deck is upgraded, moved or removed a running
 agent still calls the old path. Every launch of an agent that installs hooks (create, resume,

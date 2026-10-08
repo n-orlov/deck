@@ -42,19 +42,67 @@ func (s *Store) EventHookState(ctx context.Context, sessionID string) (EventHook
 		return EventHookState{}, fmt.Errorf("read event hook state: %w", err)
 	}
 	state := EventHookState{Fired: fired.String, Important: important != 0, Sensitive: sensitive != 0}
+	state.Enabled, state.Events = decodeEventHook(enabled, events)
+	return state, nil
+}
+
+// decodeEventHook turns the two nullable event-hook columns into the Session
+// fields. A damaged list reads as "inherit", as EventHookState does.
+func decodeEventHook(enabled sql.NullInt64, events sql.NullString) (*bool, []string) {
+	var on *bool
 	if enabled.Valid {
-		on := enabled.Int64 != 0
-		state.Enabled = &on
+		v := enabled.Int64 != 0
+		on = &v
 	}
+	var list []string
 	if events.Valid {
-		list := []string{}
-		// A damaged list reads as "inherit": the hook then follows the global
-		// list instead of going silent for a column deck itself wrote.
-		if err := json.Unmarshal([]byte(events.String), &list); err == nil {
-			state.Events = list
+		decoded := []string{}
+		if err := json.Unmarshal([]byte(events.String), &decoded); err == nil {
+			list = decoded
 		}
 	}
-	return state, nil
+	return on, list
+}
+
+// eventHookEnabledArg is the SQL argument for event_hook_enabled: NULL when
+// the session inherits.
+func eventHookEnabledArg(enabled *bool) any {
+	if enabled == nil {
+		return nil
+	}
+	if *enabled {
+		return 1
+	}
+	return 0
+}
+
+// eventHookEventsArg is the SQL argument for event_hook_events: NULL when the
+// session inherits the global list, otherwise a JSON array (possibly "[]").
+func eventHookEventsArg(events []string) any {
+	if events == nil {
+		return nil
+	}
+	data, err := json.Marshal(events)
+	if err != nil {
+		return nil
+	}
+	return string(data)
+}
+
+// SetEventHook stores a session's own event-hook controls (SPEC §10.2). Unlike
+// SetLaunchInputs it sets no dirty flag: the dispatcher reads both columns when
+// an event fires, so the change applies at once. nil enabled / nil events mean
+// inherit. One event row records the change.
+func (s *Store) SetEventHook(ctx context.Context, sessionID string, enabled *bool, events []string, source string, at int64) error {
+	if sessionID == "" {
+		return errors.New("session id is required")
+	}
+	if source == "" {
+		source = "user"
+	}
+	return s.mutateSessionWithEvent(ctx, sessionID, "event hook", "set_event_hook", source, "", at,
+		`UPDATE sessions SET event_hook_enabled = ?, event_hook_events = ? WHERE id = ?`,
+		eventHookEnabledArg(enabled), eventHookEventsArg(events))
 }
 
 // ClaimHookFired replaces a session's hook_fired set with next, but only if

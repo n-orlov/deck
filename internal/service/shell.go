@@ -39,6 +39,10 @@ type ShellCreateInput struct {
 	// structural default group, exactly as it is there. The create modal's
 	// Group field (internal/tui) is the only populated caller today.
 	GroupID *int64
+	// EventHookEnabled and EventHookEvents are the session's own event-hook
+	// controls (SPEC §10.2, R233a): nil inherits the global value.
+	EventHookEnabled *bool
+	EventHookEvents  []string
 }
 
 // Service performs operations which must keep the SQLite store and private
@@ -271,6 +275,7 @@ func (s Service) insertShellRow(ctx context.Context, input ShellCreateInput, pla
 		ID: plan.id, Name: input.Name, CWD: input.CWD, Agent: "shell", CapturedPath: plan.capturedPath,
 		Status: "starting", StatusSource: "user", StatusAt: plan.now, CreatedAt: plan.now,
 		PreLaunch: input.PreLaunch, PostDestroy: input.PostDestroy, GroupID: input.GroupID,
+		EventHookEnabled: input.EventHookEnabled, EventHookEvents: input.EventHookEvents,
 	})
 	if err != nil {
 		return store.Session{}, fmt.Errorf("create durable shell session: %w", err)

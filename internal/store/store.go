@@ -274,6 +274,10 @@ type CreateSessionInput struct {
 	// PreLaunch is an optional shell command run in the pane before the
 	// agent argv, e.g. to source secrets (SPEC §6.4).
 	PreLaunch string
+	// EventHookEnabled and EventHookEvents are the session's own event-hook
+	// controls (SPEC §10.2); nil stores NULL, which inherits the global value.
+	EventHookEnabled *bool
+	EventHookEvents  []string
 	// PostDestroy is an optional shell command run, as its own deck
 	// subprocess (never a pane), after this session's row has been durably
 	// archived or deleted (SPEC §9.2, R107). It never runs on Kill or any
@@ -353,6 +357,13 @@ type Session struct {
 	LaunchArgs []string
 	Env        map[string]string
 	PreLaunch  string
+	// EventHookEnabled is the sessions.event_hook_enabled tri-state (SPEC
+	// §10.2): nil inherits event_hook_default, otherwise the session's own
+	// on/off.
+	EventHookEnabled *bool
+	// EventHookEvents is sessions.event_hook_events: nil inherits the global
+	// list, a non-nil list (possibly empty: offer nothing) replaces it.
+	EventHookEvents []string
 	// PostDestroy is the sessions.post_destroy column verbatim (SPEC §9.2,
 	// R107): the per-session teardown hook run after this row's own Archive
 	// or Delete has durably succeeded, before the global post_destroy hook
@@ -575,6 +586,7 @@ func (s *Store) CreateSession(ctx context.Context, input CreateSessionInput) (Se
 		Status: input.Status, StatusSource: input.StatusSource, StatusAt: input.StatusAt, CreatedAt: input.CreatedAt,
 		Acknowledged: true,
 		LaunchArgs:   input.LaunchArgs, Env: input.Env, PreLaunch: input.PreLaunch, PostDestroy: input.PostDestroy, LoginShell: input.LoginShell,
+		EventHookEnabled: input.EventHookEnabled, EventHookEvents: input.EventHookEvents,
 		PermissionProfile: input.PermissionProfile, PermissionProfileReason: input.PermissionProfileReason,
 		ConversationID: input.ConversationID,
 		ResumePin:      input.ResumePin, ResumeState: input.ResumeState,
@@ -655,13 +667,14 @@ func claimSessionNameTx(ctx context.Context, tx *sql.Tx, input CreateSessionInpu
 func insertSessionRowTx(ctx context.Context, tx *sql.Tx, input CreateSessionInput, slug, launchArgsJSON, envJSON string) error {
 	_, err := tx.ExecContext(ctx, `INSERT INTO sessions
 		(id, name, slug, cwd, agent, captured_path, status, status_source, status_at, created_at,
-		 launch_args, env, pre_launch, post_destroy, login_shell, permission_profile, permission_profile_reason, conversation_id, resume_pin, resume_state, group_id)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		 launch_args, env, pre_launch, post_destroy, login_shell, permission_profile, permission_profile_reason, conversation_id, resume_pin, resume_state, group_id,
+		 event_hook_enabled, event_hook_events)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		input.ID, input.Name, slug, input.CWD, input.Agent, input.CapturedPath,
 		input.Status, input.StatusSource, input.StatusAt, input.CreatedAt,
 		launchArgsJSON, envJSON, nullableString(input.PreLaunch), nullableString(input.PostDestroy), input.LoginShell,
 		input.PermissionProfile, nullableString(input.PermissionProfileReason), nullableString(input.ConversationID), nullableString(input.ResumePin), input.ResumeState,
-		nullableGroupID(input.GroupID))
+		nullableGroupID(input.GroupID), eventHookEnabledArg(input.EventHookEnabled), eventHookEventsArg(input.EventHookEvents))
 	if err != nil {
 		if strings.Contains(err.Error(), "sessions.name") || strings.Contains(err.Error(), "UNIQUE constraint failed: sessions.name") {
 			return fmt.Errorf("session name %q already exists", input.Name)
@@ -751,16 +764,18 @@ func scanSession(row interface {
 	var groupName sql.NullString
 	var leaseOwner string
 	var loginShell, killedByUser, acknowledged, envDirty, launchDirty int
-	var paneExitStatus sql.NullInt64
+	var paneExitStatus, eventHookEnabled sql.NullInt64
+	var eventHookEvents sql.NullString
 	if err := row.Scan(&session.ID, &session.Name, &session.Slug, &session.CWD,
 		&session.Agent, &session.CapturedPath, &session.Status, &session.StatusReason, &session.StatusSource,
 		&session.StatusAt, &session.CreatedAt, &killedByUser, &paneExitStatus, &crashTail,
 		&session.NotifyEpoch, &lastMessage, &acknowledged, &launchArgsJSON, &envJSON, &preLaunch, &postDestroy,
 		&loginShell, &session.PermissionProfile, &permissionProfileReason, &conversationID, &resumePin, &session.ResumeState,
 		&groupID, &groupName, &session.LastProbeAt, &envDirty, &session.DeletedAt, &session.ArchivedAt, &launchDirty,
-		&leaseOwner, &session.PinnedAt, &session.HookExecutable); err != nil {
+		&leaseOwner, &session.PinnedAt, &session.HookExecutable, &eventHookEnabled, &eventHookEvents); err != nil {
 		return Session{}, err
 	}
+	session.EventHookEnabled, session.EventHookEvents = decodeEventHook(eventHookEnabled, eventHookEvents)
 	// Only the generation half is surfaced: the launcher identity is lease
 	// bookkeeping (SPEC §9.3) that no reader outside this package needs, while
 	// the generation is the discriminator a hook hands back (issue #11, R74).
@@ -805,7 +820,8 @@ const sessionColumns = `sessions.id, sessions.name, slug, cwd, agent, captured_p
 		killed_by_user, pane_exit_status, crash_tail, notify_epoch, last_message, acknowledged,
 		launch_args, env, pre_launch, post_destroy, login_shell, permission_profile, permission_profile_reason, conversation_id, resume_pin, resume_state,
 		sessions.group_id, groups.name, last_probe_at, env_dirty, deleted_at, archived_at, launch_dirty,
-		COALESCE(launch_lease_owner, ''), pinned_at, COALESCE(hook_executable, '')`
+		COALESCE(launch_lease_owner, ''), pinned_at, COALESCE(hook_executable, ''),
+		event_hook_enabled, event_hook_events`
 
 // sessionsFromClause is every sessionColumns-backed query's shared FROM:
 // a LEFT JOIN against groups so GroupName resolves (or reads back empty

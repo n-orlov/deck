@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/n-orlov/deck/internal/config"
 	"github.com/n-orlov/deck/internal/store"
 )
 
@@ -41,6 +42,31 @@ func (s Service) SetLaunchInputs(ctx context.Context, sessionID, preLaunch, post
 		return store.Session{}, fmt.Errorf("get session %q: %w", sessionID, err)
 	}
 	if err := s.Store.SetLaunchInputs(ctx, sessionID, preLaunch, postDestroy, launchArgs, loginShell, "user", s.Clock.Now().UnixMilli()); err != nil {
+		return store.Session{}, err
+	}
+	return s.Store.GetSession(ctx, sessionID)
+}
+
+// SetEventHook stores a session's own event-hook controls, event_hook_enabled
+// (nil inherits event_hook_default) and event_hook_events (nil inherits the
+// global list), SPEC §10.2. Unlike SetLaunchInputs it touches neither
+// env_dirty nor launch_dirty and never tmux: the dispatcher reads both columns
+// when an event fires, so the change applies immediately and a restart has
+// nothing to carry. Kinds outside the offered set are refused.
+func (s Service) SetEventHook(ctx context.Context, sessionID string, enabled *bool, events []string) (store.Session, error) {
+	if s.Store == nil || s.Clock == nil {
+		return store.Session{}, errors.New("editing event hook settings requires a store and clock")
+	}
+	if sessionID == "" {
+		return store.Session{}, errors.New("session id is required")
+	}
+	if err := config.CheckEventKinds(events); err != nil {
+		return store.Session{}, err
+	}
+	if _, err := s.Store.GetSession(ctx, sessionID); err != nil {
+		return store.Session{}, fmt.Errorf("get session %q: %w", sessionID, err)
+	}
+	if err := s.Store.SetEventHook(ctx, sessionID, enabled, events, "user", s.Clock.Now().UnixMilli()); err != nil {
 		return store.Session{}, err
 	}
 	return s.Store.GetSession(ctx, sessionID)
