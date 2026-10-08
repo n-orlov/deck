@@ -408,7 +408,6 @@ CREATE TABLE sessions (
   hook_fired         TEXT,                  -- JSON (kind,reason) pairs fired in this notify_epoch (§10.3)
   important          INTEGER NOT NULL DEFAULT 0, -- exported to the event hook (§10.1)
   group_id           INTEGER,               -- manual group (§11); NULL = the implicit "default"
-  snoozed_until      INTEGER NOT NULL DEFAULT 0,
   acknowledged       INTEGER NOT NULL DEFAULT 1,
   launch_lease_owner TEXT,                  -- pid@boot_id#generation holding a start (§9.3)
   launch_lease_until INTEGER NOT NULL DEFAULT 0,
@@ -471,6 +470,11 @@ Invariants:
   missing row degrades to the documented default rather than to an error.
 - Every column above is reachable by migration from schema version 1 — the store is never
   rebuilt and a session row is never recreated to gain a field.
+- Schema version 10 retires `notify_rules` and `snoozed_until` (and an `outbox` table, which
+  no shipped schema creates) and adds the nullable `event_hook_enabled`, `event_hook_events`
+  and `hook_fired` columns shown above; every migrated row reads back "inherit, nothing
+  fired". `hook_fired` is cleared (set to `NULL`) in the same write that advances
+  `notify_epoch`, so a new attention episode may fire its hooks again (§10.3).
 
 ---
 

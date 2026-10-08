@@ -37,7 +37,7 @@ func TestSchemaV9MigratesPopulatedV8Database(t *testing.T) {
 	home := t.TempDir()
 	path := filepath.Join(home, "state.db")
 	ids := buildSchemaV8PopulatedFixture(t, home, path)
-	columnsV8 := append(append([]string{}, sessionColumnsPreV8...), "pinned_at")
+	columnsV8 := append(append([]string{}, sessionColumnsKeptByV10...), "pinned_at")
 
 	before, err := sql.Open("sqlite", path)
 	if err != nil {
@@ -58,8 +58,8 @@ func TestSchemaV9MigratesPopulatedV8Database(t *testing.T) {
 	if err := st.DB().QueryRow(`SELECT version FROM meta WHERE key = 'schema_version'`).Scan(&version); err != nil || version != SchemaVersion {
 		t.Fatalf("migrated version = %d, %v; want %d", version, err, SchemaVersion)
 	}
-	if SchemaVersion != 9 {
-		t.Fatalf("SchemaVersion = %d, want 9", SchemaVersion)
+	if SchemaVersion < 9 {
+		t.Fatalf("SchemaVersion = %d, want at least 9 (schemaV9 is one rung of the ladder)", SchemaVersion)
 	}
 	var columns int
 	if err := st.DB().QueryRow(`SELECT count(*) FROM pragma_table_info('sessions') WHERE name = 'hook_executable'`).Scan(&columns); err != nil || columns != 1 {

@@ -52,10 +52,10 @@ func newerDatabaseFixture(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	// One past internal/store.SchemaVersion (9 as of schemaV9) -- must always
+	// One past internal/store.SchemaVersion (10 as of schemaV10) -- must always
 	// stay strictly newer than the binary understands, so a later
 	// SchemaVersion bump has to bump this literal too.
-	if err := writeDatabaseFixture(h, 10); err != nil {
+	if err := writeDatabaseFixture(h, 11); err != nil {
 		return err
 	}
 	h.databaseFixture, err = os.ReadFile(filepath.Join(h.Home, "state.db"))
@@ -112,6 +112,12 @@ func newerDatabaseRemainsUnchanged(ctx context.Context) error {
 // (task 010, SPEC §4 invariant: "every column above is reachable by
 // migration from schema version 1 -- the store is never rebuilt and a
 // session row is never recreated to gain a field").
+//
+// The v1 schema genuinely carries notify_rules and snoozed_until, so this
+// fixture still creates them: they are what the migration ladder must drop.
+// stateDatabaseSessionStillHasID asserts the migrated result (both gone, the
+// three event-hook columns present) and internal/store's
+// TestSchemaV10MigratesPopulatedV9Database is the covering migration test.
 var v1SchemaStatements = []string{
 	`CREATE TABLE meta (key TEXT PRIMARY KEY, version INTEGER NOT NULL)`,
 	`CREATE TABLE sessions (
@@ -183,6 +189,18 @@ func stateDatabaseSessionStillHasID(ctx context.Context, name, id string) error 
 	}
 	if count != 1 {
 		return fmt.Errorf("session %q id %q count = %d, want 1 (row was recreated, not migrated in place)", name, id, count)
+	}
+	for column, want := range map[string]int{
+		"notify_rules": 0, "snoozed_until": 0,
+		"event_hook_enabled": 1, "event_hook_events": 1, "hook_fired": 1,
+	} {
+		var present int
+		if err := db.QueryRowContext(ctx, `SELECT count(*) FROM pragma_table_info('sessions') WHERE name = ?`, column).Scan(&present); err != nil {
+			return fmt.Errorf("observe sessions.%s: %w", column, err)
+		}
+		if present != want {
+			return fmt.Errorf("sessions.%s present = %d after migrating the v1 fixture, want %d (schemaV10)", column, present, want)
+		}
 	}
 	return nil
 }

@@ -30,6 +30,21 @@ var sessionColumnsPreV8 = []string{
 	"group_id",
 }
 
+// sessionColumnsKeptByV10 is sessionColumnsPreV8 without notify_rules and
+// snoozed_until, the two columns schemaV10 (R228) drops. Every migration test
+// that carries a populated database up to the current SchemaVersion compares
+// this set before and after; the dropped pair is covered by
+// TestSchemaV10MigratesPopulatedV9Database, which asserts they are gone.
+var sessionColumnsKeptByV10 = func() []string {
+	var kept []string
+	for _, column := range sessionColumnsPreV8 {
+		if column != "notify_rules" && column != "snoozed_until" {
+			kept = append(kept, column)
+		}
+	}
+	return kept
+}()
+
 // buildSchemaV7PopulatedFixture creates a fresh, standalone schemaV1-V7
 // database file at path (schema_version = 7) and seeds it with a groups
 // row plus four real-looking session rows that between them cover every
@@ -171,7 +186,7 @@ func TestSchemaV8MigratesPopulatedV7Database(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	beforeSnapshot := snapshotSessionColumns(t, before, sessionColumnsPreV8)
+	beforeSnapshot := snapshotSessionColumns(t, before, sessionColumnsKeptByV10)
 	if len(beforeSnapshot) != len(ids) {
 		t.Fatalf("pre-migration snapshot has %d rows, want %d", len(beforeSnapshot), len(ids))
 	}
@@ -198,7 +213,7 @@ func TestSchemaV8MigratesPopulatedV7Database(t *testing.T) {
 		t.Fatal("sessions.pinned_at missing after migrating to schemaV8")
 	}
 
-	afterSnapshot := snapshotSessionColumns(t, st.DB(), sessionColumnsPreV8)
+	afterSnapshot := snapshotSessionColumns(t, st.DB(), sessionColumnsKeptByV10)
 	if len(afterSnapshot) != len(ids) {
 		t.Fatalf("post-migration snapshot has %d rows, want %d", len(afterSnapshot), len(ids))
 	}
@@ -211,7 +226,7 @@ func TestSchemaV8MigratesPopulatedV7Database(t *testing.T) {
 		if !ok {
 			t.Fatalf("row %s missing from post-migration snapshot", id)
 		}
-		for i, column := range sessionColumnsPreV8 {
+		for i, column := range sessionColumnsKeptByV10 {
 			if beforeRow[i] != afterRow[i] {
 				t.Fatalf("row %s column %s changed across migration: before %+v, after %+v", id, column, beforeRow[i], afterRow[i])
 			}
@@ -267,7 +282,7 @@ func TestSchemaV8ReopenIsNoOp(t *testing.T) {
 	if _, err := first.DB().Exec(`UPDATE sessions SET pinned_at = 7777 WHERE id = ?`, ids[0]); err != nil {
 		t.Fatalf("set pinned_at on %s: %v", ids[0], err)
 	}
-	allColumnsPostV8 := append(append([]string{}, sessionColumnsPreV8...), "pinned_at")
+	allColumnsPostV8 := append(append([]string{}, sessionColumnsKeptByV10...), "pinned_at")
 	beforeSecondOpen := snapshotSessionColumns(t, first.DB(), allColumnsPostV8)
 	if err := first.Close(); err != nil {
 		t.Fatal(err)
