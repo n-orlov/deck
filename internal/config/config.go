@@ -40,8 +40,9 @@ const (
 )
 
 // EventHookKinds is the offered set of SPEC §10.1: the only event kinds
-// event_hook_events (and a session's own list) may name. The remaining §4
-// kinds (prompt, env, note) are the audit trail's and are never offered.
+// event_hook_events (and a session's own list) may name. A prompt, an env
+// change, a note and every other stored events.kind (SPEC §4) are the audit
+// trail's and are never offered.
 var EventHookKinds = []string{"started", "resumed", "waiting", "idle", "error", "ended", "killed"}
 
 // Paths are the locations used by deck at runtime. DECK_HOME deliberately

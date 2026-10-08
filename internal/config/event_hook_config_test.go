@@ -97,7 +97,7 @@ func TestEventHookTimeoutAcceptsADuration(t *testing.T) {
 }
 
 // TestEventHookEventsUnknownKindIsALoadErrorNamingTheKey: prompt, env and
-// note are §4 kinds but are never offered (SPEC §10.1), so they are refused
+// note are audit-trail kinds that are never offered (SPEC §10.1), so they are refused
 // exactly like a typo.
 func TestEventHookEventsUnknownKindIsALoadErrorNamingTheKey(t *testing.T) {
 	for _, kind := range []string{"waitting", "prompt", "env", "note", ""} {

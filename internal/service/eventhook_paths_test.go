@@ -397,3 +397,63 @@ func TestLiveEventHookFollowsTheSettings(t *testing.T) {
 		t.Fatalf("after Set = %+v", d)
 	}
 }
+
+// A budgeted pass (ReconcileWithin, `deck _hook`'s liveness pass) offers the
+// deaths it records only after it returns (SPEC §10.4): a script slower than
+// the budget neither fails the pass nor keeps it from collecting a second
+// crash, and each death still spawns once, in order.
+func TestReconcileWithinDispatchesDeathsAfterThePassReturns(t *testing.T) {
+	svc, db, _, _ := newAgentTestService(t, nil, "hook-budget")
+	log, _ := withEventHook(&svc, "tmux.pane_dead")
+	budget := 400 * time.Millisecond
+	var inPass []bool
+	slow := log.spawn
+	d := svc.EventHook()
+	d.Spawn = func(ctx context.Context, req notify.Request) (notify.Result, error) {
+		_, hasDeadline := ctx.Deadline()
+		inPass = append(inPass, hasDeadline)
+		time.Sleep(budget + 100*time.Millisecond)
+		return slow(ctx, req)
+	}
+	svc.EventHook = func() EventHookDispatcher { return d }
+	var slugs []string
+	for i, id := range []string{"00000000-0000-4000-8000-0000000000f1", "00000000-0000-4000-8000-0000000000f2"} {
+		cwd := t.TempDir()
+		session, err := db.CreateSession(context.Background(), store.CreateSessionInput{
+			ID: id, Name: "crasher-" + string(rune('a'+i)), CWD: cwd, Agent: "claude", CapturedPath: "/bin",
+			Status: "running", StatusSource: "hook", StatusAt: 1, CreatedAt: int64(1 + i),
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := svc.TMux.Create(context.Background(), tmux.Launch{Slug: session.Slug, CWD: cwd,
+			Command: []string{"/bin/sh", "-c", `exit 5`}}); err != nil {
+			t.Fatal(err)
+		}
+		waitForDeadPane(t, svc.TMux, session.Slug, 5)
+		slugs = append(slugs, session.Slug)
+	}
+
+	if err := svc.ReconcileWithin(context.Background(), budget); err != nil {
+		t.Fatalf("a slow event hook failed the budgeted pass: %v", err)
+	}
+	if got := log.kinds; len(got) != 2 || got[0] != "error" || got[1] != "error" {
+		t.Fatalf("spawned kinds = %v, want one error per death", got)
+	}
+	for i, deadline := range inPass {
+		if deadline {
+			t.Fatalf("spawn %d ran under the pass's budget deadline", i)
+		}
+	}
+	for _, slug := range slugs {
+		live, err := svc.TMux.List(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, s := range live {
+			if s.Name == "deck_"+slug {
+				t.Fatalf("crashed session %s was not collected by the pass", slug)
+			}
+		}
+	}
+}

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -15,6 +16,7 @@ import (
 	"github.com/n-orlov/deck/internal/config"
 	"github.com/n-orlov/deck/internal/hookrecv"
 	"github.com/n-orlov/deck/internal/store"
+	"github.com/n-orlov/deck/internal/tmux"
 )
 
 // eventHookFixture is one temp state home holding one session row, a deck
@@ -456,4 +458,81 @@ func TestHookDispatchStoresTheResultAgainstTheEvent(t *testing.T) {
 	if got.Kind != "idle" || got.ExitCode != 4 || got.TimedOut || got.Output != "went wrong\n" {
 		t.Fatalf("stored result = %+v, want idle, exit 4, the output tail", got)
 	}
+}
+
+// SPEC §7 "the next `_hook` invocation" / §10.4: a process death that the
+// post-hook liveness pass of `deck _hook` records is offered to the event
+// hook by that same `_hook`, so an unattended crash fires with no TUI running.
+// The script outlives the pass's reconcile budget: it is bounded by
+// event_hook_timeout alone, and its result is stored against the death's row.
+func TestHookLivenessPassDispatchesAnUnattendedCrash(t *testing.T) {
+	f := newEventHookFixture(t, "claude", "running")
+	f.settings.Socket = "priv-eh-crash-" + filepath.Base(t.TempDir())
+	f.settings.Reconcile = 300 * time.Millisecond
+	f.script(t, fmt.Sprintf(`printf '%%s %%s\n' "$1" "$DECK_SESSION_ID" >> %[1]q
+sleep 1
+echo crash-hook-done
+`, filepath.Join(f.out, "calls")))
+	db, err := store.Open(f.paths)
+	if err != nil {
+		t.Fatal(err)
+	}
+	crashed, err := db.CreateSession(context.Background(), store.CreateSessionInput{
+		ID: "row-2", Name: "unattended", CWD: f.paths.Home, Agent: "claude", CapturedPath: "/bin",
+		Status: "running", StatusSource: "hook", StatusAt: 1000, CreatedAt: 1001,
+	})
+	if closeErr := db.Close(); err != nil || closeErr != nil {
+		t.Fatal(err, closeErr)
+	}
+	client := tmux.Client{Socket: f.settings.Socket}
+	t.Cleanup(func() { _ = exec.Command("tmux", "-L", f.settings.Socket, "kill-server").Run() })
+	if _, err := client.Create(context.Background(), tmux.Launch{Slug: crashed.Slug, CWD: crashed.CWD,
+		Command: []string{"/bin/sh", "-c", "printf 'dying words\\n'; exit 9"}}); err != nil {
+		t.Fatal(err)
+	}
+	waitForRetainedDeadPane(t, client, crashed.Slug)
+
+	start := time.Now()
+	if code, stderr := f.run(`{"hook_event_name":"Notification","session_id":"conv-1","notification_type":"idle_prompt"}`); code != 0 {
+		t.Fatalf("hook exit = %d, stderr %q", code, stderr)
+	}
+	if elapsed := time.Since(start); elapsed > 2*f.settings.EventHookTimeout+f.settings.Reconcile+2*time.Second {
+		t.Fatalf("_hook took %s, past its bounds", elapsed)
+	}
+	calls := strings.Split(strings.TrimSpace(f.read(t, "calls")), "\n")
+	if len(calls) != 2 || calls[0] != "waiting row-1" || calls[1] != "error row-2" {
+		t.Fatalf("event hook calls = %q, want the hook's own waiting then the crash's error", calls)
+	}
+	db, err = store.Open(f.paths)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	run, ok, err := db.LastEventHookResult(context.Background(), "row-2")
+	if err != nil || !ok {
+		t.Fatalf("no event-hook result on the crashed row: ok=%v err=%v", ok, err)
+	}
+	if run.Kind != "error" || run.ExitCode != 0 || run.TimedOut || !strings.Contains(run.Output, "crash-hook-done") {
+		t.Fatalf("crash hook result = %+v: want error, exit 0, not timed out, the script's output (the reconcile budget must not cut it short)", run)
+	}
+}
+
+// waitForRetainedDeadPane waits until tmux keeps slug's pane dead under
+// remain-on-exit, the corpse the liveness pass collects.
+func waitForRetainedDeadPane(t *testing.T, client tmux.Client, slug string) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		live, err := client.List(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, session := range live {
+			if session.Name == "deck_"+slug && len(session.Panes) == 1 && session.Panes[0].Dead {
+				return
+			}
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("crash fixture did not leave a retained dead pane")
 }

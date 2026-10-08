@@ -187,7 +187,7 @@ undocumented in the UI, excluded from help, and prefixed `_`:
 
 | verb | invoked by | contract |
 |---|---|---|
-| `deck _hook` | agent hook config | reads one JSON object on stdin, writes one status update + one event, then spawns the event hook (§10), then — on the non-session-end path only — runs one bounded liveness pass before exiting, which is what "lazily by `_hook`" in §3 and "the next `_hook` invocation" in §7 mean. It never probes: pane heuristics are the TUI's, and putting them on the agent's critical path would also falsify §10.3's second limitation. **Two separate budgets:** the store write completes in < 20 ms **uncontended** (measured on a monotonic clock, §13.1 — under multi-client write contention SQLite may legally hold a writer up to `busy_timeout`, so the budget assertion belongs in a single-writer scenario, not a `@multiclient` one; it is a budget for a normal build, so a `-race` build, several times slower by design, does not assert it); event-hook dispatch runs only after the status update and its event row are committed, is bounded separately by `event_hook_timeout` (§10.3), and on the session-end path is started detached (no timeout, no recorded result) and never waited for. A missing, failing or slow script changes neither `_hook`'s exit code nor anything it prints: the dispatch outcome is never an error of the hook. **A state database newer than the hook binary** (the agent keeps the hook command of the deck that launched it, so after deck is upgraded an older `_hook` can meet a newer schema) exits 1 without touching the database and prints, on stderr, a message naming the hook executable's absolute path, its version and its schema, and the database's schema, and saying to restart the session from deck (`R`) so it gets the current hook command. It never says "upgrade deck": that wording stays on the TUI's own store-open path, where the user can upgrade the binary they are running. **Auto-heal:** every store open records, in the `meta` table's `writer_binary` row, the absolute path of the deck binary that last migrated or opened the database for writing (an additive row, not a schema change; the write is skipped when the row already names the running binary, and a failed write never fails the open). Before printing that message, an older `_hook` that has already buffered its stdin payload re-execs the recorded binary once, with the same argv (`_hook`), the buffered payload on stdin and `DECK_HOOK_REEXEC=1` in the environment, and exits with the re-exec'd process's exit code, so the status update lands and the session never notices. The re-exec happens only when the recorded file exists, is an executable regular file, is not the hook's own file, and reports a schema at least as new as the database's (asked with the hidden `deck _schema` verb, which prints the newest schema that binary supports, bounded at 3 s). The re-exec'd writer itself runs under a 10 s timeout: a writer still running at that point is killed and `_hook` prints the restart message above instead, so a wedged writer cannot hold the agent's hook open. `DECK_HOOK_REEXEC` is the loop guard: a process that carries it never re-execs. When any condition fails, `_hook` prints the restart message above and does not re-exec. **The message, the auto-heal with its loop guard and the stale-binding hint (§11.4) hold the same way for Claude, Codex and Pi.** A `copilot` agent session gets its hook command from deck's plugin directory (§8.4): each plugin hook runs `"$DECK_EXE" _hook`, with `DECK_EXE` the launching deck binary in the pane environment, so the session is bound to that binary like the other kinds (the row records it, §11.4) and the pane probe (§7) still carries the status wherever no hook fires. `_hook` does not tell the agent kinds apart (it applies the payload to the row it names), and Claude and Codex embed the identical command, the single-quoted absolute path of the launching deck binary followed by ` _hook`, in `--settings` JSON and in each `-c hooks.<Event>` override respectively; Pi gets the same binary through `DECK_PI_HOOK_EXECUTABLE` for its deck-owned extension (§8.3), which runs it with `_hook` as a separate argv element and no shell, so a Pi session is bound to its launching deck binary and goes stale the same way. |
+| `deck _hook` | agent hook config | reads one JSON object on stdin, writes one status update + one event, then spawns the event hook (§10), then — on the non-session-end path only — runs one bounded liveness pass before exiting (a process death it records spawns the event hook too, §10.4), which is what "lazily by `_hook`" in §3 and "the next `_hook` invocation" in §7 mean. It never probes: pane heuristics are the TUI's, and putting them on the agent's critical path would also falsify §10.3's second limitation. **Two separate budgets:** the store write completes in < 20 ms **uncontended** (measured on a monotonic clock, §13.1 — under multi-client write contention SQLite may legally hold a writer up to `busy_timeout`, so the budget assertion belongs in a single-writer scenario, not a `@multiclient` one; it is a budget for a normal build, so a `-race` build, several times slower by design, does not assert it); event-hook dispatch runs only after the status update and its event row are committed, is bounded separately by `event_hook_timeout` (§10.3), and on the session-end path is started detached (no timeout, no recorded result) and never waited for. A missing, failing or slow script changes neither `_hook`'s exit code nor anything it prints: the dispatch outcome is never an error of the hook. **A state database newer than the hook binary** (the agent keeps the hook command of the deck that launched it, so after deck is upgraded an older `_hook` can meet a newer schema) exits 1 without touching the database and prints, on stderr, a message naming the hook executable's absolute path, its version and its schema, and the database's schema, and saying to restart the session from deck (`R`) so it gets the current hook command. It never says "upgrade deck": that wording stays on the TUI's own store-open path, where the user can upgrade the binary they are running. **Auto-heal:** every store open records, in the `meta` table's `writer_binary` row, the absolute path of the deck binary that last migrated or opened the database for writing (an additive row, not a schema change; the write is skipped when the row already names the running binary, and a failed write never fails the open). Before printing that message, an older `_hook` that has already buffered its stdin payload re-execs the recorded binary once, with the same argv (`_hook`), the buffered payload on stdin and `DECK_HOOK_REEXEC=1` in the environment, and exits with the re-exec'd process's exit code, so the status update lands and the session never notices. The re-exec happens only when the recorded file exists, is an executable regular file, is not the hook's own file, and reports a schema at least as new as the database's (asked with the hidden `deck _schema` verb, which prints the newest schema that binary supports, bounded at 3 s). The re-exec'd writer itself runs under a 10 s timeout: a writer still running at that point is killed and `_hook` prints the restart message above instead, so a wedged writer cannot hold the agent's hook open. `DECK_HOOK_REEXEC` is the loop guard: a process that carries it never re-execs. When any condition fails, `_hook` prints the restart message above and does not re-exec. **The message, the auto-heal with its loop guard and the stale-binding hint (§11.4) hold the same way for Claude, Codex and Pi.** A `copilot` agent session gets its hook command from deck's plugin directory (§8.4): each plugin hook runs `"$DECK_EXE" _hook`, with `DECK_EXE` the launching deck binary in the pane environment, so the session is bound to that binary like the other kinds (the row records it, §11.4) and the pane probe (§7) still carries the status wherever no hook fires. `_hook` does not tell the agent kinds apart (it applies the payload to the row it names), and Claude and Codex embed the identical command, the single-quoted absolute path of the launching deck binary followed by ` _hook`, in `--settings` JSON and in each `-c hooks.<Event>` override respectively; Pi gets the same binary through `DECK_PI_HOOK_EXECUTABLE` for its deck-owned extension (§8.3), which runs it with `_hook` as a separate argv element and no shell, so a Pi session is bound to its launching deck binary and goes stale the same way. |
 | `deck _serve-tmux` | optional systemd unit | starts the `deck` tmux server with the right server options and exits. |
 | `deck _debug ...` | developers | inspection helpers, built only with the `debug` build tag. Not in release binaries. |
 
@@ -424,8 +424,12 @@ CREATE TABLE events (               -- append-only within a retention bound: aud
   seq        INTEGER PRIMARY KEY AUTOINCREMENT,
   session_id TEXT REFERENCES sessions(id) ON DELETE CASCADE,
   at         INTEGER NOT NULL,
-  kind       TEXT NOT NULL,         -- started|prompt|waiting|idle|error|ended|resumed|killed|env|note
-                                    -- closed vocabulary: a kind absent from this list is a defect, not an extension
+  kind       TEXT NOT NULL,         -- the writer's own name for what it recorded, stored as written and never
+                                    -- renamed: a hook's event (session_start, user_prompt_submitted,
+                                    -- notification, permission_request, stop, stop_failure, session_end),
+                                    -- probe.<status>, tmux.pane_dead, tmux.session_gone, killed, launch.*,
+                                    -- restart, env_applied, note, set_*, ... It is NOT the event hook's
+                                    -- vocabulary: §10.4 maps a stored kind to the offered kind (§10.1)
   reason     TEXT,
   payload    TEXT,                  -- bounded JSON
   hook_kind      TEXT,              -- the offered kind the event hook was spawned for (§10.3); NULL = no hook ran
@@ -969,7 +973,9 @@ Rules:
   suffix names a signal a shell will never have, so it is agent-only copy.
 - **Crash detection is not instantaneous when unattended.** A `SIGKILL`ed or OOM-killed
   agent fires no hook, so the transition to `error` — and its event hook — happens on the
-  next TUI tick or the next `_hook` invocation for that session, whichever comes first.
+  next TUI tick or the next non-session-end `_hook` invocation of any session on the deck
+  (its liveness pass, §3.1), whichever comes first; the process that records the `error`
+  dispatches its event hook (§10.4).
   Stated plainly rather than implied to be live. (`StopFailure` *is* a hook, so ordinary
   turn/API failures do fire the hook unattended; process death does not.)
 - **Never auto-relaunch** (non-goal): a crash loop must not be able to burn tokens or retry
@@ -1605,9 +1611,10 @@ Invocation: `event_hook <event>`. When `event_hook` is an argv, the event kind i
 argv[1]: the configured fixed arguments follow it (`script <event> <fixed>...`).
 
 - **argv[1]** is the event kind, one of the **offered set**: `started`, `resumed`,
-  `waiting`, `idle`, `error`, `ended`, `killed`. The remaining §4 kinds (`prompt`, `env`,
-  `note`) are never offered: they are the audit trail's, and a hook for each keystroke-grained
-  event would be noise on the agent's critical path.
+  `waiting`, `idle`, `error`, `ended`, `killed`. Nothing else is offered: a typed
+  `prompt`, an `env` change, a `note` and every other stored kind (§4, mapped by §10.4) are the
+  audit trail's, and a hook for each keystroke-grained event would be noise on the agent's
+  critical path.
 - **Environment:** every `DECK_SESSION_*` variable of §6.1, exactly as `pre_launch` sees them
   (always exported, empty rather than absent), plus `DECK_EVENT_KIND`, `DECK_EVENT_REASON`
   (the `status_reason`, e.g. a notification type), `DECK_EVENT_MESSAGE` (the last assistant
@@ -1678,7 +1685,11 @@ argv[1]: the configured fixed arguments follow it (`script <event> <fixed>...`).
 **Whichever deck process records the event**, through one dispatch function called from every
 event-write path: `deck _hook` for the payloads a Claude or Codex hook, or the Pi extension, delivers, and the
 running TUI for events deck detects by itself — a probe-classified shell status change (or a Pi change its extension has not reported),
-a reconcile-detected process death, and the user's own `killed`. Each of those three writes its
+a reconcile-detected process death, and the user's own `killed`. A process death that `deck _hook`'s
+post-hook liveness pass (§3.1) detects is dispatched by that `_hook` the same way, so an unattended
+crash still fires. It is spawned once the pass has returned, so the pass's short reconcile
+budget neither cuts the script short nor is spent by it: the script is bounded by
+`event_hook_timeout` like every attached spawn. Each of those writes its
 event row first and then calls the dispatch function with the row's seq, so the result is stored
 against that row; the running TUI reads the four event-hook settings per event, so a save or a
 config reload applies to the next one. A probe verdict that only repeats the status already on
@@ -1696,8 +1707,8 @@ started detached (`notify.Start`): payload on stdin from an already-unlinked tem
 pipe, so handing over a payload of any length never waits on the script reading it), output
 discarded, no timeout and no recorded result, in its own process group.
 
-**Which kind a recorded change offers.** The stored `events.kind` values are not the §4
-vocabulary (`session_start`, `stop`, `session_end`, `probe.<status>`, ... are what writers
+**Which kind a recorded change offers.** The stored `events.kind` values (§4) are not the
+offered kinds (`session_start`, `stop`, `session_end`, `probe.<status>`, ... are what writers
 store, and they are never renamed), so the dispatch function maps the stored kind, and for a
 session start its reason, to the offered kind. A stored kind this table does not name offers
 nothing and never spawns:
@@ -1736,7 +1747,7 @@ The three limits this accepts, all of which belong in the help view rather than 
    lists). Only Claude reports turn and API failures that way, via the stop-failure hook:
    Codex has no equivalent event, so an unattended codex failure waits for a TUI.
 3. **Process death is detected late.** A `SIGKILL`ed or OOM-killed agent of any kind fires no
-   hook, so its `error` event waits for the next tick or hook (§7).
+   hook, so its `error` event waits for the next TUI tick or the next `_hook` of any session (§7).
 
 The help view (`?`) carries this contract under "Event hook": argv, the environment names,
 stdin, the timeout, no retry, the epoch dedupe and the three limits above, and the README
