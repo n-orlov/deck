@@ -281,6 +281,7 @@ func newDeckModel(db *store.Store, settings config.Settings, sessions service.Se
 	// editable launch inputs and marks the row launch_dirty, which only `R`
 	// clears once a relaunch has actually carried them into a live pane.
 	model = model.WithLaunchInputsSetter(sessions.SetLaunchInputs)
+	model = model.WithEventHookSetter(sessions.SetEventHook)
 	// R130 part 2's `i`-dialog-only `g` move-group picker (SPEC §11) is
 	// wired the same way and for the same reason: one narrow dependency,
 	// added without growing the positional chain above any further.

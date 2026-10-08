@@ -49,6 +49,10 @@ type AgentCreateInput struct {
 	// structural default group, exactly as it is there. The create modal's
 	// Group field (internal/tui) is the only populated caller today.
 	GroupID *int64
+	// EventHookEnabled and EventHookEvents are the session's own event-hook
+	// controls (SPEC §10.2, R233a): nil inherits the global value.
+	EventHookEnabled *bool
+	EventHookEvents  []string
 }
 
 // CreateAgent creates the durable row for a real coding-agent session,
@@ -184,7 +188,8 @@ func (s Service) insertAgentRow(ctx context.Context, input AgentCreateInput, pla
 		LaunchArgs: input.LaunchArgs, Env: input.Env, PreLaunch: input.PreLaunch, LoginShell: input.LoginShell,
 		PostDestroy:       input.PostDestroy,
 		PermissionProfile: plan.profile, PermissionProfileReason: plan.degradationReason, ConversationID: plan.conversationID,
-		GroupID: input.GroupID,
+		GroupID:          input.GroupID,
+		EventHookEnabled: input.EventHookEnabled, EventHookEvents: input.EventHookEvents,
 	})
 	if err != nil {
 		return store.Session{}, fmt.Errorf("create durable agent session %q: %w", input.Name, err)

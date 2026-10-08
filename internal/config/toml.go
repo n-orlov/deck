@@ -306,6 +306,13 @@ func CheckListElements(field Field, items []string) error {
 	return nil
 }
 
+// CheckEventKinds refuses a session's own event_hook_events list (SPEC §10.2)
+// when it names a kind outside the offered set of §10.1, with the same
+// message the settings dialog and the file loader give.
+func CheckEventKinds(items []string) error {
+	return CheckListElements(Field{Key: "event_hook_events", Kind: KindListOfStrings, ElementValues: EventHookKinds}, items)
+}
+
 // parseStringArray reads a one-line TOML array of quoted strings such as
 // ["waiting", "error"]; [] is the empty list and a trailing comma is allowed.
 func parseStringArray(raw string) ([]string, error) {

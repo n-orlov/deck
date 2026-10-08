@@ -430,6 +430,7 @@ func (m Model) keyNewSession(_ tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.createProfile = m.defaultCreateProfile(m.createAgent)
 		m.createProfileTouched, m.createProfileRequested = false, ""
 		m.createLoginShell = false
+		m.createEventHook = eventHookInherit
 		m.createGroups = m.computeAvailableGroups()
 		m.createGroupID, m.createGroupLastUsed = m.pickCreateGroup()
 	}

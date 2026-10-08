@@ -56,6 +56,10 @@ Feature: The §11.4 dialog contract, asserted per dialog (requirements 7, 8, 9, 
 
   Scenario: create dialog -- in-dialog validation retains the typed value and states the reason
     Given deck client "A" is started
+    # The create modal's twelve fields (R233a added the two event-hook ones)
+    # plus the rejection no longer fit the default 100x30 geometry with the
+    # typed Name row still in view.
+    And deck client "A" terminal is resized to 100x38
     When deck client "A" attempts to create a shell session named "dc-validate" with working directory "/dc-does-not-exist"
     Then deck client "A" screen contains "dc-validate"
     And deck client "A" screen contains "/dc-does-not-exist"

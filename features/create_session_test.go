@@ -369,12 +369,19 @@ func groupRowCount(ctx context.Context, h *ScenarioHarness, name string) (int, e
 // createModalCWDToGroupFieldDowns is the number of ↓ presses that move
 // create-modal focus from the cwd field (1) to the Group field task 016
 // appended last (createFieldRows' Agent/Permission profile/Launch args/
-// Env/Pre-launch/Post-destroy/Login shell rows sit in between, in that
-// order) -- mirroring ensureCreateModalAgent's own hardcoded 2-down
+// Env/Pre-launch/Post-destroy/Login shell and the two per-session
+// event-hook rows (R233a) sit in between, in that order) -- mirroring ensureCreateModalAgent's own hardcoded 2-down
 // Name->Agent precedent, since this file is deliberately a black-box
 // observer of the released binary (see registerBlackBoxAssertionSteps)
 // and cannot import internal/tui's own createFieldCount.
-const createModalCWDToGroupFieldDowns = 8
+const createModalCWDToGroupFieldDowns = 10
+
+// createModalGroupColumns and createModalGroupRows are the geometry the
+// create modal needs to show every one of its fields at once.
+const (
+	createModalGroupColumns = 100
+	createModalGroupRows    = 38
+)
 
 // clientCreatesShellSessionIntoGroupWithFreshCWDLabelled is
 // createShellSessionInLabelledCWD's R130 counterpart: it additionally
@@ -400,6 +407,12 @@ func clientCreatesShellSessionIntoGroupWithFreshCWDLabelled(ctx context.Context,
 		return fmt.Errorf("create directory labelled %q: %w", label, err)
 	}
 	registerNamedDirectory(h, label, dir)
+	// The Group row is the last of the create modal's twelve fields, below the
+	// two event-hook rows (R233a): a default 100x30 terminal no longer shows
+	// it, and the step reads the frame to cycle it.
+	if err := resizeNamedClient(ctx, clientName, createModalGroupColumns, createModalGroupRows); err != nil {
+		return err
+	}
 	if err := client.Send("n"); err != nil {
 		return err
 	}

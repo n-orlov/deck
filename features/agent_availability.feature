@@ -129,6 +129,9 @@ Feature: Nothing installed means the Agent field offers only shell (requirement 
     # open with the typed name intact, rather than creating a doomed row.
     Given a fake "claude" binary is on PATH for future deck clients
     And deck client "A" is started
+    # The rejection and the Agent and Name rows must all be in view at once;
+    # with R233a's two event-hook fields the modal needs more than 30 rows.
+    And deck client "A" terminal is resized to 100x44
     When deck client "A" opens the create modal
     And deck client "A" types "preflight-race" into the create modal name field
     And deck client "A" presses down 2 times in the open dialog

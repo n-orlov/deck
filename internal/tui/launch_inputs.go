@@ -4,9 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/n-orlov/deck/internal/store"
 	"github.com/n-orlov/deck/internal/theme"
 	"github.com/n-orlov/deck/internal/tui/lineedit"
 )
@@ -28,17 +30,23 @@ import (
 // launchInputsFieldRows' own order: pre_launch, post_destroy, launch_args,
 // login_shell -- SPEC §6.2's own listing order, and the order R108
 // documents its "four editable launch inputs" in.
-const launchInputsFieldCount = 4
+const launchInputsFieldCount = 6
 
-// launchInputsTextFieldCount is how many of the fields above are text, held in
-// the shared line editor (§11.11): the first three, in the same order.
-const launchInputsTextFieldCount = 3
+// launchInputsTextFieldCount sizes the shared line editors (§11.11), which are
+// indexed by field position: the text fields are pre_launch, post_destroy,
+// launch_args and event_hook_events; the slots of the two selections stay unused.
+const launchInputsTextFieldCount = launchInputsFieldCount
 
 const (
 	launchInputsFieldPreLaunch = iota
 	launchInputsFieldPostDestroy
 	launchInputsFieldLaunchArgs
 	launchInputsFieldLoginShell
+	// The last two are the session's event-hook controls (SPEC §10.2, R233a).
+	// Unlike the four launch inputs above they are read at dispatch, so they
+	// apply immediately and set no dirty flag.
+	launchInputsFieldEventHook
+	launchInputsFieldEventHookEvents
 )
 
 // launchInputsFieldIsText reports whether field accepts free-typed runes,
@@ -46,7 +54,7 @@ const (
 // field) that only left/right/space change -- mirroring
 // createFieldIsText's identical role for the create modal's own field set.
 func launchInputsFieldIsText(field int) bool {
-	return field != launchInputsFieldLoginShell
+	return field != launchInputsFieldLoginShell && field != launchInputsFieldEventHook
 }
 
 // launchArgsToText renders a session's stored LaunchArgs as the same JSON
@@ -104,6 +112,8 @@ func (m Model) launchInputsFieldRows() []struct{ label, value, help string } {
 		{launchInputsLabels[1], m.launchInputsFieldText(launchInputsFieldPostDestroy), "runs after Archive or Delete durably succeeds; a non-zero exit or timeout never blocks teardown (fail-open) -- restart-to-apply"},
 		{launchInputsLabels[2], m.launchInputsFieldText(launchInputsFieldLaunchArgs), "extra arguments appended verbatim after the adapter's own argv -- restart-to-apply"},
 		{launchInputsLabels[3], loginShell + " (space toggles)", "runs the pane command through $SHELL -lc, letting rc files rewrite PATH -- restart-to-apply"},
+		{launchInputsLabels[4], eventHookModeName(m.launchInputsEventHook) + " (left/right cycles: inherit, on, off)", "whether the event hook (event_hook) runs for this session; inherit follows event_hook_default -- applies immediately, no restart"},
+		{launchInputsLabels[5], m.launchInputsFieldText(launchInputsFieldEventHookEvents), "kinds offered to the hook, e.g. waiting, error, ended; replaces the global list; empty inherits it, none offers nothing -- applies immediately, no restart"},
 	}
 }
 
@@ -123,7 +133,7 @@ func (m Model) launchInputsFieldLabel(field int) string {
 }
 
 // launchInputsLabels are the four rows' labels, in field order.
-var launchInputsLabels = [launchInputsFieldCount]string{"Pre-launch command", "Post-destroy command", "Launch args (JSON array)", "Login shell"}
+var launchInputsLabels = [launchInputsFieldCount]string{"Pre-launch command", "Post-destroy command", "Launch args (JSON array)", "Login shell", "Event hook (event_hook_enabled)", "Event hook kinds (event_hook_events)"}
 
 // launchInputsFieldWidth is the number of cells a text field has inside the
 // dialog's box once its label has been drawn: the editor scrolls within it, so
@@ -156,7 +166,7 @@ func (m Model) launchInputsValue(field int) string { return m.launchInputsEdits[
 // launchInputsFooterLine is the closing legend both launchInputsBody and
 // styledLaunchInputsBody render verbatim, shared so the two can never
 // state the keymap differently.
-const launchInputsFooterLine = "\u2191/\u2193 field \u00b7 Left/Right/Space toggles Login shell \u00b7 Enter submits \u00b7 Esc cancels"
+const launchInputsFooterLine = "\u2191/\u2193 field \u00b7 Left/Right/Space toggles Login shell, cycles Event hook \u00b7 Enter submits \u00b7 Esc cancels"
 
 // launchInputsVerbatimNote is the one-line statement SPEC §6.4/§11.4
 // requires: the two hook fields above are shown exactly as typed, never
@@ -301,9 +311,12 @@ func (m Model) updateLaunchInputsDialog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 // flip. It is only ever reached while the login_shell selection is focused:
 // on a text field left, right and space are the shared line editor's
 // (dialogFields.TextFocused), so Cycle applies to selection fields only.
-func (m *Model) cycleLaunchInputsField(_ int) {
-	if m.launchInputsField == launchInputsFieldLoginShell {
+func (m *Model) cycleLaunchInputsField(delta int) {
+	switch m.launchInputsField {
+	case launchInputsFieldLoginShell:
 		m.launchInputsLoginShell = !m.launchInputsLoginShell
+	case launchInputsFieldEventHook:
+		m.launchInputsEventHook = cycleEventHookMode(m.launchInputsEventHook, delta)
 	}
 }
 
@@ -318,7 +331,7 @@ func (m *Model) cycleLaunchInputsField(_ int) {
 // what the user typed"), mirroring validateCreateFields' own launch_args
 // check one file over.
 func (m *Model) submitLaunchInputs() tea.Cmd {
-	args, err := parseLaunchInputsArgs(m.launchInputsValue(launchInputsFieldLaunchArgs))
+	w, err := m.launchInputsForm()
 	if err != nil {
 		m.launchInputsNote = err.Error()
 		return nil
@@ -331,12 +344,69 @@ func (m *Model) submitLaunchInputs() tea.Cmd {
 		return nil
 	}
 	session, _ := m.selectedSession()
-	sessionID := session.ID
-	preLaunch, postDestroy := m.launchInputsValue(launchInputsFieldPreLaunch), m.launchInputsValue(launchInputsFieldPostDestroy)
-	loginShell := m.launchInputsLoginShell
-	setter := m.launchInputsSetter
+	w.hook = !sameEventHook(session, w.enabled, w.events)
+	if w.hook && m.eventHookSetter == nil {
+		m.launchInputsNote = "editing the event hook is unavailable"
+		return nil
+	}
+	// The four launch inputs are written (and launch_dirty set) as before,
+	// except when only the event-hook controls changed: those apply
+	// immediately and must not flag a restart that has nothing to carry.
+	w.launch = !w.hook || w.launchInputsDiffer(session)
+	return w.cmd(session.ID, m.launchInputsSetter, m.eventHookSetter)
+}
+
+// launchInputsWrite is one submit of the launch-inputs editor: the typed
+// values, and which of the two writes (the launch inputs, the event-hook
+// controls) it needs.
+type launchInputsWrite struct {
+	preLaunch, postDestroy string
+	args                   []string
+	loginShell             bool
+	enabled                *bool
+	events                 []string
+	launch, hook           bool
+}
+
+// launchInputsForm reads and validates the editor's fields.
+func (m Model) launchInputsForm() (launchInputsWrite, error) {
+	args, err := parseLaunchInputsArgs(m.launchInputsValue(launchInputsFieldLaunchArgs))
+	if err != nil {
+		return launchInputsWrite{}, err
+	}
+	events, err := parseEventKinds(m.launchInputsValue(launchInputsFieldEventHookEvents))
+	if err != nil {
+		return launchInputsWrite{}, err
+	}
+	return launchInputsWrite{
+		preLaunch: m.launchInputsValue(launchInputsFieldPreLaunch), postDestroy: m.launchInputsValue(launchInputsFieldPostDestroy),
+		args: args, loginShell: m.launchInputsLoginShell, enabled: m.launchInputsEventHook.enabled(), events: events,
+	}, nil
+}
+
+// launchInputsDiffer reports whether any of the four launch inputs differs
+// from the session's stored value.
+func (w launchInputsWrite) launchInputsDiffer(session store.Session) bool {
+	return w.preLaunch != session.PreLaunch || w.postDestroy != session.PostDestroy ||
+		!slices.Equal(w.args, session.LaunchArgs) || w.loginShell != session.LoginShell
+}
+
+// cmd runs the writes the submit needs, in order, and reports the row as the
+// last of them left it.
+func (w launchInputsWrite) cmd(sessionID string, setter func(context.Context, string, string, string, []string, bool) (store.Session, error), hookSetter func(context.Context, string, *bool, []string) (store.Session, error)) tea.Cmd {
 	return func() tea.Msg {
-		updated, err := setter(context.Background(), sessionID, preLaunch, postDestroy, args, loginShell)
+		var (
+			updated store.Session
+			err     error
+		)
+		if w.launch {
+			if updated, err = setter(context.Background(), sessionID, w.preLaunch, w.postDestroy, w.args, w.loginShell); err != nil {
+				return launchInputsSaved{session: updated, err: err}
+			}
+		}
+		if w.hook {
+			updated, err = hookSetter(context.Background(), sessionID, w.enabled, w.events)
+		}
 		return launchInputsSaved{session: updated, err: err}
 	}
 }

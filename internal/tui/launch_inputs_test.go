@@ -196,11 +196,11 @@ func TestLaunchInputsEditorEscWritesNothingAtAll(t *testing.T) {
 	}
 }
 
-// TestLaunchInputsEditorUpDownMoveBetweenFourFieldsTabDoesNot proves ↑/↓
-// cycle m.launchInputsField through all four fields (wrapping both ways)
+// TestLaunchInputsEditorUpDownMoveBetweenAllFieldsTabDoesNot proves ↑/↓
+// cycle m.launchInputsField through all six fields (the four launch inputs and the two event-hook fields of R233a) (wrapping both ways)
 // while tab -- reserved package-wide for completion, SPEC §11.4 -- neither
 // moves the field nor types anything.
-func TestLaunchInputsEditorUpDownMoveBetweenFourFieldsTabDoesNot(t *testing.T) {
+func TestLaunchInputsEditorUpDownMoveBetweenAllFieldsTabDoesNot(t *testing.T) {
 	db, id := newLaunchInputsTestStore(t)
 	m := launchInputsTestModel(t, db, id)
 
@@ -212,6 +212,8 @@ func TestLaunchInputsEditorUpDownMoveBetweenFourFieldsTabDoesNot(t *testing.T) {
 		launchInputsFieldPostDestroy,
 		launchInputsFieldLaunchArgs,
 		launchInputsFieldLoginShell,
+		launchInputsFieldEventHook,
+		launchInputsFieldEventHookEvents,
 		launchInputsFieldPreLaunch, // wraps
 	}
 	for i, want := range wantDown {
@@ -223,7 +225,9 @@ func TestLaunchInputsEditorUpDownMoveBetweenFourFieldsTabDoesNot(t *testing.T) {
 	}
 
 	wantUp := []int{
-		launchInputsFieldLoginShell, // wraps backward
+		launchInputsFieldEventHookEvents, // wraps backward
+		launchInputsFieldEventHook,
+		launchInputsFieldLoginShell,
 		launchInputsFieldLaunchArgs,
 		launchInputsFieldPostDestroy,
 		launchInputsFieldPreLaunch,

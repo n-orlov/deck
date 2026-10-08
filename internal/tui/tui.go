@@ -87,6 +87,9 @@ type Model struct {
 	createAgent      string
 	createProfile    string
 	createLoginShell bool
+	// createEventHook is the create dialog's event_hook_enabled selection;
+	// event_hook_events is the text editor at createFieldEventHookEvents.
+	createEventHook eventHookMode
 	// createProfileTouched is true once the user has cycled the Permission
 	// profile field (field 3) itself in the currently open create modal. It
 	// gates cycleCreateField's Agent case (field 2): while false, the value
@@ -616,8 +619,14 @@ type Model struct {
 	launchInputsField      int
 	launchInputsEdits      [launchInputsTextFieldCount]lineedit.Editor
 	launchInputsLoginShell bool
-	launchInputsNote       string
-	launchInputsScroll     int
+	// launchInputsEventHook is the fifth field, event_hook_enabled (cycled);
+	// the sixth, event_hook_events, is the text editor at its own index.
+	launchInputsEventHook eventHookMode
+	// eventHookSetter stores the session's own event-hook controls
+	// (WithEventHookSetter); it never sets a dirty flag.
+	eventHookSetter    func(context.Context, string, *bool, []string) (store.Session, error)
+	launchInputsNote   string
+	launchInputsScroll int
 	// groupMover is R130 part 2's `i`-dialog-only `g` move-group action
 	// (SPEC §11): service.Service.SetSessionGroup, which moves ONE session
 	// into a different group or back to the structural default. nil means
@@ -8176,14 +8185,14 @@ func (m Model) createProfileOptionsFor(kind string, allowYolo bool) []string {
 	return options
 }
 
-const createFieldCount = 10
+const createFieldCount = 12
 
 // createFieldIsText reports whether field accepts free-typed runes, as
 // opposed to being a cycled selection (agent, permission profile, login
 // shell) that only left/right/space change.
 func createFieldIsText(field int) bool {
 	switch field {
-	case 0, 1, 4, 5, 6, 7:
+	case 0, 1, 4, 5, 6, 7, createFieldEventHookEvents:
 		return true
 	default:
 		return false
@@ -8365,7 +8374,19 @@ func (m Model) validateCreateFields() string {
 	if msg := m.validateCreateEnv(); msg != "" {
 		return msg
 	}
-	return m.validateCreateProfile()
+	if msg := m.validateCreateProfile(); msg != "" {
+		return msg
+	}
+	return m.validateCreateEventKinds()
+}
+
+// validateCreateEventKinds is validateCreateFields' event-hook step: the
+// session's own list may only name kinds of the offered set (SPEC §10.1).
+func (m Model) validateCreateEventKinds() string {
+	if _, err := parseEventKinds(m.createText(createFieldEventHookEvents)); err != nil {
+		return err.Error()
+	}
+	return ""
 }
 
 // validateCreateCWD is validateCreateFields' working-directory step: the
@@ -8779,6 +8800,8 @@ func (m *Model) submitCreate() tea.Cmd {
 		return nil
 	}
 	name := m.resolveCreateName(resolvedCWD)
+	// validateCreateFields already proved the kinds parse.
+	events, _ := parseEventKinds(m.createText(createFieldEventHookEvents))
 	if m.createAgent != "shell" {
 		if m.createAgentSession == nil {
 			m.createError = "creating " + m.createAgent + " sessions is not available yet"
@@ -8798,7 +8821,7 @@ func (m *Model) submitCreate() tea.Cmd {
 			Name: name, CWD: resolvedCWD, Agent: m.createAgent,
 			PermissionProfile: m.createProfile, LaunchArgs: launchArgs, Env: env,
 			PreLaunch: m.createText(createFieldPreLaunch), LoginShell: m.createLoginShell, PostDestroy: m.createText(createFieldPostDestroy),
-			GroupID: m.createGroupIDPointer(),
+			GroupID: m.createGroupIDPointer(), EventHookEnabled: m.createEventHook.enabled(), EventHookEvents: events,
 		}
 		createAgentSession := m.createAgentSession
 		return func() tea.Msg {
@@ -8811,6 +8834,7 @@ func (m *Model) submitCreate() tea.Cmd {
 		return nil
 	}
 	cwd, create, preLaunch, postDestroy, groupID := resolvedCWD, m.create, m.createText(createFieldPreLaunch), m.createText(createFieldPostDestroy), m.createGroupIDPointer()
+	hookEnabled := m.createEventHook.enabled()
 	return func() tea.Msg {
 		// The modal's Pre-launch field is offered (and validated) for every
 		// agent, `shell` included, and SPEC §6.4's hook fires "on create" for
@@ -8819,7 +8843,7 @@ func (m *Model) submitCreate() tea.Cmd {
 		// Post-destroy field (task 026) is passed through the same way, so a
 		// shell session's own teardown hook can be set at create time exactly
 		// as an agent session's can.
-		session, err := create(context.Background(), service.ShellCreateInput{Name: name, CWD: cwd, PreLaunch: preLaunch, PostDestroy: postDestroy, GroupID: groupID})
+		session, err := create(context.Background(), service.ShellCreateInput{Name: name, CWD: cwd, PreLaunch: preLaunch, PostDestroy: postDestroy, GroupID: groupID, EventHookEnabled: hookEnabled, EventHookEvents: events})
 		return shellCreated{session: session, err: err}
 	}
 }
@@ -8935,24 +8959,31 @@ func (m *Model) cycleCreateField(delta int) {
 		m.createProfileRequested = m.createProfile
 	case 8:
 		m.createLoginShell = !m.createLoginShell
-	case 9:
-		options := m.createGroupCycleOptions()
-		idx := 0
-		for i, g := range options {
-			if g.ID == m.createGroupID {
-				idx = i
-				break
-			}
-		}
-		idx = (idx + delta + len(options)) % len(options)
-		m.createGroupID = options[idx].ID
-		// The value showing is now a deliberate cycle, not the remembered
-		// one -- clear the "(last used)" label regardless of which way the
-		// cycle landed, even back on the original value, exactly as
-		// createAgentLastUsed/createCWDLastUsed are cleared on their own
-		// field's first edit.
-		m.createGroupLastUsed = false
+	case createFieldEventHook:
+		m.createEventHook = cycleEventHookMode(m.createEventHook, delta)
+	case createFieldGroup:
+		m.cycleCreateGroup(delta)
 	}
+}
+
+// cycleCreateGroup steps the Group field by delta through its options.
+func (m *Model) cycleCreateGroup(delta int) {
+	options := m.createGroupCycleOptions()
+	idx := 0
+	for i, g := range options {
+		if g.ID == m.createGroupID {
+			idx = i
+			break
+		}
+	}
+	idx = (idx + delta + len(options)) % len(options)
+	m.createGroupID = options[idx].ID
+	// The value showing is now a deliberate cycle, not the remembered
+	// one -- clear the "(last used)" label regardless of which way the
+	// cycle landed, even back on the original value, exactly as
+	// createAgentLastUsed/createCWDLastUsed are cleared on their own
+	// field's first edit.
+	m.createGroupLastUsed = false
 }
 
 // contains reports whether options includes value.
@@ -9155,6 +9186,8 @@ func (m Model) createFieldRows() []struct{ label, value, help string } {
 		{createFieldLabels[createFieldPreLaunch], m.createFieldText(createFieldPreLaunch), "a command run in the pane before the agent starts, e.g. to load secrets"},
 		{createFieldLabels[createFieldPostDestroy], m.createFieldText(createFieldPostDestroy), "a command run after this session's own Archive or Delete durably succeeds; a non-zero exit or timeout never blocks teardown (fail-open)"},
 		{"Login shell", loginShell + " (space toggles)", "makes captured_path advisory only (not applied): runs via $SHELL -lc instead of the agent argv, so the login shell sets PATH"},
+		{createFieldLabels[createFieldEventHook], eventHookModeName(m.createEventHook) + " (left/right cycles: inherit, on, off)", "whether the event hook (event_hook) runs for this session; inherit follows event_hook_default"},
+		{createFieldLabels[createFieldEventHookEvents], m.createFieldText(createFieldEventHookEvents), "kinds offered to the hook, e.g. waiting, error, ended; replaces the global list; empty inherits it, none offers nothing"},
 		{"Group", m.createGroupName(m.createGroupID) + " (left/right cycles: " + strings.Join(groupNames, ", ") + ")", groupHelp},
 	}
 }
