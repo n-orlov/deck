@@ -20,6 +20,17 @@ type Policy struct {
 	Events []string
 }
 
+// PolicyFromSettings is the Policy the running settings describe. event_hook
+// is an executable path or an executable and its arguments separated by
+// spaces (SPEC §6.5), run without a shell, so it splits on whitespace.
+func PolicyFromSettings(settings config.Settings) Policy {
+	return Policy{
+		Command: strings.Fields(settings.EventHook),
+		Default: settings.EventHookDefault,
+		Events:  settings.EventHookEvents,
+	}
+}
+
 // Fired is one (kind, reason) pair already spawned in the current
 // notify_epoch (SPEC §10.3, the hook_fired column of §4).
 type Fired struct {
@@ -53,6 +64,10 @@ const (
 	SkipDisabled  Skip = "event hook disabled for the session"
 	SkipNotListed Skip = "kind not in the effective list"
 	SkipDeduped   Skip = "already fired in this epoch"
+	// SkipNotApplied is the caller's: the change's status write did not land
+	// (a higher-precedence source owns the row), so it is not an event the
+	// hook is offered.
+	SkipNotApplied Skip = "status change was not applied"
 )
 
 // Decision is Dispatch's verdict. When Spawn is true, Fired is the complete

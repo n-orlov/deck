@@ -1,0 +1,166 @@
+package service
+
+import (
+	"context"
+	"os"
+	"path/filepath"
+	"strings"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/n-orlov/deck/internal/config"
+	"github.com/n-orlov/deck/internal/notify"
+	"github.com/n-orlov/deck/internal/store"
+)
+
+type hookDispatchFixture struct {
+	db  *store.Store
+	d   EventHookDispatcher
+	out string
+}
+
+func newHookDispatchFixture(t *testing.T, status string) hookDispatchFixture {
+	t.Helper()
+	home := t.TempDir()
+	db, err := store.OpenPath(home, filepath.Join(home, "state.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	if _, err := db.CreateSession(context.Background(), store.CreateSessionInput{
+		ID: "s1", Name: "api", CWD: home, Agent: "claude", CapturedPath: "/bin",
+		Status: status, StatusAt: 1, CreatedAt: 1, ConversationID: "c1",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	out := t.TempDir()
+	script := filepath.Join(out, "hook.sh")
+	if err := os.WriteFile(script, []byte("#!/bin/sh\necho \"$1\" >> "+filepath.Join(out, "runs")+"\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return hookDispatchFixture{db: db, out: out, d: EventHookDispatcher{
+		Store:   db,
+		Policy:  notify.Policy{Command: []string{script}, Default: true, Events: config.EventHookKinds},
+		Timeout: 3 * time.Second,
+		Deck:    notify.Deck{Host: "box", Version: "test"},
+		BaseEnv: []string{"PATH=/usr/bin:/bin"},
+	}}
+}
+
+func (f hookDispatchFixture) runs() []string {
+	raw, _ := os.ReadFile(filepath.Join(f.out, "runs"))
+	return strings.Fields(string(raw))
+}
+
+func TestEventHookDispatchSpawnsOncePerEpochPair(t *testing.T) {
+	f := newHookDispatchFixture(t, "waiting")
+	ev := HookEvent{SessionID: "s1", StoredKind: "notification", Reason: "permission_prompt", At: time.Now()}
+	first := f.d.Dispatch(context.Background(), ev, false)
+	if !first.Spawned || first.Err != nil || first.Result.Failed() {
+		t.Fatalf("first dispatch = %+v", first)
+	}
+	if second := f.d.Dispatch(context.Background(), ev, false); second.Spawned || second.Skip != notify.SkipDeduped {
+		t.Fatalf("second dispatch = %+v, want deduped", second)
+	}
+	ev.Reason = "other_prompt"
+	if third := f.d.Dispatch(context.Background(), ev, false); !third.Spawned {
+		t.Fatalf("a new reason must spawn: %+v", third)
+	}
+	if got := f.runs(); len(got) != 2 || got[0] != "waiting" {
+		t.Fatalf("runs = %v, want two waiting spawns", got)
+	}
+}
+
+func TestEventHookDispatchSkipsWhatItShouldNotOffer(t *testing.T) {
+	f := newHookDispatchFixture(t, "running")
+	ctx := context.Background()
+	if out := f.d.Dispatch(ctx, HookEvent{SessionID: "s1", StoredKind: "user_prompt_submitted"}, false); out.Skip != notify.SkipNotOffer {
+		t.Errorf("a prompt = %+v", out)
+	}
+	inert := f.d
+	inert.Policy.Command = nil
+	if out := inert.Dispatch(ctx, HookEvent{SessionID: "s1", StoredKind: "stop"}, false); out.Skip != notify.SkipInert {
+		t.Errorf("no script = %+v", out)
+	}
+	if out := f.d.Dispatch(ctx, HookEvent{SessionID: "s1", StoredKind: "stop", AppliedStatus: "idle"}, false); out.Skip != notify.SkipNotApplied {
+		t.Errorf("a status that did not land = %+v", out)
+	}
+	if out := f.d.Dispatch(ctx, HookEvent{SessionID: "missing", StoredKind: "stop"}, false); out.Err == nil {
+		t.Errorf("a missing session = %+v, want an error", out)
+	}
+	if got := f.runs(); len(got) != 0 {
+		t.Errorf("spawned %v", got)
+	}
+}
+
+func TestEventHookDispatchReadsThePerSessionFields(t *testing.T) {
+	f := newHookDispatchFixture(t, "idle")
+	if _, err := f.db.DB().Exec(`UPDATE sessions SET event_hook_enabled = 1, event_hook_events = '["error"]' WHERE id = 's1'`); err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	if out := f.d.Dispatch(ctx, HookEvent{SessionID: "s1", StoredKind: "stop"}, false); out.Skip != notify.SkipNotListed {
+		t.Errorf("idle with an own list of error = %+v", out)
+	}
+	if _, err := f.db.DB().Exec(`UPDATE sessions SET event_hook_enabled = 0 WHERE id = 's1'`); err != nil {
+		t.Fatal(err)
+	}
+	if out := f.d.Dispatch(ctx, HookEvent{SessionID: "s1", StoredKind: "stop_failure"}, false); out.Skip != notify.SkipDisabled {
+		t.Errorf("a session that turned the hook off = %+v", out)
+	}
+}
+
+func TestEventHookDispatchDetachedStartsWithoutAResultAndReportsAMissingScript(t *testing.T) {
+	f := newHookDispatchFixture(t, "stopped")
+	out := f.d.Dispatch(context.Background(), HookEvent{SessionID: "s1", StoredKind: "session_end", Reason: "logout"}, true)
+	if !out.Spawned || !out.Detached || out.Err != nil || out.Result.Duration != 0 {
+		t.Fatalf("detached dispatch = %+v", out)
+	}
+	deadline := time.Now().Add(10 * time.Second)
+	for len(f.runs()) == 0 && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if got := f.runs(); len(got) != 1 || got[0] != "ended" {
+		t.Fatalf("runs = %v, want one ended", got)
+	}
+	missing := newHookDispatchFixture(t, "waiting")
+	missing.d.Policy.Command = []string{filepath.Join(missing.out, "nope")}
+	if out := missing.d.Dispatch(context.Background(), HookEvent{SessionID: "s1", StoredKind: "notification"}, false); out.Err == nil || out.Spawned {
+		t.Fatalf("missing script = %+v, want a recordable error", out)
+	}
+}
+
+func TestEventHookDispatchFromTwoProcessesSpawnsOnce(t *testing.T) {
+	f := newHookDispatchFixture(t, "waiting")
+	ev := HookEvent{SessionID: "s1", StoredKind: "notification", Reason: "p", At: time.Now()}
+	var wg sync.WaitGroup
+	spawned := make(chan bool, 8)
+	for range 8 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			spawned <- f.d.Dispatch(context.Background(), ev, false).Spawned
+		}()
+	}
+	wg.Wait()
+	close(spawned)
+	count := 0
+	for s := range spawned {
+		if s {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Fatalf("%d concurrent dispatches spawned %d times, want 1", count, count)
+	}
+}
+
+func TestHookLaunchKindFollowsTheLease(t *testing.T) {
+	if got := hookLaunchKind(store.Session{}); got != LaunchKindCreate {
+		t.Errorf("fresh row = %q", got)
+	}
+	if got := hookLaunchKind(store.Session{LaunchGeneration: "g1"}); got != LaunchKindResume {
+		t.Errorf("leased row = %q", got)
+	}
+}

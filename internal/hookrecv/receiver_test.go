@@ -52,6 +52,9 @@ func TestReceiveMappingTable(t *testing.T) {
 			if result.SessionID != id || result.Status != tc.wantStatus || result.Reason != tc.wantReason {
 				t.Fatalf("result = %#v", result)
 			}
+			if result.Message != tc.wantMessage {
+				t.Fatalf("result message = %q, want %q (the event hook's DECK_EVENT_MESSAGE)", result.Message, tc.wantMessage)
+			}
 			row, err := db.GetSession(context.Background(), id)
 			if err != nil {
 				t.Fatal(err)
@@ -423,5 +426,22 @@ func createHookSession(t *testing.T, db *store.Store, id, agent, conversationID 
 	})
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+// An in-session SessionEnd (/clear, /resume) is recorded but is not a
+// session ending: Result.InSession tells the event-hook dispatcher so.
+func TestReceiveMarksAnInSessionEndSoNoEndedEventIsOffered(t *testing.T) {
+	for reason, want := range map[string]bool{"clear": true, "resume": true, "logout": false} {
+		db := newHookStore(t)
+		createHookSession(t, db, "row-1", "claude", "conversation-1")
+		raw := []byte(fmt.Sprintf(`{"hook_event_name":"SessionEnd","session_id":"conversation-1","reason":%q}`, reason))
+		result, err := Receive(context.Background(), db, raw, "", "", 100)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if result.InSession != want {
+			t.Errorf("SessionEnd reason %q: InSession = %v, want %v", reason, result.InSession, want)
+		}
 	}
 }
