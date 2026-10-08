@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync/atomic"
+	"syscall"
 	"testing"
 	"time"
 
@@ -533,6 +534,27 @@ func (h *ScenarioHarness) KillTMuxServer(ctx context.Context) error {
 	return nil
 }
 
+// scenarioHomeSettle is how long teardown lets a killed agent finish its last
+// writes into DECK_HOME before it reports the directory as not removable. The
+// kill signals the pane's process group asynchronously, and an agent such as
+// the real Copilot CLI runs its sessionEnd hook while it dies, so a removal
+// that races that write sees "directory not empty". Only a removal that still
+// fails after the window is a leak.
+const scenarioHomeSettle = 3 * time.Second
+
+// removeHomeSettling calls remove on home, repeating while it fails and window
+// has not passed, and returns the last error.
+func removeHomeSettling(remove func(string) error, home string, window time.Duration) error {
+	deadline := time.Now().Add(window)
+	for {
+		err := remove(home)
+		if err == nil || time.Now().After(deadline) {
+			return err
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+}
+
 // Close is deliberately strict. It cleans every resource it owns, then checks
 // that no client, responding socket, or scenario directory survived cleanup.
 func (h *ScenarioHarness) Close() error {
@@ -581,7 +603,7 @@ func (h *ScenarioHarness) Close() error {
 	if h.removeHome != nil {
 		removeHome = h.removeHome
 	}
-	if err := removeHome(h.Home); err != nil {
+	if err := removeHomeSettling(removeHome, h.Home, scenarioHomeSettle); err != nil {
 		problems = append(problems, fmt.Errorf("remove scenario DECK_HOME %q: %w", h.Home, err))
 	}
 	if _, err := os.Lstat(h.Home); !errors.Is(err, os.ErrNotExist) {
@@ -728,6 +750,26 @@ func TestScenarioHarnessTeardownReportsLeaks(t *testing.T) {
 		}
 		_ = os.Remove(harness.Binary)
 	})
+}
+
+// A removal that races a dying agent's last write succeeds once the write is
+// done; one that never succeeds is still reported after the window.
+func TestRemoveHomeSettlingWaitsForTheLastWriteOnly(t *testing.T) {
+	calls := 0
+	racing := func(string) error {
+		calls++
+		if calls < 3 {
+			return syscall.ENOTEMPTY
+		}
+		return nil
+	}
+	if err := removeHomeSettling(racing, "/x", time.Second); err != nil || calls != 3 {
+		t.Fatalf("racing removal: err=%v after %d calls, want success on the third", err, calls)
+	}
+	never := func(string) error { return syscall.ENOTEMPTY }
+	if err := removeHomeSettling(never, "/x", 120*time.Millisecond); !errors.Is(err, syscall.ENOTEMPTY) {
+		t.Fatalf("a removal that never succeeds returned %v, want ENOTEMPTY", err)
+	}
 }
 
 func TestScenarioHarnessSharesIsolationAndCleansUp(t *testing.T) {
