@@ -290,6 +290,19 @@ var fieldRenderers = map[string]func(FileConfig) string{
 	"pre_launch":             func(c FileConfig) string { return strconv.Quote(c.PreLaunch) },
 	"post_destroy":           func(c FileConfig) string { return strconv.Quote(c.PostDestroy) },
 	"agent":                  func(c FileConfig) string { return strconv.Quote(c.Agent) },
+	"event_hook":             func(c FileConfig) string { return strconv.Quote(c.EventHook) },
+	"event_hook_default":     func(c FileConfig) string { return strconv.FormatBool(c.EventHookDefault) },
+	"event_hook_events":      func(c FileConfig) string { return renderStringArray(c.EventHookEvents) },
+	"event_hook_timeout":     func(c FileConfig) string { return strconv.Itoa(int(c.EventHookTimeout.Seconds())) },
+}
+
+// renderStringArray renders items as a one-line TOML array of quoted strings.
+func renderStringArray(items []string) string {
+	quoted := make([]string, len(items))
+	for i, item := range items {
+		quoted[i] = strconv.Quote(item)
+	}
+	return "[" + strings.Join(quoted, ", ") + "]"
 }
 
 // atomicWrite writes data to a temp file created alongside path, then

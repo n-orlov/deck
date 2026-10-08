@@ -17,7 +17,8 @@ import (
 // interactive_ms, interactive_transport, tmux_mouse, event_retention_days,
 // pre_launch, post_destroy, [ui] theme, [ui] ascii, [ui] mouse,
 // [ui] default_group_first, [ui] preview_fit, [ui] attach_on_new,
-// [ui] attach_on_resume,
+// [ui] attach_on_resume, R229's event_hook, event_hook_default,
+// event_hook_events and event_hook_timeout,
 // [ui] sort_order, [ui] recent_cwd_limit, and the
 // [env] table. Adding, removing or renaming a key must be a deliberate edit
 // to this test alongside the schema, never a silent drift.
@@ -46,6 +47,10 @@ func TestSchemaPinsKeySet(t *testing.T) {
 		"pre_launch",
 		"agent",
 		"post_destroy",
+		"event_hook",
+		"event_hook_default",
+		"event_hook_events",
+		"event_hook_timeout",
 		"[env]",
 	}
 	var got []string
@@ -196,6 +201,10 @@ func TestSchemaScopes(t *testing.T) {
 		"pre_launch":             ScopeRestartToApply,
 		"agent":                  ScopeRestartToApply,
 		"post_destroy":           ScopeRestartToApply,
+		"event_hook":             ScopeGlobal,
+		"event_hook_default":     ScopeGlobal,
+		"event_hook_events":      ScopeGlobal,
+		"event_hook_timeout":     ScopeGlobal,
 		"[env]":                  ScopeRestartToApply,
 	}
 	for _, field := range Schema {

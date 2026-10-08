@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"reflect"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -505,6 +506,7 @@ func (m *Model) settingsApplyLiveFields(edited, previous config.FileConfig) tea.
 	m.settingsApplyLiveTheme(edited, previous)
 	m.settingsApplyLiveSortOrder(edited, previous)
 	m.settingsApplyLiveDefaultGroupFirst(edited, previous)
+	m.settingsApplyLiveEventHook(edited, previous)
 	return cmd
 }
 
@@ -664,6 +666,7 @@ func (m *Model) settingsApplyLiveDefaultGroupFirst(edited, previous config.FileC
 // a value type and copies by assignment.
 func settingsCloneFileConfig(cfg config.FileConfig) config.FileConfig {
 	cfg.Env = settingsCloneEnv(cfg.Env)
+	cfg.EventHookEvents = slices.Clone(cfg.EventHookEvents)
 	return cfg
 }
 
@@ -766,12 +769,7 @@ func (m *Model) settingsActivateField() {
 	case config.KindToggle:
 		settingsSetToggle(&m.settingsEdits, f, !settingsToggleValue(f, m.settingsEdits))
 	case config.KindListOfStrings:
-		if f.FullKey() == "[env]" {
-			m.settingsEnvOpen = true
-			m.settingsEnvIndex = 0
-			m.settingsEnvEditing = false
-			m.settingsEnvReveal = false
-		}
+		m.settingsActivateList(f)
 	case config.KindString, config.KindPath:
 		// Prefilled from the STAGED value (settingsEdits, via
 		// settingsStringValue), never from m.settings.File: an edit made
@@ -790,6 +788,22 @@ func (m *Model) settingsActivateField() {
 			m.settingsClearRecentCwds()
 		}
 	}
+}
+
+// settingsActivateList is enter/space on a KindListOfStrings field: the
+// [env] table opens its entries list; a flat list (event_hook_events, R229)
+// opens the free-text editor on its comma-separated text.
+func (m *Model) settingsActivateList(f config.Field) {
+	if f.FullKey() == "[env]" {
+		m.settingsEnvOpen = true
+		m.settingsEnvIndex = 0
+		m.settingsEnvEditing = false
+		m.settingsEnvReveal = false
+		return
+	}
+	m.settingsStringEditKey = f.FullKey()
+	m.settingsStringEdit = lineedit.NewOffered(settingsStringValue(f, m.settingsEdits)).Fit(m.settingsStringFieldWidth(), m.settingsEditStyle())
+	m.settingsStringEditing = true
 }
 
 // settingsClearRecentCwds is task 013/requirement 17's actual effect of
@@ -1453,8 +1467,9 @@ func (m Model) updateSettingsStringEditing(msg tea.KeyMsg) (Model, tea.Cmd) {
 		m.settingsStringEditing = false
 		return m, nil
 	case "enter":
-		m.settingsStringCommitEdit()
-		m.settingsStringEditing = false
+		if m.settingsStringCommitEdit() {
+			m.settingsStringEditing = false
+		}
 		return m, nil
 	case "ctrl+s":
 		return m, nil
@@ -1486,12 +1501,35 @@ func (m Model) updateSettingsStringEditing(msg tea.KeyMsg) (Model, tea.Cmd) {
 // keymap, so the selection cannot move while it is active, and this guard
 // exists so that if that ever stops being true the value lands nowhere
 // rather than on some other key.
-func (m *Model) settingsStringCommitEdit() {
+//
+// It reports whether the editor may close. A list field (event_hook_events)
+// is parsed from its comma-separated text and refused with a settingsNote
+// naming the key when it holds a word the schema does not offer; the editor
+// then stays open on the typed text so the user can correct it.
+func (m *Model) settingsStringCommitEdit() bool {
 	f, ok := m.settingsStringEditField()
 	if !ok {
-		return
+		return true
+	}
+	if f.Kind == config.KindListOfStrings {
+		return m.settingsListCommit(f, m.settingsStringEdit.Value())
 	}
 	settingsSetString(&m.settingsEdits, f, m.settingsStringEdit.Value())
+	return true
+}
+
+// settingsListCommit stages text, a comma-separated list, as field f's value.
+func (m *Model) settingsListCommit(f config.Field, text string) bool {
+	items := settingsParseEventKinds(text)
+	if err := config.CheckListElements(f, items); err != nil {
+		m.settingsNote = err.Error()
+		return false
+	}
+	m.settingsNote = ""
+	if f.FullKey() == "event_hook_events" {
+		m.settingsEdits.EventHookEvents = items
+	}
+	return true
 }
 
 // settingsStringEditField resolves the schema field the free-text editor is
@@ -1578,6 +1616,10 @@ func settingsEditsFromSettings(s config.Settings) config.FileConfig {
 		PreLaunch:            s.File.PreLaunch,
 		PostDestroy:          s.File.PostDestroy,
 		Agent:                s.File.Agent,
+		EventHook:            s.File.EventHook,
+		EventHookDefault:     s.File.EventHookDefault,
+		EventHookEvents:      slices.Clone(s.File.EventHookEvents),
+		EventHookTimeout:     s.File.EventHookTimeout,
 		Env:                  settingsCloneEnv(s.File.Env),
 	}
 }
@@ -1619,7 +1661,7 @@ func settingsToggleValue(f config.Field, cfg config.FileConfig) bool {
 	case "ui.preview_fit":
 		return cfg.PreviewFit
 	default:
-		if t, ok := settingsAttachToggles[f.FullKey()]; ok {
+		if t, ok := settingsTableToggles[f.FullKey()]; ok {
 			return t.get(cfg)
 		}
 		b, _ := f.Default.(bool)
@@ -1627,13 +1669,17 @@ func settingsToggleValue(f config.Field, cfg config.FileConfig) bool {
 	}
 }
 
-// settingsAttachToggles is the get/set pair of each [ui] attach_on_* toggle
-// (GH #52 and #62), kept as one table so settingsToggleValue and
+// settingsTableToggles is the get/set pair of each [ui] attach_on_* toggle
+// (GH #52 and #62) and of event_hook_default (R229), kept as one table so settingsToggleValue and
 // settingsSetToggle stay below the complexity ceiling as the family grows.
-var settingsAttachToggles = map[string]struct {
+var settingsTableToggles = map[string]struct {
 	get func(config.FileConfig) bool
 	set func(*config.FileConfig, bool)
 }{
+	"event_hook_default": {
+		get: func(c config.FileConfig) bool { return c.EventHookDefault },
+		set: func(c *config.FileConfig, v bool) { c.EventHookDefault = v },
+	},
 	"ui.attach_on_new": {
 		get: func(c config.FileConfig) bool { return c.AttachOnNew },
 		set: func(c *config.FileConfig, v bool) { c.AttachOnNew = v },
@@ -1669,7 +1715,7 @@ func settingsSetToggle(cfg *config.FileConfig, f config.Field, v bool) {
 	case "ui.preview_fit":
 		cfg.PreviewFit = v
 	default:
-		if t, ok := settingsAttachToggles[f.FullKey()]; ok {
+		if t, ok := settingsTableToggles[f.FullKey()]; ok {
 			t.set(cfg, v)
 		}
 	}
@@ -1687,6 +1733,8 @@ func settingsIntegerValue(f config.Field, cfg config.FileConfig) int {
 		return cfg.RecentCwdLimit
 	case "event_retention_days":
 		return cfg.EventRetentionDays
+	case "event_hook_timeout":
+		return int(cfg.EventHookTimeout.Seconds())
 	default:
 		v, _ := f.Default.(int)
 		return v
@@ -1698,12 +1746,7 @@ func settingsIntegerValue(f config.Field, cfg config.FileConfig) int {
 // out-of-bounds value the atomic writer or the schema-driven reader would
 // then have to reject on the next load.
 func settingsSetInteger(cfg *config.FileConfig, f config.Field, v int) {
-	if v < f.IntBounds.Min {
-		v = f.IntBounds.Min
-	}
-	if f.IntBounds.Max != nil && v > *f.IntBounds.Max {
-		v = *f.IntBounds.Max
-	}
+	v = settingsClampInteger(f, v)
 	switch f.FullKey() {
 	case "stale_after":
 		cfg.StaleAfter = time.Duration(v) * time.Second
@@ -1715,7 +1758,20 @@ func settingsSetInteger(cfg *config.FileConfig, f config.Field, v int) {
 		cfg.RecentCwdLimit = v
 	case "event_retention_days":
 		cfg.EventRetentionDays = v
+	case "event_hook_timeout":
+		cfg.EventHookTimeout = time.Duration(v) * time.Second
 	}
+}
+
+// settingsClampInteger limits v to field f's declared IntBounds.
+func settingsClampInteger(f config.Field, v int) int {
+	if v < f.IntBounds.Min {
+		v = f.IntBounds.Min
+	}
+	if f.IntBounds.Max != nil && v > *f.IntBounds.Max {
+		v = *f.IntBounds.Max
+	}
+	return v
 }
 
 func settingsEnumValue(f config.Field, cfg config.FileConfig) string {
@@ -1936,6 +1992,10 @@ func settingsStringValue(f config.Field, cfg config.FileConfig) string {
 		return cfg.PostDestroy
 	case "agent":
 		return cfg.Agent
+	case "event_hook":
+		return cfg.EventHook
+	case "event_hook_events":
+		return settingsEventKindsText(cfg.EventHookEvents)
 	default:
 		s, _ := f.Default.(string)
 		return s
@@ -1968,6 +2028,8 @@ func settingsSetString(cfg *config.FileConfig, f config.Field, v string) {
 		cfg.PostDestroy = v
 	case "agent":
 		cfg.Agent = v
+	case "event_hook":
+		cfg.EventHook = v
 	}
 }
 
@@ -2012,6 +2074,12 @@ func settingsListValueDisplay(f config.Field, cfg config.FileConfig) string {
 		default:
 			return fmt.Sprintf("%d entries", n)
 		}
+	}
+	if f.FullKey() == "event_hook_events" {
+		if len(cfg.EventHookEvents) == 0 {
+			return "(none)"
+		}
+		return settingsEventKindsText(cfg.EventHookEvents)
 	}
 	if list, ok := f.Default.([]string); ok {
 		if len(list) == 0 {
