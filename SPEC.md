@@ -1610,6 +1610,9 @@ Invocation: `event_hook <event>`.
 - Bodies are size-capped. **Env values never appear** in the environment variables above, in
   the payload, or in the captured output record (§6.4); `message` is withheld, not truncated,
   for a `sensitive` session (§8).
+  Redaction masks the value of every secret-shaped `KEY=VALUE` pair in the message and removes
+  every session env value of four or more characters, by value, from the message and from the
+  captured output tail; the spawner is `internal/notify`, which is handed the env only to scrub it.
 
 ### 10.2 Per-session control
 

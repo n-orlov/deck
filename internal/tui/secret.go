@@ -1,30 +1,13 @@
 package tui
 
-import "strings"
-
-// secretShapedKeySubstrings are SPEC §6.4's exact five case-insensitive
-// substrings ("Values whose key matches
-// `*TOKEN*|*SECRET*|*KEY*|*PASSWORD*|*CREDENTIAL*` are masked in every
-// view"). This is the ONE place that list lives; every view that renders
-// an env-shaped key/value pair (the `e` session env editor, the `,`
-// settings takeover's `[env]` entries editor -- the two surfaces that
-// actually render one today) calls isSecretShapedKey or maskEnvValue
-// rather than re-deriving the pattern.
-var secretShapedKeySubstrings = []string{"TOKEN", "SECRET", "KEY", "PASSWORD", "CREDENTIAL"}
+import "github.com/n-orlov/deck/internal/notify"
 
 // isSecretShapedKey reports whether key matches SPEC §6.4's secret-shaped
-// pattern, case-insensitively, by substring (so "AUDIT_ENV_TOKEN",
-// "api_key" and "DB_PASSWORD" all match, exactly as "*TOKEN*" etc. read as
-// glob patterns would).
-func isSecretShapedKey(key string) bool {
-	upper := strings.ToUpper(key)
-	for _, substr := range secretShapedKeySubstrings {
-		if strings.Contains(upper, substr) {
-			return true
-		}
-	}
-	return false
-}
+// pattern. The predicate lives in internal/notify (the event-hook payload
+// applies the same rule); every view that renders an env-shaped key/value
+// pair (the `e` session env editor, the `,` settings takeover's `[env]`
+// entries editor) calls this or maskEnvValue rather than re-deriving it.
+func isSecretShapedKey(key string) bool { return notify.IsSecretShapedKey(key) }
 
 // maskedSecretPlaceholder is what a masked secret-shaped value renders as,
 // deliberately fixed-width and content-free (it must never leak the real
