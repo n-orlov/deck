@@ -111,16 +111,14 @@ func copilotAnswersProbePrompt(path string) error {
 	return command.Run()
 }
 
-// realCopilotTrustGrace is how long a trust answer is given to repaint before
-// a still-visible trust frame is taken to be an unanswered prompt.
-const realCopilotTrustGrace = 3 * time.Second
-
 type realCopilotScenario struct {
 	home string
-	// trustAnswered records, per session name, when the folder-trust prompt was
-	// last answered, so the explicit answer step and the readiness wait share
-	// one answer instead of each sending its own.
-	trustAnswered map[string]time.Time
+	// trustAnswered holds the session names whose current folder-trust prompt
+	// has been answered, so the explicit answer step and the readiness wait
+	// share one answer instead of each sending its own. An entry is dropped only
+	// when a pane without the trust frame is observed (the prompt is gone), never
+	// by elapsed time.
+	trustAnswered map[string]bool
 	// capture and keys replace the tmux pane when set (unit tests only).
 	capture func(ctx context.Context, name string) (string, error)
 	keys    func(ctx context.Context, name string, args ...string) error
@@ -315,28 +313,34 @@ func (s *realCopilotScenario) answerTrust(ctx context.Context, name string) erro
 		return err
 	}
 	if s.trustAnswered == nil {
-		s.trustAnswered = map[string]time.Time{}
+		s.trustAnswered = map[string]bool{}
 	}
-	s.trustAnswered[name] = time.Now()
+	s.trustAnswered[name] = true
 	return nil
 }
 
-// trustNeedsAnswer reports whether a visible trust frame is a prompt nobody has
-// answered: no answer was sent for the session, or the last one is older than
-// the grace. A frame still on screen within the grace is the answer repainting.
-func (s *realCopilotScenario) trustNeedsAnswer(name string) bool {
-	answered, ok := s.trustAnswered[name]
-	return !ok || time.Since(answered) > realCopilotTrustGrace
+// trustNeedsAnswer reports whether the pane shows a folder-trust prompt nobody
+// has answered. A prompt is answered at most once: while the answered frame
+// stays visible no amount of elapsed time makes it a new prompt. Observing a
+// pane without the trust frame marks the prompt as gone, so a trust frame that
+// appears afterwards is a new prompt and is answered again.
+func (s *realCopilotScenario) trustNeedsAnswer(name string, trustVisible bool) bool {
+	if !trustVisible {
+		delete(s.trustAnswered, name)
+		return false
+	}
+	return !s.trustAnswered[name]
 }
 
 func (s *realCopilotScenario) reachIdle(ctx context.Context, name string) error {
 	idle := realCopilotFixtureKeys["idle"]
 	trust := realCopilotFixtureKeys["trust"]
 	return s.waitForPane(ctx, name, fmt.Sprintf("the idle footer %q", idle), func(pane string) bool {
-		if copilotPaneSatisfies(pane, trust) {
-			if s.trustNeedsAnswer(name) {
-				_ = s.answerTrust(ctx, name)
-			}
+		trustVisible := copilotPaneSatisfies(pane, trust)
+		if s.trustNeedsAnswer(name, trustVisible) {
+			_ = s.answerTrust(ctx, name)
+		}
+		if trustVisible {
 			return false
 		}
 		return copilotPaneSatisfies(pane, idle) && !strings.Contains(pane, "Working")
