@@ -3,6 +3,7 @@ package notify
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"syscall"
@@ -16,9 +17,12 @@ import (
 // caller can exit while it keeps running. The script is its own process
 // group leader, so the agent being shut down does not take it with it.
 //
-// The payload is handed over through a pipe the caller fills and closes
-// before returning (a payload is bounded far below the pipe buffer), so the
-// script never depends on this process staying alive to feed its stdin.
+// The payload is handed over as an already-unlinked temporary file opened
+// at its start, not a pipe: writing it never waits on a reader however long
+// the payload is (a pipe holds only its buffer, and a payload carrying a long
+// reason exceeds it), and the script never depends on this process staying
+// alive to feed its stdin. Nothing is left on disk: the file is removed
+// before the script starts and lives only as long as the script's stdin.
 // An error means the script was never started and is safe to record.
 func Start(req Request) error {
 	if err := validate(req); err != nil {
@@ -30,7 +34,7 @@ func Start(req Request) error {
 	if err != nil {
 		return fmt.Errorf("event hook: encode payload: %w", err)
 	}
-	reader, err := payloadPipe(body)
+	reader, err := payloadFile(body)
 	if err != nil {
 		return err
 	}
@@ -45,18 +49,20 @@ func Start(req Request) error {
 	return cmd.Process.Release()
 }
 
-// payloadPipe returns the read end of a pipe already holding body and
-// closed for writing.
-func payloadPipe(body []byte) (*os.File, error) {
-	reader, writer, err := os.Pipe()
+// payloadFile returns a read handle, positioned at the start, on an unlinked
+// temporary file holding body. Every step is a plain file operation, so it
+// cannot block on a consumer.
+func payloadFile(body []byte) (*os.File, error) {
+	file, err := os.CreateTemp("", "deck-event-hook-*")
 	if err != nil {
-		return nil, fmt.Errorf("event hook: open stdin pipe: %w", err)
+		return nil, fmt.Errorf("event hook: create payload file: %w", err)
 	}
-	_, writeErr := writer.Write(body)
-	closeErr := writer.Close()
-	if writeErr != nil || closeErr != nil {
-		_ = reader.Close()
-		return nil, fmt.Errorf("event hook: write payload: %w", errors.Join(writeErr, closeErr))
+	removeErr := os.Remove(file.Name())
+	_, writeErr := file.Write(body)
+	_, seekErr := file.Seek(0, io.SeekStart)
+	if err := errors.Join(removeErr, writeErr, seekErr); err != nil {
+		_ = file.Close()
+		return nil, fmt.Errorf("event hook: write payload: %w", err)
 	}
-	return reader, nil
+	return file, nil
 }

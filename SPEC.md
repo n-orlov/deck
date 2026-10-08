@@ -1677,8 +1677,9 @@ an identity mismatch, a status write that lost to a higher-precedence source, an
 that only ended a conversation inside a live pane (`/clear`, `/resume`) offer nothing. The
 `hook_fired` pair is claimed with one compare-and-set write before the spawn, so two deck
 processes recording the same event spawn once. The session-end payload's `ended` event is
-started detached (`notify.Start`): payload on a pipe, output discarded, no timeout and no recorded
-result, in its own process group.
+started detached (`notify.Start`): payload on stdin from an already-unlinked temporary file (never a
+pipe, so handing over a payload of any length never waits on the script reading it), output
+discarded, no timeout and no recorded result, in its own process group.
 
 **Which kind a recorded change offers.** The stored `events.kind` values are not the §4
 vocabulary (`session_start`, `stop`, `session_end`, `probe.<status>`, ... are what writers
