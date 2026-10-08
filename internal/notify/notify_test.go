@@ -3,6 +3,8 @@ package notify
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -79,8 +81,8 @@ func TestSpawnPassesKindAsArgvEnvAndVersionedJSONOnStdin(t *testing.T) {
 	if err != nil || res.Failed() {
 		t.Fatalf("Spawn = %+v, %v", res, err)
 	}
-	if got := read(t, filepath.Join(dir, "argv")); got != "--fixed\nwaiting\n" {
-		t.Errorf("argv = %q, want the fixed argument then the kind as the last argument", got)
+	if got := read(t, filepath.Join(dir, "argv")); got != "waiting\n--fixed\n" {
+		t.Errorf("argv = %q, want the kind as argv[1], then the configured fixed argument", got)
 	}
 	env := envMap(read(t, filepath.Join(dir, "env")))
 	for k, want := range map[string]string{
@@ -127,7 +129,7 @@ func TestSpawnArgumentWithShellMetacharactersArrivesVerbatim(t *testing.T) {
 	if res, err := Spawn(context.Background(), req); err != nil || res.Failed() {
 		t.Fatalf("Spawn = %+v, %v", res, err)
 	}
-	if got, want := read(t, filepath.Join(dir, "argv")), nasty+"\nwaiting\n"; got != want {
+	if got, want := read(t, filepath.Join(dir, "argv")), "waiting\n"+nasty+"\n"; got != want {
 		t.Errorf("argv = %q, want %q verbatim", got, want)
 	}
 	if _, err := os.Stat(marker); err == nil {
@@ -273,7 +275,17 @@ func TestNoSessionEnvValueReachesTheEnvPayloadOrRecord(t *testing.T) {
 	req := baseRequest(path)
 	req.SessionEnv = map[string]string{"DB_PASSWORD": secret, "PLAIN": plain}
 	req.Event.Message = "tried " + secret + " then " + plain
-	req.Session.Reason = "reason " + secret
+	// Seed both values into every string the caller hands over that can
+	// reach the script's environment or payload.
+	seed := func(field *string) { *field += "-" + secret + "-" + plain }
+	s := &req.Session
+	for _, field := range []*string{
+		&s.ID, &s.Name, &s.Slug, &s.CWD, &s.Agent, &s.Group, &s.PermissionProfile,
+		&s.ConversationID, &s.LaunchKind, &s.Status, &s.Reason,
+		&req.Event.Reason, &req.Deck.Host, &req.Deck.Version,
+	} {
+		seed(field)
+	}
 	res, err := Spawn(context.Background(), req)
 	if err != nil {
 		t.Fatal(err)
@@ -283,15 +295,30 @@ func TestNoSessionEnvValueReachesTheEnvPayloadOrRecord(t *testing.T) {
 		"env": read(t, filepath.Join(dir, "env")), "payload": read(t, filepath.Join(dir, "stdin")),
 		"record": string(record) + res.Output,
 	} {
-		if strings.Contains(strings.ToLower(haystack), strings.ToLower(secret)) && name != "payload" {
-			t.Errorf("%s contains the session env value %q", name, secret)
-		}
-		if strings.Contains(haystack, plain) {
-			t.Errorf("%s contains the session env value %q", name, plain)
+		for _, value := range []string{secret, plain} {
+			if strings.Contains(haystack, value) {
+				t.Errorf("%s contains the session env value %q", name, value)
+			}
 		}
 	}
 	if !strings.Contains(res.Output, "out: tried "+MaskedPlaceholder+" then "+MaskedPlaceholder) {
 		t.Errorf("output = %q, want the scrubbed message echoed", res.Output)
+	}
+	if env := envMap(read(t, filepath.Join(dir, "env"))); env["DECK_SESSION_NAME"] != "api-"+MaskedPlaceholder+"-"+MaskedPlaceholder {
+		t.Errorf("DECK_SESSION_NAME = %q, want the rest of the name kept around the scrubbed values", env["DECK_SESSION_NAME"])
+	}
+}
+
+func TestANotStartedErrorCarriesNoSessionEnvValue(t *testing.T) {
+	const envValue = "zq-dir-value-77"
+	req := baseRequest(filepath.Join(t.TempDir(), envValue, "hook.sh"))
+	req.SessionEnv = map[string]string{"TOKEN": envValue}
+	_, err := Spawn(context.Background(), req)
+	if err == nil || strings.Contains(err.Error(), envValue) || !strings.HasPrefix(err.Error(), "event hook: ") {
+		t.Fatalf("err = %v, want a recordable error without the session env value", err)
+	}
+	if !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("err = %v, want the cause kept in the chain", err)
 	}
 }
 
