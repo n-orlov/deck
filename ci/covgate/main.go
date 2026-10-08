@@ -38,10 +38,9 @@ import (
 // allow-list of weak packages: run fails when a listed package does have
 // statements in the profile (the entry is stale) or no longer exists.
 var zeroStatementPackages = []string{
-	// internal/notify, internal/search and internal/unit are reserved
-	// package names that so far hold only a doc.go (a package clause and
-	// a comment), so no statement exists to measure.
-	"internal/notify",
+	// internal/search and internal/unit are reserved package names that
+	// so far hold only a doc.go (a package clause and a comment), so no
+	// statement exists to measure.
 	"internal/search",
 	"internal/unit",
 	// internal/racebuild holds only the constant Enabled, split by the
