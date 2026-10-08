@@ -371,6 +371,9 @@ func (m Model) keyDetail(_ tea.KeyMsg) (tea.Model, tea.Cmd) {
 	m.detailDroppedHookSessionID = target
 	m.detailDroppedHookFound = false
 	m.detailDroppedHookEvent = store.Event{}
+	m.detailHookSessionID = target
+	m.detailHookFound = false
+	m.detailHookRun = store.EventHookRun{}
 	return m, m.loadDetailDroppedHook(target)
 }
 

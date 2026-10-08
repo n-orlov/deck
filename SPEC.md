@@ -2426,6 +2426,25 @@ restart*: submitting writes them through their own mutator, which sets neither `
 a launch input beside them still sets `launch_dirty`, for the launch input). No top-level key
 is added; both dialogs are reached exactly as before.
 
+**The last hook result and the script probe (§10.3).** Deck has no separate health screen: the
+health view is the block of lines above the panels that already carries the tmux note (§9.5),
+and it holds the event hook's lines. Both surfaces show the newest hook result recorded in the
+`events` table's `hook_*` columns, as one summary line of marker, exit and kind, with its age:
+`ok · exit status 0 · for idle · 2m ago`, `FAILED · exit status 3 · …`,
+`TIMED OUT · killed when event_hook_timeout expired · …` or
+`FAILED · could not start: <error> · …` (`-` for the dot under `ascii`). A non-zero exit, a
+timeout and a script that could not start are marked in the `error` colour token and carry
+`FAILED` or `TIMED OUT` in the text, so the mark does not depend on colour. The **`i` detail**
+shows it as `Last event hook:` for that session's newest result, with the capped output tail
+(its last four non-blank lines) under `Hook output:`, and shows nothing for a session no hook ran
+for. The **health lines** show `Event hook last run:` for the newest result of any session with
+the last two output lines, and only while `event_hook` is set. The health lines also **probe the
+configured script** next to the `PATH` probe (§6.3): its first word must be a path that exists
+and is an executable regular file, or a bare name that resolves on `PATH`; otherwise the line
+`Event hook FAILED: <script>: script does not exist; events are recorded but nothing runs` (or
+`script is not executable`) appears. Both facts are read on the sessions reload, never per frame,
+and an unset `event_hook` reads and probes nothing.
+
 **A session bound to an older deck binary gets a hint, never an error.** An agent keeps the hook
 command of the deck that launched it (§3.1), so after deck is upgraded, moved or removed a running
 agent still calls the old path. Every launch of an agent that installs hooks (create, resume,
