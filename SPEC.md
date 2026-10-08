@@ -1672,6 +1672,35 @@ a reconcile-detected process death, and the user's own `killed`. Dispatch never 
 for one event: the dedupe above is the guard, and the process that wrote the event is the one
 that dispatches it.
 
+**Which kind a recorded change offers.** The stored `events.kind` values are not the §4
+vocabulary (`session_start`, `stop`, `session_end`, `probe.<status>`, ... are what writers
+store, and they are never renamed), so the dispatch function maps the stored kind, and for a
+session start its reason, to the offered kind. A stored kind this table does not name offers
+nothing and never spawns:
+
+| stored `events.kind` | written by | offered kind |
+|---|---|---|
+| `session_start`, reason `resume` | hook | `resumed` |
+| `session_start`, reason `compact` | hook | none (a compaction is not a start) |
+| `session_start`, any other reason | hook | `started` |
+| `notification` | hook | `waiting` |
+| `permission_request` | hook | `waiting` |
+| `stop` | hook | `idle` |
+| `stop_failure` | hook | `error` |
+| `session_end` | hook | `ended` |
+| `probe.waiting` | TUI probe | `waiting` |
+| `probe.idle` | TUI probe | `idle` |
+| `probe.error` | TUI probe | `error` |
+| `tmux.pane_dead` | reconcile | `error` |
+| `killed` | the user | `killed` |
+
+Every other stored kind (`user_prompt_submitted`, `error_occurred`, `probe.running`,
+`launch.ready`, `launch.failed`, `restart`, `tmux.session_gone`, a `.superseded` or
+`.identity_mismatch` hook, ...) offers nothing. The mapping is `notify.OfferedKind`; the filter
+and the dedupe above are `notify.Dispatch`, which runs its checks in the §10.1-§10.3 order
+(script, offered set, enabled flag, effective list, epoch) and reads no per-session field
+until the script and the offered set have passed.
+
 The three limits this accepts, all of which belong in the help view rather than in a footnote:
 
 1. **There is no retry**, and so no outbox to drain: a hook that fails at 02:00 has failed,
