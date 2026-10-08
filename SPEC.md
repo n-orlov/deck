@@ -1135,7 +1135,10 @@ conversation id, which must be a UUID: `Launch` refuses any other id with an err
 Copilot exits 1 on it and the failure is then deck's, not a dead pane's.
 
 **Argv.** `copilot --session-id <conversation-id>`, then the profile's flags (§5), then
-`--no-auto-update`, then the row's `launch_args` verbatim:
+`--no-auto-update`, then the row's `launch_args` verbatim. `Launch` and `Resume` refuse, with a
+deck-side error and no argv, a `launch_args` entry that is `--continue`, `--resume`, `--connect`,
+`--remote`, `--acp` or `--yolo`, bare or in `--flag=value` form, for every profile; any other
+extra argument (for example `--model gpt-5`) is appended unchanged:
 
 | profile | flags |
 |---|---|
