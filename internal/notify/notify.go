@@ -24,8 +24,9 @@ const killGrace = 500 * time.Millisecond
 
 // Request is one event to hand to the configured script.
 type Request struct {
-	// Command is the executable followed by any fixed arguments; the event
-	// kind is appended as the final argument. It is never run by a shell.
+	// Command is the executable followed by any fixed arguments. The event
+	// kind is inserted as argv[1], so the fixed arguments follow it
+	// (SPEC §10.1: `event_hook <event>`). It is never run by a shell.
 	Command []string
 	Session Session
 	Event   Event
@@ -66,10 +67,11 @@ func (r Result) Failed() bool { return r.TimedOut || r.ExitCode != 0 }
 func Spawn(ctx context.Context, req Request) (Result, error) {
 	notStarted := Result{ExitCode: -1}
 	if err := validate(req); err != nil {
-		return notStarted, err
+		return notStarted, redactError(err, req.SessionEnv)
 	}
 	message := safeMessage(req)
-	body, err := buildPayload(req, message)
+	safe := sanitize(req)
+	body, err := buildPayload(safe, message)
 	if err != nil {
 		return notStarted, fmt.Errorf("event hook: encode payload: %w", err)
 	}
@@ -85,20 +87,26 @@ func Spawn(ctx context.Context, req Request) (Result, error) {
 	}
 	runCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	cmd := command(runCtx, req, body, buildEnv(req, message), out)
+	cmd := command(runCtx, req, body, buildEnv(safe, message), out)
 	start := time.Now()
 	if err := cmd.Start(); err != nil {
-		return notStarted, fmt.Errorf("event hook: start %s: %w", req.Command[0], unwrapPathError(err))
+		return notStarted, redactError(fmt.Errorf("event hook: start %s: %w", req.Command[0], unwrapPathError(err)), req.SessionEnv)
 	}
 	waitErr := cmd.Wait()
 	return finish(req, outCap, out, errors.Is(runCtx.Err(), context.DeadlineExceeded), waitErr, time.Since(start)), nil
+}
+
+// argv is the script's argument list after the executable: the event kind
+// first (argv[1]), then any fixed arguments the configured argv carries.
+func argv(req Request) []string {
+	return append([]string{req.Event.Kind}, req.Command[1:]...)
 }
 
 // command builds the process: no shell, own process group, payload on stdin,
 // stdout and stderr folded into the tail buffer. Cancelling ctx kills the
 // whole group, so a script that forked a child leaves nothing behind.
 func command(ctx context.Context, req Request, body []byte, env []string, out *tailBuffer) *exec.Cmd {
-	args := append(slices.Clone(req.Command[1:]), req.Event.Kind)
+	args := argv(req)
 	cmd := exec.CommandContext(ctx, req.Command[0], args...) //nolint:gosec // G204: the configured event hook is a user-owned executable run without a shell by design (SPEC §10.1)
 	cmd.Env = env
 	cmd.Stdin = bytes.NewReader(body)

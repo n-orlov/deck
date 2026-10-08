@@ -1593,7 +1593,8 @@ a shell** on the same footing as an agent binary. **No script configured means t
 feature is inert**, whatever any per-session setting says: the per-session fields are never
 read and nothing is spawned.
 
-Invocation: `event_hook <event>`.
+Invocation: `event_hook <event>`. When `event_hook` is an argv, the event kind is still
+argv[1]: the configured fixed arguments follow it (`script <event> <fixed>...`).
 
 - **argv[1]** is the event kind, one of the **offered set**: `started`, `resumed`,
   `waiting`, `idle`, `error`, `ended`, `killed`. The remaining §4 kinds (`prompt`, `env`,
@@ -1612,7 +1613,10 @@ Invocation: `event_hook <event>`.
   for a `sensitive` session (§8).
   Redaction masks the value of every secret-shaped `KEY=VALUE` pair in the message and removes
   every session env value of four or more characters, by value, from the message and from the
-  captured output tail; the spawner is `internal/notify`, which is handed the env only to scrub it.
+  captured output tail. The same by-value removal applies to every other string exported in the
+  environment or the payload (the session fields, both reasons, the deck host and version) and
+  to a not-started error's text, and both reasons also get the `KEY=VALUE` masking; the spawner
+  is `internal/notify`, which is handed the env only to scrub it.
 
 ### 10.2 Per-session control
 
