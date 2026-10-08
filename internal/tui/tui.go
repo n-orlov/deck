@@ -7508,6 +7508,23 @@ var deleteConfirmFooterKeyTokens = map[string]bool{
 	"Esc":   true,
 }
 
+// deleteConfirmFooterLines wraps one footer legend line, keys in `key` and the rest in `hint`.
+func (m Model) deleteConfirmFooterLines(line string) []string {
+	var out []string
+	for _, l := range m.wrapDialogLines(line) {
+		fields := strings.Fields(l)
+		for i, f := range fields {
+			if deleteConfirmFooterKeyTokens[f] {
+				fields[i] = m.colorToken(theme.Key, f)
+			} else {
+				fields[i] = m.colorToken(theme.Hint, f)
+			}
+		}
+		out = append(out, strings.Join(fields, " "))
+	}
+	return out
+}
+
 // styledDeleteConfirmBody is deleteConfirmBody's task 019 counterpart for
 // the single-session case (a non-empty mark set is styledBulkDeleteConfirmBody's
 // job, several lines up): same title/archived-note/survives-text/
@@ -7529,17 +7546,7 @@ func (m Model) styledDeleteConfirmBody() string {
 		}
 	}
 	colorFooterLine := func(line string) {
-		for _, l := range m.wrapDialogLines(line) {
-			fields := strings.Fields(l)
-			for i, f := range fields {
-				if deleteConfirmFooterKeyTokens[f] {
-					fields[i] = m.colorToken(theme.Key, f)
-				} else {
-					fields[i] = m.colorToken(theme.Hint, f)
-				}
-			}
-			out = append(out, strings.Join(fields, " "))
-		}
+		out = append(out, m.deleteConfirmFooterLines(line)...)
 	}
 
 	colorWhole(theme.Title, fmt.Sprintf("Delete %s", session.Name))
@@ -7874,8 +7881,8 @@ func (m Model) writeDetailIdentity(b *strings.Builder, session store.Session) {
 	}
 }
 
-// writeDetailStatus writes detailBody's status, verdict-source, verdict-age and probe fields.
-func (m Model) writeDetailStatus(b *strings.Builder, session store.Session) {
+// detailStatusText is the Status: field's text, with the resumable / awaiting-signal suffixes.
+func (m Model) detailStatusText(session store.Session) string {
 	status := session.Status
 	if status == "stopped" {
 		status += m.glyph(" · resumable", " - resumable")
@@ -7883,6 +7890,12 @@ func (m Model) writeDetailStatus(b *strings.Builder, session store.Session) {
 	if status == "starting" && session.Agent != "shell" {
 		status = "starting" + m.glyph(" · awaiting signal", " - awaiting signal")
 	}
+	return status
+}
+
+// writeDetailStatus writes detailBody's status, verdict-source, verdict-age and probe fields.
+func (m Model) writeDetailStatus(b *strings.Builder, session store.Session) {
+	status := m.detailStatusText(session)
 	fmt.Fprintf(b, "%s\n", m.detailField("Status:             ", status))
 	if session.StatusReason != "" {
 		fmt.Fprintf(b, "%s\n", m.detailField("Status reason:      ", session.StatusReason))

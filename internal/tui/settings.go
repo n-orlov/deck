@@ -1884,31 +1884,29 @@ func settingsFieldEnvOverride(f config.Field, s config.Settings) (string, bool) 
 // answer; every other key falls back to fallback (the file value already
 // computed), since nothing can override it and the two must be equal.
 func settingsFieldRunningValueDisplay(f config.Field, s config.Settings, fallback string) string {
-	onOff := func(b bool) string {
-		if b {
+	if f.FullKey() == "ui.preview_paint" {
+		return s.PreviewPaint
+	}
+	if on, ok := settingsRunningToggles(s)[f.FullKey()]; ok {
+		if on {
 			return "On"
 		}
 		return "Off"
 	}
-	switch f.FullKey() {
-	case "ui.ascii":
-		return onOff(s.ASCII)
-	case "ui.mouse":
-		return onOff(s.Mouse)
-	case "ui.preview_fit":
-		return onOff(s.PreviewFit)
-	case "ui.attach_on_new":
-		return onOff(s.AttachOnNew)
-	case "ui.attach_on_click":
-		return onOff(s.AttachOnClick)
-	case "ui.select_on_drag":
-		return onOff(s.SelectOnDrag)
-	case "ui.attach_on_resume":
-		return onOff(s.AttachOnResume)
-	case "ui.preview_paint":
-		return s.PreviewPaint
-	default:
-		return fallback
+	return fallback
+}
+
+// settingsRunningToggles names the running value of every toggle key the
+// environment (or a per-session default) can make differ from the file.
+func settingsRunningToggles(s config.Settings) map[string]bool {
+	return map[string]bool{
+		"ui.ascii":            s.ASCII,
+		"ui.mouse":            s.Mouse,
+		"ui.preview_fit":      s.PreviewFit,
+		"ui.attach_on_new":    s.AttachOnNew,
+		"ui.attach_on_click":  s.AttachOnClick,
+		"ui.select_on_drag":   s.SelectOnDrag,
+		"ui.attach_on_resume": s.AttachOnResume,
 	}
 }
 
