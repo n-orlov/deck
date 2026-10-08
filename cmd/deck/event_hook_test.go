@@ -293,6 +293,46 @@ func TestHookSessionEndDispatchesDetachedAndDoesNotWait(t *testing.T) {
 	f.waitFor(t, "finished")
 }
 
+// R232a (3): the detached handoff never waits on the script reading its
+// stdin, so a session-end payload larger than a pipe buffer (a long reason
+// lands in the payload twice) still returns within the same bound.
+func TestHookSessionEndWithAPayloadLargerThanAPipeDoesNotWait(t *testing.T) {
+	f := newEventHookFixture(t, "claude", "running")
+	f.settings.EventHookTimeout = 300 * time.Millisecond
+	f.capture(t, fmt.Sprintf("sleep 2\necho finished > %q", filepath.Join(f.out, "finished")))
+	reason := strings.Repeat("x", 50000)
+	payload := `{"hook_event_name":"SessionEnd","session_id":"conv-1","reason":"` + reason + `"}`
+	type outcome struct {
+		code   int
+		stderr string
+	}
+	done := make(chan outcome, 1)
+	started := time.Now()
+	go func() {
+		code, stderr := f.run(payload)
+		done <- outcome{code, stderr}
+	}()
+	var got outcome
+	select {
+	case got = <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("session-end _hook blocked handing a large payload to the event hook")
+	}
+	if elapsed := time.Since(started); elapsed >= time.Second {
+		t.Fatalf("session-end _hook took %s while the script slept 2s: it waited", elapsed)
+	}
+	if got.code != 0 || got.stderr != "" {
+		t.Fatalf("hook exit = %d, stderr %q", got.code, got.stderr)
+	}
+	if !f.hasEvent(t, f.paths, "session_end") {
+		t.Error("the session_end event row is missing")
+	}
+	f.waitFor(t, "finished")
+	if stdin := f.read(t, "stdin"); !strings.Contains(stdin, `"kind":"ended"`) || strings.Count(stdin, reason) < 1 {
+		t.Errorf("stdin (%d bytes) lacks the ended kind or the full reason", len(stdin))
+	}
+}
+
 // R232a (4): a missing, failing or slow script leaves the hook's exit code and
 // stderr exactly what they are with no event hook configured.
 func TestHookExitAndOutputAreUnchangedByTheEventHook(t *testing.T) {
