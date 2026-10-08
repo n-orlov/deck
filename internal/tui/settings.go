@@ -449,7 +449,7 @@ func (m *Model) settingsSave() tea.Cmd {
 	previous := m.settings.File
 	saved := settingsCloneFileConfig(m.settingsEdits)
 	m.settings.File = saved
-	cmd := m.settingsApplyLiveFields(previous)
+	cmd := m.settingsApplyLiveFields(m.settingsEdits, previous)
 	m.settingsSavedEdits = saved
 	m.settingsNote = "saved " + path
 	return cmd
@@ -499,12 +499,12 @@ func (m *Model) settingsSave() tea.Cmd {
 // terminal mouse-reporting command are skipped. See
 // settingsFieldEnvOverride for the one map this reuses instead of adding a
 // second notion of "overridden".
-func (m *Model) settingsApplyLiveFields(previous config.FileConfig) tea.Cmd {
-	m.settingsApplyLiveScalars(previous)
-	cmd := m.settingsApplyLiveMouse(previous)
-	m.settingsApplyLiveTheme(previous)
-	m.settingsApplyLiveSortOrder(previous)
-	m.settingsApplyLiveDefaultGroupFirst(previous)
+func (m *Model) settingsApplyLiveFields(edited, previous config.FileConfig) tea.Cmd {
+	m.settingsApplyLiveScalars(edited, previous)
+	cmd := m.settingsApplyLiveMouse(edited, previous)
+	m.settingsApplyLiveTheme(edited, previous)
+	m.settingsApplyLiveSortOrder(edited, previous)
+	m.settingsApplyLiveDefaultGroupFirst(edited, previous)
 	return cmd
 }
 
@@ -519,19 +519,19 @@ func settingsLiveChanged[T comparable](overrides map[string]string, key string, 
 
 // settingsApplyLiveScalars copies the plain ScopeGlobal fields (no side
 // effect beyond the resolved member) whose saved value changed.
-func (m *Model) settingsApplyLiveScalars(previous config.FileConfig) {
+func (m *Model) settingsApplyLiveScalars(edited, previous config.FileConfig) {
 	overrides := m.settings.EnvOverrides
-	if m.settingsEdits.AllowYolo != previous.AllowYolo {
-		m.settings.AllowYolo = m.settingsEdits.AllowYolo
+	if edited.AllowYolo != previous.AllowYolo {
+		m.settings.AllowYolo = edited.AllowYolo
 	}
-	if m.settingsEdits.YoloDefault != previous.YoloDefault {
-		m.settings.YoloDefault = m.settingsEdits.YoloDefault
+	if edited.YoloDefault != previous.YoloDefault {
+		m.settings.YoloDefault = edited.YoloDefault
 	}
-	if settingsLiveChanged(overrides, "ui.ascii", m.settingsEdits.ASCII, previous.ASCII) {
-		m.settings.ASCII = m.settingsEdits.ASCII
+	if settingsLiveChanged(overrides, "ui.ascii", edited.ASCII, previous.ASCII) {
+		m.settings.ASCII = edited.ASCII
 	}
-	if settingsLiveChanged(overrides, "ui.preview_fit", m.settingsEdits.PreviewFit, previous.PreviewFit) {
-		m.settings.PreviewFit = m.settingsEdits.PreviewFit
+	if settingsLiveChanged(overrides, "ui.preview_fit", edited.PreviewFit, previous.PreviewFit) {
+		m.settings.PreviewFit = edited.PreviewFit
 	}
 	// ui.attach_on_new/ui.attach_on_resume (GH #52) and ui.attach_on_click
 	// (GH #62, read by clickSidebarRow): the shellCreated and
@@ -540,17 +540,17 @@ func (m *Model) settingsApplyLiveScalars(previous config.FileConfig) {
 	// already follows them. Guarded by EnvOverrides like ui.preview_fit,
 	// whose DECK_PREVIEW_FIT shape DECK_ATTACH_ON_NEW/DECK_ATTACH_ON_RESUME
 	// copy.
-	if settingsLiveChanged(overrides, "ui.attach_on_new", m.settingsEdits.AttachOnNew, previous.AttachOnNew) {
-		m.settings.AttachOnNew = m.settingsEdits.AttachOnNew
+	if settingsLiveChanged(overrides, "ui.attach_on_new", edited.AttachOnNew, previous.AttachOnNew) {
+		m.settings.AttachOnNew = edited.AttachOnNew
 	}
-	if settingsLiveChanged(overrides, "ui.attach_on_click", m.settingsEdits.AttachOnClick, previous.AttachOnClick) {
-		m.settings.AttachOnClick = m.settingsEdits.AttachOnClick
+	if settingsLiveChanged(overrides, "ui.attach_on_click", edited.AttachOnClick, previous.AttachOnClick) {
+		m.settings.AttachOnClick = edited.AttachOnClick
 	}
-	if settingsLiveChanged(overrides, "ui.select_on_drag", m.settingsEdits.SelectOnDrag, previous.SelectOnDrag) {
-		m.settings.SelectOnDrag = m.settingsEdits.SelectOnDrag
+	if settingsLiveChanged(overrides, "ui.select_on_drag", edited.SelectOnDrag, previous.SelectOnDrag) {
+		m.settings.SelectOnDrag = edited.SelectOnDrag
 	}
-	if settingsLiveChanged(overrides, "ui.attach_on_resume", m.settingsEdits.AttachOnResume, previous.AttachOnResume) {
-		m.settings.AttachOnResume = m.settingsEdits.AttachOnResume
+	if settingsLiveChanged(overrides, "ui.attach_on_resume", edited.AttachOnResume, previous.AttachOnResume) {
+		m.settings.AttachOnResume = edited.AttachOnResume
 	}
 	// ui.preview_paint: repaintForeignDefaults reads this member on every
 	// previewed row, so the next preview tick after a save already paints
@@ -558,25 +558,25 @@ func (m *Model) settingsApplyLiveScalars(previous config.FileConfig) {
 	// by EnvOverrides like every other ScopeGlobal field, and here the
 	// guard is live rather than theoretical: DECK_PREVIEW_PAINT is a real
 	// override path in config.LoadFrom.
-	if settingsLiveChanged(overrides, "ui.preview_paint", m.settingsEdits.PreviewPaint, previous.PreviewPaint) {
-		m.settings.PreviewPaint = m.settingsEdits.PreviewPaint
+	if settingsLiveChanged(overrides, "ui.preview_paint", edited.PreviewPaint, previous.PreviewPaint) {
+		m.settings.PreviewPaint = edited.PreviewPaint
 	}
 }
 
 // settingsApplyLiveMouse refreshes the resolved Mouse member and returns
 // the tea.Cmd that tells the terminal to start or stop mouse reporting,
 // exactly when Mouse's live value changed (nil otherwise).
-func (m *Model) settingsApplyLiveMouse(previous config.FileConfig) tea.Cmd {
-	if !settingsLiveChanged(m.settings.EnvOverrides, "ui.mouse", m.settingsEdits.Mouse, previous.Mouse) {
+func (m *Model) settingsApplyLiveMouse(edited, previous config.FileConfig) tea.Cmd {
+	if !settingsLiveChanged(m.settings.EnvOverrides, "ui.mouse", edited.Mouse, previous.Mouse) {
 		return nil
 	}
-	m.settings.Mouse = m.settingsEdits.Mouse
+	m.settings.Mouse = edited.Mouse
 	// EnableMouseCellMotion/DisableMouse are themselves tea.Msg
 	// constructors, not tea.Cmd values (a tea.Cmd is a func() tea.Msg) --
 	// wrap the chosen one so bubbletea's runtime dispatches it as the
 	// program's next message, exactly as WithMouseCellMotion's own
 	// ProgramOption would have if this had been decided at startup.
-	if m.settingsEdits.Mouse {
+	if edited.Mouse {
 		return tea.EnableMouseCellMotion
 	}
 	return tea.DisableMouse
@@ -584,19 +584,19 @@ func (m *Model) settingsApplyLiveMouse(previous config.FileConfig) tea.Cmd {
 
 // settingsApplyLiveTheme re-resolves the theme from its saved raw name when
 // it changed.
-func (m *Model) settingsApplyLiveTheme(previous config.FileConfig) {
-	if m.settingsEdits.Theme == previous.Theme {
+func (m *Model) settingsApplyLiveTheme(edited, previous config.FileConfig) {
+	if edited.Theme == previous.Theme {
 		return
 	}
 	userThemes, userErrs := theme.DiscoverUserThemes(m.settings.ThemesDir)
-	resolved, reason := theme.Resolve(userThemes, userErrs, m.settingsEdits.Theme)
+	resolved, reason := theme.Resolve(userThemes, userErrs, edited.Theme)
 	m.settings.Theme = resolved
 	m.settings.ThemeReason = reason
 }
 
 // settingsApplyLiveSortOrder applies a changed sort_order and re-sorts the
 // loaded sessions.
-func (m *Model) settingsApplyLiveSortOrder(previous config.FileConfig) {
+func (m *Model) settingsApplyLiveSortOrder(edited, previous config.FileConfig) {
 	// requirement R53/task 306: sort_order's schema.go comment names this
 	// exact code path as its live-apply consumer. Guarded by EnvOverrides
 	// the same way ui.mouse/ui.preview_fit are above -- config.LoadFrom
@@ -604,15 +604,15 @@ func (m *Model) settingsApplyLiveSortOrder(previous config.FileConfig) {
 	// never actually skipped in practice, but the guard is kept for the
 	// same reason every other ScopeGlobal field carries it: an override
 	// path added later must not have to remember to add this check too.
-	if settingsLiveChanged(m.settings.EnvOverrides, "ui.sort_order", m.settingsEdits.SortOrder, previous.SortOrder) {
-		m.settings.SortOrder = m.settingsEdits.SortOrder
+	if settingsLiveChanged(m.settings.EnvOverrides, "ui.sort_order", edited.SortOrder, previous.SortOrder) {
+		m.settings.SortOrder = edited.SortOrder
 		m.resortSessionsLive()
 	}
 }
 
 // settingsApplyLiveDefaultGroupFirst applies a changed default_group_first
 // and re-clamps or re-follows the sidebar viewport.
-func (m *Model) settingsApplyLiveDefaultGroupFirst(previous config.FileConfig) {
+func (m *Model) settingsApplyLiveDefaultGroupFirst(edited, previous config.FileConfig) {
 	// task 003 (schema.go's ui.default_group_first row names this exact
 	// code path as its live-apply consumer, mirroring ui.sort_order's own
 	// comment immediately above): groupSessions() (internal/tui/group.go)
@@ -648,8 +648,8 @@ func (m *Model) settingsApplyLiveDefaultGroupFirst(previous config.FileConfig) {
 	// (clampDriftedSidebarScroll), exactly as sessionsLoaded and
 	// resortSessionsLive already do -- the selection keeps following its
 	// session by identity off screen.
-	if settingsLiveChanged(m.settings.EnvOverrides, "ui.default_group_first", m.settingsEdits.DefaultGroupFirst, previous.DefaultGroupFirst) {
-		m.settings.DefaultGroupFirst = m.settingsEdits.DefaultGroupFirst
+	if settingsLiveChanged(m.settings.EnvOverrides, "ui.default_group_first", edited.DefaultGroupFirst, previous.DefaultGroupFirst) {
+		m.settings.DefaultGroupFirst = edited.DefaultGroupFirst
 		if m.sidebarScrollDrifted {
 			m.clampDriftedSidebarScroll()
 		} else {

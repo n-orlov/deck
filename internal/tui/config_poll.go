@@ -2,6 +2,7 @@ package tui
 
 import (
 	"os"
+	"reflect"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -52,16 +53,40 @@ func (m Model) onConfigPollTick(_ configPollTick) (tea.Model, tea.Cmd) {
 	}
 }
 
-// onConfigPolled records a reload's result and schedules the next poll.
-// Applying the reloaded keys live is R226b and the safety rules R227; this
-// is the detection half, so an unchanged poll leaves the model untouched.
+// onConfigPolled records a reload's result, applies every live key of a
+// good one to the running model (applyReloadedSettings, SPEC §6.5) and
+// schedules the next poll. An unchanged poll leaves the model untouched; a
+// reload that failed to parse keeps the running settings as they were.
 func (m Model) onConfigPolled(msg configPolled) (tea.Model, tea.Cmd) {
-	if msg.changed {
-		m.reloadErr = msg.err
-		if msg.err == nil {
-			reloaded := msg.settings
-			m.reloaded = &reloaded
-		}
+	tick := m.configPollTickCmd()
+	if !msg.changed {
+		return m, tick
 	}
-	return m, m.configPollTickCmd()
+	m.reloadErr = msg.err
+	if msg.err != nil {
+		return m, tick
+	}
+	reloaded := msg.settings
+	m.reloaded = &reloaded
+	return m, tea.Batch(m.applyReloadedSettings(reloaded), tick)
+}
+
+// applyReloadedSettings re-applies a freshly reloaded Settings to the running
+// model with no restart (SPEC §6.5). It reuses the settings takeover's own
+// live-apply path (settingsApplyLiveFields) with the reloaded file as the
+// "saved" side and the running file as "previous", so a key the file did not
+// change is untouched, a key the environment overrides stays pinned, and a
+// restart-to-apply key only has its file value refreshed. The theme is also
+// re-taken from the reload itself so that editing a user theme file's colours
+// (same name, new contents) changes the active theme. The returned command
+// carries the terminal-level mouse toggle when ui.mouse changed.
+func (m *Model) applyReloadedSettings(next config.Settings) tea.Cmd {
+	previous := m.settings.File
+	cmd := m.settingsApplyLiveFields(next.File, previous)
+	if next.Theme != nil && !reflect.DeepEqual(next.Theme, m.settings.Theme) {
+		m.settings.Theme = next.Theme
+		m.settings.ThemeReason = next.ThemeReason
+	}
+	m.settings.File = settingsCloneFileConfig(next.File)
+	return cmd
 }
