@@ -163,21 +163,28 @@ func (s Service) collectCrashedPane(ctx context.Context, session store.Session, 
 // tail, for a dead pane and audits it.
 func (s Service) recordCrashedPane(ctx context.Context, session store.Session, pane tmux.Pane, captured []byte) error {
 	exitStatus := *pane.DeadStatus
+	var seq int64
+	at := s.Clock.Now()
+	reason := fmt.Sprintf("tmux pane exited with status %d", exitStatus)
+	tail := crashTail(captured, 200)
 	if err := s.Store.UpdateSessionStatus(ctx, store.StatusUpdateInput{
 		SessionID:      session.ID,
 		Status:         "error",
-		Reason:         fmt.Sprintf("tmux pane exited with status %d", exitStatus),
+		Reason:         reason,
 		Source:         "tmux",
-		At:             s.Clock.Now().UnixMilli(),
+		At:             at.UnixMilli(),
 		EventKind:      "tmux.pane_dead",
 		PaneExitStatus: &exitStatus,
-		CrashTail:      crashTail(captured, 200),
+		CrashTail:      tail,
+		EventSeq:       &seq,
 	}); err != nil {
 		return fmt.Errorf("record crashed pane for session %q: %w", session.ID, err)
 	}
 	if err := s.Audit.Transition(session.ID, "tmux.pane_dead"); err != nil {
 		return fmt.Errorf("audit crashed tmux pane %q: %w", session.ID, err)
 	}
+	s.offerHook(ctx, HookEvent{SessionID: session.ID, StoredKind: "tmux.pane_dead", Reason: reason,
+		Message: tail, At: at, AppliedStatus: "error", EventSeq: seq})
 	return nil
 }
 
@@ -300,11 +307,19 @@ func (s Service) recordProbe(ctx context.Context, session store.Session, status,
 		}
 		return nil
 	}
+	var seq int64
 	if err := s.Store.UpdateSessionStatus(ctx, store.StatusUpdateInput{
 		SessionID: session.ID, Status: status, Reason: reason, Source: "probe", At: now,
-		StaleAfter: staleAfter.Milliseconds(), EventKind: "probe." + status,
+		StaleAfter: staleAfter.Milliseconds(), EventKind: "probe." + status, EventSeq: &seq,
 	}); err != nil {
 		return fmt.Errorf("record probe for session %q: %w", session.ID, err)
+	}
+	// Only a probe that CHANGED the status is an event of its own; a verdict
+	// that repeats what a hook (or an earlier probe) already put on the row is
+	// the same attention episode, not a second event to ping about.
+	if session.Status != status {
+		s.offerHook(ctx, HookEvent{SessionID: session.ID, StoredKind: "probe." + status, Reason: reason,
+			At: s.Clock.Now(), AppliedStatus: status, EventSeq: seq})
 	}
 	return nil
 }

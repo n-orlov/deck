@@ -57,20 +57,25 @@ func (s Service) killAndRecord(ctx context.Context, session store.Session) error
 	if err := s.TMux.Kill(ctx, session.Slug); err != nil {
 		return fmt.Errorf("kill tmux session %q: %w", session.Name, err)
 	}
+	var seq int64
+	at := s.Clock.Now()
 	if err := s.Store.UpdateSessionStatus(ctx, store.StatusUpdateInput{
 		SessionID:    session.ID,
 		Status:       "stopped",
 		Reason:       "killed by user",
 		Source:       "user",
-		At:           s.Clock.Now().UnixMilli(),
+		At:           at.UnixMilli(),
 		EventKind:    "killed",
 		KilledByUser: true,
+		EventSeq:     &seq,
 	}); err != nil {
 		return fmt.Errorf("record killed session %q: %w", session.Name, err)
 	}
 	if err := s.Audit.Transition(session.ID, "killed"); err != nil {
 		return fmt.Errorf("audit killed session %q: %w", session.Name, err)
 	}
+	s.offerHook(ctx, HookEvent{SessionID: session.ID, StoredKind: "killed", Reason: "killed by user",
+		At: at, AppliedStatus: "stopped", EventSeq: seq})
 	return nil
 }
 

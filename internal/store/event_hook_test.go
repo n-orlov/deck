@@ -75,3 +75,55 @@ func TestClaimHookFiredIsACompareAndSet(t *testing.T) {
 		t.Fatalf("the loser overwrote hook_fired: %q", state.Fired)
 	}
 }
+
+func TestEventSeqReportsTheAppendedEventRow(t *testing.T) {
+	ctx := context.Background()
+	db := openHookStateStore(t)
+	var seq int64
+	if err := db.UpdateSessionStatus(ctx, StatusUpdateInput{SessionID: "s1", Status: "waiting", Reason: "p",
+		Source: "hook", At: 2, EventKind: "notification", EventSeq: &seq}); err != nil {
+		t.Fatal(err)
+	}
+	var kind string
+	if err := db.DB().QueryRow(`SELECT kind FROM events WHERE seq = ?`, seq).Scan(&kind); err != nil || seq == 0 || kind != "notification" {
+		t.Fatalf("seq %d -> kind %q, %v", seq, kind, err)
+	}
+}
+
+func TestEventHookResultRoundTripsAndNeedsAnExistingEvent(t *testing.T) {
+	ctx := context.Background()
+	db := openHookStateStore(t)
+	var seq int64
+	if err := db.UpdateSessionStatus(ctx, StatusUpdateInput{SessionID: "s1", Status: "waiting", Reason: "p",
+		Source: "hook", At: 2, EventKind: "notification", EventSeq: &seq}); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok, err := db.EventHookResultOf(ctx, seq); err != nil || ok {
+		t.Fatalf("an event nothing was spawned for reads a result: ok=%v err=%v", ok, err)
+	}
+	want := EventHookResult{Kind: "waiting", ExitCode: -1, TimedOut: true, Output: "tail", Error: "boom"}
+	if err := db.RecordEventHookResult(ctx, seq, want); err != nil {
+		t.Fatal(err)
+	}
+	if got, ok, err := db.EventHookResultOf(ctx, seq); err != nil || !ok || got != want {
+		t.Fatalf("read back %+v ok=%v err=%v, want %+v", got, ok, err, want)
+	}
+	if err := db.RecordEventHookResult(ctx, seq+1000, want); err == nil {
+		t.Fatal("recording against a missing event must fail, never insert one")
+	}
+	if _, ok, err := db.EventHookResultOf(ctx, seq+1000); err != nil || ok {
+		t.Fatalf("missing event reads a result: ok=%v err=%v", ok, err)
+	}
+}
+
+func openHookStateStore(t *testing.T) *Store {
+	t.Helper()
+	home := t.TempDir()
+	db, err := OpenPath(home, filepath.Join(home, "state.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	newLeaseTestSession(t, db, "s1", "running")
+	return db
+}

@@ -423,3 +423,37 @@ func TestHookResultOffersEvent(t *testing.T) {
 		}
 	}
 }
+
+// R232b: the hook path stores the script's exit status and output tail against
+// the very event row it wrote, and a failing script changes nothing the hook
+// prints or returns.
+func TestHookDispatchStoresTheResultAgainstTheEvent(t *testing.T) {
+	f := newEventHookFixture(t, "claude", "running")
+	f.script(t, "echo went wrong >&2\nexit 4\n")
+	if code, stderr := f.run(hookPayloadCases[0].payload); code != 0 || stderr != "" {
+		t.Fatalf("hook exit = %d, stderr %q; a failing script must change neither", code, stderr)
+	}
+	db, err := store.Open(f.paths)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	// The post-hook liveness pass may append its own events after the stop.
+	events, err := db.ListEvents(context.Background(), 50)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var event store.Event
+	for _, e := range events {
+		if e.SessionID == "row-1" && e.Kind == "stop" {
+			event = e
+		}
+	}
+	got, ok, err := db.EventHookResultOf(context.Background(), event.Seq)
+	if event.Seq == 0 || err != nil || !ok {
+		t.Fatalf("no hook result against the stop event %+v: ok=%v err=%v", event, ok, err)
+	}
+	if got.Kind != "idle" || got.ExitCode != 4 || got.TimedOut || got.Output != "went wrong\n" {
+		t.Fatalf("stored result = %+v, want idle, exit 4, the output tail", got)
+	}
+}

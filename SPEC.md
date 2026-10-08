@@ -427,7 +427,12 @@ CREATE TABLE events (               -- append-only within a retention bound: aud
   kind       TEXT NOT NULL,         -- started|prompt|waiting|idle|error|ended|resumed|killed|env|note
                                     -- closed vocabulary: a kind absent from this list is a defect, not an extension
   reason     TEXT,
-  payload    TEXT                   -- bounded JSON
+  payload    TEXT,                  -- bounded JSON
+  hook_kind      TEXT,              -- the offered kind the event hook was spawned for (§10.3); NULL = no hook ran
+  hook_exit      INTEGER,           -- its exit status (-1: timed out, killed by a signal or never started)
+  hook_timed_out INTEGER,           -- 1 when event_hook_timeout expired and the process group was killed
+  hook_output    TEXT,              -- capped, scrubbed tail of its stdout and stderr (§10.1)
+  hook_error     TEXT               -- why it could not be started (missing, not executable), else NULL
 );
 
 CREATE INDEX events_at ON events(at DESC, seq DESC);         -- §12's newest-first reads are never a full scan
@@ -475,6 +480,9 @@ Invariants:
   and `hook_fired` columns shown above; every migrated row reads back "inherit, nothing
   fired". `hook_fired` is cleared (set to `NULL`) in the same write that advances
   `notify_epoch`, so a new attention episode may fire its hooks again (§10.3).
+- Schema version 11 adds the nullable `hook_kind`, `hook_exit`, `hook_timed_out`, `hook_output`
+  and `hook_error` columns to `events`, the event hook's result against the event it ran for
+  (§10.3); every migrated event reads back "no hook ran".
 
 ---
 
@@ -1644,6 +1652,8 @@ argv[1]: the configured fixed arguments follow it (`script <event> <fixed>...`).
   3 s) and is killed — its whole process group — when it expires. deck keeps **no outbox and
   never retries**: a script that wants retries owns them.
 - The **exit status and a capped tail of stdout and stderr** are recorded against the event
+  (the `hook_*` columns of the event's own row, §4, written after the spawn returns: the row
+  itself is committed first, and a script that cannot be started records its error instead)
   and shown in the session detail and the health view (§11.4). A non-zero exit or a timeout is
   a visible fact on the row, never a silent no-op. The health view also probes that the
   configured script exists and is executable, alongside `PATH`.
@@ -1668,7 +1678,12 @@ argv[1]: the configured fixed arguments follow it (`script <event> <fixed>...`).
 **Whichever deck process records the event**, through one dispatch function called from every
 event-write path: `deck _hook` for the payloads a Claude or Codex hook, or the Pi extension, delivers, and the
 running TUI for events deck detects by itself — a probe-classified shell status change (or a Pi change its extension has not reported),
-a reconcile-detected process death, and the user's own `killed`. Dispatch never happens twice
+a reconcile-detected process death, and the user's own `killed`. Each of those three writes its
+event row first and then calls the dispatch function with the row's seq, so the result is stored
+against that row; the running TUI reads the four event-hook settings per event, so a save or a
+config reload applies to the next one. A probe verdict that only repeats the status already on
+the row is not a change and dispatches nothing, and a script's failure never fails the kill, the
+probe or the reconcile pass that recorded the event. Dispatch never happens twice
 for one event: the dedupe above is the guard, and the process that wrote the event is the one
 that dispatches it. `deck _hook` calls the dispatch function for every payload it records
 (Claude, Codex, Pi and Copilot alike) once the status update and the event row are committed,

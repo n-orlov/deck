@@ -2,8 +2,11 @@ package service
 
 import (
 	"context"
+	"errors"
+	"sync"
 	"time"
 
+	"github.com/n-orlov/deck/internal/config"
 	"github.com/n-orlov/deck/internal/notify"
 	"github.com/n-orlov/deck/internal/store"
 )
@@ -27,6 +30,26 @@ type EventHookDispatcher struct {
 	Deck notify.Deck
 	// BaseEnv is the environment the script inherits (os.Environ()).
 	BaseEnv []string
+	// Spawn runs an attached spawn; nil is notify.Spawn. It is the seam a
+	// test uses to look at the store at the instant of the spawn.
+	Spawn func(context.Context, notify.Request) (notify.Result, error)
+}
+
+// offerHook is the one call every service-side event write makes after its
+// event row is committed (SPEC §10.4): the TUI's probe verdict, the reconcile
+// pass's process death and the user's kill. A Service with no EventHook source
+// (`deck new`, the post-hook liveness pass, a test) is inert. The outcome is
+// dropped on purpose: whatever the script does, the operation that recorded
+// the event has already succeeded and stays succeeded. The attached spawn is
+// bounded by the dispatcher's Timeout and its result is stored against the
+// event by Dispatch.
+func (s Service) offerHook(ctx context.Context, ev HookEvent) {
+	if s.EventHook == nil {
+		return
+	}
+	d := s.EventHook()
+	d.Store = s.Store
+	_ = d.Dispatch(ctx, ev, false)
 }
 
 // HookEvent is one recorded change to offer the hook.
@@ -45,6 +68,10 @@ type HookEvent struct {
 	// status write lost to a higher-precedence source (a killed or stopped
 	// row) leaves the row on another status and offers nothing.
 	AppliedStatus string
+	// EventSeq is the seq of the event row the writer committed for this
+	// change (store.StatusUpdateInput.EventSeq). The result of an attached
+	// spawn is recorded against it; zero records nothing.
+	EventSeq int64
 }
 
 // HookOutcome says what Dispatch did. Skip is notify.SkipNone exactly when a
@@ -85,8 +112,30 @@ func (d EventHookDispatcher) Dispatch(ctx context.Context, ev HookEvent, detache
 		err := notify.Start(req)
 		return HookOutcome{Spawned: err == nil, Detached: true, Err: err}
 	}
-	res, err := notify.Spawn(ctx, req)
-	return HookOutcome{Spawned: err == nil, Result: res, Err: err}
+	spawn := d.Spawn
+	if spawn == nil {
+		spawn = notify.Spawn
+	}
+	res, err := spawn(ctx, req)
+	return HookOutcome{Spawned: err == nil, Result: res, Err: errors.Join(err, d.record(ctx, ev, kind, res, err))}
+}
+
+// record stores an attached spawn's outcome against the event row the writer
+// committed before the spawn (SPEC §10.3): the exit status and the capped,
+// scrubbed output tail, a timeout as a flag, or the text of the error that
+// kept the script from starting. An event with no row (EventSeq zero) records
+// nothing. A failed write is returned to the caller as the outcome's error;
+// it never undoes the event, which is already durable.
+func (d EventHookDispatcher) record(ctx context.Context, ev HookEvent, kind string, res notify.Result, spawnErr error) error {
+	if ev.EventSeq == 0 {
+		return nil
+	}
+	rec := store.EventHookResult{Kind: kind, ExitCode: res.ExitCode, TimedOut: res.TimedOut, Output: res.Output}
+	if spawnErr != nil {
+		rec.ExitCode = -1
+		rec.Error = spawnErr.Error()
+	}
+	return d.Store.RecordEventHookResult(ctx, ev.EventSeq, rec)
 }
 
 // offered maps the stored kind to the offered one before any store read:
@@ -165,3 +214,37 @@ type hookSession struct{ state store.EventHookState }
 func (h hookSession) EventHookEnabled() *bool   { return h.state.Enabled }
 func (h hookSession) EventHookEvents() []string { return h.state.Events }
 func (h hookSession) HookFired() []notify.Fired { return notify.DecodeFired(h.state.Fired) }
+
+// LiveEventHook is the running TUI's view of the four event-hook settings
+// (SPEC §6.5): the Service that records probe, process-death and kill events
+// reads it per event, and the TUI sets it whenever a settings save or a config
+// reload changes a key, so the next event already follows the new value. It is
+// safe for concurrent use: reconcile runs off the UI goroutine.
+type LiveEventHook struct {
+	mu sync.Mutex
+	d  EventHookDispatcher
+}
+
+// NewLiveEventHook starts from the settings deck launched with. deck and
+// baseEnv are the process facts a dispatch carries (host/version, os.Environ()).
+func NewLiveEventHook(settings config.Settings, deck notify.Deck, baseEnv []string) *LiveEventHook {
+	live := &LiveEventHook{d: EventHookDispatcher{Deck: deck, BaseEnv: baseEnv}}
+	live.Set(settings)
+	return live
+}
+
+// Set takes the event-hook keys of the running settings.
+func (l *LiveEventHook) Set(settings config.Settings) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.d.Policy = notify.PolicyFromSettings(settings)
+	l.d.Timeout = settings.EventHookTimeout
+}
+
+// Dispatcher is the Service.EventHook source: the current settings as a
+// dispatcher (its Store is the service's).
+func (l *LiveEventHook) Dispatcher() EventHookDispatcher {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.d
+}

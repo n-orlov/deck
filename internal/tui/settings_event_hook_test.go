@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/n-orlov/deck/internal/config"
+	"github.com/n-orlov/deck/internal/notify"
+	"github.com/n-orlov/deck/internal/service"
 )
 
 // pressAll feeds each key, in order, through the real Model.Update.
@@ -169,5 +171,30 @@ func TestSettingsEventHookRowsRenderTheirValues(t *testing.T) {
 		if !strings.Contains(row, want) {
 			t.Errorf("%s row = %q, want it to show %q", key, row, want)
 		}
+	}
+}
+
+// R232b: the service that dispatches probe, process-death and kill events
+// reads the running event-hook settings, so a settings save and a config reload
+// must both reach it (SPEC §6.5, §10.4).
+func TestEventHookSettingsReachTheServiceSideDispatcherOnSaveAndOnReload(t *testing.T) {
+	live := service.NewLiveEventHook(config.Settings{}, notify.Deck{}, nil)
+
+	reloaded := newReloadHarness(t, "event_hook = \"/old/hook\"\n")
+	reloaded.m = reloaded.m.WithEventHookLive(live)
+	reloaded.writeConfig("event_hook = \"/new/hook\"\nevent_hook_default = true\nevent_hook_timeout = 7\n")
+	reloaded.reload()
+	d := live.Dispatcher()
+	if len(d.Policy.Command) != 1 || d.Policy.Command[0] != "/new/hook" || !d.Policy.Default || d.Timeout != 7*time.Second {
+		t.Fatalf("after a config reload the service-side dispatcher = %+v / %v", d.Policy, d.Timeout)
+	}
+
+	model, _, _ := settingsTestModel(t)
+	saved := service.NewLiveEventHook(config.Settings{}, notify.Deck{}, nil)
+	model = model.WithEventHookLive(saved)
+	model = settingsFocusFieldByKey(t, model, "event_hook_events")
+	_ = pressAll(model, "enter", "killed", "enter", "ctrl+s")
+	if got := saved.Dispatcher().Policy.Events; !reflect.DeepEqual(got, []string{"killed"}) {
+		t.Fatalf("after a settings save the service-side event list = %v, want [killed]", got)
 	}
 }

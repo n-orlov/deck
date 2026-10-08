@@ -122,6 +122,9 @@ type Result struct {
 	// the plain mapping.Kind/payload-reason an applied hook of the same
 	// event name would get.
 	Superseded bool
+	// EventSeq is the seq of the event row the hook wrote, which the event
+	// hook's result is recorded against; zero when no row was written.
+	EventSeq int64
 }
 
 // payload contains only fields deck interprets. The original JSON, not a
@@ -290,6 +293,7 @@ func persistHook(ctx context.Context, db Store, p payload, mapping Mapping, sess
 		}
 	}
 	if err := db.UpdateSessionStatus(ctx, store.StatusUpdateInput{
+		EventSeq:               &result.EventSeq,
 		SessionID:              session.ID,
 		Status:                 w.status,
 		Reason:                 w.reason,
