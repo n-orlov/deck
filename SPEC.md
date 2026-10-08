@@ -758,6 +758,27 @@ running process keeps using the value it started with until deck restarts, which
 settings view labels *restart-to-apply* (§11.5). A new schema key is classified as one or the
 other in the same change that adds it.
 
+**A reload never gets in the way.** Four cases, each with a test:
+1. *An open settings edit is not clobbered.* While the settings view (§11.5) holds an unsaved
+   edit (a staged change, the discard prompt, or an open text editor), a reload is held back and
+   the pending edit stays exactly as it is. When the edit is **saved**, the held reload is folded
+   into the write: every key the user did not change takes the reloaded value, every key they
+   changed keeps theirs, so the save neither drops the other instance's change nor the user's
+   own. When the edit is **cancelled** (or reverted), the held reload is applied at once. A view
+   that is open but untouched takes the reload and shows it.
+2. *An instance's own save is not an external change.* After a save the instance records the
+   `config.toml` fingerprint of what it just wrote, so the next poll finds nothing changed and
+   applies nothing a second time (no flicker). A user theme file that changed meanwhile is still
+   seen.
+3. *A half-written or invalid `config.toml` changes nothing.* The previous settings stay in
+   force, no key falls back to its default, nothing panics, and the main view shows one line,
+   `config.toml not reloaded, keeping the previous settings: <error>`, above the sessions. The
+   file is parsed once (the fingerprint was adopted), and the next valid write is applied and
+   clears the line.
+4. *UI state is not touched.* `state.db`'s `ui_state` (`layout_mode`, `sidebar_width`, the
+   collapsed groups) is neither read nor written by a reload; those are per-install state, not
+   configuration.
+
 Environment always outranks the file: `DECK_ASCII` set in the environment overrides
 `[ui] ascii`, as every `DECK_*` knob overrides its file counterpart (§13.1 depends on
 this — the harness must be able to pin behaviour regardless of what a config file says).
@@ -3352,6 +3373,7 @@ features/
   attach_on_click.feature       §11.8 — [ui] attach_on_click off: click and double-click only
                                 select, the next key goes to the list
   settings.feature              §11.5 — schema-generated fields, explicit save, atomicity
+  config_reload.feature         §6.5 — one client's saved theme reaches a second client live
   themes.feature                §11.6 — picker, live preview/revert, fallback says so,
                                 quantised rendering under DECK_COLOR_DEPTH=16
   search.feature                §12 — metadata/events/transcripts, resume from a hit

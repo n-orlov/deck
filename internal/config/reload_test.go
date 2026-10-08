@@ -245,3 +245,22 @@ func TestConfigPollIntervalDefaultIsAtMostThirtySecondsAndEnvOverrides(t *testin
 		t.Fatal("DECK_CONFIG_POLL_MS=soon must be rejected like every other interval variable")
 	}
 }
+
+func TestReloaderMarkOwnWriteSwallowsOnlyTheConfigWrite(t *testing.T) {
+	f := newReloadFixture(t)
+	f.write(f.config, "[ui]\nsort_order = \"created\"\n")
+	f.reloader.MarkOwnWrite()
+	if loads, _, changed := f.poll(); changed || loads != 0 {
+		t.Fatalf("an own config.toml write was reported back (changed=%v, loads=%d)", changed, loads)
+	}
+	f.write(f.config, "[ui]\nsort_order = \"activity\"\n")
+	if loads, _, changed := f.poll(); !changed || loads != 1 {
+		t.Fatalf("a later external write was not seen (changed=%v, loads=%d)", changed, loads)
+	}
+	f.write(filepath.Join(f.themesDir, "mine.toml"), "name = \"mine\"\n")
+	f.write(f.config, "[ui]\nsort_order = \"name\"\n")
+	f.reloader.MarkOwnWrite()
+	if loads, _, changed := f.poll(); !changed || loads != 1 {
+		t.Fatalf("a theme file added before an own write was swallowed (changed=%v, loads=%d)", changed, loads)
+	}
+}

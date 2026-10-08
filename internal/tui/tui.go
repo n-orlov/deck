@@ -39,8 +39,12 @@ type Model struct {
 	configReloader *config.Reloader
 	reloaded       *config.Settings
 	reloadErr      error
-	sessions       []store.Session
-	startupNote    string
+	// reloadHeld is a reload that arrived while the settings takeover held an
+	// unsaved edit; reloadApplied counts reloads applied to the model.
+	reloadHeld    *config.Settings
+	reloadApplied int
+	sessions      []store.Session
+	startupNote   string
 	// sessionsReloadNote (R140/GH #36) is the RUNTIME counterpart to
 	// startupNote: startupNote is set once at construction from tmuxNote
 	// (the start-up tmux-missing/too-old note) and never touched again by a
@@ -2632,7 +2636,8 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	// with a real emulator is installed, so this never snaps an offset
 	// that has nothing real to clamp against.
 	m = m.healInteractiveScrollOffsetFromRender()
-	return m.dispatchMessage(message)
+	next, cmd := m.dispatchMessage(message)
+	return m.releaseHeldReload(next, cmd)
 }
 
 // messageHandler is one entry of the Update dispatch table: the handler
@@ -4467,12 +4472,14 @@ func (m Model) sessionsReloadBanner(width int) []string {
 // "on first paint" without needing a one-shot flag threaded through Update.
 // It returns no lines at all when ThemeReason is "" (nothing was
 // configured, or the configured name resolved cleanly), so it costs
-// nothing in the common case, matching startupBanner's own convention.
+// nothing in the common case, matching startupBanner's own convention. The
+// one-line config-reload notice (configReloadBanner, SPEC §6.5) rides on the
+// same lines so every height computation that counts this banner counts it.
 func (m Model) themeBanner(width int) []string {
+	lines := m.configReloadBanner(width)
 	if m.settings.ThemeReason == "" {
-		return nil
+		return lines
 	}
-	var lines []string
 	lines = append(lines, m.canvasWrapText(m.settings.ThemeReason, width)...)
 	lines = append(lines, "")
 	return lines
