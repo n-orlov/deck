@@ -85,8 +85,8 @@ func (h extensionHooks) fire(stdout io.Writer, event string, payload map[string]
 	case errors.As(runErr, &exitErr):
 		// The real extension shows the failed hook's stderr as a Pi warning
 		// and carries on; so does this fixture.
-		sayf(stdout, "fake-pi hook failed: %s\n", event)
-		sayf(stdout, "fake-pi notify: %s\n", strings.TrimSpace(captured.String()))
+		// One write, so a pane capture never shows the failure without its notice.
+		sayf(stdout, "fake-pi hook failed: %s\nfake-pi notify: %s\n", event, strings.TrimSpace(captured.String()))
 	default:
 		return fmt.Errorf("fire %s hook: %w", event, runErr)
 	}

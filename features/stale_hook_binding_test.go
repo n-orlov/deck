@@ -258,7 +258,6 @@ func fakePiFiresThroughInstalledExtension(ctx context.Context, name, event strin
 	if err != nil {
 		return err
 	}
-	baseline := strings.Count(before, fired) + strings.Count(before, failed)
 	request, err := json.Marshal(map[string]any{"command": "hook", "event": event, "payload": map[string]any{"source": "startup"}})
 	if err != nil {
 		return err
@@ -272,11 +271,10 @@ func fakePiFiresThroughInstalledExtension(ctx context.Context, name, event strin
 	deadline := time.Now().Add(15 * time.Second)
 	for {
 		output, err := capture()
-		if err == nil && strings.Count(output, fired)+strings.Count(output, failed) > baseline {
-			st.lastOutput, st.lastErr = "", nil
-			if strings.Count(output, failed) > strings.Count(before, failed) {
-				_, notice, _ := strings.Cut(output[strings.LastIndex(output, failed):], "fake-pi notify: ")
-				st.lastOutput, st.lastErr = strings.TrimSpace(notice), fmt.Errorf("fake pi hook %s failed", event)
+		if done, notice, hookFailed := fakePiHookOutcome(before, output, fired, failed); err == nil && done {
+			st.lastOutput, st.lastErr = notice, nil
+			if hookFailed {
+				st.lastErr = fmt.Errorf("fake pi hook %s failed", event)
 			}
 			return nil
 		}
@@ -285,6 +283,25 @@ func fakePiFiresThroughInstalledExtension(ctx context.Context, name, event strin
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
+}
+
+// fakePiHookOutcome reads one fake-pi pane capture after a hook was requested.
+// done is false until the pane shows one more fired/failed line than before
+// and, for a failure, the "fake-pi notify: " line that follows it: the fixture
+// prints the two lines separately, so a capture can land between them and see
+// a failed hook with no message yet.
+func fakePiHookOutcome(before, output, fired, failed string) (done bool, notice string, hookFailed bool) {
+	if strings.Count(output, fired)+strings.Count(output, failed) <= strings.Count(before, fired)+strings.Count(before, failed) {
+		return false, "", false
+	}
+	if strings.Count(output, failed) <= strings.Count(before, failed) {
+		return true, "", false
+	}
+	_, notice, found := strings.Cut(output[strings.LastIndex(output, failed):], "fake-pi notify: ")
+	if !found {
+		return false, "", true
+	}
+	return true, strings.TrimSpace(notice), true
 }
 
 func binaryBIsNoLongerExecutable(ctx context.Context) error {
