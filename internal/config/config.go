@@ -63,6 +63,10 @@ type Settings struct {
 	IDs       *IDGenerator
 	Reconcile time.Duration
 	Preview   time.Duration
+	// ConfigPoll is the running TUI's config reload poll interval (SPEC §6.5):
+	// DefaultConfigPollMS (30 s) unless the test-only DECK_CONFIG_POLL_MS
+	// (§13.1) says otherwise. Zero (a hand-built Settings) means no polling.
+	ConfigPoll time.Duration
 	// Undo mirrors DECK_UNDO_MS (default 10000): how long the undo toast
 	// shown after x stays actionable, per SPEC's determinism knobs. Purely a
 	// duration -- no behaviour branches on its value beyond that window.
@@ -350,6 +354,7 @@ func applyIntervalEnv(getenv func(string) string, settings *Settings) error {
 	}{
 		{"DECK_RECONCILE_MS", DefaultReconcileMS, &settings.Reconcile},
 		{"DECK_PREVIEW_MS", DefaultPreviewMS, &settings.Preview},
+		{"DECK_CONFIG_POLL_MS", DefaultConfigPollMS, &settings.ConfigPoll},
 		{"DECK_UNDO_MS", DefaultUndoMS, &settings.Undo},
 		{"DECK_DELETE_GRACE_MS", DefaultDeleteGraceMS, &settings.DeleteGrace},
 	}

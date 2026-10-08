@@ -718,6 +718,17 @@ schema:
 The settings view (§11.5) edits this file: `,` opens it and `,` or `esc` closes it (§11.5
 spells out the discard prompt and the text-entry modes where `,` is a literal character).
 
+**Change detection.** A running TUI polls for edits to `config.toml` and to the user theme
+directory (§11.6) **every 30 s at most** (`DECK_CONFIG_POLL_MS`, a test-only override that
+production never sets, §13.1, is the only way to a shorter interval). Each poll computes a
+*fingerprint* — `config.toml`'s mtime and size, plus the name, mtime and size of every entry
+in `$XDG_CONFIG_HOME/deck/themes/` (a missing file or directory is a value of its own, so
+creating or deleting either counts as a change) — and compares it with the last-seen one. An
+**unchanged fingerprint never parses anything**; a changed one re-reads `config.toml` and the
+theme files exactly once, then adopts the new fingerprint (an invalid file is therefore parsed
+once, not on every poll, and the next write is picked up). The reload opens these files
+read-only and calls no config writer: it never rewrites `config.toml`, whatever it finds there.
+
 Environment always outranks the file: `DECK_ASCII` set in the environment overrides
 `[ui] ascii`, as every `DECK_*` knob overrides its file counterpart (§13.1 depends on
 this — the harness must be able to pin behaviour regardless of what a config file says).
@@ -3107,6 +3118,7 @@ listed here rather than left to a test package:
 | **Mouse reporting override** | `DECK_MOUSE` forces mouse reporting on or off as a boolean, overriding `[ui] mouse` (§11.8). | Enabling reporting writes enable/disable sequences into the stream, so byte-exact frame assertions (§11.2's golden frame) need it off; mouse scenarios need it on regardless of the config file. |
 | **Deterministic ids** | `DECK_ID_SEED` makes generated session/conversation UUIDs reproducible. | Assert exact resume arguments. |
 | **Bounded ticks** | `DECK_RECONCILE_MS` (default 500) and `DECK_PREVIEW_MS` (default 250) — two rates, two knobs, matching §7 and §11. | Tests wait on state, not on wall clock; low values make scenarios fast. |
+| **Config poll rate** | `DECK_CONFIG_POLL_MS` (default 30000, a duration like the ticks above) — how often the running TUI compares the §6.5 config/theme fingerprint. | **Test-only**: production never sets it, and it exists to shorten the poll (the production interval is already the 30 s upper bound), so a two-instance scenario sees a peer's edit in milliseconds, not half a minute. |
 | **Interactive render rate** | `DECK_INTERACTIVE_MS` — §11.9's grid render-coalescing interval. A duration, like the two ticks above. | Render frequency, not parsing, dominates the transport's cost, so it is the one axis worth pinning in a scenario. |
 | **Interactive transport** | `DECK_INTERACTIVE_TRANSPORT=pipe\|capture` pins §11.9's render path. | A *selector over two implementations of one contract*, not a behaviour switch: both paths must satisfy the same scenarios, so a scenario can exercise either deterministically. The **scrollback scenarios are the one exception**, and named as such: §11.9 gives interactive scrollback to the pipe transport only, because the capture path's own poll tick rebuilds the grid from the visible screen, so those scenarios are pipe-only by construction rather than by oversight. Stated explicitly because this section otherwise forbids knobs that change what the product does. |
 | **Structured log** | JSONL to `$DECK_HOME/log/deck.jsonl`: every state transition, launch argv, hook receipt with duration, event-hook invocation with exit status and duration. | The observability surface for things not visible on screen — argv, timings, retries. |
