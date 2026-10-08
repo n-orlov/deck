@@ -22,7 +22,7 @@ import (
 )
 
 // SchemaVersion is the newest schema understood by this binary.
-const SchemaVersion = 9
+const SchemaVersion = 10
 
 // SupportedSchemaVersion is the newest schema this binary opens: SchemaVersion
 // in every shipped build. A test build (-tags deckoldschema, see
@@ -1054,11 +1054,12 @@ func writeStatusUpdate(ctx context.Context, tx *sql.Tx, input StatusUpdateInput,
 	_, err := tx.ExecContext(ctx, `UPDATE sessions SET
 		status = ?, status_reason = ?, status_source = ?, status_at = ?,
 		killed_by_user = ?, acknowledged = ?, notify_epoch = ?,
+		hook_fired = CASE WHEN ? THEN NULL ELSE hook_fired END,
 		pane_exit_status = CASE WHEN ? = 1 THEN NULL ELSE COALESCE(?, pane_exit_status) END,
 		crash_tail = CASE WHEN ? = 1 THEN NULL WHEN ? IS NULL THEN crash_tail ELSE ? END,
 		last_message = CASE WHEN ? = '' THEN last_message ELSE ? END
 		WHERE id = ?`, input.Status, input.Reason, input.Source, input.At,
-		newKilled, acknowledged, notifyEpoch, clearCrash, input.PaneExitStatus,
+		newKilled, acknowledged, notifyEpoch, notifyEpoch != cur.notifyEpoch, clearCrash, input.PaneExitStatus,
 		clearCrash, input.PaneExitStatus, input.CrashTail, lastMessage, lastMessage, input.SessionID)
 	if err != nil {
 		return fmt.Errorf("update session status: %w", err)
@@ -1179,7 +1180,7 @@ func applyAttachmentToStatusTx(ctx context.Context, tx *sql.Tx, sessionID, statu
 	case "waiting":
 		if _, err := tx.ExecContext(ctx, `UPDATE sessions SET
 			status = 'running', status_reason = '', status_source = 'user', status_at = ?,
-			acknowledged = 1, notify_epoch = notify_epoch + 1
+			acknowledged = 1, notify_epoch = notify_epoch + 1, hook_fired = NULL
 			WHERE id = ? AND status = 'waiting'`, at, sessionID); err != nil {
 			return false, fmt.Errorf("answer waiting attachment: %w", err)
 		}
@@ -2738,7 +2739,7 @@ func (s *Store) migrate(version int) error {
 // the schemaVN variables at call time (tests substitute them); a version
 // outside 0..SchemaVersion-1 has no migration path.
 func applySchemaLadder(tx *sql.Tx, version int) error {
-	rungs := [][]string{schemaV1, schemaV2, schemaV3, schemaV4, schemaV5, schemaV6, schemaV7, schemaV8, schemaV9}
+	rungs := [][]string{schemaV1, schemaV2, schemaV3, schemaV4, schemaV5, schemaV6, schemaV7, schemaV8, schemaV9, schemaV10}
 	if version < 0 || version >= len(rungs) {
 		return fmt.Errorf("no migration path from schema version %d", version)
 	}
@@ -2914,6 +2915,26 @@ var schemaV8 = []string{
 // or row value.
 var schemaV9 = []string{
 	`ALTER TABLE sessions ADD COLUMN hook_executable TEXT`,
+}
+
+// schemaV10 is R228's event-hook schema (phase 4n). It retires the notify-rule
+// and snooze columns that no code reads or writes (notify_rules and
+// snoozed_until, both from schemaV1), drops an outbox table if a database ever
+// carried one (no shipped schema creates it, hence IF EXISTS), and adds the
+// three per-session event-hook columns SPEC §4 describes, all nullable so
+// every existing row reads back "inherit the global setting, nothing fired":
+// event_hook_enabled (tri-state: NULL inherit, 1 on, 0 off), event_hook_events
+// (a JSON list replacing the global kind list, NULL inherits) and hook_fired
+// (JSON (kind,reason) pairs already fired in the current notify_epoch,
+// cleared whenever notify_epoch advances). No other column or row value is
+// touched.
+var schemaV10 = []string{
+	`DROP TABLE IF EXISTS outbox`,
+	`ALTER TABLE sessions DROP COLUMN notify_rules`,
+	`ALTER TABLE sessions DROP COLUMN snoozed_until`,
+	`ALTER TABLE sessions ADD COLUMN event_hook_enabled INTEGER`,
+	`ALTER TABLE sessions ADD COLUMN event_hook_events TEXT`,
+	`ALTER TABLE sessions ADD COLUMN hook_fired TEXT`,
 }
 
 // getUIState returns the persisted value for key, or def when no row exists
