@@ -2078,7 +2078,7 @@ resume/start · `R` restart preserving conversation · `x` kill (undo toast) · 
 `s` send message (§11.1) · `i` session detail (§11.4 — **rename, the launch-inputs editor, the
 group move, the permission profile `P` and the conversation lock `c` are actions inside it**,
 not top-level keys) · `e` env editor · `p` pin/unpin in the sidebar (§11) · `E` event log · `f` find (§12) · `F` force-attach the interactive preview (§11.9) · `/`
-filter list · `m` mark · `z` snooze · `A` archive
+filter list · `m` mark · `A` archive
 (confirms, §9.2) · `U` unarchive (§9.2) · `u` undo · `g`/`G` top/bottom · `c` fold/unfold the
 group under the cursor, `←`/`→` fold/unfold explicitly (§11) · `,` settings
 (§11.5) · `t` theme picker (§11.6) · `|` cycle layout mode, `<`/`>` sidebar width (§11.2) ·
@@ -2405,7 +2405,7 @@ session's **event-hook** fields, `event_hook_enabled` and `event_hook_events` (�
 also edited here but are *not* restart-to-apply: they are read at dispatch, apply immediately
 and set no dirty flag; the last hook exit status and output tail (§10.3) are shown in the
 detail) ·
-snooze duration · theme picker (§11.6) · event log · health view ·
+theme picker (§11.6) · event log · health view ·
 find (§12) · **lost attach (§11.9)** · help overlay. Settings is deliberately *not* a dialog
 — see below.
 

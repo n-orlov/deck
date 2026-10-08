@@ -5,11 +5,13 @@ package tui
 // them must do nothing at all -- no model mutation, no tea.Cmd -- when the
 // cursor rests on a group header rather than a session row (task 012/D.1's
 // sidebarCursor makes a header a first-class stop, so this is now reachable
-// with nothing else selected). "s" (send message, §11.1) and "z" (snooze)
-// are listed even though neither key is wired to anything yet in this
-// codebase -- out of scope for this phase -- precisely so that whichever
-// task wires either one up inherits the guard for free instead of having to
-// remember it exists.
+// with nothing else selected). "s" (send message, §11.1) is listed even
+// though the key is not wired to anything yet in this codebase -- out of
+// scope for this phase -- precisely so that whichever task wires it up
+// inherits the guard for free instead of having to remember it exists.
+// "z" (snooze) is deliberately absent: the snooze feature was retired
+// (R233c, SPEC §11), the key is unbound, and
+// TestZIsUnboundAndNeverAdvertised covers it.
 //
 // "detail:g" is a synthetic entry, never a real tea.KeyMsg.String() value:
 // the `i` detail dialog binds its own move-group picker to a bare "g"
@@ -65,7 +67,7 @@ package tui
 var sessionScopedKeys = map[string]bool{
 	"enter": true, "a": true, "x": true, "d": true, "r": true, "R": true,
 	"i": true, "e": true, "Y": true, "m": true, "p": true,
-	"A": true, "U": true, "s": true, "z": true, "l": true, "F": true,
+	"A": true, "U": true, "s": true, "l": true, "F": true,
 	"detail:g": true,
 }
 

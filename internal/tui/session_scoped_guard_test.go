@@ -187,13 +187,15 @@ func assertInertOnHeaderAfterEveryKey(t *testing.T, name string, setup func(m Mo
 
 // TestSessionScopedKeysAreInertOnAHeader is task 013/D.2's table: every key
 // SPEC's keymap and the PRD name as session-scoped (enter, a, x, dd, r, R,
-// i, e, s, z, Y, m, A, U, plus the `i` detail dialog's own move-group
+// i, e, s, Y, m, A, U, plus the `i` detail dialog's own move-group
 // `g`, permission-profile `P` and conversation-lock `c`) must do nothing at
-// all with the cursor on a header. "s"/"z" are not wired to anything yet
-// in this codebase (out of scope this phase) -- they are included because
-// guardSessionScopedKey's own map already lists them, and an unbound key
+// all with the cursor on a header. "s" is not wired to anything yet
+// in this codebase (out of scope this phase) -- it is included because
+// guardSessionScopedKey's own map already lists it, and an unbound key
 // is trivially, uninterestingly inert either way; the real content of
-// this test is the rest.
+// this test is the rest. The former "z" row was rewritten (R233c, snooze
+// retired): "z" is no longer a session-scoped key at all, and
+// TestZIsUnboundAndNeverAdvertised (z_unbound_test.go) covers it.
 //
 // task 010 adds "p" (SPEC §11's pin rule, R159) to this table -- both the
 // plain and marked-set shapes, mirroring "x"/"x (marked)" above -- since a
@@ -238,7 +240,6 @@ func TestSessionScopedKeysAreInertOnAHeader(t *testing.T) {
 		{name: "i", keys: []string{"i"}},
 		{name: "e", keys: []string{"e"}},
 		{name: "s", keys: []string{"s"}},
-		{name: "z", keys: []string{"z"}},
 		{name: "Y", keys: []string{"Y"}},
 		{name: "m", keys: []string{"m"}},
 		{name: "A", keys: []string{"A"}},
