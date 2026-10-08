@@ -3004,6 +3004,13 @@ must be restored afterwards.
   listing, so an entry swapped for a symlink after the scan is still recognised as one. A
   symlink, a directory owned by someone else and a directory looser than `0700` are left in
   place and not reported.
+- **A pipe still being armed is not a leak.** An entry's claim record is written only once the
+  whole entry has succeeded, so a second deck starting while the first is mid-entry would
+  otherwise find a record-less directory and delete the FIFO the entry is arming. Every pipe
+  directory therefore names the process that created it (an `owner.pid` marker, written
+  before the directory takes its `deck-interactive-pipe-*` name, so no scan ever sees one
+  without it), and a record-less entry whose owner is still alive is left untouched. A
+  record-less entry with a dead or missing owner is removed as before.
 - **A displaced client is told, and its keyboard is stopped first.** Losing the pane silently
   is worse than losing it: the next keystrokes would go somewhere the user cannot see, or
   nowhere. Whichever way the loss happens — its claim stolen by `F`, or a full attach arriving

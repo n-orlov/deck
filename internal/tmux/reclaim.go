@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 )
@@ -35,6 +36,52 @@ type InteractiveClaimRecord struct {
 	PaneTarget   string         `json:"pane_target"`
 	WindowTarget string         `json:"window_target"`
 	Geometry     WindowGeometry `json:"geometry"`
+}
+
+// interactivePipeOwnerFileName is the marker every interactive-pipe temp dir
+// carries from the moment the scan can see it: the pid of the process
+// arming it. The claim record (claim.json) is written only once the whole
+// entry has succeeded, so between ArmPipePane creating the dir and that
+// write the marker is the only thing telling a reclaim pass in another
+// deck process that the dir is in use rather than leaked.
+const interactivePipeOwnerFileName = "owner.pid"
+
+// interactivePipeStagingPrefix names a pipe dir before its owner marker is
+// in place. It deliberately does not start with interactivePipeTempDirPrefix,
+// so ReclaimLeakedInteractivePipes never sees a dir without its marker.
+const interactivePipeStagingPrefix = "deck-pipe-staging-"
+
+// makeInteractivePipeDir creates ArmPipePane's temp dir with this process's
+// owner marker already inside it: the dir is made under the staging prefix,
+// the marker written, and only then renamed (atomically, within the same
+// parent) to its interactive-pipe name.
+func makeInteractivePipeDir() (string, error) {
+	staging, err := os.MkdirTemp(interactivePipeTempRoot, interactivePipeStagingPrefix)
+	if err != nil {
+		return "", err
+	}
+	owner := []byte(strconv.Itoa(os.Getpid()))
+	if err := os.WriteFile(filepath.Join(staging, interactivePipeOwnerFileName), owner, 0o600); err != nil {
+		_ = os.RemoveAll(staging)
+		return "", fmt.Errorf("write pipe dir owner marker: %w", err)
+	}
+	final := filepath.Join(filepath.Dir(staging), interactivePipeTempDirPrefix+strings.TrimPrefix(filepath.Base(staging), interactivePipeStagingPrefix))
+	if err := os.Rename(staging, final); err != nil {
+		_ = os.RemoveAll(staging)
+		return "", fmt.Errorf("publish pipe dir: %w", err)
+	}
+	return final, nil
+}
+
+// interactivePipeOwnerAlive reports whether dir's owner marker names a live
+// process: a dir still being armed by it, not a leaked one.
+func interactivePipeOwnerAlive(dir string) bool {
+	data, err := os.ReadFile(filepath.Join(dir, interactivePipeOwnerFileName)) //nolint:gosec // G304: dir passed isReclaimableInteractivePipeDir; the file name is a package constant
+	if err != nil {
+		return false
+	}
+	pid, err := strconv.Atoi(strings.TrimSpace(string(data)))
+	return err == nil && pid > 0 && pidAlive(pid)
 }
 
 // SaveInteractiveClaimRecord writes record as JSON into dir/claim.json.
@@ -124,21 +171,31 @@ func ReclaimLeakedInteractivePipes(ctx context.Context) ([]string, error) {
 		if !isReclaimableInteractivePipeDir(dir) {
 			continue
 		}
-		record, err := loadInteractiveClaimRecord(dir)
-		if err != nil {
-			// No usable metadata -- an older/foreign/corrupt dir, or a
-			// SaveInteractiveClaimRecord call that itself failed. There is
-			// nothing to disarm or restore against, but the leaked
-			// FIFO/dir itself is still real and still worth clearing.
-			_ = os.RemoveAll(dir)
-			reclaimed = append(reclaimed, dir)
-			continue
-		}
-		if reclaimOne(ctx, Client{Socket: record.Socket}, dir, record) {
+		if reclaimInteractivePipeDir(ctx, dir) {
 			reclaimed = append(reclaimed, dir)
 		}
 	}
 	return reclaimed, nil
+}
+
+// reclaimInteractivePipeDir is ReclaimLeakedInteractivePipes' step for one
+// trusted dir, reporting whether it was reclaimed.
+func reclaimInteractivePipeDir(ctx context.Context, dir string) bool {
+	record, err := loadInteractiveClaimRecord(dir)
+	if err == nil {
+		return reclaimOne(ctx, Client{Socket: record.Socket}, dir, record)
+	}
+	if interactivePipeOwnerAlive(dir) {
+		// Not leaked: a live process is still arming this pipe and has
+		// not written its claim record yet.
+		return false
+	}
+	// No usable metadata -- an older/foreign/corrupt dir, or a
+	// SaveInteractiveClaimRecord call that itself failed. There is
+	// nothing to disarm or restore against, but the leaked FIFO/dir
+	// itself is still real and still worth clearing.
+	_ = os.RemoveAll(dir)
+	return true
 }
 
 // interactivePipeReadDir lists the temp root for ReclaimLeakedInteractivePipes.

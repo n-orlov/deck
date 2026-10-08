@@ -143,7 +143,7 @@ type PanePipe struct {
 // the moment the writer side actually closes, with zero bytes lost for
 // output already queued ahead of that close -- confirmed directly.
 func (c Client) ArmPipePane(ctx context.Context, target string) (*PanePipe, error) {
-	tempDir, err := os.MkdirTemp(interactivePipeTempRoot, interactivePipeTempDirPrefix)
+	tempDir, err := makeInteractivePipeDir()
 	if err != nil {
 		return nil, fmt.Errorf("create pipe temp dir: %w", err)
 	}

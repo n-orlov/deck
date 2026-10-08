@@ -116,7 +116,7 @@ func newInteractiveNoticeModel(t *testing.T, bt *theme.Theme, stacked bool) (Mod
 		t.Fatalf("theme %q: enterInteractive refused: %q", bt.Name, got.attachError)
 	}
 	if !got.interactive || got.interactiveGrid == nil {
-		t.Fatalf("theme %q: enterInteractive did not enter interactive mode with a live grid", bt.Name)
+		t.Fatalf("theme %q: enterInteractive did not enter interactive mode with a live grid (refusal=%+v)", bt.Name, got.entryRefusal)
 	}
 	t.Cleanup(func() { got.exitInteractive() })
 
