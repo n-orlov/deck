@@ -729,6 +729,14 @@ type Model struct {
 	detailDroppedHookSessionID string
 	detailDroppedHookFound     bool
 	detailDroppedHookEvent     store.Event
+	// detailHook* are the `i` dialog's last event-hook result (SPEC §10.3,
+	// §11.4), loaded fresh on every open and guarded by session id exactly
+	// like detailDropped* above. hookHealth is the health lines' copy,
+	// refreshed on every sessions reload.
+	detailHookSessionID string
+	detailHookFound     bool
+	detailHookRun       store.EventHookRun
+	hookHealth          hookHealth
 	// filtering is task 123's `/` list filter (SPEC §11.3/requirement 33,
 	// I-10): true while the filter's own text field has keyboard focus
 	// (see updateFilter). filterQuery is the live, incrementally-applied
@@ -1484,6 +1492,9 @@ func (m Model) registry() *agent.Registry {
 type sessionsLoaded struct {
 	sessions []store.Session
 	err      error
+	// hookHealth is the event-hook health lines' facts (script probe and the
+	// newest recorded result), read on the same reload as the sessions.
+	hookHealth hookHealth
 	// groups is cure-01-02's own addition: the persisted group list read
 	// alongside sessions on every normal reload, so groupSessions() can
 	// render a header for a defined group with zero members. groupsErr
@@ -2250,7 +2261,7 @@ func (m Model) loadSessions() tea.Msg {
 	// see groupSessions' own comment for why m.sessions alone cannot answer
 	// "does this defined group have zero members right now".
 	groups, groupsErr := m.store.ListGroups(context.Background())
-	return sessionsLoaded{sessions: rows, err: err, groups: groups, groupsErr: groupsErr, generation: generation}
+	return sessionsLoaded{sessions: rows, err: err, groups: groups, groupsErr: groupsErr, generation: generation, hookHealth: m.loadHookHealth()}
 }
 
 // archivedSessionsLoaded carries task 123's fresh ListArchivedSessions
@@ -2789,6 +2800,7 @@ func (m Model) onSessionsLoaded(msg sessionsLoaded) (tea.Model, tea.Cmd) {
 		m.allGroups = msg.groups
 		m.refreshSettingsGroupsAfterReload()
 	}
+	m.hookHealth = msg.hookHealth
 	if msg.err != nil {
 		m.sessionsReloadNote = "Cannot read sessions: " + msg.err.Error()
 	} else {
@@ -3172,6 +3184,7 @@ func (m Model) onDetailDroppedHookLoaded(msg detailDroppedHookLoaded) (tea.Model
 	if msg.sessionID == m.detailDroppedHookSessionID && msg.err == nil {
 		m.detailDroppedHookFound = msg.found
 		m.detailDroppedHookEvent = msg.event
+		m.detailHookFound, m.detailHookRun = msg.hookFound, msg.hookRun
 	}
 	return m, nil
 }
@@ -4363,6 +4376,10 @@ type detailDroppedHookLoaded struct {
 	event     store.Event
 	found     bool
 	err       error
+	// hookRun/hookFound are the session's last event-hook result (SPEC
+	// §10.3), read in the same cmd so `i` still dispatches exactly one.
+	hookRun   store.EventHookRun
+	hookFound bool
 }
 
 // loadDetailDroppedHook is the `i` detail dialog's one store read for
@@ -4378,7 +4395,13 @@ func (m Model) loadDetailDroppedHook(sessionID string) tea.Cmd {
 	}
 	return func() tea.Msg {
 		event, found, err := m.store.LastAlarmingDroppedHook(context.Background(), sessionID)
-		return detailDroppedHookLoaded{sessionID: sessionID, event: event, found: found, err: err}
+		msg := detailDroppedHookLoaded{sessionID: sessionID, event: event, found: found, err: err}
+		// A failed hook-result read leaves the field out, as a failed
+		// dropped-hook read does: both are supplementary detail.
+		if run, ok, hookErr := m.store.LastEventHookResult(context.Background(), sessionID); hookErr == nil {
+			msg.hookRun, msg.hookFound = run, ok
+		}
+		return msg
 	}
 }
 
@@ -4446,12 +4469,14 @@ func (m Model) frameSize() (width, height int) {
 // "tmux 3.1c is too old" on one line. It returns no lines at all once tmux
 // is fine, so it costs nothing in the common case.
 func (m Model) startupBanner(width int) []string {
+	hook := m.eventHookHealthLines(width)
 	if m.startupNote == "" {
-		return nil
+		return hook
 	}
 	var lines []string
 	lines = append(lines, m.canvasWrapText("tmux unavailable: "+m.startupNote, width)...)
 	lines = append(lines, m.canvasWrapText("Install tmux 3.2 or newer, then restart deck.", width)...)
+	lines = append(lines, hook...)
 	lines = append(lines, "")
 	return lines
 }
@@ -7822,6 +7847,7 @@ func (m Model) detailBody() string {
 	m.writeDetailIdentity(&b, session)
 	m.writeDetailStatus(&b, session)
 	m.writeDetailPermission(&b, session)
+	m.writeDetailEventHook(&b, session)
 	m.writeDetailTexts(&b, session)
 	m.writeDetailFooter(&b)
 	return b.String()

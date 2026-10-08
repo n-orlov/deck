@@ -127,3 +127,47 @@ func openHookStateStore(t *testing.T) *Store {
 	newLeaseTestSession(t, db, "s1", "running")
 	return db
 }
+
+func TestLastEventHookResultIsTheNewestRecordedOne(t *testing.T) {
+	ctx := context.Background()
+	db := openHookStateStore(t)
+	newLeaseTestSession(t, db, "s2", "running")
+	if _, ok, err := db.LastEventHookResult(ctx, ""); err != nil || ok {
+		t.Fatalf("no hook has run yet: ok=%v err=%v", ok, err)
+	}
+	record := func(session string, at int64, res EventHookResult) {
+		t.Helper()
+		var seq int64
+		if err := db.UpdateSessionStatus(ctx, StatusUpdateInput{SessionID: session, Status: "waiting", Reason: "p",
+			Source: "hook", At: at, EventKind: "notification", EventSeq: &seq}); err != nil {
+			t.Fatal(err)
+		}
+		if err := db.RecordEventHookResult(ctx, seq, res); err != nil {
+			t.Fatal(err)
+		}
+	}
+	first := EventHookResult{Kind: "waiting", ExitCode: 3, Output: "boom"}
+	second := EventHookResult{Kind: "idle", ExitCode: -1, TimedOut: true}
+	record("s1", 10, first)
+	record("s2", 20, second)
+	if _, err := db.DB().Exec(`UPDATE sessions SET status = 'waiting' WHERE id = 's1'`); err != nil {
+		t.Fatal(err)
+	}
+	// An event with no spawn behind it never counts as a result.
+	if err := db.UpdateSessionStatus(ctx, StatusUpdateInput{SessionID: "s1", Status: "idle", Reason: "q",
+		Source: "hook", At: 30, EventKind: "stop"}); err != nil {
+		t.Fatal(err)
+	}
+
+	got, ok, err := db.LastEventHookResult(ctx, "s1")
+	if err != nil || !ok || got.EventHookResult != first || got.SessionID != "s1" || got.At != 10 {
+		t.Fatalf("session s1: %+v ok=%v err=%v", got, ok, err)
+	}
+	got, ok, err = db.LastEventHookResult(ctx, "")
+	if err != nil || !ok || got.EventHookResult != second || got.SessionID != "s2" || got.At != 20 {
+		t.Fatalf("any session: %+v ok=%v err=%v", got, ok, err)
+	}
+	if _, ok, err := db.LastEventHookResult(ctx, "nobody"); err != nil || ok {
+		t.Fatalf("unknown session: ok=%v err=%v", ok, err)
+	}
+}

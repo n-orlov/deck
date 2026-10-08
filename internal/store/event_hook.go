@@ -177,3 +177,43 @@ func (s *Store) EventHookResultOf(ctx context.Context, eventSeq int64) (result E
 	return EventHookResult{Kind: kind.String, ExitCode: int(exit.Int64), TimedOut: timedOut.Int64 != 0,
 		Output: output.String, Error: failure.String}, true, nil
 }
+
+// EventHookRun is one recorded hook result with the event it belongs to: the
+// row the session detail and the health view show as "the last hook result"
+// (SPEC §10.3, §11.4).
+type EventHookRun struct {
+	EventHookResult
+	// SessionID is the session whose event the hook ran for.
+	SessionID string
+	// At is the event's timestamp, Unix milliseconds.
+	At int64
+}
+
+// LastEventHookResult reads the newest hook result recorded for the session,
+// or, with an empty sessionID, for any session. ok is false when no hook has
+// run (or been recorded as failing to start) yet.
+func (s *Store) LastEventHookResult(ctx context.Context, sessionID string) (run EventHookRun, ok bool, err error) {
+	var (
+		kind, output, failure, owner sql.NullString
+		exit, timedOut               sql.NullInt64
+	)
+	query := `SELECT session_id, at, hook_kind, hook_exit, hook_timed_out, hook_output, hook_error
+		FROM events WHERE hook_kind IS NOT NULL`
+	args := []any{}
+	if sessionID != "" {
+		query += ` AND session_id = ?`
+		args = append(args, sessionID)
+	}
+	query += ` ORDER BY seq DESC LIMIT 1`
+	err = s.db.QueryRowContext(ctx, query, args...).Scan(&owner, &run.At, &kind, &exit, &timedOut, &output, &failure)
+	if errors.Is(err, sql.ErrNoRows) {
+		return EventHookRun{}, false, nil
+	}
+	if err != nil {
+		return EventHookRun{}, false, fmt.Errorf("read last event hook result: %w", err)
+	}
+	run.SessionID = owner.String
+	run.EventHookResult = EventHookResult{Kind: kind.String, ExitCode: int(exit.Int64), TimedOut: timedOut.Int64 != 0,
+		Output: output.String, Error: failure.String}
+	return run, true, nil
+}
