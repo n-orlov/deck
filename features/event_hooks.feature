@@ -41,6 +41,7 @@ Feature: The event hook (SPEC section 10), end to end against the released binar
     And capture invocation 1 has stdin JSON field "event.at" that is non-empty
     And capture invocation 1 has stdin JSON field "deck.version" that is non-empty
     And session "gate"'s latest "notification" event records hook kind "waiting", exit status 0 and output containing "captured waiting"
+    And the structured log holds 1 event-hook invocation for session "gate", the last of kind "waiting" exit status 0
     When the state database session "gate" has its own event hook off
     And the released deck _hook receives "Notification" for session "gate" using injected identity:
       | notification_type | elicitation_dialog |
@@ -57,6 +58,7 @@ Feature: The event hook (SPEC section 10), end to end against the released binar
       | notification_type | one_more_prompt |
     Then the capture script has recorded exactly 2 invocations
     And capture invocation 2 has environment "DECK_EVENT_REASON" equal to "one_more_prompt"
+    And the structured log holds 2 event-hook invocations for session "gate", the last of kind "waiting" exit status 0
     When deck client "A" exits cleanly
 
   Scenario: deck filters by the allow-list before it spawns anything
@@ -141,6 +143,7 @@ Feature: The event hook (SPEC section 10), end to end against the released binar
       | notification_type | permission_prompt |
     Then the capture script has recorded exactly 1 invocation
     And session "slow"'s latest "notification" event records a timed out hook
+    And the structured log holds 1 event-hook invocation for session "slow", the last of kind "waiting" timed out
     And the capture script process of invocation 1 is gone within 3 seconds
     And the state database session "slow" has hook status "waiting", reason "permission_prompt", message "", acknowledged 0, and notify_epoch 0
     When deck client "A" exits cleanly
@@ -161,6 +164,7 @@ Feature: The event hook (SPEC section 10), end to end against the released binar
     And capture invocation 1 has stdin JSON field "event.kind" equal to "ended"
     And session "closing" has one "session_end" event with payload field "reason" equal to "logout"
     And session "closing"'s latest "session_end" event records no hook result
+    And the structured log holds 1 event-hook invocation for session "closing", the last of kind "ended" detached
     And the capture script process of invocation 1 is gone within 12 seconds
     When deck client "A" exits cleanly
 
@@ -176,6 +180,7 @@ Feature: The event hook (SPEC section 10), end to end against the released binar
     And the released deck _hook receives "Notification" for session "episode" using injected identity:
       | notification_type | permission_prompt |
     Then the capture script has recorded exactly 1 invocation
+    And the structured log holds 1 event-hook invocation for session "episode", the last of kind "waiting" exit status 0
     And the state database session "episode" has hook status "waiting", reason "permission_prompt", message "", acknowledged 0, and notify_epoch 0
     When deck client "A" attaches to and detaches from its selected agent
     Then the state database session "episode" is "running" from "user" with acknowledged=1, notify_epoch=1, and 1 attached event
@@ -199,4 +204,5 @@ Feature: The event hook (SPEC section 10), end to end against the released binar
     And capture invocation 1 has environment "DECK_SESSION_NAME" equal to "victim"
     And capture invocation 1 has stdin JSON field "event.kind" equal to "killed"
     And session "victim"'s latest "killed" event records hook kind "killed", exit status 0 and output containing "captured killed"
+    And the structured log holds 1 event-hook invocation for session "victim", the last of kind "killed" exit status 0
     When deck client "A" exits cleanly

@@ -50,6 +50,7 @@ func registerEventHookSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^session "([^"]+)"'s latest "([^"]+)" event records a timed out hook$`, eventRecordsTimedOutHook)
 	sc.Step(`^session "([^"]+)"'s latest "([^"]+)" event records no hook result$`, eventRecordsNoHookResult)
 	sc.Step(`^the released deck _hook receives "([^"]+)" for session "([^"]+)" using injected identity and returns within (\d+) seconds:$`, releasedHookReturnsWithin)
+	sc.Step(`^the structured log holds (\d+) event-hook invocations? for session "([^"]+)", the last of kind "([^"]+)" (exit status -?\d+|timed out|detached)$`, structuredLogRecordsEventHook)
 }
 
 // captureScriptSource is the whole capture script. It uses only shell

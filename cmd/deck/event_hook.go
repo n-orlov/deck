@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 
+	"github.com/n-orlov/deck/internal/audit"
 	"github.com/n-orlov/deck/internal/config"
 	"github.com/n-orlov/deck/internal/hookrecv"
 	"github.com/n-orlov/deck/internal/notify"
@@ -19,7 +20,7 @@ import (
 // without an event hook. A session-end payload is dispatched detached (SPEC
 // §10.3): the script is started and left running, with no timeout and no
 // recorded result, so the agent's exit is never held.
-func dispatchHookEvent(ctx context.Context, db *store.Store, settings config.Settings, result hookrecv.Result) {
+func dispatchHookEvent(ctx context.Context, db *store.Store, logger *audit.Logger, settings config.Settings, result hookrecv.Result) {
 	if !hookResultOffersEvent(result) {
 		return
 	}
@@ -27,7 +28,7 @@ func dispatchHookEvent(ctx context.Context, db *store.Store, settings config.Set
 	if len(dispatcher.Policy.Command) == 0 {
 		return
 	}
-	dispatcher.Store = db
+	dispatcher.Store, dispatcher.Audit = db, logger
 	_ = dispatcher.Dispatch(ctx, service.HookEvent{
 		SessionID:     result.SessionID,
 		StoredKind:    result.Kind,

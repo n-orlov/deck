@@ -1664,6 +1664,13 @@ argv[1]: the configured fixed arguments follow it (`script <event> <fixed>...`).
   and shown in the session detail and the health view (§11.4). A non-zero exit or a timeout is
   a visible fact on the row, never a silent no-op. The health view also probes that the
   configured script exists and is executable, alongside `PATH`.
+- **Every spawn is also one structured-log line** (`"event": "event_hook"` in
+  `$DECK_HOME/log/deck.jsonl`, §13.1): the session id, the offered kind, the exit status
+  (`-1` for a timeout, a signal or a script that never started, with that error's text), a
+  `timed_out` flag, and `script_duration_ms`, the script's own monotonic run time. The
+  output tail is never logged; it lives only on the event row. A detached session-end spawn
+  (below) logs `"detached": true` and no exit status or duration, because deck never waits for
+  either. An offer that spawns nothing (inert, disabled, unlisted, deduped) logs nothing.
 - **Dedupe by epoch, not forever.** `notify_epoch` increments whenever the session leaves an
   attention state (§7). Within one epoch, a `(kind, reason)` pair spawns the hook once: a
   re-fired prompt in the same attention episode is one spawn, and the same prompt tomorrow is
@@ -3299,7 +3306,7 @@ listed here rather than left to a test package:
 | **Config poll rate** | `DECK_CONFIG_POLL_MS` (default 30000, a duration like the ticks above) — how often the running TUI compares the §6.5 config/theme fingerprint. | **Test-only**: production never sets it, and it exists to shorten the poll (the production interval is already the 30 s upper bound), so a two-instance scenario sees a peer's edit in milliseconds, not half a minute. |
 | **Interactive render rate** | `DECK_INTERACTIVE_MS` — §11.9's grid render-coalescing interval. A duration, like the two ticks above. | Render frequency, not parsing, dominates the transport's cost, so it is the one axis worth pinning in a scenario. |
 | **Interactive transport** | `DECK_INTERACTIVE_TRANSPORT=pipe\|capture` pins §11.9's render path. | A *selector over two implementations of one contract*, not a behaviour switch: both paths must satisfy the same scenarios, so a scenario can exercise either deterministically. The **scrollback scenarios are the one exception**, and named as such: §11.9 gives interactive scrollback to the pipe transport only, because the capture path's own poll tick rebuilds the grid from the visible screen, so those scenarios are pipe-only by construction rather than by oversight. Stated explicitly because this section otherwise forbids knobs that change what the product does. |
-| **Structured log** | JSONL to `$DECK_HOME/log/deck.jsonl`: every state transition, launch argv, hook receipt with duration, event-hook invocation with exit status and duration. | The observability surface for things not visible on screen — argv, timings, retries. |
+| **Structured log** | JSONL to `$DECK_HOME/log/deck.jsonl`: every state transition, launch argv, hook receipt with duration, and one `event_hook` line per event-hook spawn with its exit status and the script's duration (none for a detached session-end spawn, §10.3). | The observability surface for things not visible on screen — argv, timings, retries. |
 | **Launch audit** | Each launch appends the exact argv + resolved env keys (values redacted) to the log. | Proves "resume by id, never `--continue`" (R2) without reading agent internals. |
 
 Nothing above changes behaviour; they narrow non-determinism. `DECK_*` variables are listed
