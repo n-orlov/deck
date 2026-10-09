@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 )
 
 // EventHookState is the slice of a sessions row the event-hook dispatcher
@@ -105,23 +106,49 @@ func (s *Store) SetEventHook(ctx context.Context, sessionID string, enabled *boo
 		eventHookEnabledArg(enabled), eventHookEventsArg(events))
 }
 
-// ClaimHookFired replaces a session's hook_fired set with next, but only if
-// it still reads previous. It reports whether this caller won: a false
-// result means another deck process recorded a pair first and now owns the
-// spawn, so the loser must not spawn (SPEC §10.4, "Dispatch never happens
-// twice for one event"). The write is one statement, so the compare and the
-// set are atomic across clients.
-func (s *Store) ClaimHookFired(ctx context.Context, sessionID, previous, next string) (bool, error) {
-	res, err := s.db.ExecContext(ctx, `UPDATE sessions SET hook_fired = ?
-		WHERE id = ? AND COALESCE(hook_fired, '') = ?`, next, sessionID, previous)
+// ClaimHookPair adds the (kind, reason) pair to a session's hook_fired set in
+// one transaction and reports whether this caller is the one that added it.
+// The set is re-read inside the write lock, so a concurrent claim of another
+// pair is merged with, never mistaken for this one: false means exactly this
+// pair was already claimed in the current notify_epoch, and its claimant owns
+// the spawn (SPEC §10.4, "Dispatch never happens twice for one event"). Two
+// deck processes claiming different pairs both win.
+func (s *Store) ClaimHookPair(ctx context.Context, sessionID, kind, reason string) (bool, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return false, fmt.Errorf("claim hook_fired: %w", err)
 	}
-	n, err := res.RowsAffected()
+	defer func() { _ = tx.Rollback() }()
+	var current string
+	if err := tx.QueryRowContext(ctx, `SELECT COALESCE(hook_fired, '') FROM sessions WHERE id = ?`, sessionID).Scan(&current); err != nil {
+		return false, fmt.Errorf("claim hook_fired: %w", err)
+	}
+	type pair struct {
+		Kind   string `json:"kind"`
+		Reason string `json:"reason"`
+	}
+	var fired []pair
+	if current != "" {
+		// A damaged column decodes to the empty set: it must at worst re-fire.
+		if err := json.Unmarshal([]byte(current), &fired); err != nil {
+			fired = nil
+		}
+	}
+	want := pair{Kind: kind, Reason: reason}
+	if slices.Contains(fired, want) {
+		return false, nil
+	}
+	raw, err := json.Marshal(append(fired, want))
 	if err != nil {
 		return false, fmt.Errorf("claim hook_fired: %w", err)
 	}
-	return n == 1, nil
+	if _, err := tx.ExecContext(ctx, `UPDATE sessions SET hook_fired = ? WHERE id = ?`, string(raw), sessionID); err != nil {
+		return false, fmt.Errorf("claim hook_fired: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return false, fmt.Errorf("claim hook_fired: %w", err)
+	}
+	return true, nil
 }
 
 // EventHookResult is what the event hook did for one event (SPEC §10.3): the

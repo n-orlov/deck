@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -162,5 +163,79 @@ func TestHookLaunchKindFollowsTheLease(t *testing.T) {
 	}
 	if got := hookLaunchKind(store.Session{LaunchGeneration: "g1"}); got != LaunchKindResume {
 		t.Errorf("leased row = %q", got)
+	}
+}
+
+// Concurrent offers in one epoch: every distinct (kind, reason) pair spawns
+// exactly once and an identical pair spawns for one caller only. A dedupe skip
+// is justified only by that pair already being claimed, never by contention
+// on the hook_fired column.
+func TestEventHookConcurrentDispatchSpawnsEachDistinctPairOnce(t *testing.T) {
+	f := newHookDispatchFixture(t, "waiting")
+	const reasons, copies = 8, 3
+	var mu sync.Mutex
+	spawned := map[string]int{}
+	var wg sync.WaitGroup
+	for r := range reasons {
+		for range copies {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				reason := fmt.Sprintf("prompt_%d", r)
+				out := f.d.Dispatch(context.Background(), HookEvent{SessionID: "s1", StoredKind: "notification", Reason: reason, At: time.Now()}, false)
+				mu.Lock()
+				defer mu.Unlock()
+				if out.Spawned {
+					spawned[reason]++
+				} else if out.Skip != notify.SkipDeduped {
+					t.Errorf("%s: unexpected outcome %+v", reason, out)
+				}
+			}()
+		}
+	}
+	wg.Wait()
+	if len(spawned) != reasons {
+		t.Fatalf("spawned reasons = %v, want all %d distinct reasons", spawned, reasons)
+	}
+	for reason, n := range spawned {
+		if n != 1 {
+			t.Errorf("reason %s spawned %d times, want 1", reason, n)
+		}
+	}
+	if got := f.runs(); len(got) != reasons {
+		t.Fatalf("runs = %v, want %d", got, reasons)
+	}
+}
+
+func TestEventHookConcurrentDispatchAcrossKindsAndAfterTheFact(t *testing.T) {
+	f := newHookDispatchFixture(t, "waiting")
+	evs := []HookEvent{
+		{SessionID: "s1", StoredKind: "notification", Reason: "permission_prompt"},
+		{SessionID: "s1", StoredKind: "notification", Reason: "elicitation"},
+		{SessionID: "s1", StoredKind: "stop", Reason: "done"},
+		{SessionID: "s1", StoredKind: "tmux.pane_dead", Reason: "crashed"},
+		{SessionID: "s1", StoredKind: "tmux.pane_dead", Reason: "oom"},
+	}
+	outs := make([]HookOutcome, len(evs))
+	var wg sync.WaitGroup
+	for i, ev := range evs {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			ev.At = time.Now()
+			outs[i] = f.d.Dispatch(context.Background(), ev, false)
+		}()
+	}
+	wg.Wait()
+	for i, out := range outs {
+		if !out.Spawned {
+			t.Errorf("event %d (%s/%s) was suppressed: %+v", i, evs[i].StoredKind, evs[i].Reason, out)
+		}
+	}
+	for _, ev := range evs {
+		ev.At = time.Now()
+		if again := f.d.Dispatch(context.Background(), ev, false); again.Spawned || again.Skip != notify.SkipDeduped {
+			t.Errorf("repeat of %s/%s = %+v, want deduped", ev.StoredKind, ev.Reason, again)
+		}
 	}
 }
