@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -394,5 +395,71 @@ func TestHeldUserThemeFileChangeAppliesWhenEditIsReverted(t *testing.T) {
 	h.key(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}})
 	if !themeColoursChanged(h, before) {
 		t.Fatal("the held theme file change was not applied once the edit was reverted")
+	}
+}
+
+// nextThemeFileEdit rewrites the user theme file once more (a second external
+// writer): the built-in body renamed to midnight with one colour replaced by to.
+func nextThemeFileEdit(t *testing.T, h *reloadHarness, to string) {
+	t.Helper()
+	body := strings.Replace(builtinEmpireTheme(t), "name = \"empire\"", "name = \"midnight\"", 1)
+	from := regexp.MustCompile(`#[0-9a-fA-F]{6}`).FindString(body)
+	next := strings.Replace(body, from, to, 1)
+	if next == body {
+		t.Fatalf("setup: %s not found in the theme file", from)
+	}
+	h.write(filepath.Join(h.dir, "themes", "midnight.toml"), next)
+}
+
+func TestExternalThemeFileEditAfterAHeldApplyOnSaveIsStillPickedUp(t *testing.T) {
+	h, _ := userThemeHeldHarness(t, "")
+	h.key(tea.KeyMsg{Type: tea.KeyCtrlS})
+	applied := h.m.reloadApplied
+	if h.pollOnce().changed || h.m.reloadApplied != applied {
+		t.Fatal("the save's own write was applied again")
+	}
+	nextThemeFileEdit(t, h, "#654321")
+	if !h.pollOnce().changed || h.m.reloadApplied != applied+1 {
+		t.Fatalf("a later external theme file edit was not applied once (counter %d -> %d)", applied, h.m.reloadApplied)
+	}
+	found := false
+	for _, c := range h.m.settings.Theme.Colors {
+		found = found || c == "#654321"
+	}
+	if !found {
+		t.Fatal("the later external theme colour is not live")
+	}
+}
+
+func TestHeldThemeFileChangeAppliedOnCancelIsNotAppliedAgainAndLaterEditsStillAre(t *testing.T) {
+	h, _ := userThemeHeldHarness(t, "")
+	h.key(tea.KeyMsg{Type: tea.KeyEsc})
+	h.key(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'y'}})
+	if h.m.settingsOpen || h.m.reloadHeld != nil {
+		t.Fatal("setup: the discard did not release the held reload")
+	}
+	applied := h.m.reloadApplied
+	if h.pollOnce().changed || h.m.reloadApplied != applied {
+		t.Fatal("the next unchanged poll applied the already-applied reload again")
+	}
+	nextThemeFileEdit(t, h, "#abcdef")
+	if !h.pollOnce().changed || h.m.reloadApplied != applied+1 {
+		t.Fatal("a later external theme file edit was not picked up after the cancel")
+	}
+}
+
+func TestSecondHeldThemeFileEditReplacesTheFirstAndAppliesOnSave(t *testing.T) {
+	h, _ := userThemeHeldHarness(t, "")
+	nextThemeFileEdit(t, h, "#0a0b0c")
+	if !h.pollOnce().changed || h.m.reloadHeld == nil || !h.m.settingsDirty() {
+		t.Fatal("the second external edit was not held behind the open edit")
+	}
+	h.key(tea.KeyMsg{Type: tea.KeyCtrlS})
+	found := false
+	for _, c := range h.m.settings.Theme.Colors {
+		found = found || c == "#0a0b0c"
+	}
+	if !found || !h.m.settings.ASCII {
+		t.Fatalf("save did not apply the newest held theme file (found=%v, ascii=%v)", found, h.m.settings.ASCII)
 	}
 }
