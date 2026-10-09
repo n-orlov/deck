@@ -304,3 +304,48 @@ func specHasKind(seen map[string]string, stored string) bool {
 	}
 	return false
 }
+
+// TestEveryReconcileDetectedDeathOffersAKindWhateverItsReason pins the rule
+// R232 names: a process death deck itself detects (pane dead, or the tmux
+// session vanishing) is offered to the hook, and its free-text reason never
+// decides whether it is.
+func TestEveryReconcileDetectedDeathOffersAKindWhateverItsReason(t *testing.T) {
+	deaths := map[string]string{"tmux.pane_dead": "error", "tmux.session_gone": "ended"}
+	for stored, want := range deaths {
+		for _, reason := range []string{"", "tmux pane exited with status 137", "tmux session disappeared", "anything else"} {
+			kind, ok := OfferedKind(stored, reason)
+			if !ok || kind != want {
+				t.Errorf("OfferedKind(%q, %q) = %q, %v; want %q", stored, reason, kind, ok, want)
+			}
+			row := &fakeRow{}
+			if !row.fire(policy(true, want), kind, reason) {
+				t.Errorf("%s with reason %q offered %q but did not spawn", stored, reason, kind)
+			}
+		}
+	}
+}
+
+// TestDeathKindsDedupeIndependentlyWithinOneEpoch: a pane death and a vanished
+// session in the same epoch are two pairs, so neither hides the other, and an
+// opted-out or unlisted death still never spawns.
+func TestDeathKindsDedupeIndependentlyWithinOneEpoch(t *testing.T) {
+	p := policy(true, "error", "ended")
+	row := &fakeRow{}
+	if !row.fire(p, "error", "tmux pane exited with status 1") {
+		t.Fatal("pane death did not spawn")
+	}
+	if !row.fire(p, "ended", "tmux session disappeared") {
+		t.Fatal("a vanished session after a pane death was hidden by the earlier pair")
+	}
+	if row.fire(p, "ended", "tmux session disappeared") {
+		t.Fatal("the same vanished-session pair spawned twice in one epoch")
+	}
+	off := &fakeRow{enabled: boolp(false)}
+	if off.fire(p, "ended", "tmux session disappeared") {
+		t.Fatal("an opted-out session spawned for a death")
+	}
+	unlisted := &fakeRow{events: []string{"error"}}
+	if unlisted.fire(p, "ended", "tmux session disappeared") {
+		t.Fatal("a session whose own list omits ended spawned for a vanished session")
+	}
+}
