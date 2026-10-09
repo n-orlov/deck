@@ -120,19 +120,27 @@ func (s Service) recordSessionGone(ctx context.Context, session store.Session) e
 	if rowIsTerminal(session) {
 		return nil
 	}
+	var seq int64
+	at := s.Clock.Now()
+	const reason = "tmux session disappeared"
 	if err := s.Store.UpdateSessionStatus(ctx, store.StatusUpdateInput{
 		SessionID: session.ID,
 		Status:    "stopped",
-		Reason:    "tmux session disappeared",
+		Reason:    reason,
 		Source:    "tmux",
-		At:        s.Clock.Now().UnixMilli(),
+		At:        at.UnixMilli(),
 		EventKind: "tmux.session_gone",
+		EventSeq:  &seq,
 	}); err != nil {
 		return fmt.Errorf("mark session %q stopped: %w", session.ID, err)
 	}
 	if err := s.Audit.Transition(session.ID, "tmux.session_gone"); err != nil {
 		return fmt.Errorf("audit disappeared tmux session %q: %w", session.ID, err)
 	}
+	// A clean disappearance is a process death too (SPEC §10.4): it offers
+	// `ended`, after the event row is durable.
+	s.offerHook(ctx, HookEvent{SessionID: session.ID, StoredKind: "tmux.session_gone", Reason: reason,
+		At: at, AppliedStatus: "stopped", EventSeq: seq})
 	return nil
 }
 

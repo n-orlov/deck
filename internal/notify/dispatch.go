@@ -179,6 +179,7 @@ var storedKindOffers = map[string]string{
 	"stop_failure":       "error",
 	"session_end":        "ended",
 	"tmux.pane_dead":     "error",
+	"tmux.session_gone":  "ended",
 	"killed":             "killed",
 }
 

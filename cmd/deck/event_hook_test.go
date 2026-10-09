@@ -33,7 +33,8 @@ func newEventHookFixture(t *testing.T, agentKind, status string) eventHookFixtur
 	t.Helper()
 	t.Setenv("DECK_SESSION_ID", "")
 	settings, paths := hookCapSettings(t)
-	settings.Socket = "priv-event-hook-test"
+	dir := t.TempDir()
+	settings.Socket = "priv-eh-" + filepath.Base(filepath.Dir(dir)) + "-" + filepath.Base(dir)
 	settings.Reconcile = 500 * time.Millisecond
 	settings.EventHookDefault = true
 	settings.EventHookEvents = config.EventHookKinds
@@ -43,11 +44,21 @@ func newEventHookFixture(t *testing.T, agentKind, status string) eventHookFixtur
 		t.Fatal(err)
 	}
 	defer db.Close()
-	if _, err := db.CreateSession(context.Background(), store.CreateSessionInput{
+	row, err := db.CreateSession(context.Background(), store.CreateSessionInput{
 		ID: "row-1", Name: "api", CWD: paths.Home, Agent: agentKind, CapturedPath: "/bin",
 		Status: status, StatusSource: "user", StatusAt: 1000, CreatedAt: 1000,
 		ConversationID: "conv-1", Env: map[string]string{"API_TOKEN": "s3cret-value"},
-	}); err != nil {
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The row's tmux session is alive on the fixture's private socket, so the
+	// post-hook liveness pass sees no process death: a test that asserts what
+	// the payload alone offered is not answered by a disappearance's `ended`.
+	keepAlive := tmux.Client{Socket: settings.Socket}
+	t.Cleanup(func() { _ = exec.Command("tmux", "-L", settings.Socket, "kill-server").Run() })
+	if _, err := keepAlive.Create(context.Background(), tmux.Launch{Slug: row.Slug, CWD: paths.Home,
+		Command: []string{"/bin/sh", "-c", "sleep 600"}}); err != nil {
 		t.Fatal(err)
 	}
 	return eventHookFixture{settings: settings, paths: paths, out: t.TempDir()}
@@ -467,7 +478,6 @@ func TestHookDispatchStoresTheResultAgainstTheEvent(t *testing.T) {
 // event_hook_timeout alone, and its result is stored against the death's row.
 func TestHookLivenessPassDispatchesAnUnattendedCrash(t *testing.T) {
 	f := newEventHookFixture(t, "claude", "running")
-	f.settings.Socket = "priv-eh-crash-" + filepath.Base(t.TempDir())
 	f.settings.Reconcile = 300 * time.Millisecond
 	f.script(t, fmt.Sprintf(`printf '%%s %%s\n' "$1" "$DECK_SESSION_ID" >> %[1]q
 sleep 1
@@ -514,6 +524,35 @@ echo crash-hook-done
 	}
 	if run.Kind != "error" || run.ExitCode != 0 || run.TimedOut || !strings.Contains(run.Output, "crash-hook-done") {
 		t.Fatalf("crash hook result = %+v: want error, exit 0, not timed out, the script's output (the reconcile budget must not cut it short)", run)
+	}
+}
+
+// SPEC §10.4: a tmux session that disappeared cleanly is a process death the
+// liveness pass of `deck _hook` records, and that same `_hook` offers `ended`
+// for it (after the hook's own event), once, with the result on the event.
+func TestHookLivenessPassDispatchesAnUnattendedDisappearance(t *testing.T) {
+	f := newEventHookFixture(t, "claude", "running")
+	f.script(t, fmt.Sprintf(`printf '%%s %%s\n' "$1" "$DECK_SESSION_ID" >> %[1]q
+echo gone-hook-done
+`, filepath.Join(f.out, "calls")))
+	if err := exec.Command("tmux", "-L", f.settings.Socket, "kill-server").Run(); err != nil {
+		t.Fatal(err)
+	}
+	if code, stderr := f.run(`{"hook_event_name":"Notification","session_id":"conv-1","notification_type":"idle_prompt"}`); code != 0 {
+		t.Fatalf("hook exit = %d, stderr %q", code, stderr)
+	}
+	calls := strings.Split(strings.TrimSpace(f.read(t, "calls")), "\n")
+	if len(calls) != 2 || calls[0] != "waiting row-1" || calls[1] != "ended row-1" {
+		t.Fatalf("event hook calls = %q, want the hook's own waiting then the disappearance's ended", calls)
+	}
+	db, err := store.Open(f.paths)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	run, ok, err := db.LastEventHookResult(context.Background(), "row-1")
+	if err != nil || !ok || run.Kind != "ended" || run.ExitCode != 0 || !strings.Contains(run.Output, "gone-hook-done") {
+		t.Fatalf("stored result = %+v ok=%v err=%v, want ended with the script's output", run, ok, err)
 	}
 }
 
