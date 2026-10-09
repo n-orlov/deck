@@ -62,6 +62,19 @@ func probeSetupGoVersion(with, env map[string]string, versionFiles map[string]st
 // 1.25 line (an unpatched "1.25" resolves to the latest, but "1.25.0"
 // and a missing patch from the go directive are the floor the task
 // exists to avoid).
+func atoiOr0(s string) int {
+	n, _ := strconv.Atoi(s)
+	return n
+}
+
+// goLineVersion returns the version operand of go.mod's `go` directive.
+func goLineVersion(gomod string) string {
+	if m := goLineRE.FindStringSubmatch(gomod); m != nil {
+		return m[1]
+	}
+	return ""
+}
+
 func isFloorRelease(v string) bool {
 	m := patchVersionRE.FindStringSubmatch(v)
 	if m == nil {
@@ -107,11 +120,22 @@ func TestGoModCarriesPatchedToolchainLine(t *testing.T) {
 	if v == "" {
 		t.Fatalf("go.mod has no `toolchain go1.25.N` line: setup-go falls back to the `go` directive (1.25.0)")
 	}
-	if !strings.HasPrefix(v, "1.25.") || !patchVersionRE.MatchString(v) {
-		t.Fatalf("go.mod toolchain line names %q, want a 1.25.N patch release", v)
+	m := patchVersionRE.FindStringSubmatch(v)
+	if m == nil {
+		t.Fatalf("go.mod toolchain line names %q, want a 1.N.P patch release", v)
+	}
+	// The toolchain may run a newer Go line than the language floor (the
+	// floor says what the code needs, the toolchain what gets installed),
+	// never an older one.
+	floor := patchVersionRE.FindStringSubmatch(goLineVersion(gomod))
+	if floor == nil {
+		t.Fatalf("go.mod has no parsable `go 1.N.P` directive to compare the toolchain line %q with", v)
+	}
+	if toolMinor, _ := strconv.Atoi(m[1]); toolMinor < atoiOr0(floor[1]) {
+		t.Fatalf("go.mod toolchain line names %q, older than the go directive's 1.%s line", v, floor[1])
 	}
 	if isFloorRelease(v) {
-		t.Fatalf("go.mod toolchain line names %q: the floor release misses every later 1.25.x fix", v)
+		t.Fatalf("go.mod toolchain line names %q: the floor release misses every later fix of its line", v)
 	}
 }
 
@@ -136,7 +160,7 @@ func TestCISetupGoCannotSelectFloorRelease(t *testing.T) {
 			}
 			got := probeSetupGoVersion(s.With, env, map[string]string{"go.mod": gomod})
 			if got == "" || isFloorRelease(got) || !patchVersionRE.MatchString(got) {
-				t.Errorf("ci.yml job %q setup-go step resolves to %q, want a patched 1.25.N release (not 1.25.0)", jobName, got)
+				t.Errorf("ci.yml job %q setup-go step resolves to %q, want a patched release (not the .0 floor)", jobName, got)
 			}
 		}
 	}

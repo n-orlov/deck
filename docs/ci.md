@@ -43,12 +43,12 @@ disagree. `gofmt`, `go vet` and `go mod tidy` stay only in `ci/lint.sh`
 the lint job stops reaching the linter, the quality gate is off, or those three
 checks appear in a second place.
 
-`go.mod` carries a `toolchain go1.25.N` line (matching the `deck-ci` image's
+`go.mod` carries a `toolchain go1.N.P` line (matching the `deck-ci` image's
 Go, `ci/Dockerfile`). `actions/setup-go` with `go-version-file: go.mod`
-prefers that line over the `go 1.25.0` language floor, so the `setup-go` steps
-in `ci.yml` and `release.yml` install the patched toolchain instead of 1.25.0
+prefers that line over the `go 1.25.0` language floor (the toolchain may run a newer line than the floor, never an older one), so the `setup-go` steps
+in `ci.yml` and `release.yml` install the patched toolchain instead of the .0 floor
 (unless `GOTOOLCHAIN=local` is set in the step). `ci/workflowcheck` fails if
-the line is removed or a `ci.yml` `setup-go` step could resolve to 1.25.0;
+the line is removed or a `ci.yml` `setup-go` step could resolve to the .0 floor;
 bump the line together with the image's Go.
 
 Workflow hardening (R197, GH #61): every `uses:` line in `ci.yml` and
