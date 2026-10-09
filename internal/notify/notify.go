@@ -73,7 +73,7 @@ func Spawn(ctx context.Context, req Request) (Result, error) {
 	safe := sanitize(req)
 	body, err := buildPayload(safe, message)
 	if err != nil {
-		return notStarted, fmt.Errorf("event hook: encode payload: %w", err)
+		return notStarted, redactError(fmt.Errorf("event hook: encode payload: %w", err), req.SessionEnv)
 	}
 	outCap := req.OutputCap
 	if outCap <= 0 {

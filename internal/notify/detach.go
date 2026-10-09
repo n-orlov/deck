@@ -23,7 +23,9 @@ import (
 // reason exceeds it), and the script never depends on this process staying
 // alive to feed its stdin. Nothing is left on disk: the file is removed
 // before the script starts and lives only as long as the script's stdin.
-// An error means the script was never started and is safe to record.
+// An error means the script was never started and is safe to record: every
+// error it returns, a payload-file failure included, is scrubbed of session
+// env values (SPEC §10.1).
 func Start(req Request) error {
 	if err := validate(req); err != nil {
 		return redactError(err, req.SessionEnv)
@@ -32,11 +34,11 @@ func Start(req Request) error {
 	safe := sanitize(req)
 	body, err := buildPayload(safe, message)
 	if err != nil {
-		return fmt.Errorf("event hook: encode payload: %w", err)
+		return redactError(fmt.Errorf("event hook: encode payload: %w", err), req.SessionEnv)
 	}
 	reader, err := payloadFile(body)
 	if err != nil {
-		return err
+		return redactError(err, req.SessionEnv)
 	}
 	defer func() { _ = reader.Close() }()
 	cmd := exec.Command(req.Command[0], argv(req)...) //nolint:gosec // G204: the configured event hook is a user-owned executable run without a shell by design (SPEC §10.1)

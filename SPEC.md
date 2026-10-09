@@ -1630,12 +1630,21 @@ argv[1]: the configured fixed arguments follow it (`script <event> <fixed>...`).
   Redaction masks the value of every secret-shaped `KEY=VALUE` pair in the message and removes
   every non-empty session env value, of any length, by value, from the message and from the
   captured output tail: there is no length floor, so a one-character value is removed too.
-  `deck _hook` runs inside the agent and so inherits the session env; an inherited variable
-  whose name is one of the session's env keys is not passed on to the script at all, and the
-  attached and the detached (session-end) spawn apply the identical rule. The same by-value removal applies to every other string exported in the
+  `deck _hook` runs inside the agent and so inherits the session env, under its own keys and
+  under any other name that copied a value; the inherited environment is therefore filtered by
+  value, not only by key: an inherited variable whose name is one of the session's env keys, or
+  whose entry (name or value) contains any non-empty session env value, of any length, is not
+  passed on to the script at all. A short value can so withhold an ordinary variable such as
+  `PATH` from the script (deck still finds the script itself on its own `PATH`), so a script
+  that needs one sets it itself. The attached and the detached (session-end) spawn apply the
+  identical rule, with no length exception. The same by-value removal applies to every other string exported in the
   environment or the payload (the session fields, both reasons, the deck host and version) and
-  to a not-started error's text, and both reasons also get the `KEY=VALUE` masking; the spawner
-  is `internal/notify`, which is handed the env only to scrub it.
+  to every not-started error's text, the detached spawn's payload-file failure included, so
+  neither the stored result nor the `deck.jsonl` line carries a value; both reasons also get the
+  `KEY=VALUE` masking. Only deck's own fixed vocabulary is exempt, because §10.1 fixes it: the
+  variable names, the payload's keys and `version`, the offered kind and the RFC 3339 `at`; a
+  value that happens to occur inside one of those is coincidence, not a copy of the session env.
+  The spawner is `internal/notify`, which is handed the env only to scrub it.
 
 ### 10.2 Per-session control
 
