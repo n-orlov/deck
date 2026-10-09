@@ -468,3 +468,84 @@ func TestReconcileWithinDispatchesDeathsAfterThePassReturns(t *testing.T) {
 		}
 	}
 }
+
+// One reconcile pass that meets both kinds of process death offers each under
+// its own kind: the retained failure as `error`, the clean disappearance as
+// `ended`, each exactly once and each after its own event row is durable.
+func TestOneReconcilePassOffersEveryKindOfProcessDeath(t *testing.T) {
+	svc, db, _, _ := newAgentTestService(t, nil, "hook-mixed-deaths")
+	var seenKinds []string
+	var seenRows []int
+	var mu sync.Mutex
+	d := EventHookDispatcher{
+		Store:   svc.Store,
+		Policy:  notify.Policy{Command: []string{"/bin/true"}, Default: true, Events: config.EventHookKinds},
+		Timeout: time.Second,
+		Deck:    notify.Deck{Host: "box", Version: "test"},
+		BaseEnv: []string{"PATH=/usr/bin:/bin"},
+		Spawn: func(ctx context.Context, req notify.Request) (notify.Result, error) {
+			var rows int
+			_ = db.DB().QueryRowContext(ctx, `SELECT count(*) FROM events WHERE session_id = ? AND kind IN ('tmux.pane_dead','tmux.session_gone')`,
+				req.Session.ID).Scan(&rows)
+			mu.Lock()
+			defer mu.Unlock()
+			seenKinds = append(seenKinds, req.Event.Kind+"/"+req.Session.ID[len(req.Session.ID)-2:])
+			seenRows = append(seenRows, rows)
+			return notify.Result{}, nil
+		},
+	}
+	svc.EventHook = func() EventHookDispatcher { return d }
+
+	cwd := t.TempDir()
+	crashed, err := db.CreateSession(context.Background(), store.CreateSessionInput{
+		ID: "00000000-0000-4000-8000-0000000000c1", Name: "crashed", CWD: cwd, Agent: "claude", CapturedPath: "/bin",
+		Status: "running", StatusSource: "hook", StatusAt: 1, CreatedAt: 1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.TMux.Create(context.Background(), tmux.Launch{Slug: crashed.Slug, CWD: cwd,
+		Command: []string{"/bin/sh", "-c", `exit 3`}}); err != nil {
+		t.Fatal(err)
+	}
+	waitForDeadPane(t, svc.TMux, crashed.Slug, 3)
+	goneRow(t, db, "00000000-0000-4000-8000-0000000000c2", "claude", "running")
+
+	if err := svc.Reconcile(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	want := map[string]bool{"error/c1": true, "ended/c2": true}
+	if len(seenKinds) != 2 || !want[seenKinds[0]] || !want[seenKinds[1]] || seenKinds[0] == seenKinds[1] {
+		t.Fatalf("offered %v, want exactly error/c1 and ended/c2", seenKinds)
+	}
+	for i, rows := range seenRows {
+		if rows < 1 {
+			t.Fatalf("offer %s ran before its event row was durable", seenKinds[i])
+		}
+	}
+}
+
+// A session whose own switch is off still has its death recorded (the event
+// row is written first and always) but is never offered to the hook, on the
+// clean-disappearance path.
+func TestReconcileDetectedDeathOfAnOptedOutSessionRecordsButNeverSpawns(t *testing.T) {
+	svc, db, _, _ := newAgentTestService(t, nil, "hook-optout-death")
+	log, _ := withEventHook(&svc, "tmux.session_gone")
+	off := false
+	session, err := db.CreateSession(context.Background(), store.CreateSessionInput{
+		ID: "00000000-0000-4000-8000-0000000000c3", Name: "opted-out", CWD: t.TempDir(), Agent: "claude", CapturedPath: "/bin",
+		Status: "running", StatusSource: "hook", StatusAt: 1, CreatedAt: 1, EventHookEnabled: &off,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.Reconcile(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	_ = eventSeqOf(t, db, session.ID, "tmux.session_gone")
+	if log.count() != 0 {
+		t.Fatalf("an opted-out session spawned %v", log.kinds)
+	}
+}
