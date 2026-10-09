@@ -70,9 +70,7 @@ func scenarioDeckBinaryIsOldBuildA(ctx context.Context, schema int) error {
 	}
 	binary := filepath.Join(dir, "deck")
 	ldflags := fmt.Sprintf("-X main.version=v0.0.1-old -X github.com/n-orlov/deck/internal/store.oldSchemaVersion=%d", schema)
-	build := exec.CommandContext(ctx, "go", "build", "-tags", "deckoldschema", "-ldflags", ldflags, "-o", binary, "github.com/n-orlov/deck/cmd/deck")
-	build.Dir = root
-	if output, err := build.CombinedOutput(); err != nil {
+	if output, err := memoGoBuild(ctx, root, binary, "github.com/n-orlov/deck/cmd/deck", "-tags", "deckoldschema", "-ldflags", ldflags); err != nil {
 		return fmt.Errorf("build old-schema deck A: %w\n%s", err, output)
 	}
 	st.current, st.a, st.aSchema = h.Binary, binary, schema

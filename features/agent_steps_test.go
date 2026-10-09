@@ -138,9 +138,7 @@ func installFakePiOnPATH(ctx context.Context, longRunning bool) error {
 		return fmt.Errorf("create fake agent PATH directory: %w", err)
 	}
 	realBinary := filepath.Join(dir, "fake-pi-real")
-	build := exec.CommandContext(ctx, "go", "build", "-o", realBinary, "./cmd/fake-pi")
-	build.Dir = root
-	if output, err := build.CombinedOutput(); err != nil {
+	if output, err := memoGoBuild(ctx, root, realBinary, "./cmd/fake-pi"); err != nil {
 		return fmt.Errorf("build fake pi fixture: %w\n%s", err, output)
 	}
 	piWrapper := filepath.Join(dir, "pi")
@@ -194,9 +192,7 @@ func installFakeCodexOnPATH(ctx context.Context, longRunning bool) error {
 		return fmt.Errorf("create fake agent PATH directory: %w", err)
 	}
 	realBinary := filepath.Join(dir, "fake-codex-real")
-	build := exec.CommandContext(ctx, "go", "build", "-o", realBinary, "./cmd/fake-codex")
-	build.Dir = root
-	if output, err := build.CombinedOutput(); err != nil {
+	if output, err := memoGoBuild(ctx, root, realBinary, "./cmd/fake-codex"); err != nil {
 		return fmt.Errorf("build fake codex fixture: %w\n%s", err, output)
 	}
 	codexWrapper := filepath.Join(dir, "codex")
@@ -247,9 +243,7 @@ func installFakeCopilotOnPATH(ctx context.Context, screen bool) error {
 		return fmt.Errorf("create fake agent PATH directory: %w", err)
 	}
 	realBinary := filepath.Join(dir, "fake-copilot-real")
-	build := exec.CommandContext(ctx, "go", "build", "-o", realBinary, "./cmd/fake-copilot")
-	build.Dir = root
-	if output, err := build.CombinedOutput(); err != nil {
+	if output, err := memoGoBuild(ctx, root, realBinary, "./cmd/fake-copilot"); err != nil {
 		return fmt.Errorf("build fake copilot fixture: %w\n%s", err, output)
 	}
 	environment := "FAKE_COPILOT_COMMANDS=1"
@@ -350,9 +344,7 @@ func installFakeClaudeOnPATH(ctx context.Context, longRunning bool) error {
 		return fmt.Errorf("create fake agent PATH directory: %w", err)
 	}
 	realBinary := filepath.Join(dir, "fake-claude-real")
-	build := exec.CommandContext(ctx, "go", "build", "-o", realBinary, "./cmd/fake-claude")
-	build.Dir = root
-	if output, err := build.CombinedOutput(); err != nil {
+	if output, err := memoGoBuild(ctx, root, realBinary, "./cmd/fake-claude"); err != nil {
 		return fmt.Errorf("build fake claude fixture: %w\n%s", err, output)
 	}
 	// deck's own CreateAgent/Resume mirror the launch env into the tmux

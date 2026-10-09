@@ -648,9 +648,10 @@ func scenarioHarness(ctx context.Context) (*ScenarioHarness, error) {
 // (measured ~1-5s) and still far cheaper than the failure mode it replaces.
 // A timeout here is an infra/environment fault, not a product bug -- callers
 // evaluating a features run for stability must classify it as such, never as
-// evidence about deck's own behaviour. This does NOT restructure the
-// once-per-scenario build into once-per-suite; that trade is recorded as a
-// deferred requirement in docs/reports/phase3-findings.md instead.
+// evidence about deck's own behaviour. Task 021 then restructured the
+// once-per-scenario build into one build per build configuration per test
+// process (scenario_binary_test.go's goBuildCache), which still applies
+// this bound to that one build.
 var scenarioBuildDeadline = 5 * time.Minute
 
 func registerScenarioLifecycle(sc *godog.ScenarioContext) {
@@ -659,27 +660,18 @@ func registerScenarioLifecycle(sc *godog.ScenarioContext) {
 		if err != nil {
 			return ctx, fmt.Errorf("locate repository root: %w", err)
 		}
-		// The normal feature suite may be invoked without the focused driver
-		// test, so build its own released binary once per scenario.
-		binary := filepath.Join(os.TempDir(), fmt.Sprintf("deck-godog-%d-%d", os.Getpid(), scenarioSequence.Add(1)))
-		buildCtx, cancel := context.WithTimeout(context.Background(), scenarioBuildDeadline)
-		start := time.Now()
-		// R146/task 016: when the caller (ci/suite.sh) sets GOCOVERDIR, build the
-		// released binary with `-cover` so every scenario's deck process writes
-		// black-box coverage counters into that directory via its inherited
-		// environment (StartScreenDriverInDir's cmd.Env starts from os.Environ(),
-		// which already carries GOCOVERDIR when the test process itself has it).
-		// Unset, this is the exact same `go build -o binary cmd/deck` as before.
-		buildArgs := deckBuildArgs(binary, root, os.Getenv("GOCOVERDIR"), os.Getenv("DECK_FEATURES_COVERMODE"))
-		output, buildErr := exec.CommandContext(buildCtx, "go", buildArgs...).CombinedOutput()
-		elapsed := time.Since(start)
-		timedOut := buildCtx.Err() != nil
-		cancel()
-		if timedOut {
-			return ctx, fmt.Errorf("INFRA FAULT (not a product bug): per-scenario `go build` for %q (binary %s) did not finish within its %s bound; elapsed %s; partial output:\n%s", sce.Name, binary, scenarioBuildDeadline, elapsed, output)
-		}
-		if buildErr != nil {
-			return ctx, fmt.Errorf("build deck for scenario lifecycle: %w\n%s", buildErr, output)
+		// Every scenario gets its own copy of the released binary at a unique
+		// path; the `go build` behind it runs once per build configuration
+		// per test process (scenario_binary_test.go's goBuildCache), still
+		// bounded by scenarioBuildDeadline. With GOCOVERDIR set (R146/task
+		// 016, ci/suite.sh) the binary is built with `-cover`, so every
+		// scenario's deck process writes black-box coverage counters into
+		// that directory via its inherited environment (StartScreenDriverInDir's
+		// cmd.Env starts from os.Environ()); unset, it is the plain
+		// `go build -o binary cmd/deck`.
+		binary, err := scenarioBuilds.scenarioBinary(sce.Name, root, os.Getenv("GOCOVERDIR"), os.Getenv("DECK_FEATURES_COVERMODE"))
+		if err != nil {
+			return ctx, err
 		}
 		harness, err := newScenarioHarness(binary)
 		if err != nil {

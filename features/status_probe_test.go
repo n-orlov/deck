@@ -47,9 +47,7 @@ func configureProbeScenario(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	pi := exec.CommandContext(ctx, "go", "build", "-o", filepath.Join(h.agentPATHDir, "pi"), "./cmd/fake-pi")
-	pi.Dir = root
-	if output, err := pi.CombinedOutput(); err != nil {
+	if output, err := memoGoBuild(ctx, root, filepath.Join(h.agentPATHDir, "pi"), "./cmd/fake-pi"); err != nil {
 		return fmt.Errorf("build fake pi fixture: %w\n%s", err, output)
 	}
 	fixtureDir := filepath.Join(root, "internal", "agent", "testdata", "probes")

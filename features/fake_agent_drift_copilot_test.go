@@ -79,9 +79,7 @@ func (s *fakeCopilotDriftScenario) fixtureIsBuilt(ctx context.Context) error {
 		return fmt.Errorf("create drift scratch dir: %w", err)
 	}
 	s.binary = filepath.Join(s.dir, "fake-copilot")
-	build := exec.CommandContext(ctx, "go", "build", "-o", s.binary, "./cmd/fake-copilot")
-	build.Dir = root
-	if output, err := build.CombinedOutput(); err != nil {
+	if output, err := memoGoBuild(ctx, root, s.binary, "./cmd/fake-copilot"); err != nil {
 		return fmt.Errorf("build fake copilot fixture: %w\n%s", err, output)
 	}
 	return nil

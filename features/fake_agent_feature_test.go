@@ -3,7 +3,6 @@ package features
 import (
 	"context"
 	"fmt"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -44,9 +43,7 @@ func (s *fakeAgentScenario) buildFixture(ctx context.Context) error {
 		return err
 	}
 	s.binary = filepath.Join(h.Home, "fake-claude")
-	build := exec.CommandContext(ctx, "go", "build", "-o", s.binary, "./cmd/fake-claude")
-	build.Dir = root
-	if output, err := build.CombinedOutput(); err != nil {
+	if output, err := memoGoBuild(ctx, root, s.binary, "./cmd/fake-claude"); err != nil {
 		return fmt.Errorf("build repository fake Claude fixture: %w\n%s", err, output)
 	}
 	return nil
