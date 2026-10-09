@@ -77,15 +77,27 @@ func withDeferredHooks(ctx context.Context) (context.Context, *deferredHooks) {
 	return context.WithValue(ctx, deferredHooksKey{}, queue), queue
 }
 
-// dispatchDeferred offers every queued event, outside the pass's budget.
+// dispatchDeferred offers every queued event, outside the pass's budget. The
+// offers run concurrently, each under its own dispatcher Timeout, so the whole
+// batch costs one event_hook_timeout however many deaths the pass recorded: a
+// pass that finds ten sessions dead with slow or failing scripts holds the
+// caller (`deck _hook` on the agent's critical path) for one bound, not ten.
+// Every offer still claims its own pair and records its own result against its
+// own event row; none is dropped for the sake of time.
 func (s Service) dispatchDeferred(ctx context.Context, queue *deferredHooks) {
 	queue.mu.Lock()
 	events := queue.events
 	queue.events = nil
 	queue.mu.Unlock()
+	var wg sync.WaitGroup
 	for _, ev := range events {
-		s.offerHook(ctx, ev)
+		wg.Add(1)
+		go func(ev HookEvent) {
+			defer wg.Done()
+			s.offerHook(ctx, ev)
+		}(ev)
 	}
+	wg.Wait()
 }
 
 // HookEvent is one recorded change to offer the hook.
