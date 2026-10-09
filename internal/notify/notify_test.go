@@ -27,8 +27,16 @@ func script(t *testing.T, body string) string {
 
 // captureScript records argv (one per line), env, stdin and the cwd-free
 // facts into files next to itself, then exits with status.
+//
+// The hook inherits the test's working directory, and sh exports it as PWD.
+// Under `go test` that is the package directory, wherever the checkout lives,
+// so a checkout path holding a short session env value ("q", "Q", "zj") would
+// put that value in PWD through no act of deck's. The script therefore runs
+// from "/", a cwd no test value occurs in, and every assertion over its whole
+// environment (PWD included) still holds deck to the by-value rule.
 func captureScript(t *testing.T, extra string) (path, dir string) {
 	t.Helper()
+	t.Chdir("/")
 	dir = t.TempDir()
 	body := `d=` + strconv.Quote(dir) + `
 for a in "$@"; do printf '%s\n' "$a"; done > "$d/argv"
