@@ -102,26 +102,36 @@ func ownedEnv(entry string) bool {
 	return strings.HasPrefix(name, "DECK_SESSION_") || strings.HasPrefix(name, "DECK_EVENT_")
 }
 
-// sessionEnvEntry reports whether an inherited entry is one of the session's
-// own env keys. `deck _hook` runs inside the agent, whose environment is the
-// session env, so those entries carry session env values (of any length) and
-// are not passed on to the script (SPEC §6.4, §10.1).
-func sessionEnvEntry(entry string, sessionEnv map[string]string) bool {
+// carriesSessionEnv reports whether an inherited entry must not be passed on
+// to the script: its name is one of the session's env keys, or the entry
+// (name or value) contains any non-empty session env value, of any length. `deck _hook` runs
+// inside the agent, whose environment carries the session env, so a value can
+// reach the script under its own key or under any other name that copied it
+// (SPEC §6.4, §10.1: env values never appear in the script's environment).
+func carriesSessionEnv(entry string, sessionEnv map[string]string, values []string) bool {
 	name, _, _ := strings.Cut(entry, "=")
-	_, ok := sessionEnv[name]
-	return ok
+	if _, ok := sessionEnv[name]; ok {
+		return true
+	}
+	for _, secret := range values {
+		if strings.Contains(entry, secret) {
+			return true
+		}
+	}
+	return false
 }
 
 // buildEnv layers the nine DECK_SESSION_* variables (always exported, empty
 // rather than absent, exactly as pre_launch sees them) and the four
 // DECK_EVENT_* variables over the inherited environment. Session env values
-// are never exported here, and neither is an inherited variable the session
-// env defines.
+// are never exported here: an inherited variable that is named like a session
+// env key or that contains a session env value is dropped whole.
 func buildEnv(req Request, message string) []string {
 	s := req.Session
+	values := scrubValues(req.SessionEnv)
 	env := make([]string, 0, len(req.BaseEnv)+13)
 	for _, entry := range req.BaseEnv {
-		if !ownedEnv(entry) && !sessionEnvEntry(entry, req.SessionEnv) {
+		if !ownedEnv(entry) && !carriesSessionEnv(entry, req.SessionEnv, values) {
 			env = append(env, entry)
 		}
 	}
