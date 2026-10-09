@@ -2,8 +2,12 @@ package store
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"path/filepath"
 	"reflect"
+	"sync"
+	"sync/atomic"
 	"testing"
 )
 
@@ -53,26 +57,78 @@ func TestEventHookStateReadsTheSessionColumns(t *testing.T) {
 	}
 }
 
-func TestClaimHookFiredIsACompareAndSet(t *testing.T) {
-	home := t.TempDir()
-	db, err := OpenPath(home, filepath.Join(home, "state.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer db.Close()
+func TestClaimHookPairMergesDistinctPairsAndRejectsOnlyTheSamePair(t *testing.T) {
 	ctx := context.Background()
-	newLeaseTestSession(t, db, "s1", "running")
-
-	won, err := db.ClaimHookFired(ctx, "s1", "", `[{"kind":"idle","reason":""}]`)
-	if err != nil || !won {
-		t.Fatalf("first claim = %v, %v, want won", won, err)
-	}
-	if won, err = db.ClaimHookFired(ctx, "s1", "", `[{"kind":"error","reason":""}]`); err != nil || won {
-		t.Fatalf("a second claim from the same stale read = %v, %v, want lost", won, err)
+	db := openHookStateStore(t)
+	for _, c := range []struct {
+		kind, reason string
+		want         bool
+	}{
+		{"waiting", "permission", true},
+		{"waiting", "permission", false},
+		{"waiting", "question", true},
+		{"error", "", true},
+		{"error", "", false},
+		{"waiting", "question", false},
+	} {
+		if won, err := db.ClaimHookPair(ctx, "s1", c.kind, c.reason); err != nil || won != c.want {
+			t.Fatalf("claim (%s,%s) = %v, %v, want %v", c.kind, c.reason, won, err, c.want)
+		}
 	}
 	state, _ := db.EventHookState(ctx, "s1")
-	if state.Fired != `[{"kind":"idle","reason":""}]` {
-		t.Fatalf("the loser overwrote hook_fired: %q", state.Fired)
+	if want := `[{"kind":"waiting","reason":"permission"},{"kind":"waiting","reason":"question"},{"kind":"error","reason":""}]`; state.Fired != want {
+		t.Fatalf("hook_fired = %q, want %q", state.Fired, want)
+	}
+	if _, err := db.ClaimHookPair(ctx, "missing", "idle", ""); err == nil {
+		t.Fatal("a missing session must be an error")
+	}
+	if _, err := db.DB().Exec(`UPDATE sessions SET hook_fired = 'not json' WHERE id = 's1'`); err != nil {
+		t.Fatal(err)
+	}
+	if won, err := db.ClaimHookPair(ctx, "s1", "idle", ""); err != nil || !won {
+		t.Fatalf("a damaged column must re-fire, got %v, %v", won, err)
+	}
+}
+
+func TestClaimHookPairConcurrentClaims(t *testing.T) {
+	ctx := context.Background()
+	db := openHookStateStore(t)
+	const same, distinct = 8, 6
+	var identicalWins, distinctWins atomic.Int32
+	var wg sync.WaitGroup
+	for range same {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if won, err := db.ClaimHookPair(ctx, "s1", "idle", ""); err != nil {
+				t.Error(err)
+			} else if won {
+				identicalWins.Add(1)
+			}
+		}()
+	}
+	for i := range distinct {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if won, err := db.ClaimHookPair(ctx, "s1", "waiting", fmt.Sprintf("reason-%d", i)); err != nil {
+				t.Error(err)
+			} else if won {
+				distinctWins.Add(1)
+			}
+		}()
+	}
+	wg.Wait()
+	if identicalWins.Load() != 1 {
+		t.Fatalf("identical pair won %d times, want exactly 1", identicalWins.Load())
+	}
+	if distinctWins.Load() != distinct {
+		t.Fatalf("distinct reasons won %d times, want %d", distinctWins.Load(), distinct)
+	}
+	state, _ := db.EventHookState(ctx, "s1")
+	var fired []struct{ Kind, Reason string }
+	if err := json.Unmarshal([]byte(state.Fired), &fired); err != nil || len(fired) != distinct+1 {
+		t.Fatalf("hook_fired %q holds %d pairs, want %d (%v)", state.Fired, len(fired), distinct+1, err)
 	}
 }
 

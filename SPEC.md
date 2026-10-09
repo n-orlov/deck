@@ -1722,8 +1722,10 @@ that dispatches it. `deck _hook` calls the dispatch function for every payload i
 and only for a change that landed: an unresolved (orphan) payload, one from a superseded launch,
 an identity mismatch, a status write that lost to a higher-precedence source, and a SessionEnd
 that only ended a conversation inside a live pane (`/clear`, `/resume`) offer nothing. The
-`hook_fired` pair is claimed with one compare-and-set write before the spawn, so two deck
-processes recording the same event spawn once. The session-end payload's `ended` event is
+`hook_fired` pair is claimed with one atomic add of exactly that pair before the spawn, so two deck
+processes recording the same event spawn once, while a different (kind, reason) pair recorded at the
+same time in the same epoch is never suppressed by the contention: a dedupe skip means that very pair
+was already claimed in that epoch. The session-end payload's `ended` event is
 started detached (`notify.Start`): payload on stdin from an already-unlinked temporary file (never a
 pipe, so handing over a payload of any length never waits on the script reading it), output
 discarded, no timeout and no recorded result, in its own process group.

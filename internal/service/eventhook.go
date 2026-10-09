@@ -12,11 +12,6 @@ import (
 	"github.com/n-orlov/deck/internal/store"
 )
 
-// claimAttempts bounds how often a dispatch re-reads hook_fired after losing
-// the claim to another deck process. A lost claim whose re-read shows the
-// pair is a dedupe skip; the bound only caps a pathological writer storm.
-const claimAttempts = 3
-
 // EventHookDispatcher is the one place a deck process turns a recorded
 // status change into at most one spawn of the configured event hook (SPEC
 // §10.4). Whichever process wrote the event calls it, after the event row is
@@ -214,32 +209,29 @@ func (d EventHookDispatcher) offered(ev HookEvent) (string, notify.Skip) {
 	return kind, notify.SkipNone
 }
 
-// claim decides whether ev spawns and, when it does, persists the new
-// hook_fired set before returning, so a second process reading the row sees
-// the pair (SPEC §10.4). Losing the compare-and-set to another process
-// re-reads and decides again, so exactly one process spawns.
+// claim decides whether ev spawns and, when it does, persists the pair in
+// hook_fired before returning, so a second process reading the row sees it
+// (SPEC §10.4). The policy decision reads the row once; the claim itself is
+// one atomic add of exactly this pair, so a concurrent claim of a different
+// pair never costs this event its spawn and a pair is deduped only when it was
+// actually claimed in this epoch. Exactly one caller wins any given pair.
 func (d EventHookDispatcher) claim(ctx context.Context, sessionID, kind, reason string) (notify.Decision, store.EventHookState, error) {
-	var decision notify.Decision
-	var state store.EventHookState
-	for range claimAttempts {
-		var err error
-		state, err = d.Store.EventHookState(ctx, sessionID)
-		if err != nil {
-			return decision, state, err
-		}
-		decision = notify.Dispatch(d.Policy, hookSession{state}, kind, reason)
-		if !decision.Spawn {
-			return decision, state, nil
-		}
-		won, err := d.Store.ClaimHookFired(ctx, sessionID, state.Fired, notify.EncodeFired(decision.Fired))
-		if err != nil {
-			return decision, state, err
-		}
-		if won {
-			return decision, state, nil
-		}
+	state, err := d.Store.EventHookState(ctx, sessionID)
+	if err != nil {
+		return notify.Decision{}, state, err
 	}
-	return notify.Decision{Skip: notify.SkipDeduped}, state, nil
+	decision := notify.Dispatch(d.Policy, hookSession{state}, kind, reason)
+	if !decision.Spawn {
+		return decision, state, nil
+	}
+	won, err := d.Store.ClaimHookPair(ctx, sessionID, kind, reason)
+	if err != nil {
+		return decision, state, err
+	}
+	if !won {
+		return notify.Decision{Skip: notify.SkipDeduped}, state, nil
+	}
+	return decision, state, nil
 }
 
 // request builds the spawner's input from the committed row.
