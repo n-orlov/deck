@@ -46,6 +46,7 @@ func registerEventHookSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^capture invocation (\d+) has stdin JSON field "([a-z_.]+)" equal to "([^"]*)"$`, captureInvocationStdinField)
 	sc.Step(`^capture invocation (\d+) has stdin JSON field "([a-z_.]+)" that is non-empty$`, captureInvocationStdinFieldNonEmpty)
 	sc.Step(`^the capture script process of invocation (\d+) is gone within (\d+) seconds$`, captureProcessGone)
+	sc.Step(`^the capture script releases every invocation it holds open$`, captureScriptReleasesHeld)
 	sc.Step(`^session "([^"]+)"'s latest "([^"]+)" event records hook kind "([^"]+)", exit status (\d+) and output containing "([^"]*)"$`, eventRecordsHookResult)
 	sc.Step(`^session "([^"]+)"'s latest "([^"]+)" event records a timed out hook$`, eventRecordsTimedOutHook)
 	sc.Step(`^session "([^"]+)"'s latest "([^"]+)" event records no hook result$`, eventRecordsNoHookResult)
@@ -121,6 +122,27 @@ func captureScriptHolds(ctx context.Context) error {
 		return err
 	}
 	return os.WriteFile(filepath.Join(captureDir(h), "hold-requested"), nil, 0o600)
+}
+
+// captureScriptReleasesHeld ends the hold of every capture invocation
+// currently waiting on the hold fifo, by writing one line into it per
+// waiting reader slot (the script reads one line with `read -t 8`). It lets
+// a scenario that proved deck did not wait for a held script end the hold
+// itself instead of sleeping out the script's own 8 second timeout.
+func captureScriptReleasesHeld(ctx context.Context) error {
+	h, err := scenarioHarness(ctx)
+	if err != nil {
+		return err
+	}
+	fifo, err := os.OpenFile(filepath.Join(captureDir(h), "hold"), os.O_RDWR|syscall.O_NONBLOCK, 0)
+	if err != nil {
+		return fmt.Errorf("open capture hold fifo: %w", err)
+	}
+	defer fifo.Close()
+	if _, err := fifo.WriteString("\n"); err != nil {
+		return fmt.Errorf("release the capture hold: %w", err)
+	}
+	return nil
 }
 
 var eventHookColumnUpdates = map[string]string{

@@ -130,10 +130,9 @@ func clientPressesKeyNTimes(ctx context.Context, name, key string, n int) error 
 		return err
 	}
 	for i := 0; i < n; i++ {
-		if err := client.Send(key); err != nil {
+		if err := client.SendAwaitingChange(ctx, key, 60*time.Millisecond); err != nil {
 			return err
 		}
-		time.Sleep(60 * time.Millisecond)
 	}
 	return nil
 }
