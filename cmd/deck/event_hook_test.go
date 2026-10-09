@@ -614,6 +614,105 @@ echo hook-done
 	}
 }
 
+// seedExtraRows adds sessions row-2..row-(n+1) whose tmux sessions never
+// existed, so the next liveness pass records each as a vanished process.
+func (f eventHookFixture) seedExtraRows(t *testing.T, n int) []string {
+	t.Helper()
+	db, err := store.Open(f.paths)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	ids := []string{"row-1"}
+	for i := 0; i < n; i++ {
+		id := fmt.Sprintf("row-%d", i+2)
+		if _, err := db.CreateSession(context.Background(), store.CreateSessionInput{
+			ID: id, Name: id, CWD: f.paths.Home, Agent: "claude", CapturedPath: "/bin",
+			Status: "running", StatusSource: "hook", StatusAt: 1000, CreatedAt: 1001,
+		}); err != nil {
+			t.Fatal(err)
+		}
+		ids = append(ids, id)
+	}
+	return ids
+}
+
+// SPEC §3.1: the bound is event_hook_timeout, not the script's own length: six
+// recorded deaths whose script never returns are each cut at the timeout, run
+// together, and `_hook` stays within the hook's dispatch plus one batch.
+func TestHookLivenessPassCutsManyHungHooksAtOneTimeout(t *testing.T) {
+	f := newEventHookFixture(t, "claude", "running")
+	f.settings.EventHookTimeout = time.Second
+	f.script(t, "sleep 30\n")
+	ids := f.seedExtraRows(t, 5)
+	if err := exec.Command("tmux", "-L", f.settings.Socket, "kill-server").Run(); err != nil {
+		t.Fatal(err)
+	}
+	start := time.Now()
+	if code, stderr := f.run(`{"hook_event_name":"Notification","session_id":"conv-1","notification_type":"idle_prompt"}`); code != 0 {
+		t.Fatalf("hook exit = %d, stderr %q", code, stderr)
+	}
+	if elapsed := time.Since(start); elapsed > 2*f.settings.EventHookTimeout+f.settings.Reconcile+2*time.Second {
+		t.Fatalf("_hook took %s with six hung hooks, want about two timeouts", elapsed)
+	}
+	db, err := store.Open(f.paths)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	for _, id := range ids {
+		run, ok, err := db.LastEventHookResult(context.Background(), id)
+		if err != nil || !ok || run.Kind != "ended" || !run.TimedOut {
+			t.Fatalf("%s result = %+v ok=%v err=%v, want a recorded timed-out ended", id, run, ok, err)
+		}
+	}
+}
+
+// SPEC §3.1: a script that cannot start does not lose the offers: every one of
+// the six deaths is still recorded durably, `_hook` exits as it does with no
+// event hook, and the pass costs no script time at all.
+func TestHookLivenessPassWithAnUnstartableScriptStillRecordsEveryDeath(t *testing.T) {
+	payload := `{"hook_event_name":"Notification","session_id":"conv-1","notification_type":"idle_prompt"}`
+	baseline := newEventHookFixture(t, "claude", "running")
+	baseline.settings.EventHook = ""
+	baselineCode, baselineStderr := baseline.run(payload)
+
+	f := newEventHookFixture(t, "claude", "running")
+	f.settings.EventHook = filepath.Join(f.out, "nope")
+	ids := f.seedExtraRows(t, 5)
+	if err := exec.Command("tmux", "-L", f.settings.Socket, "kill-server").Run(); err != nil {
+		t.Fatal(err)
+	}
+	start := time.Now()
+	code, stderr := f.run(payload)
+	if code != baselineCode || stderr != baselineStderr {
+		t.Fatalf("exit/stderr = %d/%q, want the no-hook %d/%q", code, stderr, baselineCode, baselineStderr)
+	}
+	if elapsed := time.Since(start); elapsed > f.settings.EventHookTimeout {
+		t.Fatalf("_hook took %s with a script that cannot start", elapsed)
+	}
+	db, err := store.Open(f.paths)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	events, err := db.ListEvents(context.Background(), 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ended := map[string]bool{}
+	for _, event := range events {
+		if event.Kind == "tmux.session_gone" {
+			ended[event.SessionID] = true
+		}
+	}
+	for _, id := range ids {
+		if !ended[id] {
+			t.Fatalf("no tmux.session_gone event durable for %s: %v", id, ended)
+		}
+	}
+}
+
 // waitForRetainedDeadPane waits until tmux keeps slug's pane dead under
 // remain-on-exit, the corpse the liveness pass collects.
 func waitForRetainedDeadPane(t *testing.T, client tmux.Client, slug string) {
