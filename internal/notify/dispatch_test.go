@@ -217,6 +217,7 @@ var offerCases = []struct {
 	{"probe.idle", "", "idle"},
 	{"probe.error", "", "error"},
 	{"tmux.pane_dead", "tmux pane exited with status 1", "error"},
+	{"tmux.session_gone", "tmux session disappeared", "ended"},
 	{"killed", "", "killed"},
 	// Nothing below offers the hook.
 	{"user_prompt_submitted", "prompt", ""},
@@ -226,7 +227,6 @@ var offerCases = []struct {
 	{"launch.ready", "", ""},
 	{"launch.failed", "boom", ""},
 	{"restart", "", ""},
-	{"tmux.session_gone", "", ""},
 	{"tmux.shell_live", "", ""},
 	{"stop.superseded", "declined", ""},
 	{"session_end.identity_mismatch", "", ""},
@@ -291,8 +291,8 @@ func TestSpecTablesTheOfferedKindMapping(t *testing.T) {
 			t.Errorf("SPEC §10.4 does not table %q", c.stored)
 		}
 	}
-	if len(seen) != 13 {
-		t.Errorf("SPEC table has %d rows, want 13: %v", len(seen), seen)
+	if len(seen) != 14 {
+		t.Errorf("SPEC table has %d rows, want 14: %v", len(seen), seen)
 	}
 }
 

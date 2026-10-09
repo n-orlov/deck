@@ -975,7 +975,8 @@ Rules:
   agent fires no hook, so the transition to `error` — and its event hook — happens on the
   next TUI tick or the next non-session-end `_hook` invocation of any session on the deck
   (its liveness pass, §3.1), whichever comes first; the process that records the `error`
-  dispatches its event hook (§10.4).
+  dispatches its event hook (§10.4). The same holds for a clean disappearance (the tmux
+  session is simply gone, recorded `stopped` as `tmux.session_gone`), which offers `ended`.
   Stated plainly rather than implied to be live. (`StopFailure` *is* a hook, so ordinary
   turn/API failures do fire the hook unattended; process death does not.)
 - **Never auto-relaunch** (non-goal): a crash loop must not be able to burn tokens or retry
@@ -1692,7 +1693,8 @@ argv[1]: the configured fixed arguments follow it (`script <event> <fixed>...`).
 **Whichever deck process records the event**, through one dispatch function called from every
 event-write path: `deck _hook` for the payloads a Claude or Codex hook, or the Pi extension, delivers, and the
 running TUI for events deck detects by itself — a probe-classified shell status change (or a Pi change its extension has not reported),
-a reconcile-detected process death, and the user's own `killed`. A process death that `deck _hook`'s
+a reconcile-detected process death (a retained failed pane offers `error`, a tmux session that
+disappeared cleanly offers `ended`), and the user's own `killed`. A process death that `deck _hook`'s
 post-hook liveness pass (§3.1) detects is dispatched by that `_hook` the same way, so an unattended
 crash still fires. It is spawned once the pass has returned, so the pass's short reconcile
 budget neither cuts the script short nor is spent by it: the script is bounded by
@@ -1734,10 +1736,11 @@ nothing and never spawns:
 | `probe.idle` | TUI probe | `idle` |
 | `probe.error` | TUI probe | `error` |
 | `tmux.pane_dead` | reconcile | `error` |
+| `tmux.session_gone` | reconcile | `ended` |
 | `killed` | the user | `killed` |
 
 Every other stored kind (`user_prompt_submitted`, `error_occurred`, `probe.running`,
-`launch.ready`, `launch.failed`, `restart`, `tmux.session_gone`, a `.superseded` or
+`launch.ready`, `launch.failed`, `restart`, a `.superseded` or
 `.identity_mismatch` hook, ...) offers nothing. The mapping is `notify.OfferedKind`; the filter
 and the dedupe above are `notify.Dispatch`, which runs its checks in the §10.1-§10.3 order
 (script, offered set, enabled flag, effective list, epoch) and reads no per-session field
