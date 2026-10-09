@@ -85,15 +85,29 @@ func setSessionGroup(ctx context.Context, name, group string) error {
 		return err
 	}
 	defer db.Close()
-	if _, err := db.ExecContext(ctx, `INSERT INTO groups(name) VALUES(?) ON CONFLICT(name) DO NOTHING`, group); err != nil {
+	// Both writes commit as ONE transaction. Run as two autocommit
+	// statements, the running deck could reload between them and paint the
+	// new group's header as "(0)" with the session still under its old
+	// group; a scenario's "screen contains <group>" then passed on that
+	// half-applied frame and its next key landed on the wrong row (the
+	// header-inert scenario in session_groups.feature).
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("put session %q in group %q: begin: %w", name, group, err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.ExecContext(ctx, `INSERT INTO groups(name) VALUES(?) ON CONFLICT(name) DO NOTHING`, group); err != nil {
 		return fmt.Errorf("create group %q: %w", group, err)
 	}
-	result, err := db.ExecContext(ctx, `UPDATE sessions SET group_id = (SELECT id FROM groups WHERE name = ?) WHERE name = ?`, group, name)
+	result, err := tx.ExecContext(ctx, `UPDATE sessions SET group_id = (SELECT id FROM groups WHERE name = ?) WHERE name = ?`, group, name)
 	if err != nil {
 		return fmt.Errorf("put session %q in group %q: %w", name, group, err)
 	}
 	if err := requireOneRowAffected(result, "put session %q in group %q", name, group); err != nil {
 		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("put session %q in group %q: commit: %w", name, group, err)
 	}
 	return nil
 }
