@@ -238,13 +238,25 @@ const resizeAwaitTimeout = 5 * time.Second
 // this reason; any new Resize call whose next step reads content shaped
 // by the new size should default to at least ResizeAndAwaitRender, and
 // add a content-specific gate too if the screen it targets also ticks.
+//
+// A resize to the geometry the terminal already has changes nothing: the
+// kernel delivers SIGWINCH only when TIOCSWINSZ changes the size, so deck is
+// never told, has no render to owe, and waiting for the marker would only
+// succeed if an unrelated repaint happened to land inside the wait (a
+// scenario that sets the same size twice, such as the create-into-group step
+// run once per session, timed out on a quiet screen). Such a call applies the
+// resize and returns, since the screen is already shaped for that size.
 func (d *ScreenDriver) ResizeAndAwaitRender(ctx context.Context, cols, rows uint16) error {
 	d.mu.Lock()
 	markLen := d.raw.Len()
+	unchanged := d.screen.Width() == int(cols) && d.screen.Height() == int(rows)
 	d.mu.Unlock()
 
 	if err := d.Resize(cols, rows); err != nil {
 		return err
+	}
+	if unchanged {
+		return nil
 	}
 
 	waitCtx, cancel := context.WithTimeout(ctx, resizeAwaitTimeout)
