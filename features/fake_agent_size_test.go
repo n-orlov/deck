@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -208,9 +207,7 @@ func buildFakeAgentBinary(ctx context.Context, h *ScenarioHarness, kind, package
 		return "", err
 	}
 	binary := filepath.Join(h.Home, "fake-"+kind+"-size-fixture")
-	build := exec.CommandContext(ctx, "go", "build", "-o", binary, packagePath)
-	build.Dir = root
-	if output, err := build.CombinedOutput(); err != nil {
+	if output, err := memoGoBuild(ctx, root, binary, packagePath); err != nil {
 		return "", fmt.Errorf("build fake %q agent fixture: %w\n%s", kind, err, output)
 	}
 	return binary, nil
