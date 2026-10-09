@@ -50,14 +50,32 @@ func navigateToRowByName(ctx context.Context, client *ScreenDriver, want string)
 	if selected() {
 		return nil
 	}
+	// atTop is true once a "g" has been sent and no down arrow has moved the
+	// selection since: the selection is then on the list's first line (a
+	// group header, which renders in reverse video rather than with "> ", or
+	// the first row), and a second "g" would move nothing.
+	atTop := false
 	for attempt := 0; attempt < 50; attempt++ {
-		if err := sendNavKeySettled(ctx, client, "g"); err != nil {
-			return err
-		}
-		if selected() {
-			return nil
+		// A "g" that cannot move the selection is never sent: the only
+		// proof a key moved nothing is running out sendNavKeySettled's
+		// whole settle window, which every such "g" used to cost. That is
+		// the "g" of the attempt right after one that pressed no down arrow
+		// (the selection is still where that "g" put it), and the "g" with
+		// the selection already on the sidebar's top line. A scrolled list
+		// whose top line is not the list's top is still reached, because
+		// the first down arrow takes the selection off that line and the
+		// next attempt's "g" then moves it.
+		if !atTop && !selectionOnSidebarTopLine(client.Frame(false)) {
+			if err := sendNavKeySettled(ctx, client, "g"); err != nil {
+				return err
+			}
+			if selected() {
+				return nil
+			}
+			atTop = true
 		}
 		for step := 0; step < attempt; step++ {
+			atTop = false
 			if err := sendNavKeySettled(ctx, client, "\x1b[B"); err != nil { // down arrow
 				return err
 			}
@@ -77,6 +95,22 @@ func navigateToRowByName(ctx context.Context, client *ScreenDriver, want string)
 // fixed delay every call pays: a real repaint is observed via
 // ScreenDriver.WaitForFrameGone/WaitForFrame's d.updated channel and
 // returns as soon as it happens, usually in well under a millisecond.
+// selectionOnSidebarTopLine reports whether the sidebar's selected row sits
+// on the first line under the frame's top border, where "g" has nowhere to
+// move it.
+func selectionOnSidebarTopLine(frame string) bool {
+	lines := strings.Split(frame, "\n")
+	if len(lines) < 2 {
+		return false
+	}
+	const scanWidth = 6
+	head := lines[1]
+	if len(head) > scanWidth {
+		head = head[:scanWidth]
+	}
+	return strings.Contains(head, "> ")
+}
+
 var navKeySettleWindow = 300 * time.Millisecond
 
 // sendNavKeySettled sends key, then waits for the sidebar's currently

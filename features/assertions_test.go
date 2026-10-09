@@ -813,10 +813,9 @@ func clientCreatesShellSession(ctx context.Context, clientName, name string) err
 	if err := ensureCreateModalAgent(ctx, client, "shell"); err != nil {
 		return err
 	}
-	if err := client.Send(name); err != nil {
+	if err := client.SendAwaitingVisible(ctx, name, name); err != nil {
 		return err
 	}
-	time.Sleep(75 * time.Millisecond)
 	if err := client.Send("\x1b[B" + cwd + "\r"); err != nil {
 		return err
 	}

@@ -104,11 +104,10 @@ func clientTypesTextAndEnterIntoInteractivePane(ctx context.Context, name, text 
 	if err != nil {
 		return err
 	}
-	if err := client.Send(text + "\r"); err != nil {
-		return err
-	}
-	time.Sleep(150 * time.Millisecond)
-	return nil
+	// The pane's shell echoes what was typed, and the preview shows that echo
+	// once the keystrokes have crossed deck's forwarding path and tmux: wait
+	// for it, at most as long as the fixed pause that used to stand here.
+	return client.SendAwaitingVisibleWithin(ctx, text+"\r", text, 150*time.Millisecond, 150*time.Millisecond)
 }
 
 // shiftPgUpRawCSI/shiftPgDownRawCSI are the raw bytes a real xterm-class

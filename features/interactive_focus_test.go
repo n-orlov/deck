@@ -2,6 +2,7 @@ package features
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"github.com/cucumber/godog"
@@ -20,6 +21,50 @@ func registerInteractiveFocusSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^deck client "([^"]+)" forces entry into interactive mode$`, clientForcesEntryIntoInteractiveMode)
 }
 
+// interactiveSettleBound is the fixed pause the enter/leave steps used to
+// take after their key, and is now only the longest they wait for the mode
+// change to show: SendAwaitingInteractive returns the moment the frame does.
+const interactiveSettleBound = 150 * time.Millisecond
+
+// interactiveFrameMarker is the text only interactive mode's frame carries
+// (the preview title's "Ctrl+Q to leave" and the footer's "Ctrl+Q leave
+// interactive mode").
+const interactiveFrameMarker = "Ctrl+Q"
+
+// SendAwaitingInteractive writes keys, then waits until the frame shows
+// interactive mode (wantInteractive) or the list view again (!wantInteractive),
+// for at most interactiveSettleBound. deck's Update claims the window, arms
+// the transport and flips its interactive flag (or tears all of that down)
+// synchronously before the next View, so a frame that already shows the new
+// mode proves the whole entry or exit sequence has finished -- what the
+// fixed pause only hoped for. When the frame never shows the change (a
+// refused entry, a cropped title) the wait runs out the same bound the fixed
+// pause had, and a frame that already showed the target mode before the
+// write proves nothing, so it is paced for the full bound as before.
+func (d *ScreenDriver) SendAwaitingInteractive(ctx context.Context, keys string, wantInteractive bool) error {
+	showing := func() bool { return strings.Contains(d.Frame(false), interactiveFrameMarker) }
+	already := showing() == wantInteractive
+	if err := d.Send(keys); err != nil {
+		return err
+	}
+	if already {
+		time.Sleep(interactiveSettleBound)
+		return nil
+	}
+	waitCtx, cancel := context.WithTimeout(ctx, interactiveSettleBound)
+	defer cancel()
+	for showing() != wantInteractive {
+		select {
+		case <-d.updated:
+		case <-d.done:
+			return nil
+		case <-waitCtx.Done():
+			return nil
+		}
+	}
+	return nil
+}
+
 // clientEntersInteractiveMode sends a bare Enter (SPEC §11.9, task 061:
 // Enter's new job once a session is selected and running), then pauses
 // briefly for the entry sequence (claim ownership, fit the window, start
@@ -36,11 +81,7 @@ func clientEntersInteractiveMode(ctx context.Context, name string) error {
 	if err != nil {
 		return err
 	}
-	if err := client.Send("\r"); err != nil {
-		return err
-	}
-	time.Sleep(150 * time.Millisecond)
-	return nil
+	return client.SendAwaitingInteractive(ctx, "\r", true)
 }
 
 // clientLeavesInteractiveMode sends Ctrl+Q (byte 0x11), the one bound exit
@@ -56,11 +97,7 @@ func clientLeavesInteractiveMode(ctx context.Context, name string) error {
 	if err != nil {
 		return err
 	}
-	if err := client.Send("\x11"); err != nil {
-		return err
-	}
-	time.Sleep(150 * time.Millisecond)
-	return nil
+	return client.SendAwaitingInteractive(ctx, "\x11", false)
 }
 
 // clientForcesEntryIntoInteractiveMode sends a bare `F` (task 105's list-mode
@@ -81,9 +118,5 @@ func clientForcesEntryIntoInteractiveMode(ctx context.Context, name string) erro
 	if err != nil {
 		return err
 	}
-	if err := client.Send("F"); err != nil {
-		return err
-	}
-	time.Sleep(150 * time.Millisecond)
-	return nil
+	return client.SendAwaitingInteractive(ctx, "F", true)
 }

@@ -707,14 +707,12 @@ func positionCreateModalOnProfileField(ctx context.Context, clientName, kind, na
 	if err := ensureCreateModalAgent(ctx, client, kind); err != nil {
 		return nil, nil, fmt.Errorf("position create modal on agent %q: %w", kind, err)
 	}
-	if err := client.Send(name); err != nil {
+	if err := client.SendAwaitingVisible(ctx, name, name); err != nil {
 		return nil, nil, err
 	}
-	time.Sleep(75 * time.Millisecond)
-	if err := client.Send("\x1b[B" + h.workingDir); err != nil {
+	if err := client.SendAwaitingVisible(ctx, "\x1b[B"+h.workingDir, h.workingDir); err != nil {
 		return nil, nil, err
 	}
-	time.Sleep(75 * time.Millisecond)
 	// Working directory -> Agent (already kind) -> Permission profile (↓,
 	// task 025); no cycling needed on Agent since ensureCreateModalAgent
 	// already put it there. Cycle right on Permission profile until it reads

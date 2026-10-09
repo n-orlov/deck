@@ -165,6 +165,7 @@ Feature: The event hook (SPEC section 10), end to end against the released binar
     And session "closing" has one "session_end" event with payload field "reason" equal to "logout"
     And session "closing"'s latest "session_end" event records no hook result
     And the structured log holds 1 event-hook invocation for session "closing", the last of kind "ended" detached
+    And the capture script releases every invocation it holds open
     And the capture script process of invocation 1 is gone within 12 seconds
     When deck client "A" exits cleanly
 

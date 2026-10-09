@@ -160,10 +160,9 @@ func createShellSessionInLabelledCWD(ctx context.Context, h *ScenarioHarness, cl
 	if err := ensureCreateModalAgent(ctx, client, "shell"); err != nil {
 		return err
 	}
-	if err := client.Send(sessionName); err != nil {
+	if err := client.SendAwaitingVisible(ctx, sessionName, sessionName); err != nil {
 		return err
 	}
-	time.Sleep(75 * time.Millisecond)
 	if err := client.Send("\x1b[B" + dir + "\r"); err != nil {
 		return err
 	}
@@ -420,14 +419,12 @@ func clientCreatesShellSessionIntoGroupWithFreshCWDLabelled(ctx context.Context,
 	if err := ensureCreateModalAgent(ctx, client, "shell"); err != nil {
 		return err
 	}
-	if err := client.Send(sessionName); err != nil {
+	if err := client.SendAwaitingVisible(ctx, sessionName, sessionName); err != nil {
 		return err
 	}
-	time.Sleep(75 * time.Millisecond)
-	if err := client.Send("\x1b[B" + dir); err != nil {
+	if err := client.SendAwaitingVisible(ctx, "\x1b[B"+dir, dir); err != nil {
 		return err
 	}
-	time.Sleep(75 * time.Millisecond)
 	if err := client.Send(strings.Repeat("\x1b[B", createModalCWDToGroupFieldDowns)); err != nil {
 		return err
 	}

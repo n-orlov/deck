@@ -1054,3 +1054,80 @@ func TestNormalizeFrame(t *testing.T) {
 }
 
 var _ io.Writer = vt.NewEmulator(1, 1)
+
+// typedEchoLegacyPace is the fixed pause this package used to put between
+// two consecutive writes that must not coalesce into one read of deck's
+// input loop. SendAwaitingVisible keeps it as the floor for the cases where
+// the echo cannot prove consumption, and as the ceiling-for-the-fallback.
+const typedEchoLegacyPace = 75 * time.Millisecond
+
+// typedEchoFallback bounds SendAwaitingVisible's wait for the echo. It is
+// deliberately longer than the legacy pace it replaces, so a step whose text
+// is never echoed verbatim (a name truncated by a narrow dialog) still
+// waits at least as long as the fixed pause it replaced.
+const typedEchoFallback = 250 * time.Millisecond
+
+// SendAwaitingVisible writes keys, then waits until the frame shows visible
+// -- text the write typed into the program -- instead of a fixed pause: a
+// frame that shows the typed text proves the program has read and handled
+// the whole write, so the NEXT write cannot coalesce with its tail, which
+// is the only thing the old fixed pause stood in for. The wait ends at the
+// first update that shows visible, or after typedEchoFallback (never
+// failing: a text a narrow dialog truncates is simply paced as before).
+// When visible was already on screen before the write the echo proves
+// nothing, so the legacy pause is kept.
+func (d *ScreenDriver) SendAwaitingVisible(ctx context.Context, keys, visible string) error {
+	return d.SendAwaitingVisibleWithin(ctx, keys, visible, typedEchoFallback, typedEchoLegacyPace)
+}
+
+// SendAwaitingVisibleWithin is SendAwaitingVisible with the caller's own
+// bound (how long a missing echo is waited for) and floor (the fixed pause
+// the call replaces, kept when the echo proves nothing).
+func (d *ScreenDriver) SendAwaitingVisibleWithin(ctx context.Context, keys, visible string, bound, floor time.Duration) error {
+	already := visible == "" || strings.Contains(d.Frame(false), visible)
+	if err := d.Send(keys); err != nil {
+		return err
+	}
+	if already {
+		time.Sleep(floor)
+		return nil
+	}
+	waitCtx, cancel := context.WithTimeout(ctx, bound)
+	defer cancel()
+	for !strings.Contains(d.Frame(false), visible) {
+		select {
+		case <-d.updated:
+		case <-d.done:
+			return nil
+		case <-waitCtx.Done():
+			return nil
+		}
+	}
+	return nil
+}
+
+// SendAwaitingChange writes keys, then waits until the frame differs from
+// the one the write started from, for at most bound. It replaces the fixed
+// pause that followed each key of a repeated keystroke: a key that changes
+// the frame has demonstrably been read and handled, so the next key cannot
+// coalesce with it and may go out at once; a key that changes nothing (a
+// clamped `<`) is paced for the full bound exactly as before, so the wait
+// is never longer than the pause it replaces.
+func (d *ScreenDriver) SendAwaitingChange(ctx context.Context, keys string, bound time.Duration) error {
+	before := d.Frame(false)
+	if err := d.Send(keys); err != nil {
+		return err
+	}
+	waitCtx, cancel := context.WithTimeout(ctx, bound)
+	defer cancel()
+	for d.Frame(false) == before {
+		select {
+		case <-d.updated:
+		case <-d.done:
+			return nil
+		case <-waitCtx.Done():
+			return nil
+		}
+	}
+	return nil
+}
