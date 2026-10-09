@@ -280,3 +280,119 @@ func TestMergeHeldReloadKeepsOwnEditsAndTakesTheRest(t *testing.T) {
 		t.Fatalf("merge = %+v", got)
 	}
 }
+
+// userThemeHarness has a user theme "midnight" active and the settings
+// takeover open with an unsaved edit (ui.ascii staged on), then rewrites the
+// theme file's colours under the unchanged configured name and polls, so the
+// reload is held. It returns the harness, the colours before and the file path.
+func userThemeHeldHarness(t *testing.T, extraConfig string) (*reloadHarness, map[string]string) {
+	t.Helper()
+	h := newReloadHarness(t, "[ui]\ntheme = \"midnight\"\nsort_order = \"name\"\n")
+	body := strings.Replace(builtinEmpireTheme(t), "name = \"empire\"", "name = \"midnight\"", 1)
+	path := filepath.Join(h.dir, "themes", "midnight.toml")
+	h.write(path, body)
+	h.reload()
+	first := h.m.settings.Theme
+	if first == nil || first.Name != "midnight" {
+		t.Fatalf("setup: the user theme was not picked up: %+v", first)
+	}
+	before := map[string]string{}
+	var colour string
+	for tok, c := range first.Colors {
+		before[string(tok)] = c
+		colour = c
+	}
+	edited := strings.Replace(body, colour, "#123456", 1)
+	if edited == body {
+		t.Fatalf("setup: colour %s not found in the theme file", colour)
+	}
+	h.openSettings()
+	h.m.settingsEdits.ASCII = true
+	h.write(path, edited)
+	if extraConfig != "" {
+		h.writeConfig(extraConfig)
+	}
+	h.reload()
+	if h.m.reloadHeld == nil {
+		t.Fatal("setup: the reload was not held for the open edit")
+	}
+	if !reflect.DeepEqual(h.m.settings.Theme.Colors, first.Colors) {
+		t.Fatal("the theme file change applied while the edit was open")
+	}
+	return h, before
+}
+
+func themeColoursChanged(h *reloadHarness, before map[string]string) bool {
+	for tok, c := range h.m.settings.Theme.Colors {
+		if before[string(tok)] != c {
+			return true
+		}
+	}
+	return false
+}
+
+func TestHeldUserThemeFileChangeAppliesAfterSave(t *testing.T) {
+	h, before := userThemeHeldHarness(t, "")
+	h.key(tea.KeyMsg{Type: tea.KeyCtrlS})
+	if !themeColoursChanged(h, before) {
+		t.Fatal("saving did not apply the held user theme file change")
+	}
+	if !h.m.settings.ASCII || !strings.Contains(h.configText(), "ascii = true") {
+		t.Fatal("the user's own edit was lost by the save")
+	}
+	applied := h.m.reloadApplied
+	if h.pollOnce().changed || h.m.reloadApplied != applied {
+		t.Fatal("the save's own write was applied a second time")
+	}
+}
+
+func TestHeldUserThemeFileChangeAppliesAfterCancel(t *testing.T) {
+	h, before := userThemeHeldHarness(t, "")
+	h.key(tea.KeyMsg{Type: tea.KeyEsc})
+	h.key(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'y'}})
+	if h.m.settingsOpen {
+		t.Fatal("the takeover stayed open after the discard")
+	}
+	if !themeColoursChanged(h, before) {
+		t.Fatal("cancelling did not apply the held user theme file change")
+	}
+	if h.m.settings.ASCII || strings.Contains(h.configText(), "ascii = true") {
+		t.Fatal("the cancelled edit leaked")
+	}
+}
+
+func TestHeldUserThemeFileChangeAppliesAfterSaveWithConfigKeyChange(t *testing.T) {
+	// A second deferred component rides with the theme file: sort_order.
+	h, before := userThemeHeldHarness(t, "[ui]\ntheme = \"midnight\"\nsort_order = \"created\"\n")
+	h.key(tea.KeyMsg{Type: tea.KeyCtrlS})
+	if !themeColoursChanged(h, before) {
+		t.Fatal("the held theme file change was not applied by the save")
+	}
+	if h.m.settings.SortOrder != SortOrderCreated {
+		t.Fatalf("sort_order = %q, want the held created applied", h.m.settings.SortOrder)
+	}
+	if !h.m.settings.ASCII {
+		t.Fatal("the user's edit was lost")
+	}
+}
+
+func TestHeldUserThemeFileChangeYieldsToThemeChosenInTheEdit(t *testing.T) {
+	h, before := userThemeHeldHarness(t, "")
+	h.m.settingsEdits.Theme = "matrix"
+	h.key(tea.KeyMsg{Type: tea.KeyCtrlS})
+	if h.m.settings.Theme.Name != "matrix" {
+		t.Fatalf("theme = %q, want the user's matrix choice to win", h.m.settings.Theme.Name)
+	}
+	if themeColoursChanged(h, before) && h.m.settings.Theme.Name == "midnight" {
+		t.Fatal("the held midnight theme overrode the user's choice")
+	}
+}
+
+func TestHeldUserThemeFileChangeAppliesWhenEditIsReverted(t *testing.T) {
+	h, before := userThemeHeldHarness(t, "")
+	h.m.settingsEdits.ASCII = false // the user reverts the staged edit by hand
+	h.key(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}})
+	if !themeColoursChanged(h, before) {
+		t.Fatal("the held theme file change was not applied once the edit was reverted")
+	}
+}

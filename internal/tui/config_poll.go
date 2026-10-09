@@ -142,10 +142,7 @@ func (m Model) configReloadBanner(width int) []string {
 func (m *Model) applyReloadedSettings(next config.Settings) tea.Cmd {
 	previous := m.settings.File
 	cmd := m.settingsApplyLiveFields(next.File, previous)
-	if next.Theme != nil && !reflect.DeepEqual(next.Theme, m.settings.Theme) {
-		m.settings.Theme = next.Theme
-		m.settings.ThemeReason = next.ThemeReason
-	}
+	m.retakeTheme(next)
 	m.settings.File = settingsCloneFileConfig(next.File)
 	m.reloadApplied++
 	if m.settingsOpen && !m.settingsDirty() {
@@ -155,4 +152,28 @@ func (m *Model) applyReloadedSettings(next config.Settings) tea.Cmd {
 		m.settingsSavedEdits = settingsEditsFromSettings(m.settings)
 	}
 	return cmd
+}
+
+// retakeTheme adopts the reloaded Settings' resolved theme when it differs
+// from the running one, which is how an edit to the active user theme file
+// (same configured name, new colours) reaches the running model.
+func (m *Model) retakeTheme(next config.Settings) {
+	if next.Theme != nil && !reflect.DeepEqual(next.Theme, m.settings.Theme) {
+		m.settings.Theme = next.Theme
+		m.settings.ThemeReason = next.ThemeReason
+	}
+}
+
+// applyHeldTheme finishes a save that folded a held reload into its write
+// (SPEC §6.5): the file part was merged and applied through the save's own
+// path, but a changed user theme file under an unchanged configured name is
+// only visible in the held reload's resolved theme. It is adopted unless the
+// user chose a different theme in this editing session (savedName differs
+// from the name the reload carried), in which case their choice, already
+// resolved by the save, stands.
+func (m *Model) applyHeldTheme(held *config.Settings, savedName string) {
+	if held == nil || held.File.Theme != savedName {
+		return
+	}
+	m.retakeTheme(*held)
 }

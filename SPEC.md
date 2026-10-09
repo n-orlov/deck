@@ -776,7 +776,9 @@ other in the same change that adds it.
    the pending edit stays exactly as it is. When the edit is **saved**, the held reload is folded
    into the write: every key the user did not change takes the reloaded value, every key they
    changed keeps theirs, so the save neither drops the other instance's change nor the user's
-   own. When the edit is **cancelled** (or reverted), the held reload is applied at once. A view
+   own. When the edit is **cancelled** (or reverted), the held reload is applied at once. Either
+   way every held component is applied, including a changed user theme file whose configured
+   name did not change (unless the saved edit chose a different theme, which then stands). A view
    that is open but untouched takes the reload and shows it.
 2. *An instance's own save is not an external change.* After a save the instance records the
    `config.toml` fingerprint of what it just wrote, so the next poll finds nothing changed and
