@@ -102,15 +102,26 @@ func ownedEnv(entry string) bool {
 	return strings.HasPrefix(name, "DECK_SESSION_") || strings.HasPrefix(name, "DECK_EVENT_")
 }
 
+// sessionEnvEntry reports whether an inherited entry is one of the session's
+// own env keys. `deck _hook` runs inside the agent, whose environment is the
+// session env, so those entries carry session env values (of any length) and
+// are not passed on to the script (SPEC §6.4, §10.1).
+func sessionEnvEntry(entry string, sessionEnv map[string]string) bool {
+	name, _, _ := strings.Cut(entry, "=")
+	_, ok := sessionEnv[name]
+	return ok
+}
+
 // buildEnv layers the nine DECK_SESSION_* variables (always exported, empty
 // rather than absent, exactly as pre_launch sees them) and the four
 // DECK_EVENT_* variables over the inherited environment. Session env values
-// are never exported here.
+// are never exported here, and neither is an inherited variable the session
+// env defines.
 func buildEnv(req Request, message string) []string {
 	s := req.Session
 	env := make([]string, 0, len(req.BaseEnv)+13)
 	for _, entry := range req.BaseEnv {
-		if !ownedEnv(entry) {
+		if !ownedEnv(entry) && !sessionEnvEntry(entry, req.SessionEnv) {
 			env = append(env, entry)
 		}
 	}

@@ -1628,8 +1628,11 @@ argv[1]: the configured fixed arguments follow it (`script <event> <fixed>...`).
   the payload, or in the captured output record (§6.4); `message` is withheld, not truncated,
   for a `sensitive` session (§8).
   Redaction masks the value of every secret-shaped `KEY=VALUE` pair in the message and removes
-  every session env value of four or more characters, by value, from the message and from the
-  captured output tail. The same by-value removal applies to every other string exported in the
+  every non-empty session env value, of any length, by value, from the message and from the
+  captured output tail: there is no length floor, so a one-character value is removed too.
+  `deck _hook` runs inside the agent and so inherits the session env; an inherited variable
+  whose name is one of the session's env keys is not passed on to the script at all, and the
+  attached and the detached (session-end) spawn apply the identical rule. The same by-value removal applies to every other string exported in the
   environment or the payload (the session fields, both reasons, the deck host and version) and
   to a not-started error's text, and both reasons also get the `KEY=VALUE` masking; the spawner
   is `internal/notify`, which is handed the env only to scrub it.

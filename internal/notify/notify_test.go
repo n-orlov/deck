@@ -362,3 +362,78 @@ func TestSpawnPathLookupAndStartFailure(t *testing.T) {
 		t.Errorf("err = %v, want a start failure", err)
 	}
 }
+
+// shortEnv holds session env values below any plausible length floor, one
+// secret-shaped key and one plain key (SPEC §6.4: env values never appear, with
+// no length exception).
+var shortEnv = map[string]string{"DB_PASSWORD": "Q", "PLAIN": "zj", "EMPTY": ""}
+
+// seedShort puts every short env value into every string the caller hands over
+// that can reach the script's environment, payload or record.
+func seedShort(req *Request) {
+	req.Event.Message = "tried Q and zj"
+	s := &req.Session
+	for _, field := range []*string{
+		&s.ID, &s.Name, &s.Slug, &s.CWD, &s.Agent, &s.Group, &s.PermissionProfile,
+		&s.ConversationID, &s.LaunchKind, &s.Status, &s.Reason,
+		&req.Event.Reason, &req.Deck.Host, &req.Deck.Version,
+	} {
+		*field += "-Q-zj"
+	}
+}
+
+func TestShortSessionEnvValuesNeverReachTheEnvPayloadOrRecord(t *testing.T) {
+	path, dir := captureScript(t, `echo "out: $DECK_EVENT_MESSAGE"; echo "err: Q zj" >&2`)
+	req := baseRequest(path)
+	req.SessionEnv = shortEnv
+	seedShort(&req)
+	res, err := Spawn(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	record, _ := json.Marshal(res)
+	for name, haystack := range map[string]string{
+		"env": read(t, filepath.Join(dir, "env")), "payload": read(t, filepath.Join(dir, "stdin")),
+		"record": string(record) + res.Output,
+	} {
+		for _, value := range []string{"Q", "zj"} {
+			if strings.Contains(haystack, value) {
+				t.Errorf("%s contains the short session env value %q: %q", name, value, haystack)
+			}
+		}
+	}
+	if env := envMap(read(t, filepath.Join(dir, "env"))); env["DECK_EVENT_MESSAGE"] != "tried "+MaskedPlaceholder+" and "+MaskedPlaceholder {
+		t.Errorf("DECK_EVENT_MESSAGE = %q, want both short values removed", env["DECK_EVENT_MESSAGE"])
+	}
+}
+
+func TestAnEnvValueInheritedFromTheAgentEnvironmentIsNotPassedOn(t *testing.T) {
+	path, dir := captureScript(t, "")
+	req := baseRequest(path)
+	req.SessionEnv = map[string]string{"MODE": "7", "API_TOKEN": "long-inherited-secret-1"}
+	req.BaseEnv = append(req.BaseEnv, "MODE=7", "API_TOKEN=long-inherited-secret-1", "MODEL=kept")
+	if _, err := Spawn(context.Background(), req); err != nil {
+		t.Fatal(err)
+	}
+	env := envMap(read(t, filepath.Join(dir, "env")))
+	for _, key := range []string{"MODE", "API_TOKEN"} {
+		if v, ok := env[key]; ok {
+			t.Errorf("inherited %s=%q reached the script's environment", key, v)
+		}
+	}
+	if env["MODEL"] != "kept" || env["KEEP"] != "yes" {
+		t.Errorf("unrelated inherited variables were dropped: %v", env)
+	}
+}
+
+func TestANotStartedErrorCarriesNoShortSessionEnvValue(t *testing.T) {
+	req := baseRequest(filepath.Join(t.TempDir(), "QQ-dir", "hook.sh"))
+	req.SessionEnv = map[string]string{"TOKEN": "Q"}
+	_, err := Spawn(context.Background(), req)
+	if err == nil || strings.Contains(err.Error(), "Q") {
+		t.Fatalf("err = %v, want a recordable error without the short session env value", err)
+	}
+	if err := Start(req); err == nil || strings.Contains(err.Error(), "Q") {
+		t.Fatalf("Start err = %v, want the same protection on the detached path", err)
+	}
+}
