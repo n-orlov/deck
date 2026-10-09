@@ -16,6 +16,25 @@ func TestIsSecretShapedKeyMatchesSPEC64Pattern(t *testing.T) {
 	}
 }
 
+// The allocation-free ASCII path must agree with the upper-casing reference
+// (SPEC §6.4: case-insensitive substring) on mixed case, near misses and keys
+// with non-ASCII letters, which take the Unicode path.
+func TestIsSecretShapedKeyAgreesWithTheUpperCasingReference(t *testing.T) {
+	for _, key := range []string{
+		"ToKeN", "pAsSwOrD_x", "x-secret-y", "SECRE", "TOKE", "KE", "k_e_y", "credentia",
+		"CREDENTIALS", "naïve_key", "ſecret", "tokën", "ΚEY", "a.b-c", "key",
+	} {
+		upper := strings.ToUpper(key)
+		want := false
+		for _, substr := range secretShapedKeySubstrings {
+			want = want || strings.Contains(upper, substr)
+		}
+		if got := IsSecretShapedKey(key); got != want {
+			t.Errorf("IsSecretShapedKey(%q) = %v, want %v", key, got, want)
+		}
+	}
+}
+
 func TestRedactMasksSecretPairsAndSessionValues(t *testing.T) {
 	env := map[string]string{"API_TOKEN": "tok-9f2", "REGION": "eu-north-7", "N": "12", "ONE": "Z", "EMPTY": "", "LONG": "eu-north-7-long"}
 	for text, want := range map[string]string{

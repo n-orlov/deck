@@ -16,6 +16,9 @@ const MaskedPlaceholder = "********"
 // IsSecretShapedKey reports whether key matches SPEC §6.4's secret-shaped
 // pattern, case-insensitively, by substring.
 func IsSecretShapedKey(key string) bool {
+	if isASCII(key) {
+		return asciiKeyIsSecretShaped(key)
+	}
 	upper := strings.ToUpper(key)
 	for _, substr := range secretShapedKeySubstrings {
 		if strings.Contains(upper, substr) {
@@ -23,4 +26,42 @@ func IsSecretShapedKey(key string) bool {
 		}
 	}
 	return false
+}
+
+func isASCII(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] >= 0x80 {
+			return false
+		}
+	}
+	return true
+}
+
+// asciiKeyIsSecretShaped is IsSecretShapedKey for an all-ASCII key without
+// allocating an upper-cased copy: a key is looked at once per KEY=VALUE pair
+// of a free-text reason, which may hold tens of thousands of them.
+func asciiKeyIsSecretShaped(key string) bool {
+	for _, substr := range secretShapedKeySubstrings {
+		for i := 0; i+len(substr) <= len(key); i++ {
+			if asciiEqualFoldUpper(key[i:i+len(substr)], substr) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// asciiEqualFoldUpper reports whether s upper-cased equals upper, which must
+// already be upper case.
+func asciiEqualFoldUpper(s, upper string) bool {
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if c >= 'a' && c <= 'z' {
+			c -= 'a' - 'A'
+		}
+		if c != upper[i] {
+			return false
+		}
+	}
+	return true
 }
