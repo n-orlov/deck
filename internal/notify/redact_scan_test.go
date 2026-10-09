@@ -62,3 +62,31 @@ func TestMaskSecretAssignmentsMasksEveryPairInAVeryLongText(t *testing.T) {
 		t.Fatal("long text differs from the regexp")
 	}
 }
+
+// Longer texts than the exhaustive walk reaches, drawn from the same pieces
+// plus every kind of whitespace and a spread of key shapes, against the
+// regexp oracle: the scan finds pairs through strings.Trim/Index calls, and
+// this is what pins their boundaries (a key behind several spaces, a value
+// behind a tab, a quote that never closes, a separator run).
+func TestMaskSecretAssignmentsAgreesWithTheRegexpOnRandomTexts(t *testing.T) {
+	pieces := []string{
+		"TOKEN", "api_key", "k", "v", "=", ":", "=", ":", " ", "  ", "\t", "\n", "\r", "\f", `"`, "'", "-", ".", "é", "\xff",
+		"PASSWORD", "x y", "secret", "a=b", "::", "= ",
+	}
+	// A fixed linear congruential stream: the same texts every run.
+	state := 74
+	next := func(n int) int {
+		state = (state*1103515245 + 12345) & 0x7fffffff
+		return state >> 8 % n
+	}
+	for i := 0; i < 30000; i++ {
+		var b strings.Builder
+		for n := next(14); n >= 0; n-- {
+			b.WriteString(pieces[next(len(pieces))])
+		}
+		text := b.String()
+		if got, want := maskSecretAssignments(text), oracleMask(text); got != want {
+			t.Fatalf("maskSecretAssignments(%q) = %q, want %q", text, got, want)
+		}
+	}
+}

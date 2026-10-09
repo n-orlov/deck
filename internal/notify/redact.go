@@ -14,15 +14,16 @@ func Redact(text string, sessionEnv map[string]string) string {
 	return scrub(maskSecretAssignments(text), sessionEnv)
 }
 
-// isSpace is the regexp `\s` class: ASCII whitespace only.
-func isSpace(c byte) bool {
-	return c == ' ' || c == '\t' || c == '\n' || c == '\f' || c == '\r'
-}
-
-// isKeyByte is the character class of a KEY in a KEY=VALUE pair.
-func isKeyByte(c byte) bool {
-	return c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '_' || c == '.' || c == '-'
-}
+// The character classes of the free-text scan. asciiSpace is the regexp `\s`
+// class (ASCII whitespace only); keyBytes is a KEY's character class. They
+// are consumed by strings functions, never by a per-byte Go loop: under the
+// nightly lane's -race -covermode=atomic every counted block is a
+// race-detector atomic, and a loop step per byte of a megabyte reason ran
+// the detached handoff past its bound (SPEC §10.3).
+const (
+	asciiSpace = " \t\n\f\r"
+	keyBytes   = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.-"
+)
 
 // maskSecretAssignments masks the value of every secret-shaped KEY=VALUE or
 // KEY: VALUE pair in text, where KEY is a run of [A-Za-z0-9_.-], VALUE is a
@@ -30,22 +31,30 @@ func isKeyByte(c byte) bool {
 // the separator. It is a single linear scan over the separators, so a very
 // long reason costs little more than reading it: a regular expression over the
 // same text was ~50 ns a byte, which put the detached hook's session-end
-// handoff past its bound under load (SPEC §10.3).
+// handoff past its bound under load (SPEC §10.3). The scan steps from
+// separator to separator with strings functions rather than Go loops: see
+// asciiSpace.
 func maskSecretAssignments(text string) string {
 	var out strings.Builder
 	copied, pos := 0, 0
 	for pos < len(text) {
-		sep := nextSeparator(text, pos)
-		if sep < 0 {
+		sepAt := strings.IndexAny(text[pos:], "=:")
+		if sepAt < 0 {
 			break
 		}
-		key, valStart, ok := assignmentAt(text, pos, sep)
-		if !ok {
+		sep := pos + sepAt
+		// The pair around the separator: the key run before it (not reaching
+		// back past pos, where the previous pair ended) and the offset where
+		// its value starts. No key before it or no value after it: no pair.
+		beforeSep := strings.TrimRight(text[pos:sep], asciiSpace)
+		keyStart, keyEnd := pos+len(strings.TrimRight(beforeSep, keyBytes)), pos+len(beforeSep)
+		valStart := len(text) - len(strings.TrimLeft(text[sep+1:], asciiSpace))
+		if keyStart == keyEnd || valStart == len(text) {
 			pos = sep + 1
 			continue
 		}
 		valEnd := assignmentValueEnd(text, valStart)
-		if IsSecretShapedKey(key) {
+		if IsSecretShapedKey(text[keyStart:keyEnd]) {
 			if out.Cap() == 0 {
 				out.Grow(len(text))
 			}
@@ -62,38 +71,6 @@ func maskSecretAssignments(text string) string {
 	return out.String()
 }
 
-// nextSeparator returns the offset of the first '=' or ':' at or after from,
-// or -1. A plain byte loop: strings.IndexAny rebuilds its character set on
-// every call, which dominated the scan of a reason made of short pairs.
-func nextSeparator(text string, from int) int {
-	for i := from; i < len(text); i++ {
-		if c := text[i]; c == '=' || c == ':' {
-			return i
-		}
-	}
-	return -1
-}
-
-// assignmentAt reads the pair whose separator is at sep: the key run before
-// it (not reaching back past from, where the previous pair ended) and the
-// offset where its value starts. ok is false when the separator has no key
-// before it or no value after it.
-func assignmentAt(text string, from, sep int) (key string, valStart int, ok bool) {
-	keyEnd := sep
-	for keyEnd > from && isSpace(text[keyEnd-1]) {
-		keyEnd--
-	}
-	keyStart := keyEnd
-	for keyStart > from && isKeyByte(text[keyStart-1]) {
-		keyStart--
-	}
-	valStart = sep + 1
-	for valStart < len(text) && isSpace(text[valStart]) {
-		valStart++
-	}
-	return text[keyStart:keyEnd], valStart, keyStart < keyEnd && valStart < len(text)
-}
-
 // assignmentValueEnd returns where the value starting at start ends: after
 // the closing quote of a quoted string, else at the next whitespace.
 func assignmentValueEnd(text string, start int) int {
@@ -102,11 +79,10 @@ func assignmentValueEnd(text string, start int) int {
 			return start + 1 + closing + 1
 		}
 	}
-	end := start + 1
-	for end < len(text) && !isSpace(text[end]) {
-		end++
+	if i := strings.IndexAny(text[start+1:], asciiSpace); i >= 0 {
+		return start + 1 + i
 	}
-	return end
+	return len(text)
 }
 
 // scrubValues lists the session env values to remove by value, longest first
