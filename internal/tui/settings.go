@@ -445,8 +445,9 @@ func (m *Model) settingsSave() tea.Cmd {
 	}
 	// A reload held back for this open edit is folded into the write: keys the
 	// user did not touch take the reloaded values (SPEC §6.5).
-	if m.reloadHeld != nil {
-		m.settingsEdits = mergeHeldReload(m.settingsEdits, m.settingsSavedEdits, m.reloadHeld.File)
+	held := m.reloadHeld
+	if held != nil {
+		m.settingsEdits = mergeHeldReload(m.settingsEdits, m.settingsSavedEdits, held.File)
 	}
 	if err := config.WriteConfigFile(path, m.settingsEdits); err != nil {
 		m.settingsNote = "save failed: " + err.Error()
@@ -463,6 +464,7 @@ func (m *Model) settingsSave() tea.Cmd {
 	saved := settingsCloneFileConfig(m.settingsEdits)
 	m.settings.File = saved
 	cmd := m.settingsApplyLiveFields(m.settingsEdits, previous)
+	m.applyHeldTheme(held, m.settingsEdits.Theme)
 	m.settingsSavedEdits = saved
 	m.settingsNote = "saved " + path
 	return cmd
