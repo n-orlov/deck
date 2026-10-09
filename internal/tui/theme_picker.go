@@ -138,6 +138,14 @@ func (m Model) themePickerConfirm() (tea.Model, tea.Cmd) {
 			m.themePickerNote = "save failed: " + err.Error()
 			return m, nil
 		}
+		// Our own write is not an external change (SPEC §6.5): record it so
+		// the poller does not apply it back, and keep the running file
+		// snapshot in step with what is now on disk.
+		if m.configReloader != nil {
+			m.configReloader.MarkOwnWrite()
+		}
+		m.settings.File = settingsCloneFileConfig(cfg)
+		m.reloadErr = nil
 	}
 	m.settings.Theme = candidate
 	m.settings.ThemeReason = ""

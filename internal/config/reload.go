@@ -77,8 +77,11 @@ func NewReloader(settings Settings, load func() (Settings, error)) *Reloader {
 // exactly once and returns its result. The fingerprint is taken before the
 // parse, so a write landing mid-parse is simply seen by the next Poll.
 func (r *Reloader) Poll() (settings Settings, changed bool, err error) {
-	now := ComputeFingerprint(r.configFile, r.themesDir)
 	r.mu.Lock()
+	// The fingerprint is taken under the lock so a MarkOwnWrite landing
+	// meanwhile is ordered wholly before or after this comparison, never
+	// overwritten by a fingerprint taken before the own write.
+	now := ComputeFingerprint(r.configFile, r.themesDir)
 	if now == r.last {
 		r.mu.Unlock()
 		return Settings{}, false, nil
@@ -95,9 +98,9 @@ func (r *Reloader) Poll() (settings Settings, changed bool, err error) {
 // apply). Only the config.toml part of the fingerprint moves: a user theme
 // file that changed in the meantime is still a change the next Poll reports.
 func (r *Reloader) MarkOwnWrite() {
-	own := ComputeFingerprint(r.configFile, r.themesDir)
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	own := ComputeFingerprint(r.configFile, r.themesDir)
 	r.last = Fingerprint(configPart(string(own)) + themesPart(string(r.last)))
 }
 

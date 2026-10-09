@@ -780,8 +780,10 @@ other in the same change that adds it.
    that is open but untouched takes the reload and shows it.
 2. *An instance's own save is not an external change.* After a save the instance records the
    `config.toml` fingerprint of what it just wrote, so the next poll finds nothing changed and
-   applies nothing a second time (no flicker). A user theme file that changed meanwhile is still
-   seen.
+   applies nothing a second time (no flicker). This holds for every instance-local writer of
+   `config.toml`: the settings view's save and the `t` theme picker's selection both record the
+   fingerprint and refresh the running file snapshot. A user theme file that changed meanwhile,
+   and any later external write, is still seen.
 3. *A half-written or invalid `config.toml` changes nothing.* The previous settings stay in
    force, no key falls back to its default, nothing panics, and the main view shows one line,
    `config.toml not reloaded, keeping the previous settings: <error>`, above the sessions. The
