@@ -344,14 +344,32 @@ func TestSpawnDefaultsTheCapsAndInheritsNothingStale(t *testing.T) {
 	}
 }
 
+// onPath installs an executable capture script called name in a fresh temporary
+// directory that leads PATH for the rest of the test, and returns the directory
+// the script writes its argv and stdin into. The bare-name tests resolve this
+// script, never a system executable.
+func onPath(t *testing.T, name string) (dir string) {
+	t.Helper()
+	bin := t.TempDir()
+	dir = t.TempDir()
+	body := "#!/bin/sh\nd=" + strconv.Quote(dir) + "\nfor a in \"$@\"; do printf '%s\\n' \"$a\"; done > \"$d/argv\"\ncat > \"$d/stdin\"\n"
+	if err := os.WriteFile(filepath.Join(bin, name), []byte(body), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	return dir
+}
+
 func TestSpawnPathLookupAndStartFailure(t *testing.T) {
-	// A bare name resolves on PATH like an agent binary.
-	res, err := Spawn(context.Background(), func() Request {
-		r := baseRequest("true")
-		return r
-	}())
+	// A bare name resolves on PATH like an agent binary; the executable is a
+	// temporary capture script.
+	dir := onPath(t, "deck-capture-hook")
+	res, err := Spawn(context.Background(), baseRequest("deck-capture-hook", "--fixed"))
 	if err != nil || res.Failed() {
-		t.Errorf("true: %+v, %v", res, err)
+		t.Errorf("bare capture script: %+v, %v", res, err)
+	}
+	if got := read(t, filepath.Join(dir, "argv")); got != "waiting\n--fixed\n" {
+		t.Errorf("argv = %q, want the kind then the fixed argument", got)
 	}
 	// An interpreter that does not exist makes the start itself fail.
 	bad := filepath.Join(t.TempDir(), "bad.sh")
@@ -435,5 +453,31 @@ func TestANotStartedErrorCarriesNoShortSessionEnvValue(t *testing.T) {
 	}
 	if err := Start(req); err == nil || strings.Contains(err.Error(), "Q") {
 		t.Fatalf("Start err = %v, want the same protection on the detached path", err)
+	}
+}
+
+func TestStartResolvesABareNameToTheCaptureScriptOnPath(t *testing.T) {
+	dir := onPath(t, "deck-capture-detached")
+	if err := Start(baseRequest("deck-capture-detached")); err != nil {
+		t.Fatalf("Start of a bare capture script = %v", err)
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if b, err := os.ReadFile(filepath.Join(dir, "stdin")); err == nil && len(b) > 0 {
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Error("the detached capture script never received its payload")
+}
+
+func TestABareNameAbsentFromPathIsNotStartedWhateverTheSystemHas(t *testing.T) {
+	// PATH holds only an empty temporary directory: no system executable can
+	// answer for the name.
+	t.Setenv("PATH", t.TempDir())
+	for _, name := range []string{"true", "sh", "notify-send"} {
+		if res, err := Spawn(context.Background(), baseRequest(name)); err == nil || res.ExitCode != -1 {
+			t.Errorf("%s with an empty PATH: %+v, %v, want a not-started error", name, res, err)
+		}
 	}
 }
