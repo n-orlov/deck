@@ -35,11 +35,10 @@ func maskSecretAssignments(text string) string {
 	var out strings.Builder
 	copied, pos := 0, 0
 	for pos < len(text) {
-		sep := strings.IndexAny(text[pos:], "=:")
+		sep := nextSeparator(text, pos)
 		if sep < 0 {
 			break
 		}
-		sep += pos
 		key, valStart, ok := assignmentAt(text, pos, sep)
 		if !ok {
 			pos = sep + 1
@@ -47,6 +46,9 @@ func maskSecretAssignments(text string) string {
 		}
 		valEnd := assignmentValueEnd(text, valStart)
 		if IsSecretShapedKey(key) {
+			if out.Cap() == 0 {
+				out.Grow(len(text))
+			}
 			out.WriteString(text[copied:valStart])
 			out.WriteString(MaskedPlaceholder)
 			copied = valEnd
@@ -58,6 +60,18 @@ func maskSecretAssignments(text string) string {
 	}
 	out.WriteString(text[copied:])
 	return out.String()
+}
+
+// nextSeparator returns the offset of the first '=' or ':' at or after from,
+// or -1. A plain byte loop: strings.IndexAny rebuilds its character set on
+// every call, which dominated the scan of a reason made of short pairs.
+func nextSeparator(text string, from int) int {
+	for i := from; i < len(text); i++ {
+		if c := text[i]; c == '=' || c == ':' {
+			return i
+		}
+	}
+	return -1
 }
 
 // assignmentAt reads the pair whose separator is at sep: the key run before
