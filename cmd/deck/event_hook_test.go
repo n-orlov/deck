@@ -556,6 +556,64 @@ echo gone-hook-done
 	}
 }
 
+// SPEC §3.1: several deaths one liveness pass records cost `_hook` one
+// event_hook_timeout together, not one each. Four vanished sessions whose
+// script takes a second apiece (one of them failing) leave `_hook` inside the
+// hook's own dispatch plus one batch, and every death's result is on its row.
+func TestHookLivenessPassHoldsManySlowHooksToOneBound(t *testing.T) {
+	f := newEventHookFixture(t, "claude", "running")
+	f.script(t, fmt.Sprintf(`printf '%%s %%s\n' "$1" "$DECK_SESSION_ID" >> %[1]q
+sleep 1
+case "$DECK_SESSION_ID" in row-3) echo failing-hook >&2; exit 5;; esac
+echo hook-done
+`, filepath.Join(f.out, "calls")))
+	db, err := store.Open(f.paths)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{"row-2", "row-3", "row-4", "row-5"} {
+		if _, err := db.CreateSession(context.Background(), store.CreateSessionInput{
+			ID: id, Name: id, CWD: f.paths.Home, Agent: "claude", CapturedPath: "/bin",
+			Status: "running", StatusSource: "hook", StatusAt: 1000, CreatedAt: 1001,
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	// row-1 vanishes too: five deaths in one pass.
+	if err := exec.Command("tmux", "-L", f.settings.Socket, "kill-server").Run(); err != nil {
+		t.Fatal(err)
+	}
+	start := time.Now()
+	if code, stderr := f.run(`{"hook_event_name":"Notification","session_id":"conv-1","notification_type":"idle_prompt"}`); code != 0 {
+		t.Fatalf("hook exit = %d, stderr %q", code, stderr)
+	}
+	// The hook's own offer (1 s) plus one batch (1 s); five serial deaths would add 5 s.
+	if elapsed := time.Since(start); elapsed > 4*time.Second+f.settings.Reconcile {
+		t.Fatalf("_hook took %s with five deaths, want about two script runs", elapsed)
+	}
+	db, err = store.Open(f.paths)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	for _, id := range []string{"row-1", "row-2", "row-3", "row-4", "row-5"} {
+		run, ok, err := db.LastEventHookResult(context.Background(), id)
+		if err != nil || !ok || run.Kind != "ended" || run.TimedOut {
+			t.Fatalf("%s result = %+v ok=%v err=%v, want a recorded ended", id, run, ok, err)
+		}
+		wantExit := 0
+		if id == "row-3" {
+			wantExit = 5
+		}
+		if run.ExitCode != wantExit {
+			t.Fatalf("%s exit = %d, want %d", id, run.ExitCode, wantExit)
+		}
+	}
+}
+
 // waitForRetainedDeadPane waits until tmux keeps slug's pane dead under
 // remain-on-exit, the corpse the liveness pass collects.
 func waitForRetainedDeadPane(t *testing.T, client tmux.Client, slug string) {

@@ -1710,7 +1710,10 @@ disappeared cleanly offers `ended`), and the user's own `killed`. A process deat
 post-hook liveness pass (§3.1) detects is dispatched by that `_hook` the same way, so an unattended
 crash still fires. It is spawned once the pass has returned, so the pass's short reconcile
 budget neither cuts the script short nor is spent by it: the script is bounded by
-`event_hook_timeout` like every attached spawn. Each of those writes its
+`event_hook_timeout` like every attached spawn. When one pass records several deaths their
+offers run concurrently, each claimed, spawned and recorded on its own event, so the whole
+batch holds the caller for one `event_hook_timeout` however many sessions died, never one per
+session. Each of those writes its
 event row first and then calls the dispatch function with the row's seq, so the result is stored
 against that row; the running TUI reads the four event-hook settings per event, so a save or a
 config reload applies to the next one. A probe verdict that only repeats the status already on
