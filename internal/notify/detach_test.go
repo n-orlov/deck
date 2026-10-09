@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -45,6 +46,58 @@ func TestStartRunsTheScriptDetachedWithTheSamePayloadAsSpawn(t *testing.T) {
 	}
 	if env := envMap(read(t, filepath.Join(dir, "env"))); env["DECK_EVENT_KIND"] != "waiting" || env["DECK_SESSION_ID"] != "sess-1" {
 		t.Errorf("env kind/session = %q/%q", env["DECK_EVENT_KIND"], env["DECK_SESSION_ID"])
+	}
+	waitFile(t, filepath.Join(dir, "finished"))
+}
+
+// Start returns inside its one-second bound whatever the script does with its
+// inputs and outputs afterwards: one that never reads its stdin, one that
+// outlives the request's timeout (a detached script has none) and one that
+// writes far more than a pipe holds to stdout and stderr.
+func TestStartReturnsWithinTheBoundWhateverTheScriptDoesAfterwards(t *testing.T) {
+	cases := map[string]struct {
+		body    string
+		timeout time.Duration
+	}{
+		"never reads stdin":        {"sleep 1\necho finished > \"$d/finished\"", 0},
+		"outlives the timeout":     {"sleep 1\necho finished > \"$d/finished\"", time.Millisecond},
+		"floods stdout and stderr": {"head -c 2000000 /dev/zero | tr '\\0' x\nhead -c 2000000 /dev/zero | tr '\\0' y >&2\necho finished > \"$d/finished\"", 0},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			dir := t.TempDir()
+			path := script(t, "d="+strconv.Quote(dir)+"\n"+tc.body)
+			req := baseRequest(path)
+			if tc.timeout > 0 {
+				req.Timeout = tc.timeout
+			}
+			started := time.Now()
+			if err := Start(req); err != nil {
+				t.Fatal(err)
+			}
+			if elapsed := time.Since(started); elapsed >= time.Second {
+				t.Fatalf("Start took %s: it waited for the script", elapsed)
+			}
+			if _, err := os.Stat(filepath.Join(dir, "finished")); err == nil && name != "floods stdout and stderr" {
+				t.Fatal("the script had already finished when Start returned")
+			}
+			waitFile(t, filepath.Join(dir, "finished"))
+		})
+	}
+}
+
+// Start does not outlive-wait a script that is still running when it
+// returns: repeated starts of a slow script each return inside the bound.
+func TestStartOfSeveralSlowScriptsNeverAccumulatesTheirWait(t *testing.T) {
+	path, dir := captureScript(t, "sleep 1\necho finished > \"$d/finished\"")
+	started := time.Now()
+	for i := 0; i < 4; i++ {
+		if err := Start(baseRequest(path)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if elapsed := time.Since(started); elapsed >= time.Second {
+		t.Fatalf("four Starts took %s together: they waited for the scripts", elapsed)
 	}
 	waitFile(t, filepath.Join(dir, "finished"))
 }
