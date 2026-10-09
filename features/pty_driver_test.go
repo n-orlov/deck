@@ -1057,23 +1057,24 @@ var _ io.Writer = vt.NewEmulator(1, 1)
 
 // typedEchoLegacyPace is the fixed pause this package used to put between
 // two consecutive writes that must not coalesce into one read of deck's
-// input loop. SendAwaitingVisible keeps it as the floor for the cases where
-// the echo cannot prove consumption, and as the ceiling-for-the-fallback.
+// input loop. SendAwaitingVisible keeps it as the pause for the cases where
+// the echo cannot prove consumption.
 const typedEchoLegacyPace = 75 * time.Millisecond
 
 // typedEchoFallback bounds SendAwaitingVisible's wait for the echo. It is
-// deliberately longer than the legacy pace it replaces, so a step whose text
-// is never echoed verbatim (a name truncated by a narrow dialog) still
-// waits at least as long as the fixed pause it replaced.
-const typedEchoFallback = 250 * time.Millisecond
+// exactly the legacy pace it replaces, never longer: a step whose text is
+// never echoed verbatim (a name truncated by a narrow dialog) waits as long
+// as the fixed pause did, and a step whose echo shows returns sooner.
+const typedEchoFallback = typedEchoLegacyPace
 
 // SendAwaitingVisible writes keys, then waits until the frame shows visible
 // -- text the write typed into the program -- instead of a fixed pause: a
 // frame that shows the typed text proves the program has read and handled
 // the whole write, so the NEXT write cannot coalesce with its tail, which
 // is the only thing the old fixed pause stood in for. The wait ends at the
-// first update that shows visible, or after typedEchoFallback (never
-// failing: a text a narrow dialog truncates is simply paced as before).
+// first update that shows visible, or after typedEchoFallback -- the old
+// pause, unchanged -- (never failing: a text a narrow dialog truncates is
+// simply paced as before).
 // When visible was already on screen before the write the echo proves
 // nothing, so the legacy pause is kept.
 func (d *ScreenDriver) SendAwaitingVisible(ctx context.Context, keys, visible string) error {

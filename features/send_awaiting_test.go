@@ -49,6 +49,12 @@ func TestSendAwaitingVisibleWaitsForTheEchoNotAFixedPause(t *testing.T) {
 		}
 	})
 	t.Run("text that never shows is paced for the fallback and does not fail", func(t *testing.T) {
+		// The fallback replaces a fixed 75ms pause and must never exceed it:
+		// a raised per-step bound is exactly what the runtime cure forbids.
+		const replacedPause = 75 * time.Millisecond
+		if typedEchoFallback != replacedPause || typedEchoLegacyPace != replacedPause {
+			t.Fatalf("fallback %s / legacy pace %s, want both exactly the replaced %s pause", typedEchoFallback, typedEchoLegacyPace, replacedPause)
+		}
 		driver, ctx := startScriptDriver(t, "printf ready; cat >/dev/null\n")
 		if err := driver.WaitForFrame(ctx, false, "ready"); err != nil {
 			t.Fatal(err)
