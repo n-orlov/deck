@@ -401,17 +401,23 @@ func TestLiveEventHookFollowsTheSettings(t *testing.T) {
 // A budgeted pass (ReconcileWithin, `deck _hook`'s liveness pass) offers the
 // deaths it records only after it returns (SPEC §10.4): a script slower than
 // the budget neither fails the pass nor keeps it from collecting a second
-// crash, and each death still spawns once, in order.
+// crash, and each death still spawns once. The pass offers its deaths
+// concurrently, so the seam guards what it records.
 func TestReconcileWithinDispatchesDeathsAfterThePassReturns(t *testing.T) {
 	svc, db, _, _ := newAgentTestService(t, nil, "hook-budget")
 	log, _ := withEventHook(&svc, "tmux.pane_dead")
 	budget := 400 * time.Millisecond
-	var inPass []bool
+	var (
+		inPassMu sync.Mutex
+		inPass   []bool
+	)
 	slow := log.spawn
 	d := svc.EventHook()
 	d.Spawn = func(ctx context.Context, req notify.Request) (notify.Result, error) {
 		_, hasDeadline := ctx.Deadline()
+		inPassMu.Lock()
 		inPass = append(inPass, hasDeadline)
+		inPassMu.Unlock()
 		time.Sleep(budget + 100*time.Millisecond)
 		return slow(ctx, req)
 	}
@@ -439,6 +445,11 @@ func TestReconcileWithinDispatchesDeathsAfterThePassReturns(t *testing.T) {
 	}
 	if got := log.kinds; len(got) != 2 || got[0] != "error" || got[1] != "error" {
 		t.Fatalf("spawned kinds = %v, want one error per death", got)
+	}
+	inPassMu.Lock()
+	defer inPassMu.Unlock()
+	if len(inPass) != 2 {
+		t.Fatalf("spawn seam saw %d calls, want 2", len(inPass))
 	}
 	for i, deadline := range inPass {
 		if deadline {
