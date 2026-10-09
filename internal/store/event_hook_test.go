@@ -132,6 +132,52 @@ func TestClaimHookPairConcurrentClaims(t *testing.T) {
 	}
 }
 
+func TestClaimHookPairKeysOnKindAndReasonTogetherNotEitherAlone(t *testing.T) {
+	ctx := context.Background()
+	db := openHookStateStore(t)
+	// The same reason under a different kind is a different pair, and the
+	// same kind with an empty reason is distinct from one with a reason.
+	for _, c := range []struct {
+		kind, reason string
+		want         bool
+	}{
+		{"waiting", "permission", true},
+		{"error", "permission", true},
+		{"waiting", "", true},
+		{"error", "permission", false},
+		{"waiting", "", false},
+	} {
+		if won, err := db.ClaimHookPair(ctx, "s1", c.kind, c.reason); err != nil || won != c.want {
+			t.Fatalf("claim (%s,%s) = %v, %v, want %v", c.kind, c.reason, won, err, c.want)
+		}
+	}
+}
+
+func TestClaimHookPairIsPerSessionAndConcurrentAcrossSessions(t *testing.T) {
+	ctx := context.Background()
+	db := openHookStateStore(t)
+	newLeaseTestSession(t, db, "s2", "running")
+	var wins atomic.Int32
+	var wg sync.WaitGroup
+	for _, id := range []string{"s1", "s2"} {
+		for range 5 {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				if won, err := db.ClaimHookPair(ctx, id, "waiting", "question"); err != nil {
+					t.Error(err)
+				} else if won {
+					wins.Add(1)
+				}
+			}()
+		}
+	}
+	wg.Wait()
+	if wins.Load() != 2 {
+		t.Fatalf("the same pair won %d times across two sessions, want exactly one per session (2)", wins.Load())
+	}
+}
+
 func TestEventSeqReportsTheAppendedEventRow(t *testing.T) {
 	ctx := context.Background()
 	db := openHookStateStore(t)
