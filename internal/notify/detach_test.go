@@ -57,6 +57,31 @@ func TestStartRunsTheScriptDetachedWithTheSamePayloadAsSpawn(t *testing.T) {
 	waitFile(t, filepath.Join(dir, "finished"))
 }
 
+// The detached spawn gives short session env values and inherited session
+// env entries the same protection as the attached one (SPEC §6.4, §10.1).
+func TestStartRemovesShortAndInheritedSessionEnvValues(t *testing.T) {
+	path, dir := captureScript(t, "echo finished > \"$d/finished\"")
+	req := baseRequest(path)
+	req.SessionEnv = map[string]string{"DB_PASSWORD": "Q", "PLAIN": "zj", "MODE": "9"}
+	req.BaseEnv = append(req.BaseEnv, "MODE=9")
+	seedShort(&req)
+	if err := Start(req); err != nil {
+		t.Fatal(err)
+	}
+	waitFile(t, filepath.Join(dir, "finished"))
+	env := read(t, filepath.Join(dir, "env"))
+	for name, haystack := range map[string]string{"env": env, "payload": read(t, filepath.Join(dir, "stdin"))} {
+		for _, value := range []string{"Q", "zj"} {
+			if strings.Contains(haystack, value) {
+				t.Errorf("%s contains the short session env value %q", name, value)
+			}
+		}
+	}
+	if _, ok := envMap(env)["MODE"]; ok {
+		t.Error("an inherited session env entry reached the detached script")
+	}
+}
+
 // A payload larger than any pipe buffer (64 KiB by default, 1 MiB at most
 // on Linux) must not stall Start: the handoff may never wait on a reader, and
 // the script must still read the whole payload after Start returned. Nothing

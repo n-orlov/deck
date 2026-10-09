@@ -17,12 +17,14 @@ func TestIsSecretShapedKeyMatchesSPEC64Pattern(t *testing.T) {
 }
 
 func TestRedactMasksSecretPairsAndSessionValues(t *testing.T) {
-	env := map[string]string{"API_TOKEN": "tok-9f2", "REGION": "eu-north-7", "N": "12", "EMPTY": "", "LONG": "eu-north-7-long"}
+	env := map[string]string{"API_TOKEN": "tok-9f2", "REGION": "eu-north-7", "N": "12", "ONE": "Z", "EMPTY": "", "LONG": "eu-north-7-long"}
 	for text, want := range map[string]string{
 		`TOKEN=abc and "x"`:                     "TOKEN=" + MaskedPlaceholder + ` and "x"`,
 		`password: 'hun ter2' ok`:               "password: " + MaskedPlaceholder + " ok",
 		`secret = "a b"`:                        "secret = " + MaskedPlaceholder,
-		"build=ok 12 steps":                     "build=ok 12 steps",
+		"build=ok 12 steps":                     "build=ok " + MaskedPlaceholder + " steps",
+		"short Z value":                         "short " + MaskedPlaceholder + " value",
+		"nothing shaped like a value":           "nothing shaped like a value",
 		"region eu-north-7 and eu-north-7-long": "region " + MaskedPlaceholder + " and " + MaskedPlaceholder,
 		"used tok-9f2 here":                     "used " + MaskedPlaceholder + " here",
 	} {

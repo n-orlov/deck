@@ -7,12 +7,6 @@ import (
 	"unicode/utf8"
 )
 
-// minScrubLen is the shortest session env value scrubbed by value. A one-
-// to three-character value ("1", "on") would shred any message that merely
-// contains the characters, and leaks nothing worth protecting; the
-// KEY=VALUE masking still covers a secret-shaped pair of any length.
-const minScrubLen = 4
-
 // assignment finds KEY=VALUE and KEY: VALUE pairs in free text, where VALUE
 // is a quoted string or a run of non-space characters.
 var assignment = regexp.MustCompile(`([A-Za-z0-9_.\-]+)(\s*[=:]\s*)("[^"]*"|'[^']*'|\S+)`)
@@ -36,11 +30,13 @@ func maskAssignment(match string) string {
 }
 
 // scrubValues lists the session env values to remove by value, longest first
-// so a value that contains another is removed whole.
+// so a value that contains another is removed whole. There is no length
+// floor (SPEC §6.4: env values never appear): only the empty value, which
+// has nothing to remove, is skipped.
 func scrubValues(sessionEnv map[string]string) []string {
 	values := make([]string, 0, len(sessionEnv))
 	for _, value := range sessionEnv {
-		if len(value) < minScrubLen {
+		if value == "" {
 			continue
 		}
 		values = append(values, value)
