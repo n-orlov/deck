@@ -404,3 +404,73 @@ func TestInteractivePipeOwnedByCurrentUserMatchesTheRealOwner(t *testing.T) {
 		t.Fatalf("a directory this process just created is not reported as owned by the current user")
 	}
 }
+
+// TestFreshInteractivePipeDirIsNeverAnUntrustedPlantedEntry: the shared temp
+// root is writable by every local user, so a deck-interactive-pipe-* entry can
+// exist before deck makes its own. Creating an interactive pipe dir must give
+// a different, fresh 0700 directory and leave the planted entries (a loose-mode
+// directory and a symlink) exactly as they were, and a following reclaim pass
+// must not touch them or the live new dir either.
+func TestFreshInteractivePipeDirIsNeverAnUntrustedPlantedEntry(t *testing.T) {
+	withIsolatedInteractivePipeTempRoot(t)
+	loose := plantInteractivePipeEntry(t, 0o755)
+	target := t.TempDir()
+	link := filepath.Join(interactivePipeTempRoot, interactivePipeTempDirPrefix+"link")
+	if err := os.Symlink(target, link); err != nil {
+		t.Fatalf("symlink: %v", err)
+	}
+
+	fresh, err := makeInteractivePipeDir()
+	if err != nil {
+		t.Fatalf("makeInteractivePipeDir: %v", err)
+	}
+	if fresh == loose || fresh == link {
+		t.Fatalf("fresh dir %q reuses a planted entry", fresh)
+	}
+	info, err := os.Lstat(fresh)
+	if err != nil || !info.IsDir() {
+		t.Fatalf("fresh dir %q is not a real directory (err=%v)", fresh, err)
+	}
+	if got := info.Mode().Perm(); got != 0o700 {
+		t.Fatalf("fresh dir mode = %v, want 0700", got)
+	}
+	if !interactivePipeOwnedByCurrentUser(info) {
+		t.Fatalf("fresh dir %q is not owned by the current user", fresh)
+	}
+
+	reclaimed := reclaimWithOwnerCheck(t, func(os.FileInfo) bool { return true })
+	if len(reclaimed) != 0 {
+		t.Fatalf("reclaimed = %v, want none: the planted entries are untrusted and the new dir is live", reclaimed)
+	}
+	if got, err := os.Stat(loose); err != nil || got.Mode().Perm() != 0o755 {
+		t.Fatalf("loose-mode entry was changed (err=%v)", err)
+	}
+	if _, err := os.Stat(filepath.Join(loose, "marker")); err != nil {
+		t.Fatalf("loose-mode entry lost its contents: %v", err)
+	}
+	if got, err := os.Readlink(link); err != nil || got != target {
+		t.Fatalf("symlink entry changed (target=%q err=%v)", got, err)
+	}
+	if _, err := os.Stat(filepath.Join(fresh, interactivePipeOwnerFileName)); err != nil {
+		t.Fatalf("fresh dir was touched by the reclaim pass: %v", err)
+	}
+}
+
+// TestReclaimLeavesARegularFileAlone: a planted deck-interactive-pipe-* entry
+// that is a plain file owned by the current user with mode 0600 passes the
+// permission and owner checks, so only the is-a-real-directory check keeps it
+// (and its contents) from being removed and reported.
+func TestReclaimLeavesARegularFileAlone(t *testing.T) {
+	withIsolatedInteractivePipeTempRoot(t)
+	planted := filepath.Join(interactivePipeTempRoot, interactivePipeTempDirPrefix+"file")
+	if err := os.WriteFile(planted, []byte("x"), 0o600); err != nil {
+		t.Fatalf("plant file: %v", err)
+	}
+	reclaimed := reclaimWithOwnerCheck(t, func(os.FileInfo) bool { return true })
+	if len(reclaimed) != 0 {
+		t.Fatalf("reclaimed = %v, want none", reclaimed)
+	}
+	if data, err := os.ReadFile(planted); err != nil || string(data) != "x" {
+		t.Fatalf("regular-file entry was removed or changed (err=%v)", err)
+	}
+}
