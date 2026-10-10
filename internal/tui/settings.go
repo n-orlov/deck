@@ -13,6 +13,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/n-orlov/deck/internal/config"
+	"github.com/n-orlov/deck/internal/notify"
 	"github.com/n-orlov/deck/internal/store"
 	"github.com/n-orlov/deck/internal/theme"
 	"github.com/n-orlov/deck/internal/tui/lineedit"
@@ -449,6 +450,10 @@ func (m *Model) settingsSave() tea.Cmd {
 	if held != nil {
 		m.settingsEdits = mergeHeldReload(m.settingsEdits, m.settingsSavedEdits, held.File)
 	}
+	if note := m.settingsEventHookRefusal(); note != "" {
+		m.settingsNote = note
+		return nil
+	}
 	if err := config.WriteConfigFile(path, m.settingsEdits); err != nil {
 		m.settingsNote = "save failed: " + err.Error()
 		return nil
@@ -468,6 +473,19 @@ func (m *Model) settingsSave() tea.Cmd {
 	m.settingsSavedEdits = saved
 	m.settingsNote = "saved " + path
 	return cmd
+}
+
+// settingsEventHookRefusal is the note that refuses a save which would write a
+// newly entered relative event_hook path (SPEC §10.1: the path must be
+// absolute), or "" when the save may go on. A relative value the file already
+// holds is a warning in the health view, not a reason to refuse an unrelated
+// edit, so only a changed value is refused.
+func (m *Model) settingsEventHookRefusal() string {
+	command := strings.Fields(m.settingsEdits.EventHook)
+	if !notify.RelativeScript(command) || m.settingsEdits.EventHook == m.settings.File.EventHook {
+		return ""
+	}
+	return "save refused: event_hook must be an absolute path, not " + command[0]
 }
 
 // settingsApplyLiveFields refreshes m.settings for every schema field whose

@@ -401,6 +401,35 @@ func redactError(err error, sessionEnv map[string]string) error {
 	return &redactedError{text: Redact(err.Error(), sessionEnv), err: err}
 }
 
+// stripNUL removes every NUL byte. A NUL cannot be carried in a process
+// environment: exec refuses the whole spawn with "environment variable
+// contains NUL", which would lose the event after its pair was claimed.
+func stripNUL(text string) string {
+	if !strings.ContainsRune(text, 0) {
+		return text
+	}
+	return strings.ReplaceAll(text, "\x00", "")
+}
+
+// stripRequestNUL returns the request with NUL removed from every string that
+// is exported in the environment or the payload: the session fields, the
+// event's kind, reason and message, and the deck host and version (SPEC
+// §10.1). It runs first, before the offered-kind check and the by-value
+// scrub, so a value split by a NUL is still recognised. The configured
+// command is left as written.
+func stripRequestNUL(req Request) Request {
+	s := &req.Session
+	for _, field := range []*string{
+		&s.ID, &s.Name, &s.Slug, &s.CWD, &s.Agent, &s.Group, &s.PermissionProfile,
+		&s.ConversationID, &s.LaunchKind, &s.Status, &s.Reason,
+		&req.Event.Kind, &req.Event.Reason, &req.Event.Message,
+		&req.Deck.Host, &req.Deck.Version,
+	} {
+		*field = stripNUL(*field)
+	}
+	return req
+}
+
 // sanitize returns the request with every string that reaches the script's
 // environment or payload scrubbed of session env values (SPEC §10.1: "Env
 // values never appear" there). Free-text reasons also get the §6.4 masking;

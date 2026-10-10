@@ -1608,7 +1608,12 @@ because nothing restricts it to messages.
 ### 10.1 The script and its contract
 
 `event_hook` (§6.5, top level, empty by default) is one executable path or argv, run **without
-a shell** on the same footing as an agent binary. **No script configured means the whole
+a shell** on the same footing as an agent binary. **The path must be absolute**
+(a bare name is looked up on `PATH`; a relative path such as `./hook.sh`, `scripts/hook.sh` or
+`~/hook.sh` is not accepted, because `deck _hook` runs in the agent's directory, where it names a
+different file or none). The settings view refuses to save a newly entered relative path, with a note;
+a relative path already in a loaded `config.toml` is not a load error, and the health view (§11.4)
+shows an `Event hook WARNING` naming it. **No script configured means the whole
 feature is inert**, whatever any per-session setting says: the per-session fields are never
 read and nothing is spawned.
 
@@ -1620,6 +1625,11 @@ argv[1]: the configured fixed arguments follow it (`script <event> <fixed>...`).
   `prompt`, an `env` change, a `note` and every other stored kind (§4, mapped by §10.4) are the
   audit trail's, and a hook for each keystroke-grained event would be noise on the agent's
   critical path.
+- **NUL is stripped.** A NUL byte in any string exported in the environment or the payload (the
+  session fields, the offered kind, both reasons, the message, the deck host and version) is removed
+  before anything else, because a NUL in an environment entry makes the OS refuse the whole spawn; the
+  event is delivered with the rest of the text intact, attached and detached alike, and its
+  `(kind, reason)` pair (§10.3) is claimed once as for any other event.
 - **Environment:** every `DECK_SESSION_*` variable of §6.1, exactly as `pre_launch` sees them
   (always exported, empty rather than absent), plus `DECK_EVENT_KIND`, `DECK_EVENT_REASON`
   (the `status_reason`, e.g. a notification type), `DECK_EVENT_MESSAGE` (the last assistant

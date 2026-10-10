@@ -66,6 +66,7 @@ func (r Result) Failed() bool { return r.TimedOut || r.ExitCode != 0 }
 // exit or timeout is reported in the Result, not as an error.
 func Spawn(ctx context.Context, req Request) (Result, error) {
 	notStarted := Result{ExitCode: -1}
+	req = stripRequestNUL(req)
 	if err := validate(req); err != nil {
 		return notStarted, redactError(err, req.SessionEnv)
 	}

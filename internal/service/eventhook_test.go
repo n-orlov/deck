@@ -239,3 +239,28 @@ func TestEventHookConcurrentDispatchAcrossKindsAndAfterTheFact(t *testing.T) {
 		}
 	}
 }
+
+// R241 (SPEC §10.1, §10.3): an event whose reason and message carry a NUL is
+// delivered, not refused by exec, and its (kind, reason) pair is claimed once:
+// a repeat of the same event is deduped and the script runs a single time.
+func TestEventHookDispatchClaimsANULCarryingEventOnceAndDeliversIt(t *testing.T) {
+	f := newHookDispatchFixture(t, "waiting")
+	ev := HookEvent{SessionID: "s1", StoredKind: "notification", Reason: "permission\x00_prompt", Message: "needs\x00approval", At: time.Now()}
+	first := f.d.Dispatch(context.Background(), ev, false)
+	if !first.Spawned || first.Err != nil || first.Result.Failed() {
+		t.Fatalf("first dispatch = %+v, want the script run", first)
+	}
+	if second := f.d.Dispatch(context.Background(), ev, false); second.Spawned || second.Skip != notify.SkipDeduped {
+		t.Fatalf("second dispatch = %+v, want deduped", second)
+	}
+	if got := f.runs(); len(got) != 1 || got[0] != "waiting" {
+		t.Fatalf("runs = %v, want exactly one waiting spawn", got)
+	}
+	state, err := f.db.EventHookState(context.Background(), "s1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fired := notify.DecodeFired(state.Fired); len(fired) != 1 || fired[0].Kind != "waiting" {
+		t.Fatalf("hook_fired = %+v, want the one claimed pair", fired)
+	}
+}

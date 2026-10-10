@@ -27,6 +27,7 @@ import (
 // error it returns, a payload-file failure included, is scrubbed of session
 // env values (SPEC §10.1).
 func Start(req Request) error {
+	req = stripRequestNUL(req)
 	if err := validate(req); err != nil {
 		return redactError(err, req.SessionEnv)
 	}
