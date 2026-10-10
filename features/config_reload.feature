@@ -156,3 +156,107 @@ Feature: a running client picks up another client's config.toml change (R226, R2
     And deck client "A" text "deck" has foreground "#fabd2f"
     When deck client "A" exits cleanly
     And deck client "B" exits cleanly
+
+  # R238 (#74): the other [ui] keys SPEC 6.5 lists as applied live. One key
+  # each: client A changes it in the settings view and saves; client B,
+  # which never saw a keystroke, shows it within one shortened poll interval.
+  @requirement-238-live-keys-reload
+  Scenario: [ui] ascii saved in client A's settings view switches client B's glyphs within one shortened poll interval
+    Given the scenario's config.toml is written with:
+      """
+      [ui]
+      ascii = false
+      """
+    And the scenario's clients do not pin DECK_ASCII
+    And deck client "A" is started with colour enabled and a shortened config poll interval
+    And deck client "B" is started with colour enabled and a shortened config poll interval
+    Then deck client "B" screen contains "╭"
+    And deck client "B" screen does not contain "+---"
+    When deck client "A" sends ","
+    And deck client "A" sends "j"
+    And deck client "A" sends "	"
+    And deck client "A" sends "j"
+    Then deck client "A" screen contains "Ascii: Off"
+    When deck client "A" sends ""
+    Then deck client "A" screen contains "Ascii: On"
+    When deck client "A" sends ""
+    Then deck client "A" screen contains "saved "
+    And within one shortened config poll interval deck client "B" screen does not contain "╭"
+    And within one shortened config poll interval deck client "B" screen contains "+---"
+    When deck client "A" sends ""
+    Then deck client "A" screen contains "deck - sessions"
+    When deck client "A" exits cleanly
+    And deck client "B" exits cleanly
+
+  @requirement-238-live-keys-reload
+  Scenario: [ui] mouse saved in client A's settings view switches client B's mouse reporting on within one shortened poll interval
+    Given the scenario's config.toml is written with:
+      """
+      [ui]
+      mouse = false
+      """
+    And deck client "A" is started with colour enabled and a shortened config poll interval
+    And deck client "B" is started with colour enabled and a shortened config poll interval
+    Then deck client "B" raw output did not enable SGR mouse reporting
+    When deck client "A" sends ","
+    And deck client "A" sends "j"
+    And deck client "A" sends "	"
+    And deck client "A" sends "j"
+    And deck client "A" sends "j"
+    Then deck client "A" screen contains "Mouse: Off"
+    When deck client "A" sends ""
+    Then deck client "A" screen contains "Mouse: On"
+    When deck client "A" sends ""
+    Then deck client "A" screen contains "saved "
+    And within one shortened config poll interval deck client "B" raw output enabled SGR mouse reporting
+    When deck client "A" sends ""
+    Then deck client "A" screen contains "deck - sessions"
+    When deck client "A" exits cleanly
+    And deck client "B" exits cleanly
+
+  @requirement-238-live-keys-reload
+  Scenario: [ui] sort_order saved in client A's settings view re-sorts client B's list within one shortened poll interval
+    # activity orders by status_at newest first, name case-insensitively:
+    # the two sequences differ in every position of this fixture.
+    Given the scenario's config.toml is written with:
+      """
+      [ui]
+      sort_order = "activity"
+      """
+    And deck client "A" is started with colour enabled and a shortened config poll interval
+    When deck client "A" creates shell session "ord-alpha"
+    And deck client "A" creates shell session "ord-bravo"
+    And deck client "A" creates shell session "ord-charlie"
+    Then within one configured reconcile interval deck client "A" row "ord-alpha" contains "running"
+    And within one configured reconcile interval deck client "A" row "ord-bravo" contains "running"
+    And within one configured reconcile interval deck client "A" row "ord-charlie" contains "running"
+    When the state database session "ord-alpha" has status_at 25 seconds ago
+    And the state database session "ord-bravo" has status_at 5 seconds ago
+    And the state database session "ord-charlie" has status_at 15 seconds ago
+    And deck client "B" is started with colour enabled and a shortened config poll interval
+    Then deck client "B" screen shows sessions in this order:
+      | ord-bravo   |
+      | ord-charlie |
+      | ord-alpha   |
+    When deck client "A" sends ","
+    And deck client "A" sends "j"
+    And deck client "A" sends "	"
+    And deck client "A" sends "j"
+    And deck client "A" sends "j"
+    And deck client "A" sends "j"
+    And deck client "A" sends "j"
+    And deck client "A" sends "j"
+    And deck client "A" sends "j"
+    Then deck client "A" screen contains "Sort Order: activity"
+    When deck client "A" sends "+"
+    Then deck client "A" screen contains "Sort Order: name"
+    When deck client "A" sends ""
+    Then deck client "A" screen contains "saved "
+    And within one shortened config poll interval deck client "B" screen shows sessions in this order:
+      | ord-alpha   |
+      | ord-bravo   |
+      | ord-charlie |
+    When deck client "A" sends ""
+    Then deck client "A" screen contains "deck - sessions"
+    When deck client "A" exits cleanly
+    And deck client "B" exits cleanly

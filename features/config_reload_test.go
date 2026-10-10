@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/cucumber/godog"
@@ -25,6 +26,11 @@ func registerConfigReloadSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^the scenario's profile "([^"]+)" config\.toml gets an unrelated edit$`, scenarioProfileConfigGetsUnrelatedEdit)
 	sc.Step(`^deck client "([^"]+)" text "([^"]+)" keeps foreground "(#[0-9a-fA-F]{6})" for (\d+) further shortened config poll intervals$`, textKeepsForegroundForConfigPolls)
 	sc.Step(`^the scenario runs on the real-install XDG layout with DECK_HOME unset and its config\.toml selects theme "([^"]*)"$`, scenarioRunsOnRealInstallXDGLayout)
+	sc.Step(`^the scenario's clients do not pin DECK_ASCII$`, scenarioClientsDoNotPinASCII)
+	sc.Step(`^within one shortened config poll interval deck client "([^"]+)" screen contains "([^"]+)"$`, screenContainsWithinConfigPoll)
+	sc.Step(`^within one shortened config poll interval deck client "([^"]+)" screen does not contain "([^"]+)"$`, screenDoesNotContainWithinConfigPoll)
+	sc.Step(`^within one shortened config poll interval deck client "([^"]+)" raw output enabled SGR mouse reporting$`, rawOutputEnabledMouseReportingWithinConfigPoll)
+	sc.Step(`^within one shortened config poll interval deck client "([^"]+)" screen shows sessions in this order:$`, sessionsInOrderWithinConfigPoll)
 	sc.Step(`^deck client "([^"]+)" is started on profile "([^"]+)" with colour enabled and a shortened config poll interval$`, startNamedProfileClientWithShortConfigPoll)
 }
 
@@ -89,7 +95,7 @@ func startNamedProfileClientWithShortConfigPoll(ctx context.Context, name, profi
 	if err != nil {
 		return err
 	}
-	return client.WaitForFrame(ctx, false, "deck - sessions")
+	return client.WaitForFrame(ctx, false, h.sessionsTitle())
 }
 
 func startNamedClientWithShortConfigPoll(ctx context.Context, name string) error {
@@ -101,7 +107,7 @@ func startNamedClientWithShortConfigPoll(ctx context.Context, name string) error
 	if err != nil {
 		return err
 	}
-	return client.WaitForFrame(ctx, false, "deck - sessions")
+	return client.WaitForFrame(ctx, false, h.sessionsTitle())
 }
 
 // textHasForegroundWithinConfigPoll retries the per-cell colour assertion
@@ -174,4 +180,110 @@ func textKeepsForegroundForConfigPolls(ctx context.Context, name, text, want str
 		case <-time.After(20 * time.Millisecond):
 		}
 	}
+}
+
+// configPollBudget is one shortened poll interval plus the render allowance
+// the other poll steps get; nothing here raises a bound.
+func configPollBudget() time.Duration {
+	if racebuild.Enabled {
+		return scenarioConfigPollInterval + 20*time.Second
+	}
+	return scenarioConfigPollInterval + 250*time.Millisecond
+}
+
+// withinConfigPoll retries check until it passes or one shortened poll
+// interval (plus the render allowance) has passed.
+func withinConfigPoll(ctx context.Context, check func() error) error {
+	budget := configPollBudget()
+	deadline := time.Now().Add(budget)
+	for {
+		err := check()
+		if err == nil {
+			return nil
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("within %s: %w", budget, err)
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(20 * time.Millisecond):
+		}
+	}
+}
+
+// scenarioClientsDoNotPinASCII empties DECK_ASCII (the harness pins it to 1
+// for every client) so [ui] ascii in the file is what the clients run with.
+func scenarioClientsDoNotPinASCII(ctx context.Context) error {
+	h, err := scenarioHarness(ctx)
+	if err != nil {
+		return err
+	}
+	h.clientEnv = append(h.clientEnv, "DECK_ASCII=")
+	return nil
+}
+
+func screenContainsWithinConfigPoll(ctx context.Context, name, want string) error {
+	h, err := assertionHarness(ctx)
+	if err != nil {
+		return err
+	}
+	client, err := h.Client(name)
+	if err != nil {
+		return err
+	}
+	return withinConfigPoll(ctx, func() error {
+		frame := client.Frame(false)
+		if !strings.Contains(frame, want) {
+			return fmt.Errorf("deck client %q screen does not contain %q:\n%s", name, want, frame)
+		}
+		return nil
+	})
+}
+
+func screenDoesNotContainWithinConfigPoll(ctx context.Context, name, unwanted string) error {
+	h, err := assertionHarness(ctx)
+	if err != nil {
+		return err
+	}
+	client, err := h.Client(name)
+	if err != nil {
+		return err
+	}
+	return withinConfigPoll(ctx, func() error {
+		frame := client.Frame(false)
+		if strings.Contains(frame, unwanted) {
+			return fmt.Errorf("deck client %q screen still contains %q:\n%s", name, unwanted, frame)
+		}
+		return nil
+	})
+}
+
+func rawOutputEnabledMouseReportingWithinConfigPoll(ctx context.Context, name string) error {
+	return withinConfigPoll(ctx, func() error { return clientRawOutputEnabledMouseReporting(ctx, name) })
+}
+
+func sessionsInOrderWithinConfigPoll(ctx context.Context, name string, table *godog.Table) error {
+	h, err := assertionHarness(ctx)
+	if err != nil {
+		return err
+	}
+	client, err := h.Client(name)
+	if err != nil {
+		return err
+	}
+	return withinConfigPoll(ctx, func() error { return sessionsRenderInOrder(client, table) })
+}
+
+// sessionsTitle is the main view's title as the clients of this scenario
+// draw it: the harness pins DECK_ASCII=1, which draws a hyphen, and a
+// scenario that releases the pin (scenarioClientsDoNotPinASCII) with
+// [ui] ascii off gets the em dash instead.
+func (h *ScenarioHarness) sessionsTitle() string {
+	for _, e := range h.clientEnv {
+		if e == "DECK_ASCII=" {
+			return "deck \u2014 sessions"
+		}
+	}
+	return "deck - sessions"
 }
