@@ -113,3 +113,46 @@ Feature: a running client picks up another client's config.toml change (R226, R2
     When deck client "A" exits cleanly
     And deck client "B" exits cleanly
     And deck client "C" exits cleanly
+
+  # The layout a real install uses: DECK_HOME unset, config.toml at
+  # $XDG_CONFIG_HOME/deck/config.toml. Every other scenario here resolves
+  # config through the DECK_HOME shortcut.
+  @requirement-237-xdg-layout-reload
+  Scenario: a theme chosen in client A's theme picker reaches client B on the real-install XDG layout within one shortened poll interval
+    Given the scenario runs on the real-install XDG layout with DECK_HOME unset and its config.toml selects theme "empire"
+    And deck client "A" is started with colour enabled and a shortened config poll interval
+    And deck client "B" is started with colour enabled and a shortened config poll interval
+    Then deck client "B" text "deck" has foreground token "title"
+    And deck client "B" text "deck" does not have foreground "#fabd2f"
+    When deck client "A" sends "t"
+    Then deck client "A" screen contains "Theme picker: empire"
+    When deck client "A" sends " "
+    Then deck client "A" screen contains "Theme picker: gruvbox-dark"
+    When deck client "A" sends ""
+    Then within one configured reconcile interval deck client "A" screen does not contain "Theme picker"
+    And within one shortened config poll interval deck client "A" text "deck" has foreground "#fabd2f"
+    And within one shortened config poll interval deck client "B" text "deck" has foreground "#fabd2f"
+    When deck client "A" exits cleanly
+    And deck client "B" exits cleanly
+
+  @requirement-237-xdg-layout-reload
+  Scenario: a theme saved in client A's settings view reaches client B on the real-install XDG layout within one shortened poll interval
+    Given the scenario runs on the real-install XDG layout with DECK_HOME unset and its config.toml selects theme "empire"
+    And deck client "A" is started with colour enabled and a shortened config poll interval
+    And deck client "B" is started with colour enabled and a shortened config poll interval
+    Then deck client "B" text "deck" has foreground token "title"
+    And deck client "B" text "deck" does not have foreground "#fabd2f"
+    When deck client "A" sends ","
+    And deck client "A" sends "j"
+    And deck client "A" sends "	"
+    Then deck client "A" screen contains "Theme: empire"
+    When deck client "A" sends "+"
+    Then deck client "A" screen contains "Theme: gruvbox-dark"
+    When deck client "A" sends ""
+    Then deck client "A" screen contains "saved "
+    And within one shortened config poll interval deck client "B" text "deck" has foreground "#fabd2f"
+    When deck client "A" sends ""
+    Then deck client "A" screen contains "deck - sessions"
+    And deck client "A" text "deck" has foreground "#fabd2f"
+    When deck client "A" exits cleanly
+    And deck client "B" exits cleanly
