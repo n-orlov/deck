@@ -53,7 +53,7 @@ Feature: The preview capture engine and its visible behaviour
     And deck client "solo" exits cleanly
 
   @steer-018-preview-fit-on-navigation
-  Scenario: preview_fit does not resize on a mode switch, sidebar-width change or outer-terminal resize -- only on a settled selection change
+  Scenario: preview_fit does not resize on a mode switch or sidebar-width change -- only on a settled selection change or a host terminal resize (features/host_resize.feature)
     # The amendment this file's header describes is scoped to the
     # SELECTION axis only. This is the same scenario as requirement 21
     # above minus the two selection-change steps and WITHOUT disabling
@@ -78,8 +78,9 @@ Feature: The preview capture engine and its visible behaviour
     And deck client "solo" sends "|"
     And deck client "solo" sends ">"
     And deck client "solo" sends "<"
-    And deck client "solo" terminal is resized to 120x40
-    And deck client "solo" terminal is resized to 100x30
+    # The outer-terminal resize this scenario used to include is NOT an
+    # axis that leaves the window alone any more (R239, #75): a host resize
+    # re-fits the preview at once. It is covered by features/host_resize.feature.
     Then the private tmux window for session "beacon" still matches "axis-before"
     And the fake claude agent's size log still matches "axis-before"
     And deck client "solo" exits cleanly

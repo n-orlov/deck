@@ -2085,7 +2085,12 @@ always did), and the permission badge for non-`safe` **last**. The
   80×24 until they select away and back, which is the opposite of what coalescing is for.
   **Returning from a full attach invalidates it for the same reason**: `a` left the window at
   the attaching client's own size and detaching does not restore it (§3.3), so the row the
-  user lands back on needs its fit again, without having moved the selection either;
+  user lands back on needs its fit again, without having moved the selection either.
+  **A host terminal resize invalidates it as well**, and applies at once: a `WindowSizeMsg`
+  that changes the terminal's size re-fits the selected session's window to the new panel box
+  in the same update, with no key, click or selection change in between; a resize to the size
+  deck already has is a no-op that issues no tmux call; a resize that arrives while a modal or
+  the settings takeover covers the list is held and applied as soon as that screen closes;
   it is **skipped below §11.9's 7-row inner floor**,
   leaving the pane cropped, because a box that small has no transcript in it worth reflowing
   for; and it is **best-effort, owning and restoring nothing** — a session the user looked at
@@ -3012,6 +3017,12 @@ A successful create from `n` (§11, `[ui] attach_on_new`) or resume from `r`/`R`
 `[ui] attach_on_resume`) enters by itself through exactly this path — the same refusals and
 banner, the same claim and fit, the same attachment transaction — so there is one way in, not
 two.
+
+**A host terminal resize re-fits an interactive session at once too.** While interactive, a
+`WindowSizeMsg` that changes the preview box fits the held window to the new box and reseeds
+the grid at that size, in the same update and with no further input; a resize to the current
+size touches nothing, and one that drops the box below the 7-row floor leaves interactive mode
+as the refusals below state.
 
 What separates this from §11's passive fit is **ownership**, not permission: passive fitting
 picks a size and leaves it, while interactive mode records what it found, claims it, and puts

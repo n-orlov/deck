@@ -101,6 +101,8 @@ func (m Model) enterInteractiveBody(force bool) (tea.Model, tea.Cmd) {
 	m.interactiveOwnership = claim.ownership
 	m.interactiveGrid = grid
 	m.interactiveDispatcher = dispatcher
+	m.interactivePaneID = entry.claim.pane.ID
+	m.interactiveWidth, m.interactiveHeight = entry.width, entry.height
 	m.setInteractiveScrollOffset(0)
 	m.clearEntryRefusal()
 	return m, nil
@@ -114,6 +116,9 @@ type interactiveEntry struct {
 	claim        interactiveEntryClaim
 	dispatcher   *tmux.Dispatcher
 	grid         *interactive.Session
+	// width/height are the preview box the window was fitted to and the grid
+	// seeded at: what a later host resize is compared against.
+	width, height int
 }
 
 // claimInteractiveEntry is enterInteractiveBody's refusal ladder and every
@@ -144,7 +149,7 @@ func (m Model) claimInteractiveEntry(ctx context.Context, session store.Session,
 	if ref != nil {
 		return interactiveEntry{}, ref
 	}
-	return interactiveEntry{windowTarget: windowTarget, claim: claim, dispatcher: dispatcher, grid: grid}, nil
+	return interactiveEntry{windowTarget: windowTarget, claim: claim, dispatcher: dispatcher, grid: grid, width: width, height: height}, nil
 }
 
 // entryRefusalSpec is one refusal enterInteractiveBody's steps report to it:
@@ -338,31 +343,8 @@ func (m Model) armInteractiveClaim(ctx context.Context, client tmux.Client, clai
 	// other case that can reach here). "pipe" -- the config default -- is
 	// interactive.TransportPipe, exactly the transport this call site used
 	// before task 070/088/089 existed.
-	transport := interactive.TransportPipe
-	if m.settings.InteractiveTransport == "capture" {
-		transport = interactive.TransportCapture
-	}
-	grid, err := interactive.StartWithTransport(ctx, client, pane.ID, width, height, func(ctx context.Context) ([]byte, error) {
-		// Issue #29: the ENTRY seed pulls the pane's tmux-side scrollback
-		// as well as its visible screen, so a session that ran for an
-		// hour before anyone previewed it interactively can be scrolled
-		// back over on entry instead of presenting an empty scrollback.
-		// This makes Enter a one-off ~40-110ms hitch on bubbletea's
-		// Update goroutine, which is the accepted trade
-		// (interactive.CaptureSeedWithHistory documents the cost, and the
-		// degradation path for a pane too chatty to capture atomically).
-		//
-		// How MUCH history is the transport's decision, not this call
-		// site's, which is why it is asked for rather than written out
-		// here: interactive.EntrySeedHistoryLines answers
-		// ScrollbackMaxLines under TransportPipe (exactly what the grid
-		// can hold; pulling more would be discarded on arrival) and 0
-		// under TransportCapture, where captureLoop would replace the
-		// whole grid from a visible-only capture 200ms later and throw
-		// every history row away again. That function carries the
-		// measurements behind both answers.
-		return interactive.CaptureSeedWithHistory(ctx, client, pane.ID, interactive.EntrySeedHistoryLines(transport))
-	}, transport)
+	transport := m.interactiveTransport()
+	grid, err := interactive.StartWithTransport(ctx, client, pane.ID, width, height, interactiveSeed(client, pane.ID, transport), transport)
 	if err != nil {
 		teardownInteractiveClaim(ctx, client, ownership, windowTarget, geometry, nil)
 		return nil, nil, refuse(entryRefusalOther, err.Error())
@@ -383,6 +365,65 @@ func (m Model) armInteractiveClaim(ctx context.Context, client tmux.Client, clai
 		})
 	}
 	return dispatcher, grid, nil
+}
+
+// interactiveTransport is the grid transport [ui] interactive_transport
+// selects ("pipe" unless the setting says "capture").
+func (m Model) interactiveTransport() interactive.Transport {
+	transport := interactive.TransportPipe
+	if m.settings.InteractiveTransport == "capture" {
+		transport = interactive.TransportCapture
+	}
+	return transport
+}
+
+// interactiveSeed is the capture that seeds the grid, at entry and again on
+// every reseed a host resize causes (interactive.Session.Resize).
+func interactiveSeed(client tmux.Client, paneID string, transport interactive.Transport) func(ctx context.Context) ([]byte, error) {
+	return func(ctx context.Context) ([]byte, error) {
+		// Issue #29: the ENTRY seed pulls the pane's tmux-side scrollback
+		// as well as its visible screen, so a session that ran for an
+		// hour before anyone previewed it interactively can be scrolled
+		// back over on entry instead of presenting an empty scrollback.
+		// This makes Enter a one-off ~40-110ms hitch on bubbletea's
+		// Update goroutine, which is the accepted trade
+		// (interactive.CaptureSeedWithHistory documents the cost, and the
+		// degradation path for a pane too chatty to capture atomically).
+		//
+		// How MUCH history is the transport's decision, not this call
+		// site's, which is why it is asked for rather than written out
+		// here: interactive.EntrySeedHistoryLines answers
+		// ScrollbackMaxLines under TransportPipe (exactly what the grid
+		// can hold; pulling more would be discarded on arrival) and 0
+		// under TransportCapture, where captureLoop would replace the
+		// whole grid from a visible-only capture 200ms later and throw
+		// every history row away again. That function carries the
+		// measurements behind both answers.
+		return interactive.CaptureSeedWithHistory(ctx, client, paneID, interactive.EntrySeedHistoryLines(transport))
+	}
+}
+
+// resizeInteractiveToPreview is R239's interactive half: the host terminal
+// changed size and the preview box moved with it, so the window is fitted to
+// the new box and the grid reseeded at it, in the same update and without a
+// keystroke. The window stays pinned (interactive mode owns its size; exit
+// restores the recorded pre-entry geometry as before). A box that did not
+// change issues no tmux call, and a failed fit leaves the recorded size alone
+// so the next resize retries it.
+func (m *Model) resizeInteractiveToPreview() {
+	width, height := m.previewContentSize()
+	if m.interactiveGrid == nil || (width == m.interactiveWidth && height == m.interactiveHeight) {
+		return
+	}
+	ctx := context.Background()
+	if _, err := m.tmuxClient.FitWindowToPane(ctx, m.interactiveWindowTarget, m.interactivePaneID, width, height); err != nil {
+		return
+	}
+	transport := m.interactiveTransport()
+	if err := m.interactiveGrid.Resize(ctx, width, height, interactiveSeed(m.tmuxClient, m.interactivePaneID, transport)); err != nil {
+		return
+	}
+	m.interactiveWidth, m.interactiveHeight = width, height
 }
 
 // teardownInteractive is exitInteractive's own disarm/restore/release
@@ -527,6 +568,8 @@ func (m Model) exitInteractive() (tea.Model, tea.Cmd) {
 	m.interactiveOwnership = nil
 	m.interactiveGrid = nil
 	m.interactiveDispatcher = nil
+	m.interactivePaneID = ""
+	m.interactiveWidth, m.interactiveHeight = 0, 0
 	m.setInteractiveScrollOffset(0)
 	// steer 018 item 4 / SPEC §11: RestoreWindowGeometry above just put the
 	// window back at its PRE-entry size, which is not generally the preview
