@@ -249,11 +249,19 @@ func (c Client) Create(ctx context.Context, launch Launch) (Session, error) {
 	// lose the environment-mirroring race against a concurrent reconciler
 	// anymore because there is no longer a second, later call for that
 	// race to have a window in.
+	//
+	// The session's pane facts come back from that same call too (-P -F),
+	// never from a second, later list-panes: the reconciler can Kill a
+	// session whose command exited instantly the moment new-session returns,
+	// and a follow-up read would then fail with "no current target" and
+	// abort a create that had in fact succeeded
+	// (TestCreateRacesConcurrentReconcilerKill).
 	args := newSessionArgs(name, env, launch)
-	if _, err := c.run(ctx, args...); err != nil {
+	output, err := c.run(ctx, args...)
+	if err != nil {
 		return Session{}, fmt.Errorf("create session %q: %w", name, err)
 	}
-	return c.session(ctx, name)
+	return sessionFromPaneFacts(name, string(output))
 }
 
 // validateLaunch checks everything Create can refuse before it touches tmux, in
@@ -280,11 +288,12 @@ func (c Client) validateLaunch(launch Launch) (string, []string, error) {
 	return name, env, nil
 }
 
-// newSessionArgs is Create's one new-session argv: the session's environment
-// is mirrored with -e (one flag per variable) and also passed to the initial
-// process through env(1).
+// newSessionArgs is Create's one new-session argv: it prints the new pane's
+// facts (-P -F paneFactsFormat), the session's environment is mirrored with
+// -e (one flag per variable) and also passed to the initial process through
+// env(1).
 func newSessionArgs(name string, env []string, launch Launch) []string {
-	args := []string{"new-session", "-d", "-s", name}
+	args := []string{"new-session", "-d", "-P", "-F", paneFactsFormat, "-s", name}
 	for key, value := range pairs(env) {
 		args = append(args, "-e", key+"="+value)
 	}
@@ -798,15 +807,12 @@ func IsTargetAbsent(err error) bool {
 		strings.Contains(message, "error connecting to") && strings.Contains(message, "No such file or directory")
 }
 
-// session reads one session's panes by target; Create uses it to return the
-// session it just made. List does not: it reads every pane in one process.
-func (c Client) session(ctx context.Context, name string) (Session, error) {
-	output, err := c.run(ctx, "list-panes", "-t", name, "-F", paneFactsFormat)
-	if err != nil {
-		return Session{}, fmt.Errorf("list panes for session %q: %w", name, err)
-	}
+// sessionFromPaneFacts parses the paneFactsFormat lines new-session -P
+// printed for the session Create just made. List does not use it: it reads
+// every pane in one process, each line prefixed with its session name.
+func sessionFromPaneFacts(name, output string) (Session, error) {
 	session := Session{Name: name}
-	for _, line := range strings.Split(strings.TrimSpace(string(output)), "\n") {
+	for _, line := range strings.Split(strings.TrimSpace(output), "\n") {
 		if line == "" {
 			continue
 		}
