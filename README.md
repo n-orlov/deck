@@ -57,6 +57,8 @@ event_hook_timeout = 3
 deck runs `script <kind> [fixed args]` (`started`, `resumed`, `waiting`, `idle`, `error`, `ended`,
 `killed`) with `DECK_SESSION_*`, `DECK_EVENT_KIND`, `DECK_EVENT_REASON`, `DECK_EVENT_MESSAGE` and
 `DECK_EVENT_AT` in the environment and the full JSON payload on stdin (SPEC.md §10, and `?` in deck).
+The script path must be absolute (settings refuses to save a relative one, and a relative path in
+`config.toml` shows a warning in the health lines); a NUL byte in any exported value is stripped.
 A session's own `event_hook_events` replaces the global list. Two notes apply to every script:
 
 - **No retry.** deck keeps no outbox: a script that fails, or is killed after `event_hook_timeout`

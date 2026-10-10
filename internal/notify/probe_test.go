@@ -41,3 +41,19 @@ func TestProbeScriptNamesEachProblem(t *testing.T) {
 		})
 	}
 }
+
+func TestProbeScriptRefusesARelativePathBeforeLookingAtTheDisk(t *testing.T) {
+	for _, command := range [][]string{{"./hook.sh"}, {"scripts/hook.sh"}, {"~/hook.sh"}, {"../x/hook.sh"}} {
+		if got := ProbeScript(command); !errors.Is(got, ErrScriptRelative) {
+			t.Errorf("ProbeScript(%v) = %v, want ErrScriptRelative", command, got)
+		}
+		if !RelativeScript(command) {
+			t.Errorf("RelativeScript(%v) = false", command)
+		}
+	}
+	for _, command := range [][]string{nil, {"/abs/hook.sh"}, {"hook.sh"}} {
+		if RelativeScript(command) {
+			t.Errorf("RelativeScript(%v) = true, want false (absolute, bare name or empty)", command)
+		}
+	}
+}

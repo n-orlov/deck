@@ -22,6 +22,7 @@ const (
 	hookMarkerOK       = "ok"
 	hookMarkerFailed   = "FAILED"
 	hookMarkerTimedOut = "TIMED OUT"
+	hookMarkerWarning  = "WARNING"
 )
 
 // hookHealth is what the health lines know about the event hook: the script
@@ -105,6 +106,8 @@ func hookProbeSentence(script string, probe error) string {
 	switch {
 	case probe == nil:
 		return ""
+	case errors.Is(probe, notify.ErrScriptRelative):
+		return script + ": script path is relative; use an absolute path (deck _hook runs in the agent's directory)"
 	case errors.Is(probe, notify.ErrScriptNotExecutable):
 		return script + ": script is not executable; events are recorded but nothing runs"
 	default:
@@ -138,7 +141,11 @@ func (m Model) eventHookHealthLines(width int) []string {
 	}
 	var lines []string
 	if sentence := hookProbeSentence(strings.Fields(script)[0], m.hookHealth.probe); sentence != "" {
-		for _, l := range m.canvasWrapText("Event hook "+hookMarkerFailed+": "+sentence, width) {
+		marker := hookMarkerFailed
+		if errors.Is(m.hookHealth.probe, notify.ErrScriptRelative) {
+			marker = hookMarkerWarning
+		}
+		for _, l := range m.canvasWrapText("Event hook "+marker+": "+sentence, width) {
 			lines = append(lines, m.colorToken(theme.Error, l))
 		}
 	}
