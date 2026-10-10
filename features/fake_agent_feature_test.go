@@ -86,14 +86,26 @@ func (s *fakeAgentScenario) launchLongRunning(ctx context.Context, session strin
 	return waitForPaneAgentCommand(ctx, h, session, "fake-claude")
 }
 
+// fakeAgentLaunchBudget is the total time the long-running launch's readiness
+// wait, and the SIGKILL step that follows it, may spend on tmux pane queries.
+// It equals the per-command bound tmuxOutput already applies, so it adds no
+// time beyond what a single launch step could already take, and it holds
+// whatever deadline (or none) the caller's context carries.
+const fakeAgentLaunchBudget = 5 * time.Second
+
 // waitForPaneAgentCommand returns once tmux reports the session's single pane
 // as live and running wantCommand. `tmux new-session` returns as soon as the
 // pane's launcher (`env`, or a shell wrapping it) is forked, before it has
 // exec'd the agent, so a step that read the pane facts right after it would
 // see the launcher's name instead. It polls the same pane facts the SIGKILL
-// step verifies, bounded by ctx exactly as waitForPrivateSession is. A pane
-// that dies first can never become the agent, so that fails at once.
+// step verifies, for at most fakeAgentLaunchBudget in total: the deadline is
+// fixed once on entry, so repeated queries never renew it, and a caller context
+// with a later deadline (or none) does not extend it. On expiry the error
+// carries the last pane facts read. A pane that dies first can never become the
+// agent, so that fails at once.
 func waitForPaneAgentCommand(ctx context.Context, h *ScenarioHarness, session, wantCommand string) error {
+	ctx, cancel := context.WithTimeout(ctx, fakeAgentLaunchBudget)
+	defer cancel()
 	var facts string
 	for {
 		output, err := tmuxOutput(ctx, h, "list-panes", "-t", session, "-F", "#{pane_current_command}|#{pane_dead}")
