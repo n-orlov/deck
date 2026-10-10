@@ -9,12 +9,15 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"net"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 )
 
 func repositoryRoot(t *testing.T) string {
@@ -83,6 +86,12 @@ func runScript(t *testing.T, archive, sha string) (string, error) {
 // the names of the files `allure generate` was handed.
 func runScriptOver(t *testing.T, archive, sha, results string) (string, string, error) {
 	t.Helper()
+	return runScriptFrom(t, "file://"+archive, sha, results)
+}
+
+// runScriptFrom is runScriptOver with the archive fetched from url.
+func runScriptFrom(t *testing.T, url, sha, results string) (string, string, error) {
+	t.Helper()
 	root := repositoryRoot(t)
 	bin := t.TempDir()
 	for _, tool := range []string{"sh", "curl", "tar", "mktemp", "rm", "mkdir", "cp", "cut", "sha256sum", "shasum", "dirname", "gzip"} {
@@ -94,7 +103,7 @@ func runScriptOver(t *testing.T, archive, sha, results string) (string, string, 
 	}
 	report := filepath.Join(t.TempDir(), "report")
 	cmd := exec.Command("sh", filepath.Join(root, "ci", "allure-report.sh"), results, report)
-	cmd.Env = []string{"PATH=" + bin, "HOME=" + t.TempDir(), "TMPDIR=" + t.TempDir(), "ALLURE_URL=file://" + archive, "ALLURE_SHA256=" + sha}
+	cmd.Env = []string{"PATH=" + bin, "HOME=" + t.TempDir(), "TMPDIR=" + t.TempDir(), "ALLURE_URL=" + url, "ALLURE_SHA256=" + sha}
 	out, err := cmd.CombinedOutput()
 	return string(out), report, err
 }
@@ -231,5 +240,65 @@ func TestInstallScriptCurlIsHTTPSOnlyAndStatesItsChecksumLimit(t *testing.T) {
 	}
 	if !regexp.MustCompile(`(?s)checksums\.txt[^\n]*\n?[^\n]*SAME release.*corrupt.*not tampering`).Match(raw) {
 		t.Error("install.sh must state that checksums.txt comes from the same release (catches corruption, not tampering)")
+	}
+}
+
+// dropFirstConnectionThenServe starts a local HTTP host that closes its first
+// connection without a response and serves archive to every later one, and
+// returns the archive's URL on it.
+func dropFirstConnectionThenServe(t *testing.T, archive string) string {
+	t.Helper()
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	served := make(chan struct{})
+	go func() {
+		defer close(served)
+		first, err := listener.Accept()
+		if err != nil {
+			return
+		}
+		_ = first.Close()
+		server := &http.Server{
+			ReadHeaderTimeout: 5 * time.Second,
+			Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				http.ServeFile(w, r, archive)
+			}),
+		}
+		_ = server.Serve(listener)
+	}()
+	t.Cleanup(func() {
+		_ = listener.Close()
+		<-served
+	})
+	return "http://" + listener.Addr().String() + "/allure.tgz"
+}
+
+// TestAllureReportRetriesADroppedDownloadConnection: the release host
+// dropping the first connection (no HTTP response at all, curl exit 52 --
+// the same class as the connect failure that once failed a push run) is
+// retried, and the archive the retry fetches is still checksum-verified.
+func TestAllureReportRetriesADroppedDownloadConnection(t *testing.T) {
+	archive, sum := fakeAllure(t, t.TempDir())
+	url := dropFirstConnectionThenServe(t, archive)
+	out, _, err := runScriptFrom(t, url, sum, t.TempDir())
+	if err != nil {
+		t.Fatalf("a dropped first connection must be retried, not fail the report: %v\n%s", err, out)
+	}
+	if !strings.Contains(out, "fake-allure") || !strings.Contains(out, "report written") {
+		t.Fatalf("the retried download should have been verified and used:\n%s", out)
+	}
+}
+
+// TestAllureReportRetryStillAbortsOnChecksumMismatch: retrying never stands
+// in for verification -- a mismatching archive served after a dropped
+// connection is still refused.
+func TestAllureReportRetryStillAbortsOnChecksumMismatch(t *testing.T) {
+	archive, _ := fakeAllure(t, t.TempDir())
+	url := dropFirstConnectionThenServe(t, archive)
+	out, _, err := runScriptFrom(t, url, strings.Repeat("0", 64), t.TempDir())
+	if err == nil || !strings.Contains(out, "checksum mismatch") {
+		t.Fatalf("a retried download with the wrong checksum must abort: err=%v\n%s", err, out)
 	}
 }
