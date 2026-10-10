@@ -1418,7 +1418,7 @@ also *remove the row from view* do:
 | kill | `x` | `tmux kill-session` immediately. Row → `stopped`. Conversation untouched, resumable. 10 s undo toast (`u` = resume). |
 | delete | `dd` | kill + tombstone the row (`deleted_at`). Hidden immediately, undoable for 60 s, **reaped** after — see below. |
 | purge conversation | in the delete confirm only | additionally deletes the agent's transcript. Never implicit, never default, always a separate explicit choice. |
-| archive | `A` | **confirms first** (§11.4), then keeps the record and hides the row from the default list. On a live session the same confirm covers the kill, and says so in as many words — the dialog names the session and states that a live agent will be killed. Nothing is written until it is confirmed. On success a toast says what happened, with `u` to undo. An archived row is **not startable** (§9.1). |
+| archive | `A` | **confirms first** (§11.4), then keeps the record and hides the row from the default list. On a live session the same confirm covers the kill, and says so in as many words — the dialog names the session and states that a live agent will be killed. Nothing is written until it is confirmed. On success a toast says what happened, with `u` to undo, and the row is hidden in the same frame as that toast. An archived row is **not startable** (§9.1). |
 | unarchive | `U` | clear `archived_at`. The row returns to the default list reading `stopped · resumable`, and `r` works on it again. Reachable wherever an archived row is — inside the `/` filter's results — and it is what `deleted_at`'s restore already is: the reversal without which archiving is a one-way door. |
 | bulk | `m` marks | `x` / `dd` act on the mark set. |
 
