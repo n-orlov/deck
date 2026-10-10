@@ -58,19 +58,37 @@ trap 'rm -rf "$work"' EXIT
 
 allure_bin=$(command -v allure 2>/dev/null || true)
 if [ -z "$allure_bin" ]; then
-    echo "ci/allure-report.sh: fetching Allure CLI ${ALLURE_VERSION}" >&2
-    # A dropped or refused connection to the release host is transient, and
-    # one of them once failed a whole push run before any byte arrived: retry
-    # it a bounded number of times. Whatever finally arrives is still
-    # checksum-verified below, so a retry can never let a different archive in.
-    curl -fsSL --retry 4 --retry-delay 2 --retry-all-errors "$allure_url" -o "$work/allure.tgz"
-    got_sha256=$(sha256_of "$work/allure.tgz")
+    # ALLURE_CACHE_DIR (optional) keeps the verified archive on the runner, so
+    # a runner fetches the release once, not once per script call (the report
+    # job calls this twice: the smoke check and the real report). A cached
+    # archive is trusted only after the same SHA-256 check as a download; one
+    # that fails it is discarded and downloaded afresh. The download itself is
+    # exactly ONE curl attempt (no --retry, no wrapper loop): the attempt
+    # budget is not raised, and a failed connection fails the step.
+    archive="$work/allure.tgz"
+    cache_file=""
+    if [ -n "${ALLURE_CACHE_DIR:-}" ]; then
+        cache_file="$ALLURE_CACHE_DIR/allure-${ALLURE_VERSION}-${ALLURE_SHA256}.tgz"
+    fi
+    if [ -n "$cache_file" ] && [ -f "$cache_file" ] && [ "$(sha256_of "$cache_file")" = "$ALLURE_SHA256" ]; then
+        echo "ci/allure-report.sh: using the cached, verified Allure CLI ${ALLURE_VERSION}" >&2
+        cp "$cache_file" "$archive"
+    else
+        echo "ci/allure-report.sh: fetching Allure CLI ${ALLURE_VERSION}" >&2
+        curl -fsSL "$allure_url" -o "$archive"
+    fi
+    got_sha256=$(sha256_of "$archive")
     if [ "$got_sha256" != "$ALLURE_SHA256" ]; then
         echo "ci/allure-report.sh: checksum mismatch for the Allure ${ALLURE_VERSION} archive: want ${ALLURE_SHA256}, got ${got_sha256}; aborting" >&2
         exit 1
     fi
+    if [ -n "$cache_file" ] && [ ! -f "$cache_file" ]; then
+        # Only a verified archive is cached; a cache that cannot be written
+        # (read-only, full) never fails the report.
+        { mkdir -p "$ALLURE_CACHE_DIR" && cp "$archive" "$cache_file.$$" && mv "$cache_file.$$" "$cache_file"; } 2>/dev/null || rm -f "$cache_file.$$"
+    fi
     mkdir -p "$work/allure"
-    tar -xzf "$work/allure.tgz" -C "$work/allure" --strip-components=1
+    tar -xzf "$archive" -C "$work/allure" --strip-components=1
     allure_bin="$work/allure/bin/allure"
 fi
 "$allure_bin" --version >&2
