@@ -61,6 +61,28 @@ func paneFacts(ctx context.Context, t *testing.T, h *ScenarioHarness, session st
 
 func processAlive(pid int) bool { return syscall.Kill(pid, 0) == nil }
 
+// holdPaneLauncher puts a gated `env` first on PATH: when it is the pane
+// launcher of the long-running fake Claude it writes the returned ready file and
+// waits, without exec'ing the agent, until release is called.
+func holdPaneLauncher(t *testing.T, h *ScenarioHarness) (ready string, release func()) {
+	t.Helper()
+	realEnv, err := exec.LookPath("env")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Join(h.Home, "launcher")
+	if err := os.Mkdir(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	ready, gate := filepath.Join(h.Home, "env-ready"), filepath.Join(h.Home, "allow-exec")
+	script := fmt.Sprintf("#!/bin/sh\nif [ \"$1\" = FAKE_CLAUDE_COMMANDS=1 ]; then\n printf ready > %q\n while [ ! -e %q ]; do /bin/sleep 0.01; done\nfi\nexec %q \"$@\"\n", ready, gate, realEnv)
+	if err := os.WriteFile(filepath.Join(dir, "env"), []byte(script), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	return ready, func() { _ = os.WriteFile(gate, []byte("release"), 0o600) }
+}
+
 // TestFakeAgentLongRunningLaunchWaitsForFakeClaudeBeforeSIGKILL holds the pane
 // launcher (a gated `env` first on PATH) before it execs fake-claude. The
 // launch step must not return, so the SIGKILL step cannot read the launcher's
@@ -72,21 +94,7 @@ func TestFakeAgentLongRunningLaunchWaitsForFakeClaudeBeforeSIGKILL(t *testing.T)
 	if err := s.buildFixture(ctx); err != nil {
 		t.Fatal(err)
 	}
-	realEnv, err := exec.LookPath("env")
-	if err != nil {
-		t.Fatal(err)
-	}
-	dir := filepath.Join(h.Home, "launcher")
-	if err := os.Mkdir(dir, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	ready, release := filepath.Join(h.Home, "env-ready"), filepath.Join(h.Home, "allow-exec")
-	script := fmt.Sprintf("#!/bin/sh\nif [ \"$1\" = FAKE_CLAUDE_COMMANDS=1 ]; then\n printf ready > %q\n while [ ! -e %q ]; do /bin/sleep 0.01; done\nfi\nexec %q \"$@\"\n", ready, release, realEnv)
-	if err := os.WriteFile(filepath.Join(dir, "env"), []byte(script), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
-	releaseOnce := func() { _ = os.WriteFile(release, []byte("release"), 0o600) }
+	ready, releaseOnce := holdPaneLauncher(t, h)
 	defer releaseOnce() // runs before the harness cleanup so the launcher never outlives it
 
 	const session = "deck_fake-agent-readiness"
@@ -124,6 +132,45 @@ func TestFakeAgentLongRunningLaunchWaitsForFakeClaudeBeforeSIGKILL(t *testing.T)
 	}
 	if err := privateSessionRetainsNonzeroDeadPane(ctx, session); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// TestFakeAgentLongRunningLaunchReadinessIsBoundedWithoutACallerDeadline holds
+// the launcher forever and launches under a context that has no deadline. The
+// readiness wait must give up within the launch budget, with an error carrying
+// the last pane facts (the held launcher's shell, not fake-claude).
+func TestFakeAgentLongRunningLaunchReadinessIsBoundedWithoutACallerDeadline(t *testing.T) {
+	ctx, h := newReadinessHarness(t)
+	s := &fakeAgentScenario{}
+	if err := s.buildFixture(ctx); err != nil {
+		t.Fatal(err)
+	}
+	_, release := holdPaneLauncher(t, h)
+	defer release() // frees the held launcher before the harness cleanup
+
+	// Same harness, but no deadline: only the readiness wait's own bound can end it.
+	noDeadline := context.WithValue(context.Background(), scenarioHarnessKey{}, h)
+	if _, ok := noDeadline.Deadline(); ok {
+		t.Fatal("test context unexpectedly carries a deadline")
+	}
+	done := make(chan error, 1)
+	start := time.Now()
+	go func() { done <- s.launchLongRunning(noDeadline, "deck_fake-agent-held") }()
+	select {
+	case err := <-done:
+		if elapsed := time.Since(start); elapsed > fakeAgentLaunchBudget+2*time.Second {
+			t.Fatalf("readiness wait took %s, want within the %s launch budget", elapsed, fakeAgentLaunchBudget)
+		}
+		if err == nil {
+			t.Fatal("launch of a held launcher succeeded, want a readiness error")
+		}
+		for _, want := range []string{"never ran \"fake-claude\"", "last facts \"sh|0\""} {
+			if !strings.Contains(err.Error(), want) {
+				t.Fatalf("error %q does not carry %q", err, want)
+			}
+		}
+	case <-time.After(fakeAgentLaunchBudget + 2*time.Second):
+		t.Fatalf("readiness wait outlived the %s launch budget under a context with no deadline", fakeAgentLaunchBudget)
 	}
 }
 

@@ -213,6 +213,10 @@ func agentProcessInPrivateSessionIsKilledWithSIGKILL(ctx context.Context, wantCo
 	if err != nil {
 		return err
 	}
+	// Whatever deadline the caller's context has (or lacks), the step spends at
+	// most the launch budget on pane queries.
+	ctx, cancel := context.WithTimeout(ctx, fakeAgentLaunchBudget)
+	defer cancel()
 	output, err := tmuxOutput(ctx, h, "list-panes", "-t", session, "-F", "#{pane_pid}|#{pane_current_command}|#{pane_dead}")
 	if err != nil {
 		return fmt.Errorf("locate agent process in session %q: %w", session, err)
