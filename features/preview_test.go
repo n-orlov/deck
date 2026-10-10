@@ -564,7 +564,7 @@ func fakeClaudeAgentSizeLogIsCapturedAs(ctx context.Context, label string) error
 	if err != nil {
 		return err
 	}
-	content, err := readFakeClaudeSizeLog(h)
+	content, err := waitForFakeClaudeInitialSizeEntry(fakeClaudeAgentSizeLogPath(h), fakeClaudeInitialSizeEntryWait)
 	if err != nil {
 		return err
 	}
@@ -592,6 +592,43 @@ func fakeClaudeAgentSizeLogStillMatches(ctx context.Context, label string) error
 		return fmt.Errorf("fake claude agent size log changed (a SIGWINCH landed on its pane): captured %q as %q, now %q", label, want, got)
 	}
 	return nil
+}
+
+// fakeClaudeInitialSizeEntryWait bounds how long the "is captured as" step
+// waits for the fixture's own first size line (see
+// waitForFakeClaudeInitialSizeEntry).
+const fakeClaudeInitialSizeEntryWait = 5 * time.Second
+
+// waitForFakeClaudeInitialSizeEntry polls path until it holds at least one
+// complete "COLSxROWS\n" line -- the entry cmd/fake-claude's
+// startSizeRecorder appends at process start -- and returns the whole
+// content. The session-create step's sync point is deck's durable audit
+// record (waitForAgentCreateRecorded), which does not wait for the fixture
+// process inside the tmux pane to start, so a one-shot read raced that
+// startup: under CI load the log did not exist yet (push run of e9a3565,
+// preview.feature:28), and had the snapshot been taken empty, the fixture's
+// later initial entry would have been misread as a SIGWINCH. Waiting for the
+// initial entry is the condition the "still matches" step needs: every line
+// after it is a SIGWINCH the scenario forbids. A log that never gets its
+// entry is an error, never an empty snapshot.
+func waitForFakeClaudeInitialSizeEntry(path string, wait time.Duration) (string, error) {
+	deadline := time.Now().Add(wait)
+	for {
+		data, err := os.ReadFile(path)
+		if err == nil && len(data) > 0 && data[len(data)-1] == '\n' {
+			return string(data), nil
+		}
+		if err != nil && !os.IsNotExist(err) {
+			return "", fmt.Errorf("read fake claude agent size log: %w", err)
+		}
+		if time.Now().After(deadline) {
+			if err != nil {
+				return "", fmt.Errorf("fake claude agent size log has no initial entry after %s: %w", wait, err)
+			}
+			return "", fmt.Errorf("fake claude agent size log has no complete initial entry after %s: %q", wait, data)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
 }
 
 func readFakeClaudeSizeLog(h *ScenarioHarness) (string, error) {
