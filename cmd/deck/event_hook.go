@@ -13,23 +13,32 @@ import (
 )
 
 // dispatchHookEvent offers the event a `deck _hook` run just committed to the
-// configured event hook (SPEC §10.4). It runs strictly after the status update
-// and its event row are durable, so a missing, failing or slow script can
-// never lose the event, and it never fails the hook: whatever the dispatch
-// does, `deck _hook`'s exit code and agent-facing output are what they were
-// without an event hook. A session-end payload is dispatched detached (SPEC
-// §10.3): the script is started and left running, with no timeout and no
-// recorded result, so the agent's exit is never held.
-func dispatchHookEvent(ctx context.Context, db *store.Store, logger *audit.Logger, settings config.Settings, result hookrecv.Result) {
+// configured event hook (SPEC §10.4). It claims the event's pair strictly after
+// the status update and its event row are durable, so a missing, failing or
+// slow script can never lose the event, and it never fails the hook: whatever
+// the dispatch does, `deck _hook`'s exit code and agent-facing output are what
+// they were without an event hook. A session-end payload is dispatched
+// detached (SPEC §10.3): the script is started and left running, with no
+// timeout and no recorded result, so the agent's exit is never held.
+//
+// An attached script runs on its own goroutine so the caller's post-hook
+// liveness pass, and the death offers that pass records, overlap it instead of
+// following it: the whole `_hook` is held for one event_hook_timeout plus the
+// reconcile budget, not two serial timeouts. The returned wait blocks until
+// the script has finished and its result is recorded; the caller must call it
+// before it closes the store. It is never nil.
+func dispatchHookEvent(ctx context.Context, db *store.Store, logger *audit.Logger, settings config.Settings, result hookrecv.Result) (wait func()) {
+	wait = func() {}
 	if !hookResultOffersEvent(result) {
-		return
+		return wait
 	}
 	dispatcher := hookDispatcher(settings)
 	if len(dispatcher.Policy.Command) == 0 {
-		return
+		return wait
 	}
 	dispatcher.Store, dispatcher.Audit = db, logger
-	_ = dispatcher.Dispatch(ctx, service.HookEvent{
+	detached := result.Kind == "session_end"
+	run, _ := dispatcher.Prepare(ctx, service.HookEvent{
 		SessionID:     result.SessionID,
 		StoredKind:    result.Kind,
 		Reason:        result.Reason,
@@ -37,7 +46,20 @@ func dispatchHookEvent(ctx context.Context, db *store.Store, logger *audit.Logge
 		At:            settings.Clock.Now(),
 		AppliedStatus: result.Status,
 		EventSeq:      result.EventSeq,
-	}, result.Kind == "session_end")
+	}, detached)
+	if run == nil {
+		return wait
+	}
+	if detached {
+		run()
+		return wait
+	}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		run()
+	}()
+	return func() { <-done }
 }
 
 // hookResultOffersEvent is false for a hook that recorded no change of the

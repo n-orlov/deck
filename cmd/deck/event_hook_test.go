@@ -590,7 +590,7 @@ echo hook-done
 	if code, stderr := f.run(`{"hook_event_name":"Notification","session_id":"conv-1","notification_type":"idle_prompt"}`); code != 0 {
 		t.Fatalf("hook exit = %d, stderr %q", code, stderr)
 	}
-	// The hook's own offer (1 s) plus one batch (1 s); five serial deaths would add 5 s.
+	// The hook's own offer (1 s) overlaps the one death batch (1 s); five serial deaths would add 5 s.
 	if elapsed := time.Since(start); elapsed > 4*time.Second+f.settings.Reconcile {
 		t.Fatalf("_hook took %s with five deaths, want about two script runs", elapsed)
 	}
@@ -639,7 +639,7 @@ func (f eventHookFixture) seedExtraRows(t *testing.T, n int) []string {
 
 // SPEC §3.1: the bound is event_hook_timeout, not the script's own length: six
 // recorded deaths whose script never returns are each cut at the timeout, run
-// together, and `_hook` stays within the hook's dispatch plus one batch.
+// together, and `_hook` stays within one timeout of the hook's dispatch overlapping that batch.
 func TestHookLivenessPassCutsManyHungHooksAtOneTimeout(t *testing.T) {
 	f := newEventHookFixture(t, "claude", "running")
 	f.settings.EventHookTimeout = time.Second
