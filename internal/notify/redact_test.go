@@ -1,8 +1,12 @@
 package notify
 
 import (
+	"context"
+	"encoding/json"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestIsSecretShapedKeyMatchesSPEC64Pattern(t *testing.T) {
@@ -78,5 +82,118 @@ func TestTailBufferKeepsTheLastBytesOnARuneStart(t *testing.T) {
 	}
 	if got, trunc := capTail("éé", 3, false); got != "é" || !trunc {
 		t.Errorf("capTail rune = %q %v", got, trunc)
+	}
+}
+
+const (
+	testJWT    = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"
+	testGHP    = "ghp_aBcDeFgHiJkLmNoPqRsTuVwXyZ0123456789"                   //nolint:gosec // G101: a fixture shaped like a credential on purpose, to prove the mask
+	testPAT    = "github_pat_11ABCDEFG0aBcDeFgHiJkL_mNoPqRsTuVwXyZ0123456789" //nolint:gosec // G101: a fixture shaped like a credential on purpose, to prove the mask
+	testAWSKey = "AKIAIOSFODNN7EXAMPLE"                                       //nolint:gosec // G101: a fixture shaped like a credential on purpose, to prove the mask
+	testSK     = "sk-proj-AbCdEfGhIjKlMnOp1234"
+)
+
+// Each secret shape of SPEC §10.1 and the lines next to them that must not be
+// touched. A leak names the substring that must not survive.
+var maskShapeCases = []struct {
+	name, in, want, leak string
+}{
+	{"json quoted key", `{"api_key": "sk-x"}`, `{"api_key": ` + MaskedPlaceholder + `}`, "sk-x"},
+	{"json quoted key no space", `"password":"hunter2"`, `"password":` + MaskedPlaceholder, "hunter2"},
+	{"single quoted key", `{'client_secret' : 'a b'} next`, `{'client_secret' : ` + MaskedPlaceholder + `} next`, "a b"},
+	{"authorization bearer", "Authorization: Bearer abc.def-123", "Authorization: Bearer " + MaskedPlaceholder, "abc.def-123"},
+	{"bearer alone", "curl -H Bearer tok_8f3a2c9d now", "curl -H Bearer " + MaskedPlaceholder + " now", "tok_8f3a2c9d"},
+	{"bearer lower case", "sent bearer zzTOPsecret1 ok", "sent bearer " + MaskedPlaceholder + " ok", "zzTOPsecret1"},
+	{"flag token space", "run --token abc123 --verbose", "run --token " + MaskedPlaceholder + " --verbose", "abc123"},
+	{"flag password equals", "run --password=abc123 go", "run --password=" + MaskedPlaceholder + " go", "abc123"},
+	{"flag api-key space", "run --api-key abc123 go", "run --api-key " + MaskedPlaceholder + " go", "abc123"},
+	{"flag api-key equals", "run --api-key=abc123 go", "run --api-key=" + MaskedPlaceholder + " go", "abc123"},
+	{"flag secret quoted", `run --client_secret "a b c" go`, "run --client_secret " + MaskedPlaceholder + " go", "a b c"},
+	{"sk prefix", "key is " + testSK + " ok", "key is " + MaskedPlaceholder + " ok", testSK},
+	{"ghp prefix", "pushed with " + testGHP + ".", "pushed with " + MaskedPlaceholder + ".", testGHP},
+	{"github_pat prefix", "pat " + testPAT + " end", "pat " + MaskedPlaceholder + " end", testPAT},
+	{"AKIA prefix", "aws " + testAWSKey + " end", "aws " + MaskedPlaceholder + " end", testAWSKey},
+	{"jwt", "got " + testJWT + " back", "got " + MaskedPlaceholder + " back", "SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"},
+	// Already masked before: they stay masked.
+	{"export", "export GITHUB_TOKEN=x", "export GITHUB_TOKEN=" + MaskedPlaceholder, "=x"},
+	{"aws colon", "AWS_SECRET_ACCESS_KEY: x", "AWS_SECRET_ACCESS_KEY: " + MaskedPlaceholder, ": x"},
+	// Not secrets: byte-identical.
+	{"tokens per minute", "--tokens-per-minute 5", "--tokens-per-minute 5", ""},
+	{"max tokens", "run --max-tokens 100 --keyboard us", "run --max-tokens 100 --keyboard us", ""},
+	{"author", "author: bob", "author: bob", ""},
+	{"plain json", `{"author": "bob", "name": "x"}`, `{"author": "bob", "name": "x"}`, ""},
+	{"short prefix words", "task-force disk-usage sk-learn ask-sk-x1234567890", "task-force disk-usage sk-learn ask-sk-x1234567890", ""},
+	{"version dots", "v1.2.3 a.b.c eyJ.x", "v1.2.3 a.b.c eyJ.x", ""},
+	{"flag then flag", "--token --verbose", "--token --verbose", ""},
+	{"bearer in a word", "forbearer x", "forbearer x", ""},
+}
+
+func TestMaskSecretAssignmentsMasksEachSecretShape(t *testing.T) {
+	for _, tc := range maskShapeCases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := maskSecretAssignments(tc.in); got != tc.want {
+				t.Errorf("maskSecretAssignments(%q) = %q, want %q", tc.in, got, tc.want)
+			}
+			if got := Redact(tc.in, nil); got != tc.want {
+				t.Errorf("Redact(%q) = %q, want %q", tc.in, got, tc.want)
+			}
+			if tc.leak != "" && strings.Contains(Redact(tc.in, nil), tc.leak) {
+				t.Errorf("Redact(%q) still carries %q", tc.in, tc.leak)
+			}
+		})
+	}
+}
+
+// The new passes stay linear: a megabyte of near-misses and real shapes is
+// masked and costs about what reading it does.
+func TestMaskSecretAssignmentsStaysLinearOnAVeryLongText(t *testing.T) {
+	text := strings.Repeat("--token abc Bearer xyz sk-aaaaaaaaaa eyJ.a.b \"api_key\": \"v\" --max-tokens 5 ::: ", 1<<14)
+	start := time.Now()
+	got := maskSecretAssignments(text)
+	if elapsed := time.Since(start); elapsed > 5*time.Second {
+		t.Errorf("a %d-byte text took %v", len(text), elapsed)
+	}
+	for _, leak := range []string{"abc", "xyz", "aaaaaaaaaa", `"v"`} {
+		if strings.Contains(got, leak) {
+			t.Fatalf("%q survived in a %d-byte text", leak, len(text))
+		}
+	}
+	if strings.Count(got, "--max-tokens 5") != 1<<14 {
+		t.Fatal("a non-secret flag was altered or lost")
+	}
+}
+
+// One shape per field the script sees: the message in DECK_EVENT_MESSAGE and
+// on stdin, and the script's own output in the stored tail, all through the
+// same masking.
+func TestSpawnMasksTheNewShapesInEnvPayloadAndStoredOutput(t *testing.T) {
+	const secret = testGHP
+	path, dir := captureScript(t, `echo "out: $DECK_EVENT_MESSAGE"; echo "err: curl -H 'Authorization: Bearer tok-leak-12345' --password hunter2x" >&2`)
+	req := baseRequest(path)
+	req.Event.Message = `called with {"api_key": "sk-x"} and ` + secret + " --token abc123"
+	res, err := Spawn(context.Background(), req)
+	if err != nil || res.Failed() {
+		t.Fatalf("Spawn = %+v, %v", res, err)
+	}
+	env := envMap(read(t, filepath.Join(dir, "env")))
+	var p struct{ Event struct{ Message string } }
+	if err := json.Unmarshal([]byte(read(t, filepath.Join(dir, "stdin"))), &p); err != nil {
+		t.Fatal(err)
+	}
+	want := `called with {"api_key": ` + MaskedPlaceholder + `} and ` + MaskedPlaceholder + " --token " + MaskedPlaceholder
+	if env["DECK_EVENT_MESSAGE"] != want || p.Event.Message != want {
+		t.Errorf("message env %q, stdin %q, want %q", env["DECK_EVENT_MESSAGE"], p.Event.Message, want)
+	}
+	for _, leak := range []string{secret, "sk-x", "abc123", "tok-leak-12345", "hunter2x"} {
+		if strings.Contains(res.Output, leak) {
+			t.Errorf("stored output tail carries %q: %q", leak, res.Output)
+		}
+	}
+	// The tail is masked once more as a whole, so a closing brace or quote
+	// glued to a masked value goes with it: only the masked shapes are asserted.
+	if !strings.Contains(res.Output, `"api_key": `+MaskedPlaceholder) || !strings.Contains(res.Output, "--token "+MaskedPlaceholder) ||
+		!strings.Contains(res.Output, "Bearer "+MaskedPlaceholder) ||
+		!strings.Contains(res.Output, "--password "+MaskedPlaceholder) {
+		t.Errorf("stored output = %q, want the masked shapes in the tail", res.Output)
 	}
 }

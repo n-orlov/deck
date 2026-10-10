@@ -1631,7 +1631,16 @@ argv[1]: the configured fixed arguments follow it (`script <event> <fixed>...`).
 - Bodies are size-capped. **Env values never appear** in the environment variables above, in
   the payload, or in the captured output record (§6.4); `message` is withheld, not truncated,
   for a `sensitive` session (§8).
-  Redaction masks the value of every secret-shaped `KEY=VALUE` pair in the message and removes
+  Redaction masks the value of every secret-shaped `KEY=VALUE` pair in the message (the key
+  may be quoted, as in `{"api_key": "v"}`; a `KEY: VALUE` pair counts too) and of these other
+  shapes, wherever they appear in the message, the reasons and the captured output tail: the
+  token after `Bearer` (`Authorization: Bearer <token>` or `Bearer <token>` alone); the value of
+  a flag whose last word is `token`, `secret`, `key`, `password`, `passwd` or `credential`
+  (`--token abc`, `--password=abc`, `--api-key abc`; `--tokens-per-minute 5` is not one); a body
+  of at least eight characters behind `sk-`, `ghp_` (also `gho_`, `ghu_`, `ghs_`, `ghr_`),
+  `github_pat_` or `AKIA`; and a three-segment JWT (`eyJ…`.payload.signature). The same masking
+  feeds `DECK_EVENT_MESSAGE`, the stdin JSON and the stored script-output tail. Anything else is
+  left byte-for-byte as it was. Redaction also removes
   every non-empty session env value, of any length, by value, from the message and from the
   captured output tail: there is no length floor, so a one-character value is removed too.
   `deck _hook` runs inside the agent and so inherits the session env, under its own keys and
