@@ -105,6 +105,8 @@ var maskShapeCases = []struct {
 	{"bearer alone", "curl -H Bearer tok_8f3a2c9d now", "curl -H Bearer " + MaskedPlaceholder + " now", "tok_8f3a2c9d"},
 	{"bearer lower case", "sent bearer zzTOPsecret1 ok", "sent bearer " + MaskedPlaceholder + " ok", "zzTOPsecret1"},
 	{"flag token space", "run --token abc123 --verbose", "run --token " + MaskedPlaceholder + " --verbose", "abc123"},
+	{"flag token equals", "run --token=abc123 --verbose", "run --token=" + MaskedPlaceholder + " --verbose", "abc123"},
+	{"flag password space", "run --password abc123 go", "run --password " + MaskedPlaceholder + " go", "abc123"},
 	{"flag password equals", "run --password=abc123 go", "run --password=" + MaskedPlaceholder + " go", "abc123"},
 	{"flag api-key space", "run --api-key abc123 go", "run --api-key " + MaskedPlaceholder + " go", "abc123"},
 	{"flag api-key equals", "run --api-key=abc123 go", "run --api-key=" + MaskedPlaceholder + " go", "abc123"},
