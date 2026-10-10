@@ -83,7 +83,35 @@ func (s *fakeAgentScenario) launchLongRunning(ctx context.Context, session strin
 		"--session-id", "123e4567-e89b-12d3-a456-426614174000"); err != nil {
 		return fmt.Errorf("launch long-running fake Claude as pane command: %w", err)
 	}
-	return nil
+	return waitForPaneAgentCommand(ctx, h, session, "fake-claude")
+}
+
+// waitForPaneAgentCommand returns once tmux reports the session's single pane
+// as live and running wantCommand. `tmux new-session` returns as soon as the
+// pane's launcher (`env`, or a shell wrapping it) is forked, before it has
+// exec'd the agent, so a step that read the pane facts right after it would
+// see the launcher's name instead. It polls the same pane facts the SIGKILL
+// step verifies, bounded by ctx exactly as waitForPrivateSession is. A pane
+// that dies first can never become the agent, so that fails at once.
+func waitForPaneAgentCommand(ctx context.Context, h *ScenarioHarness, session, wantCommand string) error {
+	var facts string
+	for {
+		output, err := tmuxOutput(ctx, h, "list-panes", "-t", session, "-F", "#{pane_current_command}|#{pane_dead}")
+		if err == nil {
+			facts = strings.TrimSpace(string(output))
+			switch facts {
+			case wantCommand + "|0":
+				return nil
+			case wantCommand + "|1":
+				return fmt.Errorf("session %q pane died before it was observed running %q", session, wantCommand)
+			}
+		}
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("session %q pane never ran %q; last facts %q: %w", session, wantCommand, facts, ctx.Err())
+		case <-time.After(25 * time.Millisecond):
+		}
+	}
 }
 
 func (s *fakeAgentScenario) launch(ctx context.Context, session string, status int) error {
