@@ -372,7 +372,39 @@ jobs:
           if-no-files-found: warn
           retention-days: 30
 
-      - name: Upload the merged site tree as the Pages artifact
+      # The Pages artifact upload is a network call to GitHub's artifact
+      # service; one transient EHOSTUNREACH on its CreateArtifact request
+      # once failed a whole push run (lint and suite green). Like
+      # `publish`'s deploy-pages chain below: up to three attempts with
+      # back-off, every attempt but the last `continue-on-error: true` so
+      # the next one can read its `outcome`, and the final attempt without
+      # it, so a persistent failure still fails this job.
+      - name: Upload the merged site tree as the Pages artifact (attempt 1 of 3)
+        id: pages_upload1
+        uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3
+        with:
+          path: site
+        continue-on-error: true
+
+      - name: Back off before Pages artifact upload retry 2
+        if: steps.pages_upload1.outcome == 'failure'
+        run: sleep 15
+
+      - name: Upload the merged site tree as the Pages artifact (attempt 2 of 3)
+        id: pages_upload2
+        if: steps.pages_upload1.outcome == 'failure'
+        uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3
+        with:
+          path: site
+        continue-on-error: true
+
+      - name: Back off before Pages artifact upload retry 3
+        if: steps.pages_upload2.outcome == 'failure'
+        run: sleep 30
+
+      - name: Upload the merged site tree as the Pages artifact (attempt 3 of 3)
+        id: pages_upload3
+        if: steps.pages_upload2.outcome == 'failure'
         uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3
         with:
           path: site
