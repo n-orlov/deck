@@ -732,3 +732,99 @@ func waitForRetainedDeadPane(t *testing.T, client tmux.Client, slug string) {
 	}
 	t.Fatal("crash fixture did not leave a retained dead pane")
 }
+
+// scriptSpans parses the "<tag> <startNs> <endNs>" lines a timestamping hook
+// script appends, keyed by "<kind> <session>".
+func scriptSpans(t *testing.T, raw string) map[string][2]int64 {
+	t.Helper()
+	spans := map[string][2]int64{}
+	for _, line := range strings.Split(strings.TrimSpace(raw), "\n") {
+		var kind, id string
+		var start, end int64
+		if _, err := fmt.Sscanf(line, "%s %s %d %d", &kind, &id, &start, &end); err != nil {
+			t.Fatalf("unreadable span line %q: %v", line, err)
+		}
+		spans[kind+" "+id] = [2]int64{start, end}
+	}
+	return spans
+}
+
+// SPEC §3.1/§10.4, by the scripts' own clocks rather than the wall time of the
+// call: for every agent family the incoming event's script is running while a
+// reconcile-detected death's script runs, so the two timeouts are never
+// serial. Each script holds one second, so the intervals can only intersect
+// when the dispatches overlap, whatever the host load.
+func TestHookIncomingScriptOverlapsTheDeathBatchForEveryAgentFamily(t *testing.T) {
+	for _, tc := range hookPayloadCases {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newEventHookFixture(t, tc.agent, "running")
+			f.script(t, fmt.Sprintf(`s=$(date +%%s%%N)
+sleep 1
+printf '%%s %%s %%s %%s\n' "$DECK_EVENT_KIND" "$DECK_SESSION_ID" "$s" "$(date +%%s%%N)" >> %q
+`, filepath.Join(f.out, "spans")))
+			f.seedExtraRows(t, 2)
+			if err := exec.Command("tmux", "-L", f.settings.Socket, "kill-server").Run(); err != nil {
+				t.Fatal(err)
+			}
+			if tc.copilotEvent != "" {
+				t.Setenv(agent.CopilotHookEventEnv, tc.copilotEvent)
+			}
+			if code, stderr := f.run(tc.payload); code != 0 {
+				t.Fatalf("hook exit = %d, stderr %q", code, stderr)
+			}
+			spans := scriptSpans(t, f.read(t, "spans"))
+			if len(spans) != 4 {
+				t.Fatalf("scripts recorded %v, want the incoming %s offer and three ended offers", spans, tc.wantKind)
+			}
+			incoming, ok := spans[tc.wantKind+" row-1"]
+			if !ok {
+				t.Fatalf("no %s span for the incoming event in %v", tc.wantKind, spans)
+			}
+			var overlapped int
+			for key, span := range spans {
+				if strings.HasPrefix(key, "ended ") && span[0] < incoming[1] && incoming[0] < span[1] {
+					overlapped++
+				}
+			}
+			if overlapped == 0 {
+				t.Fatalf("the incoming script ran %v and no death script overlapped it: %v", incoming, spans)
+			}
+		})
+	}
+}
+
+// The same rule when the incoming script fails and the deaths' scripts fail
+// differently: each result is recorded against its own event, and the overlap
+// does not turn into one result clobbering another.
+func TestHookOverlappedDispatchesRecordTheirOwnResults(t *testing.T) {
+	f := newEventHookFixture(t, "codex", "running")
+	f.script(t, `case "$DECK_EVENT_KIND" in waiting) exit 3;; *) echo "gone $DECK_SESSION_ID" >&2; exit 4;; esac
+`)
+	f.seedExtraRows(t, 3)
+	if err := exec.Command("tmux", "-L", f.settings.Socket, "kill-server").Run(); err != nil {
+		t.Fatal(err)
+	}
+	if code, stderr := f.run(hookPayloadCases[1].payload); code != 0 {
+		t.Fatalf("hook exit = %d, stderr %q", code, stderr)
+	}
+	events, results := eventResults(t, f.paths)
+	var incoming, deaths int
+	for _, event := range events {
+		res, ok := results[event.Seq]
+		switch event.Kind {
+		case "permission_request":
+			incoming++
+			if !ok || res.Kind != "waiting" || res.ExitCode != 3 || res.TimedOut {
+				t.Errorf("incoming event %d result = %+v ok=%v, want waiting exit 3", event.Seq, res, ok)
+			}
+		case "tmux.session_gone":
+			deaths++
+			if !ok || res.Kind != "ended" || res.ExitCode != 4 || res.TimedOut {
+				t.Errorf("death event %d on %s result = %+v ok=%v, want ended exit 4", event.Seq, event.SessionID, res, ok)
+			}
+		}
+	}
+	if incoming != 1 || deaths != 4 {
+		t.Fatalf("durable events: %d incoming, %d deaths, want 1 and 4", incoming, deaths)
+	}
+}
