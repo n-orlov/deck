@@ -440,3 +440,80 @@ func TestAllureReportUnwritableCacheDoesNotFailTheReport(t *testing.T) {
 		t.Fatalf("an unwritable cache must not fail the report: %v\n%s", err, out)
 	}
 }
+
+// A corrupt cache entry is never a way around the integrity check, and it does
+// not buy the download a second attempt: with the release host dropping every
+// connection the report fails after exactly one connection, and no entry is
+// cached from the failed fetch.
+func TestAllureReportCorruptCacheWithAFailingHostFailsAfterOneAttempt(t *testing.T) {
+	_, sum := fakeAllure(t, t.TempDir())
+	url, connections := countingHost(t, nil)
+	cache := t.TempDir()
+	poisoned := filepath.Join(cache, "allure-2.34.1-"+sum+".tgz")
+	if err := os.WriteFile(poisoned, []byte("not the archive"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	out, _, err := runScriptFrom(t, url, sum, t.TempDir(), "ALLURE_CACHE_DIR="+cache)
+	if err == nil || strings.Contains(out, "report written") {
+		t.Fatalf("a corrupt cache and a failing host must fail the report: err=%v\n%s", err, out)
+	}
+	if n := connections(); n != 1 {
+		t.Fatalf("%d connections, want exactly 1\n%s", n, out)
+	}
+}
+
+// A host that answers 200 with a truncated or empty body is still one attempt,
+// still a checksum failure, and still never cached.
+func TestAllureReportTruncatedOrEmptyBodyAbortsOnChecksumAfterOneAttempt(t *testing.T) {
+	archive, sum := fakeAllure(t, t.TempDir())
+	raw, err := os.ReadFile(archive)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bodies := map[string][]byte{"empty": {}, "truncated": raw[:len(raw)/2]}
+	for name, body := range bodies {
+		t.Run(name, func(t *testing.T) {
+			url, connections := countingHost(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write(body) }))
+			cache := t.TempDir()
+			out, _, err := runScriptFrom(t, url, sum, t.TempDir(), "ALLURE_CACHE_DIR="+cache)
+			if err == nil || !strings.Contains(out, "checksum mismatch") {
+				t.Fatalf("a bad body must abort on the checksum: err=%v\n%s", err, out)
+			}
+			if n := connections(); n != 1 {
+				t.Fatalf("%d connections, want 1", n)
+			}
+			if entries, _ := os.ReadDir(cache); len(entries) != 0 {
+				t.Fatalf("an unverified archive was cached: %v", entries)
+			}
+		})
+	}
+}
+
+// A failed download leaves no cache entry, and a valid cached archive needs no
+// connection at all, however badly the release host would have behaved.
+func TestAllureReportFailedDownloadCachesNothingAndAValidCacheNeedsNoHost(t *testing.T) {
+	archive, sum := fakeAllure(t, t.TempDir())
+	cache := t.TempDir()
+	failing, failedConns := countingHost(t, http.NotFoundHandler())
+	if _, _, err := runScriptFrom(t, failing, sum, t.TempDir(), "ALLURE_CACHE_DIR="+cache); err == nil {
+		t.Fatal("a 404 download must fail the report")
+	}
+	if entries, _ := os.ReadDir(cache); len(entries) != 0 {
+		t.Fatalf("a failed download left cache entries: %v", entries)
+	}
+	if n := failedConns(); n != 1 {
+		t.Fatalf("%d connections, want 1", n)
+	}
+	healthy, _ := countingHost(t, serveFile(archive))
+	if out, _, err := runScriptFrom(t, healthy, sum, t.TempDir(), "ALLURE_CACHE_DIR="+cache); err != nil {
+		t.Fatalf("priming the cache failed: %v\n%s", err, out)
+	}
+	dropping, droppedConns := countingHost(t, nil)
+	out, _, err := runScriptFrom(t, dropping, sum, t.TempDir(), "ALLURE_CACHE_DIR="+cache)
+	if err != nil || !strings.Contains(out, "report written") {
+		t.Fatalf("a valid cached archive must carry the report: %v\n%s", err, out)
+	}
+	if n := droppedConns(); n != 0 {
+		t.Fatalf("a cache hit opened %d connections, want 0", n)
+	}
+}
