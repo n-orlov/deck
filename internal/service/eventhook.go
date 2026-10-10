@@ -140,34 +140,54 @@ type HookOutcome struct {
 // session-end path never holds the agent's exit (SPEC §10.3). Otherwise it
 // waits up to the dispatcher's Timeout and returns the recordable Result.
 func (d EventHookDispatcher) Dispatch(ctx context.Context, ev HookEvent, detached bool) HookOutcome {
+	run, outcome := d.Prepare(ctx, ev, detached)
+	if run == nil {
+		return outcome
+	}
+	return run()
+}
+
+// Prepare is Dispatch's first half: everything up to the spawn. It reads the
+// committed row, decides, and persists the claimed pair in hook_fired, so the
+// claim is durable and ordered the moment Prepare returns. A nil run means
+// nothing spawns and the outcome says why. Otherwise run performs the spawn
+// (waiting up to the Timeout for an attached one), records the result against
+// the event and returns the outcome; it is called exactly once and may be
+// called on another goroutine, which is how `deck _hook` overlaps the hook's
+// own script with its liveness pass instead of paying two serial timeouts.
+func (d EventHookDispatcher) Prepare(ctx context.Context, ev HookEvent, detached bool) (run func() HookOutcome, outcome HookOutcome) {
 	kind, skip := d.offered(ev)
 	if skip != notify.SkipNone {
-		return HookOutcome{Skip: skip}
+		return nil, HookOutcome{Skip: skip}
 	}
 	session, err := d.Store.GetSession(ctx, ev.SessionID)
 	if err != nil {
-		return HookOutcome{Err: err}
+		return nil, HookOutcome{Err: err}
 	}
 	if ev.AppliedStatus != "" && session.Status != ev.AppliedStatus {
-		return HookOutcome{Skip: notify.SkipNotApplied}
+		return nil, HookOutcome{Skip: notify.SkipNotApplied}
 	}
 	decision, state, err := d.claim(ctx, ev.SessionID, kind, ev.Reason)
 	if err != nil || !decision.Spawn {
-		return HookOutcome{Skip: decision.Skip, Err: err}
+		return nil, HookOutcome{Skip: decision.Skip, Err: err}
 	}
 	req := d.request(session, state, ev, kind)
 	if detached {
-		err := notify.Start(req)
-		logErr := d.log(ev.SessionID, hookInvocation(kind, true, notify.Result{ExitCode: -1}, err))
-		return HookOutcome{Spawned: err == nil, Detached: true, Err: errors.Join(err, logErr)}
+		return func() HookOutcome {
+			err := notify.Start(req)
+			logErr := d.log(ev.SessionID, hookInvocation(kind, true, notify.Result{ExitCode: -1}, err))
+			return HookOutcome{Spawned: err == nil, Detached: true, Err: errors.Join(err, logErr)}
+		}, HookOutcome{}
 	}
 	spawn := d.Spawn
 	if spawn == nil {
 		spawn = notify.Spawn
 	}
-	res, err := spawn(ctx, req)
-	logErr := d.log(ev.SessionID, hookInvocation(kind, false, res, err))
-	return HookOutcome{Spawned: err == nil, Result: res, Err: errors.Join(err, d.record(ctx, ev, kind, res, err), logErr)}
+	return func() HookOutcome {
+		res, err := spawn(ctx, req)
+		logErr := d.log(ev.SessionID, hookInvocation(kind, false, res, err))
+		return HookOutcome{Spawned: err == nil, Result: res, Err: errors.Join(err, d.record(ctx, ev, kind, res, err), logErr)}
+	}, HookOutcome{}
 }
 
 // hookInvocation is the structured-log view of one spawn: its result, or the

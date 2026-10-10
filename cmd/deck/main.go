@@ -671,7 +671,11 @@ func runHook(ctx context.Context, settings config.Settings, stdin io.Reader) (ru
 	// pass after (and therefore outside) the measured store callback. This is
 	// the unattended path that notices and collects a different crashed pane;
 	// ReconcileWithin is liveness-only and never runs pane-text probes.
-	dispatchHookEvent(ctx, db, logger, settings, result)
+	// The hook's own script runs while that pass does (its death offers then
+	// overlap it too), so the agent-facing call is held for one
+	// event_hook_timeout plus the reconcile budget, never two serial timeouts.
+	waitHook := dispatchHookEvent(ctx, db, logger, settings, result)
+	defer waitHook()
 	if result.Kind == "session_end" {
 		return nil
 	}
