@@ -24,7 +24,37 @@ func registerConfigReloadSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^the scenario's profile "([^"]+)" config\.toml selects theme "([^"]*)"$`, scenarioProfileConfigSelectsTheme)
 	sc.Step(`^the scenario's profile "([^"]+)" config\.toml gets an unrelated edit$`, scenarioProfileConfigGetsUnrelatedEdit)
 	sc.Step(`^deck client "([^"]+)" text "([^"]+)" keeps foreground "(#[0-9a-fA-F]{6})" for (\d+) further shortened config poll intervals$`, textKeepsForegroundForConfigPolls)
+	sc.Step(`^the scenario runs on the real-install XDG layout with DECK_HOME unset and its config\.toml selects theme "([^"]*)"$`, scenarioRunsOnRealInstallXDGLayout)
 	sc.Step(`^deck client "([^"]+)" is started on profile "([^"]+)" with colour enabled and a shortened config poll interval$`, startNamedProfileClientWithShortConfigPoll)
+}
+
+// scenarioRunsOnRealInstallXDGLayout moves every client started afterwards
+// onto the layout a real install uses: DECK_HOME unset, HOME a temp home, and
+// XDG_CONFIG_HOME / XDG_DATA_HOME / XDG_STATE_HOME pointing into the scenario
+// root, so config.toml resolves to $XDG_CONFIG_HOME/deck/config.toml (SPEC
+// §3.4) instead of the DECK_HOME shortcut every other scenario uses. The
+// default profile's config.toml is written there selecting the theme.
+func scenarioRunsOnRealInstallXDGLayout(ctx context.Context, name string) error {
+	h, err := scenarioHarness(ctx)
+	if err != nil {
+		return err
+	}
+	root := filepath.Join(h.Home, "xdg-install")
+	configHome := filepath.Join(root, "config")
+	dir := filepath.Join(configHome, "deck")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return fmt.Errorf("create XDG config directory: %w", err)
+	}
+	content := fmt.Sprintf("[ui]\ntheme = %q\n", name)
+	if err := os.WriteFile(filepath.Join(dir, "config.toml"), []byte(content), 0o600); err != nil {
+		return fmt.Errorf("write XDG config.toml selecting theme %q: %w", name, err)
+	}
+	h.clientEnv = append(h.clientEnv,
+		"DECK_HOME=", "HOME="+filepath.Join(root, "home"),
+		"XDG_CONFIG_HOME="+configHome,
+		"XDG_DATA_HOME="+filepath.Join(root, "data"),
+		"XDG_STATE_HOME="+filepath.Join(root, "state"))
+	return nil
 }
 
 // scenarioProfileConfigSelectsTheme writes the named profile's own
