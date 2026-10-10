@@ -163,24 +163,33 @@ func findQuotedKeyValue(text string, from int) (int, int, int, bool) {
 			return 0, 0, 0, false
 		}
 		sep := from + sepAt
-		before := strings.TrimRight(text[from:sep], asciiSpace)
-		quoteAt := from + len(before) - 1
-		valStart := len(text) - len(strings.TrimLeft(text[sep+1:], asciiSpace))
-		if len(before) == 0 || valStart == len(text) || (text[quoteAt] != '"' && text[quoteAt] != '\'') {
-			from = sep + 1
-			continue
+		if start, end, ok := quotedKeyValueAt(text, from, sep); ok {
+			return start, end, end, true
 		}
-		keyStart := from + len(strings.TrimRight(before[:len(before)-1], keyBytes))
-		valEnd := assignmentValueEnd(text, valStart)
-		if keyStart == quoteAt || keyStart == 0 || text[keyStart-1] != text[quoteAt] ||
-			!IsSecretShapedKey(text[keyStart:quoteAt]) {
-			from = sep + 1
-			continue
-		}
-		return valStart, valEnd, valEnd, true
+		from = sep + 1
 	}
 	return 0, 0, 0, false
 }
+
+// quotedKeyValueAt reports the value span behind the separator at sep when
+// the text between from and sep ends in a quoted secret-shaped key.
+func quotedKeyValueAt(text string, from, sep int) (int, int, bool) {
+	before := strings.TrimRight(text[from:sep], asciiSpace)
+	quoteAt := from + len(before) - 1
+	valStart := len(text) - len(strings.TrimLeft(text[sep+1:], asciiSpace))
+	if len(before) == 0 || valStart == len(text) || !isQuote(text[quoteAt]) {
+		return 0, 0, false
+	}
+	keyStart := from + len(strings.TrimRight(before[:len(before)-1], keyBytes))
+	if keyStart == quoteAt || keyStart == 0 || text[keyStart-1] != text[quoteAt] ||
+		!IsSecretShapedKey(text[keyStart:quoteAt]) {
+		return 0, 0, false
+	}
+	return valStart, assignmentValueEnd(text, valStart), true
+}
+
+// isQuote reports whether b opens or closes a quoted string.
+func isQuote(b byte) bool { return b == '"' || b == '\'' }
 
 // findBearerToken finds the token after the word Bearer (any case), as in an
 // Authorization header or a curl argument.
@@ -218,32 +227,51 @@ func findSecretFlagValue(text string, from int) (int, int, int, bool) {
 		if at < 0 {
 			return 0, 0, 0, false
 		}
-		i := from + at
-		nameStart := i + 2
-		from = nameStart
-		nameLen := runLen(text[nameStart:], keyBytes)
-		if nameLen == 0 || !startsWord(text, i) {
-			continue
+		start, end, next, ok := secretFlagValueAt(text, from+at)
+		if ok {
+			return start, end, end, true
 		}
-		name := text[nameStart : nameStart+nameLen]
-		from = nameStart + nameLen
-		if !secretFlagWords[strings.ToLower(name[strings.LastIndexAny(name, "-_.")+1:])] || from >= len(text) {
-			continue
-		}
-		start := from + 1
-		if text[from] != '=' {
-			start = len(text) - len(strings.TrimLeft(text[from:], asciiSpace))
-			if start == from {
-				continue
-			}
-		}
-		if start >= len(text) || strings.HasPrefix(text[start:], "--") {
-			continue
-		}
-		end := assignmentValueEnd(text, start)
-		return start, end, end, true
+		from = next
 	}
 	return 0, 0, 0, false
+}
+
+// secretFlagValueAt reports the value span of the flag whose "--" sits at i,
+// when the flag is secret-shaped and has a value, and where the search
+// resumes either way.
+func secretFlagValueAt(text string, i int) (start, end, next int, ok bool) {
+	nameStart := i + 2
+	nameLen := runLen(text[nameStart:], keyBytes)
+	if nameLen == 0 || !startsWord(text, i) {
+		return 0, 0, nameStart, false
+	}
+	next = nameStart + nameLen
+	name := text[nameStart:next]
+	if next >= len(text) || !secretFlagWords[strings.ToLower(name[strings.LastIndexAny(name, "-_.")+1:])] {
+		return 0, 0, next, false
+	}
+	start, ok = flagValueStart(text, next)
+	if !ok {
+		return 0, 0, next, false
+	}
+	return start, assignmentValueEnd(text, start), next, true
+}
+
+// flagValueStart reports where a flag's value begins, given the index just
+// past the flag's name: after an "=", else after the separating whitespace.
+// A following flag is not a value.
+func flagValueStart(text string, at int) (int, bool) {
+	start := at + 1
+	if text[at] != '=' {
+		start = len(text) - len(strings.TrimLeft(text[at:], asciiSpace))
+		if start == at {
+			return 0, false
+		}
+	}
+	if start >= len(text) || strings.HasPrefix(text[start:], "--") {
+		return 0, false
+	}
+	return start, true
 }
 
 // findPrefixedBody finds a credential that announces itself by prefix: the
@@ -281,23 +309,28 @@ func findJWT(text string, from int) (int, int, int, bool) {
 		if !startsWord(text, i) {
 			continue
 		}
-		end := i + runLen(text[i:], tokenBytes)
-		for segment := 0; segment < 2 && end >= 0; segment++ {
-			n := 0
-			if end < len(text) && text[end] == '.' {
-				n = runLen(text[end+1:], tokenBytes)
-			}
-			if n == 0 {
-				end = -1
-			} else {
-				end += 1 + n
-			}
-		}
-		if end > 0 {
+		if end := jwtEnd(text, i); end > 0 {
 			return i, end, end, true
 		}
 	}
 	return 0, 0, 0, false
+}
+
+// jwtEnd returns where the token whose header starts at i ends, or -1 when
+// the header is not followed by two dot-joined, non-empty segments.
+func jwtEnd(text string, i int) int {
+	end := i + runLen(text[i:], tokenBytes)
+	for segment := 0; segment < 2; segment++ {
+		if end >= len(text) || text[end] != '.' {
+			return -1
+		}
+		n := runLen(text[end+1:], tokenBytes)
+		if n == 0 {
+			return -1
+		}
+		end += 1 + n
+	}
+	return end
 }
 
 // assignmentValueEnd returns where the value starting at start ends: after
