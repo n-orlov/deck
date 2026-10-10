@@ -129,3 +129,90 @@ func TestDeferredHookBatchRecordsEveryOutcomeWhenSomeFail(t *testing.T) {
 		}
 	}
 }
+
+// SPEC §3.1/§10.4: the incoming event's own script (claimed by Prepare, run on
+// another goroutine, as `deck _hook` does) overlaps the pass and its death
+// batch, so the whole call costs one hold however many deaths the pass records,
+// not the incoming hold plus a second one for the batch. Every offer, the
+// incoming one and each death, is spawned exactly once and recorded.
+func TestPreparedIncomingScriptOverlapsTheDeathBatchWhateverTheNumberOfDeaths(t *testing.T) {
+	for _, deaths := range []int{1, 4, 8} {
+		t.Run(fmt.Sprintf("%d deaths", deaths), func(t *testing.T) {
+			svc, db, _, _ := newAgentTestService(t, nil, fmt.Sprintf("hook-overlap-%d", deaths))
+			_, d := withEventHook(&svc, "tmux.session_gone")
+			slow := &slowSpawn{hold: 400 * time.Millisecond, outcome: func(string) (notify.Result, error) {
+				return notify.Result{ExitCode: 0, Output: "slow done\n"}, nil
+			}}
+			d.Spawn = slow.spawn
+			svc.EventHook = func() EventHookDispatcher { return d }
+			incoming := batchSessionID(777)
+			goneRow(t, db, incoming, "claude", "waiting")
+			for i := 0; i < deaths; i++ {
+				goneRow(t, db, batchSessionID(i), "claude", "running")
+			}
+
+			start := time.Now()
+			run, outcome := d.Prepare(context.Background(), HookEvent{
+				SessionID: incoming, StoredKind: "notification", Reason: "permission_prompt", At: time.Now(),
+			}, false)
+			if run == nil {
+				t.Fatalf("incoming event not claimed: %+v", outcome)
+			}
+			done := make(chan struct{})
+			go func() { defer close(done); run() }()
+			if err := svc.ReconcileWithin(context.Background(), 5*time.Second); err != nil {
+				t.Fatal(err)
+			}
+			<-done
+			if elapsed := time.Since(start); elapsed > slow.hold+300*time.Millisecond {
+				t.Fatalf("incoming + %d deaths took %s, want about one hold (%s), not two serial ones", deaths, elapsed, slow.hold)
+			}
+			slow.mu.Lock()
+			defer slow.mu.Unlock()
+			for i := 0; i < deaths; i++ {
+				if n := slow.started[batchSessionID(i)]; n != 1 {
+					t.Fatalf("death %d spawned %d times, want once", i, n)
+				}
+			}
+			// The incoming session died in the same pass: its notification offer and
+			// its own ended offer are two distinct pairs, each spawned once.
+			if n := slow.started[incoming]; n != 2 {
+				t.Fatalf("incoming session spawned %d times, want 2 (its notification and its death)", n)
+			}
+		})
+	}
+}
+
+// A pair the incoming call already claimed is not claimed again by the death
+// batch that follows it: concurrent callers never double-spawn, and the
+// session's siblings in the same batch are still offered.
+func TestDeathBatchDoesNotRespawnAPairTheIncomingCallAlreadyClaimed(t *testing.T) {
+	svc, db, _, _ := newAgentTestService(t, nil, "hook-overlap-claimed")
+	_, d := withEventHook(&svc, "tmux.session_gone")
+	slow := &slowSpawn{hold: 200 * time.Millisecond, outcome: func(string) (notify.Result, error) {
+		return notify.Result{ExitCode: 0}, nil
+	}}
+	d.Spawn = slow.spawn
+	svc.EventHook = func() EventHookDispatcher { return d }
+	claimed, sibling := batchSessionID(910), batchSessionID(911)
+	goneRow(t, db, claimed, "claude", "running")
+	goneRow(t, db, sibling, "claude", "running")
+
+	run, outcome := d.Prepare(context.Background(), HookEvent{
+		SessionID: claimed, StoredKind: "tmux.session_gone", Reason: "tmux session disappeared", At: time.Now(),
+	}, false)
+	if run == nil {
+		t.Fatalf("pair not claimed: %+v", outcome)
+	}
+	done := make(chan struct{})
+	go func() { defer close(done); run() }()
+	if err := svc.ReconcileWithin(context.Background(), 5*time.Second); err != nil {
+		t.Fatal(err)
+	}
+	<-done
+	slow.mu.Lock()
+	defer slow.mu.Unlock()
+	if slow.started[claimed] != 1 || slow.started[sibling] != 1 {
+		t.Fatalf("spawns = %v, want the claimed pair once and its sibling once", slow.started)
+	}
+}
