@@ -3341,6 +3341,13 @@ func (m Model) onSessionArchived(msg sessionArchived) (tea.Model, tea.Cmd) {
 	m.archiveUndoHookRan = msg.session.PostDestroy != "" || m.settings.PostDestroy != ""
 	m.archiveUndoGeneration++
 	archiveGeneration := m.archiveUndoGeneration
+	// The archive half of task 012's M10 (kill_delete_undo.feature:561,
+	// sweep at 27aed642e3e): the frame rendered for THIS message raises the
+	// "Killed and archived" toast, so it must not also still list the row
+	// the toast says was archived -- a client sampling it saw both together.
+	// Hide the row in this same Update, exactly as onSessionDeleted does;
+	// m.loadSessions below stays the authoritative reconciliation.
+	m.dropSessionRow(msg.session.ID)
 	cmds := []tea.Cmd{m.loadSessions, tea.Tick(m.settings.Undo, func(_ time.Time) tea.Msg { return archiveUndoExpired(archiveGeneration) })}
 	if msg.hookMessage != "" {
 		// task 042 (findings §1): the archive itself already committed --
@@ -3411,7 +3418,7 @@ func (m Model) onSessionDeleted(msg sessionDeleted) (tea.Model, tea.Cmd) {
 	// Update call, so this frame already reflects the deletion; the
 	// m.loadSessions reload below still runs to pick up any other
 	// concurrent change and remains the authoritative reconciliation.
-	m.dropDeletedSession(msg.session.ID)
+	m.dropSessionRow(msg.session.ID)
 	cmds := []tea.Cmd{m.loadSessions, tea.Tick(m.settings.DeleteGrace, func(_ time.Time) tea.Msg { return deleteGraceExpired(generation) })}
 	if msg.hookMessage != "" {
 		// task 042 (findings §1): mirrors the sessionArchived branch above
@@ -3423,10 +3430,10 @@ func (m Model) onSessionDeleted(msg sessionDeleted) (tea.Model, tea.Cmd) {
 	return m, tea.Batch(cmds...)
 }
 
-// dropDeletedSession removes the just-deleted session from baseSessions and
-// the derived view, then keeps the cursor on the row it was on (by id), or
-// clamps it into range when that row was the deleted one.
-func (m *Model) dropDeletedSession(deletedID string) {
+// dropSessionRow removes a just-deleted or just-archived session from
+// baseSessions and the derived view, then keeps the cursor on the row it was
+// on (by id), or clamps it into range when that row was the dropped one.
+func (m *Model) dropSessionRow(deletedID string) {
 	var selectedID string
 	selectedWasRow := false
 	if idx, ok := m.selected.SessionIndex(); ok {

@@ -569,6 +569,11 @@ Feature: Undo toast after x, and the dd delete/tombstone chord
     When deck client "A" submits the open dialog
     Then the private tmux session "deck_archive-confirm-submit" does not exist
     And the state database session "archive-confirm-submit" is archived
+    # The DB row is archived before the TUI renders the result, so this
+    # polling positive assertion has to land BEFORE the negative one below,
+    # which reads the current frame without waiting. The frame that raises
+    # the toast is the one that already hides the row.
+    And deck client "A" screen contains "Killed and archived"
     And deck client "A" screen does not contain "archive-confirm-submit"
     When deck client "A" exits cleanly
 
