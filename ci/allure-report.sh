@@ -70,7 +70,9 @@ if [ -z "$allure_bin" ]; then
     if [ -n "${ALLURE_CACHE_DIR:-}" ]; then
         cache_file="$ALLURE_CACHE_DIR/allure-${ALLURE_VERSION}-${ALLURE_SHA256}.tgz"
     fi
+    cache_hit=0
     if [ -n "$cache_file" ] && [ -f "$cache_file" ] && [ "$(sha256_of "$cache_file")" = "$ALLURE_SHA256" ]; then
+        cache_hit=1
         echo "ci/allure-report.sh: using the cached, verified Allure CLI ${ALLURE_VERSION}" >&2
         cp "$cache_file" "$archive"
     else
@@ -82,9 +84,11 @@ if [ -z "$allure_bin" ]; then
         echo "ci/allure-report.sh: checksum mismatch for the Allure ${ALLURE_VERSION} archive: want ${ALLURE_SHA256}, got ${got_sha256}; aborting" >&2
         exit 1
     fi
-    if [ -n "$cache_file" ] && [ ! -f "$cache_file" ]; then
-        # Only a verified archive is cached; a cache that cannot be written
-        # (read-only, full) never fails the report.
+    if [ -n "$cache_file" ] && [ "$cache_hit" -eq 0 ]; then
+        # Only a verified archive is cached, and it replaces whatever sat at
+        # the cache path (a checksum-invalid entry included, via the atomic
+        # mv); a cache that cannot be written (read-only, full) never fails
+        # the report.
         { mkdir -p "$ALLURE_CACHE_DIR" && cp "$archive" "$cache_file.$$" && mv "$cache_file.$$" "$cache_file"; } 2>/dev/null || rm -f "$cache_file.$$"
     fi
     mkdir -p "$work/allure"
