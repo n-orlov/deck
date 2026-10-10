@@ -59,7 +59,11 @@ trap 'rm -rf "$work"' EXIT
 allure_bin=$(command -v allure 2>/dev/null || true)
 if [ -z "$allure_bin" ]; then
     echo "ci/allure-report.sh: fetching Allure CLI ${ALLURE_VERSION}" >&2
-    curl -fsSL "$allure_url" -o "$work/allure.tgz"
+    # A dropped or refused connection to the release host is transient, and
+    # one of them once failed a whole push run before any byte arrived: retry
+    # it a bounded number of times. Whatever finally arrives is still
+    # checksum-verified below, so a retry can never let a different archive in.
+    curl -fsSL --retry 4 --retry-delay 2 --retry-all-errors "$allure_url" -o "$work/allure.tgz"
     got_sha256=$(sha256_of "$work/allure.tgz")
     if [ "$got_sha256" != "$ALLURE_SHA256" ]; then
         echo "ci/allure-report.sh: checksum mismatch for the Allure ${ALLURE_VERSION} archive: want ${ALLURE_SHA256}, got ${got_sha256}; aborting" >&2

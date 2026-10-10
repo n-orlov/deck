@@ -20,7 +20,9 @@ look at the Actions run itself, found by its head sha.
 
 `ci/allure-report.sh` verifies the Allure CLI archive it downloads against a
 pinned SHA-256 and aborts on a mismatch (changing `ALLURE_VERSION` needs a new
-`ALLURE_SHA256`). `install.sh` downloads over `--proto =https` only; its
+`ALLURE_SHA256`). A failed or dropped connection to the release host is retried
+up to 4 times, 2s apart, before the step fails; the archive a retry fetches is
+verified the same way. `install.sh` downloads over `--proto =https` only; its
 `checksums.txt` comes from the same release as the binary, so the check catches
 a corrupt download, not tampering.
 
