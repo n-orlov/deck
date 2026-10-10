@@ -39,11 +39,11 @@ func TestValidateLaunchRefusesInTheOrderCreateAlwaysChecked(t *testing.T) {
 
 func TestNewSessionArgsMirrorsEnvironmentThenRunsTheCommandUnderEnv(t *testing.T) {
 	got := newSessionArgs("deck_a", []string{"A", "1", "B", "2"}, Launch{CWD: "/work", Command: []string{"sh", "-c", "true"}})
-	want := []string{"new-session", "-d", "-s", "deck_a", "-e", "A=1", "-e", "B=2", "-c", "/work", "--", "env", "A=1", "B=2", "sh", "-c", "true"}
+	want := []string{"new-session", "-d", "-P", "-F", paneFactsFormat, "-s", "deck_a", "-e", "A=1", "-e", "B=2", "-c", "/work", "--", "env", "A=1", "B=2", "sh", "-c", "true"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("newSessionArgs = %q, want %q", got, want)
 	}
-	if got := newSessionArgs("deck_a", nil, Launch{CWD: "/work", Command: []string{"sh"}}); !reflect.DeepEqual(got, []string{"new-session", "-d", "-s", "deck_a", "-c", "/work", "--", "env", "sh"}) {
+	if got := newSessionArgs("deck_a", nil, Launch{CWD: "/work", Command: []string{"sh"}}); !reflect.DeepEqual(got, []string{"new-session", "-d", "-P", "-F", paneFactsFormat, "-s", "deck_a", "-c", "/work", "--", "env", "sh"}) {
 		t.Fatalf("newSessionArgs without environment = %q", got)
 	}
 }
@@ -51,7 +51,7 @@ func TestNewSessionArgsMirrorsEnvironmentThenRunsTheCommandUnderEnv(t *testing.T
 func TestCreateThroughAFakeTmuxReportsEachFailingStep(t *testing.T) {
 	ctx := context.Background()
 	launch := Launch{Slug: "a", CWD: "/work", Command: []string{"sh"}}
-	ok := fakeTmuxClient(t, `case "$3" in list-panes) echo "%1|42|0|||80|24";; esac`)
+	ok := fakeTmuxClient(t, `case "$3" in new-session) echo "%1|42|0|||80|24";; list-panes) echo "list-panes after new-session" >&2; exit 1;; esac`)
 	session, err := ok.Create(ctx, launch)
 	if err != nil || session.Name != "deck_a" || len(session.Panes) != 1 || session.Panes[0].ID != "%1" {
 		t.Fatalf("Create = %+v, %v; want deck_a with its one pane", session, err)
@@ -66,5 +66,9 @@ func TestCreateThroughAFakeTmuxReportsEachFailingStep(t *testing.T) {
 	noNewSession := fakeTmuxClient(t, `case "$3" in new-session) echo "duplicate session" >&2; exit 1;; esac`)
 	if _, err := noNewSession.Create(ctx, launch); err == nil || !strings.Contains(err.Error(), `create session "deck_a"`) || !strings.Contains(err.Error(), "duplicate session") {
 		t.Fatalf("Create with a failing new-session = %v", err)
+	}
+	badFacts := fakeTmuxClient(t, `case "$3" in new-session) echo "not pane facts";; esac`)
+	if _, err := badFacts.Create(ctx, launch); err == nil || !strings.Contains(err.Error(), `parse pane facts for session "deck_a"`) {
+		t.Fatalf("Create with unparseable new-session pane facts = %v", err)
 	}
 }
