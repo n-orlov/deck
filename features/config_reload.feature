@@ -29,3 +29,43 @@ Feature: a running client picks up another client's config.toml change (R226, R2
     And deck client "A" text "deck" has foreground "#fabd2f"
     When deck client "A" exits cleanly
     And deck client "B" exits cleanly
+
+  @requirement-237-theme-picker-reload
+  Scenario: a theme chosen in client A's theme picker reaches client B of the default profile within one shortened poll interval
+    Given the scenario's config.toml selects theme "empire"
+    And deck client "A" is started with colour enabled and a shortened config poll interval
+    And deck client "B" is started with colour enabled and a shortened config poll interval
+    Then deck client "B" text "deck" has foreground token "title"
+    And deck client "B" text "deck" does not have foreground "#fabd2f"
+    When deck client "A" sends "t"
+    Then deck client "A" screen contains "Theme picker: empire"
+    # Space steps forward through the sorted built-in names from empire to
+    # gruvbox-dark, whose title token is #fabd2f; Enter selects it.
+    When deck client "A" sends " "
+    Then deck client "A" screen contains "Theme picker: gruvbox-dark"
+    When deck client "A" sends ""
+    Then deck client "A" screen does not contain "Theme picker"
+    And deck client "A" text "deck" has foreground "#fabd2f"
+    And within one shortened config poll interval deck client "B" text "deck" has foreground "#fabd2f"
+    When deck client "A" exits cleanly
+    And deck client "B" exits cleanly
+
+  @requirement-237-theme-picker-reload
+  Scenario: a theme chosen in client A's theme picker reaches client B of one named profile within one shortened poll interval
+    Given the scenario's profile "work" config.toml selects theme "empire"
+    And deck client "A" is started on profile "work" with colour enabled and a shortened config poll interval
+    And deck client "B" is started on profile "work" with colour enabled and a shortened config poll interval
+    Then deck client "B" text "deck" has foreground token "title"
+    And deck client "B" text "deck" does not have foreground "#fabd2f"
+    When deck client "A" sends "t"
+    Then deck client "A" screen contains "Theme picker: empire"
+    # Space steps forward through the sorted built-in names from empire to
+    # gruvbox-dark, whose title token is #fabd2f; Enter selects it.
+    When deck client "A" sends " "
+    Then deck client "A" screen contains "Theme picker: gruvbox-dark"
+    When deck client "A" sends ""
+    Then deck client "A" screen does not contain "Theme picker"
+    And deck client "A" text "deck" has foreground "#fabd2f"
+    And within one shortened config poll interval deck client "B" text "deck" has foreground "#fabd2f"
+    When deck client "A" exits cleanly
+    And deck client "B" exits cleanly
