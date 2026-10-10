@@ -22,6 +22,8 @@ func registerConfigReloadSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^deck client "([^"]+)" is started with colour enabled and a shortened config poll interval$`, startNamedClientWithShortConfigPoll)
 	sc.Step(`^within one shortened config poll interval deck client "([^"]+)" text "([^"]+)" has foreground "(#[0-9a-fA-F]{6})"$`, textHasForegroundWithinConfigPoll)
 	sc.Step(`^the scenario's profile "([^"]+)" config\.toml selects theme "([^"]*)"$`, scenarioProfileConfigSelectsTheme)
+	sc.Step(`^the scenario's profile "([^"]+)" config\.toml gets an unrelated edit$`, scenarioProfileConfigGetsUnrelatedEdit)
+	sc.Step(`^deck client "([^"]+)" text "([^"]+)" keeps foreground "(#[0-9a-fA-F]{6})" for (\d+) further shortened config poll intervals$`, textKeepsForegroundForConfigPolls)
 	sc.Step(`^deck client "([^"]+)" is started on profile "([^"]+)" with colour enabled and a shortened config poll interval$`, startNamedProfileClientWithShortConfigPoll)
 }
 
@@ -88,6 +90,53 @@ func textHasForegroundWithinConfigPoll(ctx context.Context, name, text, want str
 		}
 		if time.Now().After(deadline) {
 			return fmt.Errorf("within %s: %w", budget, err)
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(20 * time.Millisecond):
+		}
+	}
+}
+
+// scenarioProfileConfigGetsUnrelatedEdit appends a comment to the named
+// profile's config.toml: the file's mtime and size move, so that profile's
+// reload poll re-reads it, while no setting changes.
+func scenarioProfileConfigGetsUnrelatedEdit(ctx context.Context, profile string) error {
+	h, err := scenarioHarness(ctx)
+	if err != nil {
+		return err
+	}
+	path := filepath.Join(h.Home, "profiles", profile, "config.toml")
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0o600)
+	if err != nil {
+		return fmt.Errorf("open profile %q config.toml for an unrelated edit: %w", profile, err)
+	}
+	if _, err := f.WriteString("# unrelated edit\n"); err != nil {
+		_ = f.Close()
+		return fmt.Errorf("append to profile %q config.toml: %w", profile, err)
+	}
+	if err := f.Close(); err != nil {
+		return fmt.Errorf("close profile %q config.toml: %w", profile, err)
+	}
+	return nil
+}
+
+// textKeepsForegroundForConfigPolls asserts the colour holds at every check
+// across n further poll intervals, so a client whose poll reloaded the wrong
+// profile cannot slip through between two samples.
+func textKeepsForegroundForConfigPolls(ctx context.Context, name, text, want string, polls int) error {
+	if polls < 1 {
+		return fmt.Errorf("at least one further poll interval is required, got %d", polls)
+	}
+	window := time.Duration(polls) * scenarioConfigPollInterval
+	deadline := time.Now().Add(window)
+	for {
+		if err := textHasForeground(ctx, name, text, want); err != nil {
+			return fmt.Errorf("within %d further poll intervals (%s): %w", polls, window, err)
+		}
+		if time.Now().After(deadline) {
+			return nil
 		}
 		select {
 		case <-ctx.Done():
