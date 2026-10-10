@@ -517,3 +517,41 @@ func TestAllureReportFailedDownloadCachesNothingAndAValidCacheNeedsNoHost(t *tes
 		t.Fatalf("a cache hit opened %d connections, want 0", n)
 	}
 }
+
+// A checksum-invalid file at the cache path is not just bypassed, it is
+// replaced by the verified download: the first run downloads once and leaves
+// the pinned archive in the cache, the second run needs no connection.
+func TestAllureReportCorruptCacheIsReplacedByTheVerifiedDownload(t *testing.T) {
+	archive, sum := fakeAllure(t, t.TempDir())
+	url, connections := countingHost(t, serveFile(archive))
+	cache := t.TempDir()
+	cached := filepath.Join(cache, "allure-2.34.1-"+sum+".tgz")
+	if err := os.WriteFile(cached, []byte("not the archive"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var after []int
+	for run := 1; run <= 2; run++ {
+		out, _, err := runScriptFrom(t, url, sum, t.TempDir(), "ALLURE_CACHE_DIR="+cache)
+		if err != nil || !strings.Contains(out, "report written") {
+			t.Fatalf("run %d failed: %v\n%s", run, err, out)
+		}
+		after = append(after, connections())
+	}
+	if after[0] != 1 {
+		t.Errorf("the first run made %d downloads, want 1", after[0])
+	}
+	if after[1]-after[0] != 0 {
+		t.Errorf("the second run made %d downloads, want 0 (served from the replaced cache entry)", after[1]-after[0])
+	}
+	if after[1] != 1 {
+		t.Errorf("cumulative downloads = %d, want 1", after[1])
+	}
+	raw, err := os.ReadFile(cached)
+	if err != nil {
+		t.Fatal(err)
+	}
+	digest := sha256.Sum256(raw)
+	if got := hex.EncodeToString(digest[:]); got != sum {
+		t.Errorf("cached file SHA-256 = %s, want the pinned %s", got, sum)
+	}
+}

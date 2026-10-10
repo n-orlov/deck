@@ -24,8 +24,10 @@ pinned SHA-256 and aborts on a mismatch (changing `ALLURE_VERSION` needs a new
 loop; a failed connection fails the step). With `ALLURE_CACHE_DIR` set (the
 `report` job sets it to a runner-local directory) a verified archive is kept
 there, so a runner fetches the release once rather than once per script call;
-a cached archive is re-verified against the same SHA-256 before use and a bad
-one is discarded and downloaded afresh. `install.sh` downloads over `--proto =https` only; its
+a cached archive is re-verified against the same SHA-256 before use, and a bad
+one is discarded, downloaded afresh (one attempt) and, once that download has
+verified, replaced in the cache by the verified archive, so the next call
+needs no download. `install.sh` downloads over `--proto =https` only; its
 `checksums.txt` comes from the same release as the binary, so the check catches
 a corrupt download, not tampering.
 
