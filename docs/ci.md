@@ -13,16 +13,19 @@ look at the Actions run itself, found by its head sha.
 |---|---|---|
 | `lint` | self-hosted `[self-hosted, linux, x64, deck]` | `gofmt -l`, `go vet ./...`, `go mod tidy` drift check, then golangci-lint (R188), in that order, via `ci/lint.sh`. Fails fast, before the suite. |
 | `suite` | self-hosted `[self-hosted, linux, x64, deck]`, `needs: lint` | Builds/refreshes the `deck-ci:local` image, runs `ci/run.sh ci/suite.sh` (the whole `go test -p=1 -count=1 ./...` matrix), then, on `schedule`/`workflow_dispatch` only, drops the cached trivy and govulncheck databases (R190's nightly rescan: both scanners then run through `ci/quality.sh` on fresh data, and a newly disclosed vulnerability fails the job, which `notify` reports), then `ci/run.sh ci/quality.sh` (R187's quality gates; every gate in `ci/quality.json` -- coverage, crap, trivy, govulncheck and golangci -- is on), and on `schedule`/`workflow_dispatch` also runs `ci/stability.sh 3` (three clean-state repetitions) with `-race` enabled. The job fails if the suite, the quality gates, or (nightly) stability failed. Writes the job summary and uploads raw results as a workflow artifact. |
-| `report (Allure)` | self-hosted, `needs: [lint, suite]` | Turns the JUnit `suite` produced into an Allure report, merges it into the persisted `gh-pages` site tree, uploads the rendered report as a workflow artifact, and stages the merged tree as a Pages artifact (up to 3 upload attempts with back-off; only the last one failing fails the job). Holds no `pages:`/`id-token:` permission -- it stages, it never deploys. |
+| `report (Allure)` | self-hosted, `needs: [lint, suite]` | Turns the JUnit `suite` produced into an Allure report, merges it into the persisted `gh-pages` site tree, uploads the rendered report as a workflow artifact, and stages the merged tree as a Pages artifact (one upload attempt; its failure fails the job). Holds no `pages:`/`id-token:` permission -- it stages, it never deploys. |
 | `publish (Pages)` | `ubuntu-latest`, `needs: report` | Deploys the root-triggered (`push`/`schedule`/`workflow_dispatch`) Pages artifact. Holds `pages: write`/`id-token: write`. Gated to `push`/`schedule`/`workflow_dispatch` only -- never `pull_request` (a PR-branch deploy is rejected server-side by the repo's `github-pages` environment's branch policy regardless; see "Publishing a PR's own report" below for how a PR's own report still gets published). |
 | `pr-comment` | `ubuntu-latest`, `needs: report` | Runs `go run ./ci/prcomment`, which pages through every existing PR comment and creates or updates the one comment (keyed on an HTML marker) carrying the PR's own `/pr/<n>/` Allure link and its head sha. Only for `pull_request` events whose head repo is this repository. |
 | `notify` | self-hosted, `needs: [lint, suite]` | Posts exactly one message to the Telegram notifier when `lint` or `suite` failed/was cancelled, and only for `push` to `main`, `schedule`, or `workflow_dispatch` (never for a PR). |
 
 `ci/allure-report.sh` verifies the Allure CLI archive it downloads against a
 pinned SHA-256 and aborts on a mismatch (changing `ALLURE_VERSION` needs a new
-`ALLURE_SHA256`). A failed or dropped connection to the release host is retried
-up to 4 times, 2s apart, before the step fails; the archive a retry fetches is
-verified the same way. `install.sh` downloads over `--proto =https` only; its
+`ALLURE_SHA256`). The download is one `curl` attempt (no retry flags or wrapper
+loop; a failed connection fails the step). With `ALLURE_CACHE_DIR` set (the
+`report` job sets it to a runner-local directory) a verified archive is kept
+there, so a runner fetches the release once rather than once per script call;
+a cached archive is re-verified against the same SHA-256 before use and a bad
+one is discarded and downloaded afresh. `install.sh` downloads over `--proto =https` only; its
 `checksums.txt` comes from the same release as the binary, so the check catches
 a corrupt download, not tampering.
 
