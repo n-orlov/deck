@@ -282,7 +282,7 @@ func TestInteractiveEntrySeedAsksForTheTransportsOwnHistoryBound(t *testing.T) {
 	}
 
 	// Fact 3: the one call site, and what it passes.
-	entrySeedRe := regexp.MustCompile(`interactive\.CaptureSeedWithHistory\(ctx, client, pane\.ID, interactive\.EntrySeedHistoryLines\(transport\)\)`)
+	entrySeedRe := regexp.MustCompile(`interactive\.CaptureSeedWithHistory\(ctx, client, paneID, interactive\.EntrySeedHistoryLines\(transport\)\)`)
 	visibleOnlyRe := regexp.MustCompile(`interactive\.CaptureSeed\(`)
 	unconditionalBoundRe := regexp.MustCompile(`interactive\.CaptureSeedWithHistory\([^)]*interactive\.ScrollbackMaxLines\)`)
 
@@ -310,6 +310,6 @@ func TestInteractiveEntrySeedAsksForTheTransportsOwnHistoryBound(t *testing.T) {
 		}
 	}
 	if entrySeedSites != 1 {
-		t.Fatalf("internal/tui has %d interactive.CaptureSeedWithHistory(ctx, client, pane.ID, interactive.EntrySeedHistoryLines(transport)) call sites in its non-test source, want exactly 1 (the entry seed closure in interactive.go's enterInteractiveBody, issue #29)", entrySeedSites)
+		t.Fatalf("internal/tui has %d interactive.CaptureSeedWithHistory(ctx, client, paneID, interactive.EntrySeedHistoryLines(transport)) call sites in its non-test source, want exactly 1 (interactiveSeed in interactive.go, shared by the entry seed and a host resize's reseed, issue #29)", entrySeedSites)
 	}
 }

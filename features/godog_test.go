@@ -171,6 +171,7 @@ func initializeScenario(sc *godog.ScenarioContext) {
 	registerTeardownHooksSteps(sc)
 	registerAttachScrollSteps(sc)
 	registerAttachCropSteps(sc)
+	registerHostResizeSteps(sc)
 	registerNoLeakScanSteps(sc)
 	registerEventLogSteps(sc)
 	registerSupersededSessionEndSteps(sc)

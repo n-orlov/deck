@@ -1060,16 +1060,29 @@ type Model struct {
 	// completes. Deliberately keyed to SELECTION identity, not to the
 	// preview panel's own geometry: a sidebar-width, layout-mode or outer-
 	// terminal change that leaves the selection unchanged does not retrigger
-	// a fit (steer 018 §1b's amendment to the passive-preview no-resize
-	// guarantee is scoped to fitting-on-navigation only, per task 215/
-	// docs/reports/phase3d-215-preview-fit-on-nav.md) -- best-effort, so a
-	// session left stale by one of those axes is corrected the next time
-	// its own selection settles again, never continuously chased. Reset to
+	// a fit (a sidebar-width or layout-mode change is best-effort, corrected
+	// the next time the selection settles, never continuously chased). A
+	// HOST terminal resize is the exception (R239): onWindowSizeMsg arms
+	// previewRefitPending, which drops this latch once, so the window follows
+	// the terminal at once. Reset to
 	// "" by exitInteractive so the session interactive mode just left (whose
 	// geometry was restored to its PRE-entry size, not the panel's) is
 	// re-evaluated on the very next tick even though its ID has not
 	// changed.
 	previewFitSessionID string
+	// previewRefitPending is set by a host resize (onWindowSizeMsg, R239) and
+	// consumed by previewFitCandidate: the next time a fit is eligible --
+	// no takeover screen or modal over the main frame, no fit outstanding --
+	// the latch above is dropped so the selected session is fitted to the
+	// NEW panel box. Held while a takeover is open, so a resize that
+	// arrives under a modal or the settings view applies when it closes.
+	previewRefitPending bool
+	// interactivePaneID and interactiveWidth/Height are the pane the
+	// interactive grid is drawn from and the box the window was last fitted
+	// to; a host resize compares the new preview box against them.
+	interactivePaneID string
+	interactiveWidth  int
+	interactiveHeight int
 	// previewFitInFlight names the session ID of the ONE passive fit
 	// currently outstanding -- set when previewFit SCHEDULES its command
 	// (not when that command runs), cleared when the matching
@@ -2331,6 +2344,9 @@ func (m *Model) previewFitCandidate() (session store.Session, width, height int,
 		return store.Session{}, 0, 0, false
 	}
 	session, _ = m.selectedSession()
+	if m.previewRefitPending && m.previewFitInFlight == "" && !m.takeoverActive() {
+		m.previewFitSessionID, m.previewRefitPending = "", false
+	}
 	if session.ID == m.previewFitSessionID || m.previewFitInFlight != "" {
 		return store.Session{}, 0, 0, false
 	}
@@ -2364,10 +2380,8 @@ func (m *Model) previewFitCandidate() (session store.Session, width, height int,
 //     this selection has already settled and been fit (or found not
 //     applicable), so nothing re-issues a fit merely because the panel's
 //     OWN geometry changed under a sidebar-width/layout-mode/terminal-
-//     resize gesture with the selection unchanged (steer 018 §1b's
-//     amendment to the passive-preview no-resize guarantee is scoped to
-//     fitting-on-navigation only -- see previewFitSessionID's own doc
-//     comment and docs/reports/phase3d-215-preview-fit-on-nav.md);
+//     resize gesture with the selection unchanged (a host terminal resize
+//     is the exception: previewRefitPending drops the latch once, R239);
 //   - the preview content box is below interactiveMinInnerRows (SPEC
 //     §11's "skipped below §11.9's 7-inner-row floor") or has no width:
 //     a box that small is left cropped, exactly like interactive mode's
@@ -2755,8 +2769,43 @@ func (m Model) updateTail(message tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+// takeoverActive reports whether a modal or full-screen view (the settings
+// takeover included) replaces the main frame, i.e. the preview is not on
+// screen.
+func (m Model) takeoverActive() bool {
+	for _, screen := range viewScreens {
+		if screen.active(m) {
+			return true
+		}
+	}
+	return false
+}
+
+// onWindowSizeMsg takes the host terminal's new size. R239 (#75): until this
+// was fixed the handler stored the size and returned, so the tmux window
+// behind the preview was only re-fitted when the selection changed (the
+// previewFitSessionID latch) and an interactive grid was never resized at
+// all; both waited for an unrelated click. A resize to the size already held
+// does nothing (no tmux call).
 func (m Model) onWindowSizeMsg(msg tea.WindowSizeMsg) (tea.Model, tea.Cmd) {
+	previousWidth, previousHeight := m.width, m.height
 	m.width, m.height = msg.Width, msg.Height
+	if msg.Width == previousWidth && msg.Height == previousHeight {
+		return m, nil
+	}
+	if !m.interactive {
+		if previousWidth == 0 && previousHeight == 0 {
+			// The first size ever reported: the first previewTick fits.
+			return m, nil
+		}
+		m.previewRefitPending = true
+		return m, m.previewFit()
+	}
+	return m.onWindowSizeInteractive()
+}
+
+// onWindowSizeInteractive is the interactive half of onWindowSizeMsg.
+func (m Model) onWindowSizeInteractive() (tea.Model, tea.Cmd) {
 	// PRD Part II requirement 48/task 204 (review finding F3's second
 	// half): the floor check in enterInteractive only ever ran AT
 	// ENTRY. previewTitle/previewContentSize recompute the preview
@@ -2787,6 +2836,7 @@ func (m Model) onWindowSizeMsg(msg tea.WindowSizeMsg) (tea.Model, tea.Cmd) {
 			return m, cmd
 		}
 	}
+	m.resizeInteractiveToPreview()
 	return m, nil
 }
 
