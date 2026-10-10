@@ -20,25 +20,25 @@ func oracleMask(text string) string {
 	})
 }
 
-func TestMaskSecretAssignmentsAgreesWithTheRegexpItReplaced(t *testing.T) {
+func TestMaskKeyValuePairsAgreesWithTheRegexpItReplaced(t *testing.T) {
 	for _, text := range []string{
 		"", "plain words only", "API_TOKEN=abc", "API_TOKEN = abc def", "api-key: \"two words\" next",
 		"password='a b' tail", "password='unterminated tail", `token="unterminated tail`, "TOKEN=", "TOKEN=   ",
 		"=TOKEN", ": x", "a=b=c", "SECRET_X=a:b SECRET_Y:c", "x_token=1\nPASSWORD:\n2", "TOKEN=\"a\"rest AUTH=z",
 		"é_TOKEN=v ünï=TOKEN", "my.secret-key:v", "TOKEN==v", "TOKEN=:v", "a TOKEN\t=\tv b", "KEY=\x00\xff bin",
 	} {
-		if got, want := maskSecretAssignments(text), oracleMask(text); got != want {
-			t.Errorf("maskSecretAssignments(%q) = %q, want %q", text, got, want)
+		if got, want := maskKeyValuePairs(text), oracleMask(text); got != want {
+			t.Errorf("maskKeyValuePairs(%q) = %q, want %q", text, got, want)
 		}
 	}
 }
 
-func TestMaskSecretAssignmentsAgreesWithTheRegexpOnEveryShortSequence(t *testing.T) {
+func TestMaskKeyValuePairsAgreesWithTheRegexpOnEveryShortSequence(t *testing.T) {
 	pieces := []string{"TOKEN", "k", "=", ":", " ", "\n", `"`, "'", "-", "é", "\xff"}
 	var walk func(prefix string, depth int)
 	walk = func(prefix string, depth int) {
-		if got, want := maskSecretAssignments(prefix), oracleMask(prefix); got != want {
-			t.Fatalf("maskSecretAssignments(%q) = %q, want %q", prefix, got, want)
+		if got, want := maskKeyValuePairs(prefix), oracleMask(prefix); got != want {
+			t.Fatalf("maskKeyValuePairs(%q) = %q, want %q", prefix, got, want)
 		}
 		if depth == 0 {
 			return
@@ -52,9 +52,9 @@ func TestMaskSecretAssignmentsAgreesWithTheRegexpOnEveryShortSequence(t *testing
 
 // A reason of megabytes made of nothing but separators and pairs is the
 // worst case for the scan: it must stay linear and still mask every secret.
-func TestMaskSecretAssignmentsMasksEveryPairInAVeryLongText(t *testing.T) {
+func TestMaskKeyValuePairsMasksEveryPairInAVeryLongText(t *testing.T) {
 	text := strings.Repeat("name=ok API_TOKEN=hunter2 ::: = ", 1<<15)
-	got := maskSecretAssignments(text)
+	got := maskKeyValuePairs(text)
 	if strings.Contains(got, "hunter2") || strings.Count(got, "API_TOKEN="+MaskedPlaceholder) != 1<<15 {
 		t.Fatalf("a secret survived or a pair was lost in a %d-byte text", len(text))
 	}
@@ -68,7 +68,7 @@ func TestMaskSecretAssignmentsMasksEveryPairInAVeryLongText(t *testing.T) {
 // regexp oracle: the scan finds pairs through strings.Trim/Index calls, and
 // this is what pins their boundaries (a key behind several spaces, a value
 // behind a tab, a quote that never closes, a separator run).
-func TestMaskSecretAssignmentsAgreesWithTheRegexpOnRandomTexts(t *testing.T) {
+func TestMaskKeyValuePairsAgreesWithTheRegexpOnRandomTexts(t *testing.T) {
 	pieces := []string{
 		"TOKEN", "api_key", "k", "v", "=", ":", "=", ":", " ", "  ", "\t", "\n", "\r", "\f", `"`, "'", "-", ".", "é", "\xff",
 		"PASSWORD", "x y", "secret", "a=b", "::", "= ",
@@ -85,8 +85,8 @@ func TestMaskSecretAssignmentsAgreesWithTheRegexpOnRandomTexts(t *testing.T) {
 			b.WriteString(pieces[next(len(pieces))])
 		}
 		text := b.String()
-		if got, want := maskSecretAssignments(text), oracleMask(text); got != want {
-			t.Fatalf("maskSecretAssignments(%q) = %q, want %q", text, got, want)
+		if got, want := maskKeyValuePairs(text), oracleMask(text); got != want {
+			t.Fatalf("maskKeyValuePairs(%q) = %q, want %q", text, got, want)
 		}
 	}
 }
