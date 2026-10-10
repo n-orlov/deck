@@ -764,6 +764,17 @@ variable overrides stays pinned to the environment. A changed user theme file re
 active theme too, so editing its colours takes effect on the next poll without touching
 `[ui] theme`.
 
+**Which instances reload, and which profile.** A reload is a feature of the binary an instance
+was started from: an instance started by a binary older than this feature never polls, so after
+upgrading deck it must be restarted once (a restarted instance, and every instance started by
+the new binary after it, then follows every later edit without another restart). A reload never
+crosses a profile: each instance polls and re-reads only its own profile's `config.toml` (§3.4),
+so a change saved in one profile's instance reaches the other instances of that same profile and
+never an instance of another profile, the default profile included. Black-box scenarios
+(`features/config_reload.feature`) hold this for `ui.theme` (settings view and `t` picker, default
+and named profile, and the real-install layout with `DECK_HOME` unset) and for `ui.ascii`,
+`ui.mouse` and `ui.sort_order`.
+
 **Restart-required keys.** `stale_after`, `capture_min_interval`, `event_retention_days`, `tmux_mouse`, `interactive_ms`, `interactive_transport`, `pre_launch`, `agent`, `post_destroy`, `ui.recent_cwd_limit`, `[env]`
 A reload refreshes only these keys' file value (so the settings view shows what is on disk); the
 running process keeps using the value it started with until deck restarts, which is also what the
