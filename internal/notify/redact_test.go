@@ -127,6 +127,16 @@ var maskShapeCases = []struct {
 	{"flag escaped quote equals", `run --password='x\'y LEAK' go`, "run --password=" + MaskedPlaceholder + " go", "LEAK"},
 	{"flag escaped backslash", `run --api-key "a\\" go`, "run --api-key " + MaskedPlaceholder + " go", ""},
 	{"escaped quote in a non-secret", `{"author": "a\"b c"}`, `{"author": "a\"b c"}`, ""},
+	// Another shape inside a quoted secret value is part of that value: it
+	// never takes the closing quote with it and leaves a suffix in the clear.
+	{"flag value holding bearer", `--password "prefix\" EXPOSED_SUFFIX Bearer last" KEEP_AFTER`, "--password " + MaskedPlaceholder + " KEEP_AFTER", "EXPOSED_SUFFIX"},
+	{"pair value holding bearer", `API_TOKEN="prefix\" EXPOSED_SUFFIX Bearer last" KEEP_AFTER`, "API_TOKEN=" + MaskedPlaceholder + " KEEP_AFTER", "EXPOSED_SUFFIX"},
+	{"quoted key value holding bearer", `"password": "prefix\" EXPOSED_SUFFIX Bearer last" KEEP_AFTER`, `"password": ` + MaskedPlaceholder + " KEEP_AFTER", "EXPOSED_SUFFIX"},
+	{"flag value holding a quoted key", `--password "a\" LEAK \"token\": b" KEEP`, "--password " + MaskedPlaceholder + " KEEP", "LEAK"},
+	{"pair value holding a flag", `API_KEY='a\' LEAK --token b' KEEP`, "API_KEY=" + MaskedPlaceholder + " KEEP", "LEAK"},
+	{"bearer token running into a pair", `Bearer API_TOKEN="a\" LEAK" KEEP`, "Bearer " + MaskedPlaceholder + " KEEP", "LEAK"},
+	{"secret pair as a non-secret pair's value", "error: GITHUB_TOKEN=abc123 rejected", "error: GITHUB_TOKEN=" + MaskedPlaceholder + " rejected", "abc123"},
+	{"quoted bearer token", `Authorization: Bearer "a\" LEAK" KEEP`, "Authorization: Bearer " + MaskedPlaceholder + " KEEP", "LEAK"},
 	// Already masked before: they stay masked.
 	{"export", "export GITHUB_TOKEN=x", "export GITHUB_TOKEN=" + MaskedPlaceholder, "=x"},
 	{"aws colon", "AWS_SECRET_ACCESS_KEY: x", "AWS_SECRET_ACCESS_KEY: " + MaskedPlaceholder, ": x"},
@@ -176,6 +186,27 @@ func TestMaskSecretAssignmentsStaysLinearOnAVeryLongText(t *testing.T) {
 	}
 }
 
+// Every quoted secret value, whichever shape carries it and whichever quote
+// it uses, is masked whole through its real closing quote, whatever other
+// shape sits inside it: the inner shape is last, so masking it on its own
+// would take the closing quote and leave the suffix in the clear.
+func TestMaskSecretAssignmentsMasksAQuotedValueWholeWhateverShapeItHolds(t *testing.T) {
+	outers := []string{"--password ", "--api-key=", "API_TOKEN=", "client_secret: ", "|password_|: ", "Bearer ", "error: API_KEY="}
+	inners := []string{"Bearer tok", "--token tok", "PASSWORD=tok", `\|token\|: tok`, "x " + testSK, "x " + testJWT}
+	for _, quote := range []string{`"`, "'"} {
+		for _, outer := range outers {
+			for _, inner := range inners {
+				prefix := strings.ReplaceAll(outer, "|", quote)
+				in := prefix + strings.ReplaceAll(quote+`pre\| LEAK `+inner+quote, "|", quote) + " KEEP"
+				want := prefix + MaskedPlaceholder + " KEEP"
+				if got := Redact(in, nil); got != want {
+					t.Errorf("Redact(%q) = %q, want %q", in, got, want)
+				}
+			}
+		}
+	}
+}
+
 // One shape per field the script sees: the message in DECK_EVENT_MESSAGE and
 // on stdin, and the script's own output in the stored tail, all through the
 // same masking.
@@ -203,6 +234,40 @@ func TestSpawnMasksEscapedQuotedValuesInEnvPayloadAndStoredOutput(t *testing.T) 
 	}
 	if !strings.Contains(res.Output, `"password": `+MaskedPlaceholder) || !strings.Contains(res.Output, "--token "+MaskedPlaceholder+" end") {
 		t.Errorf("stored output = %q, want the masked shapes in the tail", res.Output)
+	}
+}
+
+// A quoted secret value holding another shape is masked whole on every
+// surface the script sees: DECK_EVENT_MESSAGE, the stdin JSON and the stored
+// output tail.
+func TestSpawnMasksAQuotedSecretHoldingAnotherShapeOnEverySurface(t *testing.T) {
+	path, dir := captureScript(t, `echo "out: $DECK_EVENT_MESSAGE"; echo 'err: API_TOKEN="p\" OUTLEAK Bearer last" KEEP_OUT {"secret": "q\" JSONLEAK --token z"} done' >&2`)
+	req := baseRequest(path)
+	req.Event.Message = `--password "prefix\" MSGLEAK Bearer last" KEEP_AFTER and Bearer "t\" TOKLEAK" end`
+	res, err := Spawn(context.Background(), req)
+	if err != nil || res.Failed() {
+		t.Fatalf("Spawn = %+v, %v", res, err)
+	}
+	env := envMap(read(t, filepath.Join(dir, "env")))
+	var p struct{ Event struct{ Message string } }
+	if err := json.Unmarshal([]byte(read(t, filepath.Join(dir, "stdin"))), &p); err != nil {
+		t.Fatal(err)
+	}
+	want := "--password " + MaskedPlaceholder + " KEEP_AFTER and Bearer " + MaskedPlaceholder + " end"
+	if env["DECK_EVENT_MESSAGE"] != want || p.Event.Message != want {
+		t.Errorf("message env %q, stdin %q, want %q", env["DECK_EVENT_MESSAGE"], p.Event.Message, want)
+	}
+	for _, leak := range []string{"MSGLEAK", "TOKLEAK", "OUTLEAK", "JSONLEAK", "last"} {
+		if strings.Contains(res.Output, leak) || strings.Contains(env["DECK_EVENT_MESSAGE"], leak) || strings.Contains(p.Event.Message, leak) {
+			t.Errorf("a surface carries %q: output %q", leak, res.Output)
+		}
+	}
+	// The tail is masked once more as a whole, so the brace glued to the
+	// masked JSON value goes with it.
+	for _, kept := range []string{"out: " + want, "err: API_TOKEN=" + MaskedPlaceholder + " KEEP_OUT", `{"secret": ` + MaskedPlaceholder + " done"} {
+		if !strings.Contains(res.Output, kept) {
+			t.Errorf("stored output = %q, want it to hold %q", res.Output, kept)
+		}
 	}
 }
 
