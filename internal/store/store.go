@@ -22,7 +22,7 @@ import (
 )
 
 // SchemaVersion is the newest schema understood by this binary.
-const SchemaVersion = 11
+const SchemaVersion = 12
 
 // SupportedSchemaVersion is the newest schema this binary opens: SchemaVersion
 // in every shipped build. A test build (-tags deckoldschema, see
@@ -1809,7 +1809,7 @@ func (s *Store) RenameSession(ctx context.Context, sessionID, newName, source st
 	if err := claimRenameNameTx(ctx, tx, sessionID, newName, slug, at); err != nil {
 		return err
 	}
-	if err := writeSessionNameTx(ctx, tx, sessionID, newName); err != nil {
+	if err := writeSessionNameTx(ctx, tx, sessionID, newName, nameSourceFor(source)); err != nil {
 		return err
 	}
 	if _, err := tx.ExecContext(ctx, `INSERT INTO events (session_id, at, kind, reason, payload)
@@ -1872,13 +1872,23 @@ func claimRenameNameTx(ctx context.Context, tx *sql.Tx, sessionID, newName, slug
 	return nil
 }
 
-// writeSessionNameTx writes only the name column of one row (RenameSession
+// nameSourceFor maps a rename event's source to the sessions.name_source value
+// it records: 'derived' and 'harness' pass through, everything else (the
+// operator's own rename, whatever label it carries) is 'user'.
+func nameSourceFor(source string) string {
+	if source == "derived" || source == "harness" {
+		return source
+	}
+	return "user"
+}
+
+// writeSessionNameTx writes only the name and name_source columns of one row (RenameSession
 // leaves slug alone) and reports a UNIQUE clash or a missing row.
-func writeSessionNameTx(ctx context.Context, tx *sql.Tx, sessionID, newName string) error {
+func writeSessionNameTx(ctx context.Context, tx *sql.Tx, sessionID, newName, nameSource string) error {
 	// Note: only the `name` column is written here -- `slug` is deliberately
 	// left out of this UPDATE, which is the entire mechanism by which the
 	// live tmux session (named from the ORIGINAL slug) is left untouched.
-	result, err := tx.ExecContext(ctx, `UPDATE sessions SET name = ? WHERE id = ?`, newName, sessionID)
+	result, err := tx.ExecContext(ctx, `UPDATE sessions SET name = ?, name_source = ? WHERE id = ?`, newName, nameSource, sessionID)
 	if err != nil {
 		if strings.Contains(err.Error(), "sessions.name") || strings.Contains(err.Error(), "UNIQUE constraint failed: sessions.name") {
 			return fmt.Errorf("session name %q already exists", newName)
@@ -2772,7 +2782,7 @@ func (s *Store) migrate(version int) error {
 // the schemaVN variables at call time (tests substitute them); a version
 // outside 0..SchemaVersion-1 has no migration path.
 func applySchemaLadder(tx *sql.Tx, version int) error {
-	rungs := [][]string{schemaV1, schemaV2, schemaV3, schemaV4, schemaV5, schemaV6, schemaV7, schemaV8, schemaV9, schemaV10, schemaV11}
+	rungs := [][]string{schemaV1, schemaV2, schemaV3, schemaV4, schemaV5, schemaV6, schemaV7, schemaV8, schemaV9, schemaV10, schemaV11, schemaV12}
 	if version < 0 || version >= len(rungs) {
 		return fmt.Errorf("no migration path from schema version %d", version)
 	}
@@ -2981,6 +2991,23 @@ var schemaV11 = []string{
 	`ALTER TABLE events ADD COLUMN hook_timed_out INTEGER`,
 	`ALTER TABLE events ADD COLUMN hook_output TEXT`,
 	`ALTER TABLE events ADD COLUMN hook_error TEXT`,
+}
+
+// schemaV12 is R248's harness-name schema (phase 4q). name_source records who
+// last wrote sessions.name: 'user' (typed in deck, and the default so every
+// pre-existing row keeps a name nothing may overwrite), 'derived' (deck's own
+// default from the cwd or first prompt) or 'harness' (adopted from the
+// agent's own session title). pending_harness_name holds a harness title seen
+// but not adopted, with pending_harness_name_at the millisecond it was seen;
+// both are NULL for "nothing pending". harness_name_adopt is the per-session
+// adoption override (tri-state: NULL inherit the global setting, 1 adopt,
+// 0 never adopt). Every column is added by ALTER TABLE ADD COLUMN; no
+// existing value is touched.
+var schemaV12 = []string{
+	`ALTER TABLE sessions ADD COLUMN name_source TEXT NOT NULL DEFAULT 'user' CHECK (name_source IN ('user', 'derived', 'harness'))`,
+	`ALTER TABLE sessions ADD COLUMN pending_harness_name TEXT`,
+	`ALTER TABLE sessions ADD COLUMN pending_harness_name_at INTEGER`,
+	`ALTER TABLE sessions ADD COLUMN harness_name_adopt INTEGER CHECK (harness_name_adopt IS NULL OR harness_name_adopt IN (0, 1))`,
 }
 
 // getUIState returns the persisted value for key, or def when no row exists

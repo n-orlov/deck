@@ -416,6 +416,10 @@ CREATE TABLE sessions (
   last_attached_at   INTEGER NOT NULL DEFAULT 0,
   archived_at        INTEGER NOT NULL DEFAULT 0,
   pinned_at          INTEGER NOT NULL DEFAULT 0, -- sidebar pin (§11); 0 = not pinned, else when it was pinned
+  name_source        TEXT NOT NULL DEFAULT 'user' CHECK (name_source IN ('user','derived','harness')), -- who last wrote `name`: user = typed in deck, derived = deck's default from the cwd or first prompt, harness = adopted from the agent's own session title
+  pending_harness_name TEXT,                -- a harness title seen but not adopted; NULL = nothing pending
+  pending_harness_name_at INTEGER,          -- when it was seen (ms); NULL together with pending_harness_name
+  harness_name_adopt INTEGER,               -- tri-state per-session adoption override: NULL = inherit the global setting, 1 = adopt, 0 = never adopt
   hook_executable    TEXT,                      -- absolute path of the deck binary the agent's hook command was last launched with (§11.4); NULL = none recorded
   deleted_at         INTEGER NOT NULL DEFAULT 0  -- tombstone; purged after grace (§9.2)
 );
@@ -487,6 +491,13 @@ Invariants:
 - Schema version 11 adds the nullable `hook_kind`, `hook_exit`, `hook_timed_out`, `hook_output`
   and `hook_error` columns to `events`, the event hook's result against the event it ran for
   (§10.3); every migrated event reads back "no hook ran".
+- Schema version 12 adds `name_source`, `pending_harness_name`, `pending_harness_name_at` and
+  `harness_name_adopt` to `sessions`. `name_source` is `user`, `derived` or `harness` (enforced by
+  the column) and records who last wrote `name`; every migrated row reads `user`, so a name that
+  existed before the upgrade is never overwritten. The other three columns are nullable and
+  every migrated row reads them `NULL`: nothing pending, and no per-session adoption override.
+  A rename writes `name_source` in the same transaction as `name` and the `renamed` event, whose
+  `reason` is the source of the rename; a source other than `derived` or `harness` is `user`.
 
 ---
 
