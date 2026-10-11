@@ -393,6 +393,10 @@ func runCommands(input io.Reader, output io.Writer, fixtureDirectory string, hoo
 			if err := hooks.fire(output, request.Event, request.Payload); err != nil {
 				return err
 			}
+		case "name":
+			if err := hooks.renamed(output, request.Name); err != nil {
+				return err
+			}
 		default:
 			return fmt.Errorf("unknown command %q", request.Command)
 		}
@@ -758,6 +762,9 @@ after a SIGWINCH; never: not at all) until stdin reaches EOF.
 Set FAKE_PI_COMMANDS=1 to read newline-delimited commands from the pane. A fixture
 command has the form {"command":"fixture","name":"pi/waiting.txt"} and copies that
 file from FAKE_AGENT_FIXTURE_DIR to the pane without changing its bytes.
+A name command, {"command":"name","name":"x"}, plays Pi's own name change (the built-in /name):
+it fires the extension's session_info_changed hook with {"name":"x","cleared":false}, or with
+{"name":"","cleared":true} when the name is empty.
 A hook command has the form {"command":"hook","event":"SessionStart","payload":{...}}. It
 plays the loaded extension: the event must be one the extension file subscribes, and its
 DECK_PI_HOOK_EXECUTABLE then runs with the single argument "_hook" and no shell, with the

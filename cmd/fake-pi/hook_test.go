@@ -159,3 +159,31 @@ func TestRunHookCommandRunsTheExecutableWithItsPayloadAndNoShell(t *testing.T) {
 		t.Fatal("a missing executable must be an error")
 	}
 }
+
+// A name change made inside the fake pi fires the extension's
+// session_info_changed hook with name and cleared (R262); an empty name is a
+// cleared one.
+func TestPiSessionNameChangeEmitsTheNewPayload(t *testing.T) {
+	record := filepath.Join(t.TempDir(), "payloads")
+	hooks := extensionHooks{extension: writeExtension(t), sessionID: "conv-1", executable: hookScript(t, `cat >> '`+record+`'`)}
+	var out bytes.Buffer
+	input := strings.NewReader(`{"command":"name","name":"Renamed"}` + "\n" + `{"command":"name","name":""}` + "\n")
+	if err := runCommands(input, &out, "", hooks); err != nil {
+		t.Fatal(err)
+	}
+	recorded, err := os.ReadFile(record)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		`"cleared":false,"hook_event_name":"session_info_changed","name":"Renamed","session_id":"conv-1"`,
+		`"cleared":true,"hook_event_name":"session_info_changed","name":"","session_id":"conv-1"`,
+	} {
+		if !strings.Contains(string(recorded), want) {
+			t.Errorf("payloads lack %s: %s", want, recorded)
+		}
+	}
+	if strings.Count(out.String(), "fake-pi hook fired: session_info_changed\n") != 2 {
+		t.Errorf("output = %q", out.String())
+	}
+}

@@ -93,6 +93,14 @@ func (h extensionHooks) fire(stdout io.Writer, event string, payload map[string]
 	return nil
 }
 
+// renamed plays a name change made inside Pi: the extension's
+// session_info_changed payload carries the new name, or cleared when Pi's name
+// was removed (R262). The fixture's own launch --name fires no such event, as
+// real Pi's does not.
+func (h extensionHooks) renamed(stdout io.Writer, name string) error {
+	return h.fire(stdout, "session_info_changed", map[string]any{"name": name, "cleared": name == ""})
+}
+
 // runHookCommand runs the hook executable deck itself put in the agent's
 // environment, as the real extension does: with agent.PiHookArgs as its argv
 // and no shell, the payload on stdin and the failed hook's stderr collected

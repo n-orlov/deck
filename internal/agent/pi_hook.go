@@ -37,7 +37,11 @@ func PiExtensionPath(deckHome string) string {
 //
 // The event mapping is: session_start -> SessionStart, before_agent_start ->
 // UserPromptSubmit, agent_settled -> Stop (agent_end can still be retried by
-// Pi, so it is not a status boundary) and session_shutdown -> SessionEnd. A
+// Pi, so it is not a status boundary) and session_shutdown -> SessionEnd. Pi's
+// name travels too (R262): session_start adds the optional session_name when Pi
+// already holds a name (--name writes it before session_start), and
+// session_info_changed -> session_info_changed carries name and cleared (an
+// undefined name is a cleared one). A
 // shutdown that only replaces the session inside the same process (new,
 // resume, fork, reload) reports the in-session reasons `_hook` already keeps
 // from stopping the row.
@@ -66,17 +70,26 @@ export default function (pi) {
       // a hook failure never reaches the agent
     }
   };
-  pi.on("session_start", (e, ctx) => fire("SessionStart", ctx, { source: e.reason }));
+  pi.on("session_start", (e, ctx) => {
+    let name = "";
+    try {
+      name = pi.getSessionName() || "";
+    } catch (_) {
+      // an unreadable name is no name
+    }
+    fire("SessionStart", ctx, name ? { source: e.reason, session_name: name } : { source: e.reason });
+  });
   pi.on("before_agent_start", (e, ctx) => fire("UserPromptSubmit", ctx, {}));
   pi.on("agent_settled", (e, ctx) => fire("Stop", ctx, {}));
   pi.on("session_shutdown", (e, ctx) => fire("SessionEnd", ctx, { reason: inSessionReasons[e.reason] || "other" }));
+  pi.on("session_info_changed", (e, ctx) => fire("session_info_changed", ctx, { name: e.name || "", cleared: !e.name }));
 }
 `
 
 // PiHookEvents lists the hook events PiExtensionSource fires, in the order it
 // subscribes them. Tests and the fake-pi fixture read it so the three never
 // drift apart.
-var PiHookEvents = []string{"SessionStart", "UserPromptSubmit", "Stop", "SessionEnd"}
+var PiHookEvents = []string{"SessionStart", "UserPromptSubmit", "Stop", "SessionEnd", "session_info_changed"}
 
 // InstrumentFile is a deck-owned file an adapter's instrumentation needs on
 // disk before the agent starts.

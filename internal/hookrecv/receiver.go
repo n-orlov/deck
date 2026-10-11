@@ -161,6 +161,14 @@ type payload struct {
 	TranscriptFile string `json:"transcript_path"`
 	SessionTitle   string `json:"session_title"`
 
+	// Pi's optional name fields (SPEC §8.3, R262): SessionName rides
+	// SessionStart (the name Pi already holds at start), Name and Cleared ride
+	// session_info_changed (Cleared means Pi's name was removed). None is
+	// required of any hook.
+	SessionName string `json:"session_name"`
+	Name        string `json:"name"`
+	Cleared     bool   `json:"cleared"`
+
 	// Copilot's camelCase payload. All optional: no field here is required of
 	// any hook.
 	CopilotSessionID string `json:"sessionId"`
@@ -305,10 +313,34 @@ func ReceiveFrom(ctx context.Context, db Store, raw []byte, origin Origin, at in
 // a launch deck has replaced describes a pane that is gone, so it triggers
 // nothing.
 func adoptAfterHook(ctx context.Context, origin Origin, p payload, result Result) {
-	if origin.Adopt == nil || result.Superseded || !AdoptionTrigger(p.EventName) {
+	if origin.Adopt == nil || result.Superseded {
 		return
 	}
-	origin.Adopt(ctx, result.SessionID, AdoptHint{TranscriptPath: p.TranscriptFile, SessionTitle: p.SessionTitle})
+	if !AdoptionTrigger(p.EventName) && !p.carriesSessionName() {
+		return
+	}
+	origin.Adopt(ctx, result.SessionID, AdoptHint{TranscriptPath: p.TranscriptFile, SessionTitle: p.harnessTitle()})
+}
+
+// carriesSessionName reports a SessionStart that names Pi's session: the one
+// hook outside AdoptionTrigger that triggers an adoption, and only with the name.
+func (p payload) carriesSessionName() bool {
+	return p.EventName == "SessionStart" && p.SessionName != ""
+}
+
+// harnessTitle is the name the payload reports a human chose: Claude's
+// session_title, or Pi's session_name (SessionStart) and name
+// (session_info_changed). A cleared Pi name reports none, so deck's name stays.
+func (p payload) harnessTitle() string {
+	switch {
+	case p.SessionTitle != "":
+		return p.SessionTitle
+	case p.EventName == "SessionStart":
+		return p.SessionName
+	case p.EventName == "session_info_changed" && !p.Cleared:
+		return p.Name
+	}
+	return ""
 }
 
 // hookWrite is the status write one hook resolves to.

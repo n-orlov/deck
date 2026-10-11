@@ -1398,6 +1398,24 @@ has one: for a database newer than the hook binary, that is the R204 restart mes
 | `before_agent_start` | `UserPromptSubmit` | `running` | |
 | `agent_settled` | `Stop` | `idle` | `agent_end` is not used: Pi can still retry or continue after it |
 | `session_shutdown` | `SessionEnd` | `stopped` | `reason` is `clear` (new), `resume` (resume, fork, reload) or `other` (quit); the first two only replace the session inside the same process and never stop the row |
+| `session_info_changed` | `session_info_changed` | none | event only; carries `name` and `cleared` (below) |
+
+**Pi's name (R262).** The extension also reports Pi's session name, through two optional payload
+fields no hook is required to carry. On `session_start` it adds `session_name` (what
+`pi.getSessionName()` returns, omitted when Pi holds none; `--name` writes it before the event). It
+subscribes `session_info_changed` (Pi's name-change event, fired by `/name` and
+`pi.setSessionName()`, not by `--name` at startup) and sends a payload of `hook_event_name`
+`session_info_changed`, `session_id`, `name` (empty when Pi's name is undefined) and `cleared`
+(true exactly when Pi's name was removed). `_hook` decodes `session_name`, `name` and `cleared`
+as optional fields: `session_name` on `SessionStart` and `name` on `session_info_changed` are the
+name the harness reports a human chose, and hand the row to name adoption (§8) as a hint, so a
+`derived` or `harness` row takes that name with `name_source=user` (Pi never titles a session
+itself, so every Pi name is explicit) and a `user` row stays frozen. A `SessionStart` without
+`session_name` triggers no adoption, a cleared name carries no hint and leaves deck's name
+unchanged, and a payload without the fields behaves exactly as it did before they existed. The
+status write is untouched: `session_info_changed` writes the event only. `cmd/fake-pi` plays a
+name change with the pane command `{"command":"name","name":"x"}` (an empty name is a cleared
+one), firing the extension's `session_info_changed` payload.
 
 Pi has no event for a permission prompt or a failed turn, so a Pi row never reports `waiting` or
 `error` from a hook; those verdicts still come from the probe (§7) and from reconcile.

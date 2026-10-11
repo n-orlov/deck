@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
@@ -166,4 +167,21 @@ func quoted(values []string) []string {
 		out[i] = `"` + v + `"`
 	}
 	return out
+}
+
+// The extension subscribes both events that carry Pi's name (R262): it adds
+// session_name to the SessionStart payload and sends name and cleared on
+// session_info_changed.
+func TestPiSessionNameExtensionSubscribesBothEvents(t *testing.T) {
+	for _, want := range []string{
+		`pi.on("session_start"`, `pi.on("session_info_changed"`,
+		`session_name: name`, `fire("session_info_changed"`, `name: e.name || ""`, `cleared: !e.name`, `getSessionName()`,
+	} {
+		if !strings.Contains(PiExtensionSource, want) {
+			t.Errorf("pi extension lacks %q", want)
+		}
+	}
+	if !slices.Contains(PiHookEvents, "session_info_changed") {
+		t.Errorf("PiHookEvents = %v lacks session_info_changed", PiHookEvents)
+	}
 }
