@@ -10,7 +10,7 @@ import (
 // here in the same commit. Until then every row is the zero value.
 var nameCapsRows = map[string]NameCaps{
 	"claude":  {LaunchName: NameLaunchFlag, AutoTitle: true, PushRename: NamePushSendKeys, ObserveName: []string{ObserveHook, ObserveTranscript, ObservePaneTitle}},
-	"codex":   {},
+	"codex":   {LaunchName: NameLaunchSendKeysAfterReady, PushRename: NamePushSendKeys},
 	"copilot": {LaunchName: NameLaunchFlagNewSessionOnly, AutoTitle: true, PushRename: NamePushSendKeys, ObserveName: []string{ObserveHook, ObserveYAML}},
 	"pi":      {LaunchName: NameLaunchFlag, PushRename: NamePushSendKeys, ObserveName: []string{ObserveExtension}},
 	"shell":   {},
@@ -101,13 +101,12 @@ func TestNameDispatchCallsAClaimedMethod(t *testing.T) {
 }
 
 func TestNameDispatchIgnoresAnAdapterWithoutTheMethods(t *testing.T) {
-	// codex implements neither optional method yet (claude now implements
-	// both; TestClaudePushPlan covers its PushName); the dispatcher must
-	// decline rather than assert.
-	if _, _, ok := ReadName(NewCodex(), NameProbeInput{}); ok {
+	// the shell adapter implements neither optional method and claims neither
+	// capability; the dispatcher must decline rather than assert.
+	if _, _, ok := ReadName(NewShell(), NameProbeInput{}); ok {
 		t.Error("ReadName answered for an adapter with no ReadName")
 	}
-	if _, ok := PushName(NewCodex(), NamePushInput{Name: "x"}); ok {
+	if _, ok := PushName(NewShell(), NamePushInput{Name: "x"}); ok {
 		t.Error("PushName answered for an adapter with no PushName")
 	}
 }

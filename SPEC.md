@@ -1366,6 +1366,24 @@ Every contract above is upstream, re-verified by `@real-agents` (§13.5) rather 
 indefinitely, and every one has the probe fallback (§7): if a codex release stops firing
 deck's hooks, a codex row degrades from live to sampled instead of breaking.
 
+**A typed name is applied by `/rename` (R257, best effort).** Codex has no name flag, so it
+declares `NameCaps.LaunchName = sendkeys_after_ready` and `PushRename = sendkeys`; its argv
+never carries a name. The plan is `/rename <name>` typed as literal text, a pause of about 0.7 s
+(`agent.CodexRenameGap`, carried by the adapter's `PushGap` and waited through
+`Service.Pause`, never an unmeasured sleep), then a lone `Enter`; without the gap Codex's
+composer reads text and Enter arriving together as a paste and keeps the Enter as a newline.
+The text is sent only when the probe reports the prompt ready (`agent.PromptGate`): the empty
+composer of a fresh or an idle session, with no update, trust or approval modal over it. A
+working turn, an error, a typed draft and a modal are not ready, and nothing is sent. The
+reconcile tick applies a `user` row's name to a row still `starting`, retrying on later ticks
+until the screen is ready, and records `harness_name_sent` (reason: the name) so a name is
+typed once per value and never repeated by a relaunch. A later rename of a live row takes the
+same plan through the push gate of §8 "Pushing a rename", which here also accepts a
+`starting` row because a never-prompted Codex stays `starting`. A send that fails records
+`harness_rename_failed`, is not retried, and leaves deck's name in place. The mechanism is
+best effort: it depends on Codex's composer timing and on screen text, and a Codex release
+that changes either leaves the name unapplied rather than broken.
+
 ---
 
 

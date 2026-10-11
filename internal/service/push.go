@@ -102,15 +102,54 @@ func (s Service) pushRename(ctx context.Context, session store.Session) PushResu
 	if reason := s.pushRefusal(ctx, adapter, session); reason != "" {
 		return s.refusePush(ctx, session, reason)
 	}
+	return s.sendRename(ctx, adapter, session, pushed)
+}
+
+// sendRename builds the adapter's keystroke plan for the already-sanitised
+// name and sends it. A send that fails records harness_rename_failed and
+// leaves deck's name alone.
+func (s Service) sendRename(ctx context.Context, adapter agent.Adapter, session store.Session, pushed string) PushResult {
 	keys, ok := agent.PushName(adapter, agent.NamePushInput{Name: pushed})
 	if !ok {
 		return s.refusePush(ctx, session, "the "+session.Agent+" adapter declined to build a rename")
 	}
-	if err := s.panePort().SendPlan(ctx, session.Slug, keys); err != nil {
+	if err := s.sendPaced(ctx, adapter, session.Slug, keys); err != nil {
 		return s.failPush(ctx, session, fmt.Sprintf("the keystrokes could not be sent: %v", err))
 	}
 	s.markPending(ctx, adapter, session, pushed)
 	return PushResult{Sent: true, Note: "rename sent to " + session.Agent}
+}
+
+// sendPaced sends the plan, holding the adapter's PushGap before its final key
+// when it declares one. The wait goes through Service.Pause, never a sleep
+// on the wall clock the caller cannot see.
+func (s Service) sendPaced(ctx context.Context, adapter agent.Adapter, slug string, keys []string) error {
+	gap := agent.PushGap(adapter)
+	if gap <= 0 || len(keys) < 2 {
+		return s.panePort().SendPlan(ctx, slug, keys)
+	}
+	last := len(keys) - 1
+	if err := s.panePort().SendPlan(ctx, slug, keys[:last]); err != nil {
+		return err
+	}
+	if err := s.pause(ctx, gap); err != nil {
+		return err
+	}
+	return s.panePort().SendPlan(ctx, slug, keys[last:])
+}
+
+func (s Service) pause(ctx context.Context, d time.Duration) error {
+	if s.Pause != nil {
+		return s.Pause(ctx, d)
+	}
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+	select {
+	case <-timer.C:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 // pushThroughControl hands the name to an adapter's control channel (Pi's
@@ -141,15 +180,15 @@ func (s Service) pushAdapter(session store.Session) (agent.Adapter, bool) {
 }
 
 // pushRefusal is the reason a push must not be sent now, or "" when it may be:
-// status idle or running, and no harness dialog focused.
+// status idle or running (an adapter that gates on its prompt also takes
+// starting, which is how a fresh Codex looks until its first prompt), no
+// harness dialog focused and, for a prompt-gated adapter, the prompt ready.
 func (s Service) pushRefusal(ctx context.Context, adapter agent.Adapter, session store.Session) string {
-	if session.Status != "idle" && session.Status != "running" {
-		if reason, known := pushStatusRefusals[session.Status]; known {
-			return fmt.Sprintf("status is %s: %s", session.Status, reason)
-		}
-		return fmt.Sprintf("status is %s, not idle or running", session.Status)
+	gated := agent.IsPromptGate(adapter)
+	if reason := pushStatusRefusal(session.Status, gated); reason != "" {
+		return reason
 	}
-	if !agent.IsDialogDetector(adapter) {
+	if !gated && !agent.IsDialogDetector(adapter) {
 		return ""
 	}
 	screen, err := s.panePort().Screen(ctx, session.Slug)
@@ -159,7 +198,20 @@ func (s Service) pushRefusal(ctx context.Context, adapter agent.Adapter, session
 	if agent.DialogFocused(adapter, screen) {
 		return "a harness dialog is focused and would swallow the keystrokes"
 	}
+	if ready, _ := agent.PromptReady(adapter, screen); gated && !ready {
+		return "the " + session.Agent + " prompt is not ready for typed text"
+	}
 	return ""
+}
+
+func pushStatusRefusal(status string, promptGated bool) string {
+	if status == "idle" || status == "running" || (status == "starting" && promptGated) {
+		return ""
+	}
+	if reason, known := pushStatusRefusals[status]; known {
+		return fmt.Sprintf("status is %s: %s", status, reason)
+	}
+	return fmt.Sprintf("status is %s, not idle or running", status)
 }
 
 func (s Service) refusePush(ctx context.Context, session store.Session, reason string) PushResult {

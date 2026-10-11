@@ -1,5 +1,7 @@
 package agent
 
+import "time"
+
 // NameLaunch says how an adapter hands deck's session name to its agent when
 // it starts one (SPEC §8). The zero value is NameLaunchNone.
 type NameLaunch string
@@ -151,4 +153,46 @@ func DialogFocused(a Adapter, screen string) bool {
 func IsDialogDetector(a Adapter) bool {
 	_, ok := a.(DialogDetector)
 	return ok
+}
+
+// PushPacer is the optional interface of an adapter whose rename needs a pause
+// between the typed text and the final key: the harness's input handler treats
+// text and an Enter arriving together as a paste, so the Enter would be typed
+// into the line instead of submitting it. PushGap is that pause.
+type PushPacer interface {
+	PushGap() time.Duration
+}
+
+// PushGap is the dispatcher for PushPacer: zero means the whole plan is sent
+// at once.
+func PushGap(a Adapter) time.Duration {
+	pacer, ok := a.(PushPacer)
+	if !ok {
+		return 0
+	}
+	return pacer.PushGap()
+}
+
+// PromptGate is the optional interface of an adapter that can tell, from the
+// text of its pane, that the input prompt is empty and ready to take typed
+// text. A rename is sent into such an adapter only when it reports ready, so a
+// startup screen, a modal or a half-typed prompt is never typed into.
+type PromptGate interface {
+	PromptReady(screen string) bool
+}
+
+// IsPromptGate reports whether a gates a rename on its prompt being ready.
+func IsPromptGate(a Adapter) bool {
+	_, ok := a.(PromptGate)
+	return ok
+}
+
+// PromptReady is the dispatcher for PromptGate: gated is false for an adapter
+// that does not implement it, and ready is then meaningless.
+func PromptReady(a Adapter, screen string) (ready, gated bool) {
+	gate, ok := a.(PromptGate)
+	if !ok {
+		return false, false
+	}
+	return gate.PromptReady(screen), true
 }

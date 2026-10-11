@@ -70,6 +70,7 @@ func (s Service) adoptOnTick(ctx context.Context, session store.Session) {
 	if s.Agents == nil {
 		return
 	}
+	s.applyLaunchName(ctx, session)
 	if session.PendingHarnessName != "" {
 		s.settlePush(ctx, session)
 		return

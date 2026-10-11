@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 )
@@ -52,4 +53,19 @@ func (s *Store) RecordSessionEvent(ctx context.Context, sessionID, kind, reason 
 		return fmt.Errorf("record session event %q: %w", kind, err)
 	}
 	return nil
+}
+
+// LastSessionEventReason returns the reason of a row's most recent event of
+// kind, and whether there is one.
+func (s *Store) LastSessionEventReason(ctx context.Context, sessionID, kind string) (string, bool, error) {
+	var reason string
+	err := s.db.QueryRowContext(ctx, `SELECT reason FROM events WHERE session_id = ? AND kind = ?
+		ORDER BY seq DESC LIMIT 1`, sessionID, kind).Scan(&reason)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, fmt.Errorf("read last %q event: %w", kind, err)
+	}
+	return reason, true, nil
 }

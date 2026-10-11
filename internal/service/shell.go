@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/n-orlov/deck/internal/agent"
 	"github.com/n-orlov/deck/internal/audit"
@@ -72,6 +73,10 @@ type Service struct {
 	// NamePane is the pane access a rename push uses (the screen read for a
 	// focused dialog and the keystroke plan send). nil is the real tmux client.
 	NamePane PanePort
+	// Pause waits for d between the typed text and the final key of a paced
+	// rename (agent.PushGap). nil waits on a real timer; a test injects a
+	// recorder so the gap is asserted without wall time.
+	Pause func(ctx context.Context, d time.Duration) error
 	// AdoptNames reports the global adopt_harness_names (SPEC §11.4), read per
 	// adoption and per push so a live settings change applies to the next one.
 	// nil means on, the default. A session's own override beats it.

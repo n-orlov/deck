@@ -59,6 +59,9 @@ func (Codex) Capabilities() Caps {
 		// literally resolving "CODEX_HOME" itself, is what keeps the
 		// caller agent-neutral.
 		TranscriptEnvKeys: []string{"CODEX_HOME"},
+		// Codex has no name flag: a typed name is applied by /rename once the
+		// prompt is ready, and a later rename is pushed the same way (R257).
+		Name: NameCaps{LaunchName: NameLaunchSendKeysAfterReady, PushRename: NamePushSendKeys},
 	}
 }
 
