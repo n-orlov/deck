@@ -111,7 +111,14 @@ func (Pi) TranscriptPaths(in TranscriptInput) (string, bool) {
 	if in.Home == "" || !safeConversationID(in.ConversationID) {
 		return "", false
 	}
-	dir := filepath.Join(in.Home, ".pi", "agent", "sessions", piEncodeCwd(in.CWD))
+	// Clean the cwd first so a trailing slash, a doubled slash or a "."/".."
+	// element encodes to the same directory pi recorded the transcript
+	// under (an empty cwd stays empty, not ".").
+	cwd := in.CWD
+	if cwd != "" {
+		cwd = filepath.Clean(cwd)
+	}
+	dir := filepath.Join(in.Home, ".pi", "agent", "sessions", piEncodeCwd(cwd))
 	entries, err := piReadDir(dir)
 	if err != nil {
 		return "", false

@@ -1413,6 +1413,7 @@ every session reads `stopped · resumable`, and `r` brings one back:
   4. `CLAUDE_CONFIG_DIR` is set (the transcript location cannot be known) → `--resume`.
   5. The home directory is unknown → `--resume`.
   6. Codex, Copilot and Pi → their resume argv from the table in §8, whatever the transcript state. Copilot's resume argv is its launch argv (§8.4), so a copilot session restarted before its first message comes back on the same conversation id and is never relaunched fresh.
+  Where an adapter reads a transcript from a cwd-derived path, the stored cwd is cleaned first: Pi's transcript directory (`$HOME/.pi/agent/sessions/--<cwd>--`) is encoded from the cleaned cwd, so a trailing slash, a doubled slash or a `.`/`..` element finds the same transcript. Codex (globbed by conversation id) and Copilot (`session-state/<id>/events.jsonl`) never read the cwd, so its spelling cannot change their result.
 
   `resume_state = fresh-once` is unchanged: it launches a new conversation id once.
 - `shell` sessions "resume" by recreating the shell with their history file, replayed
