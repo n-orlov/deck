@@ -84,6 +84,10 @@ type NameProbeInput struct {
 	// (Claude's transcript_path), or empty when no hook supplied one. An
 	// adapter treats it as untrusted.
 	TranscriptPath string
+	// AdoptedName is the name deck already adopted from this agent for the
+	// row (name_source=harness), or empty when none was. Codex gives no
+	// explicit/generated flag, so its ReadName compares against it.
+	AdoptedName string
 	// PaneTitle reads the agent's pane title (tmux #{pane_title}) when
 	// called, or is nil when no pane is available. It is a func so the read
 	// happens only for an adapter that falls back to it.

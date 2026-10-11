@@ -61,7 +61,12 @@ func (Codex) Capabilities() Caps {
 		TranscriptEnvKeys: []string{"CODEX_HOME"},
 		// Codex has no name flag: a typed name is applied by /rename once the
 		// prompt is ready, and a later rename is pushed the same way (R257).
-		Name: NameCaps{LaunchName: NameLaunchSendKeysAfterReady, PushRename: NamePushSendKeys},
+		// Codex generates a title after the first prompt; it is read from
+		// state_5.sqlite, else the pane title (R258).
+		Name: NameCaps{
+			LaunchName: NameLaunchSendKeysAfterReady, AutoTitle: true, PushRename: NamePushSendKeys,
+			ObserveName: []string{ObserveSQLite, ObservePaneTitle},
+		},
 	}
 }
 

@@ -183,6 +183,7 @@ func createDetachedSession(settings config.Settings, registry *agent.Registry, i
 
 // newSessionService wires the service both the TUI and `deck new` use.
 func newSessionService(db *store.Store, settings config.Settings, logger *audit.Logger, client tmux.Client, registry *agent.Registry, executable string) service.Service {
+	routeNameDegrades(logger)
 	return service.Service{
 		Store: db, TMux: client, Audit: logger,
 		Clock: settings.Clock, IDs: settings.IDs, Agents: registry,
@@ -194,4 +195,14 @@ func newSessionService(db *store.Store, settings config.Settings, logger *audit.
 		RecentCwdLimit:    settings.RecentCwdLimit,
 		AdoptNames:        func() bool { return settings.AdoptHarnessNames },
 	}
+}
+
+// routeNameDegrades sends the one-time "a name source degraded" line of the
+// agent adapters to the audit log, where a TUI on the same terminal is never
+// written over.
+func routeNameDegrades(logger *audit.Logger) {
+	if logger == nil {
+		return
+	}
+	agent.SetNameDegradeLog(func(msg string) { _ = logger.Event(msg) })
 }

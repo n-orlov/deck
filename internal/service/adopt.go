@@ -125,6 +125,7 @@ func (s Service) nameProbe(ctx context.Context, adapter agent.Adapter, session s
 	home, _ := os.UserHomeDir()
 	return agent.NameProbeInput{
 		Home: home, CWD: session.CWD, ConversationID: session.ConversationID,
+		AdoptedName:    adoptedName(session),
 		Env:            s.probeEnv(ctx, adapter.Capabilities().TranscriptEnvKeys, session),
 		TranscriptPath: hint.TranscriptPath,
 		PaneTitle:      s.paneTitleReader(ctx, session),
@@ -243,4 +244,13 @@ func (s Service) offerRenamed(ctx context.Context, sessionID, source, name strin
 	s.offerHook(ctx, HookEvent{
 		SessionID: sessionID, StoredKind: "renamed", Reason: source, Message: name, At: s.Clock.Now(),
 	})
+}
+
+// adoptedName is the name deck took from the harness for session, or "" when
+// the row has not adopted one (a derived or user row).
+func adoptedName(session store.Session) string {
+	if session.NameSource == "harness" {
+		return session.Name
+	}
+	return ""
 }

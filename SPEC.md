@@ -1384,6 +1384,30 @@ same plan through the push gate of §8 "Pushing a rename", which here also accep
 best effort: it depends on Codex's composer timing and on screen text, and a Codex release
 that changes either leaves the name unapplied rather than broken.
 
+**Reading Codex's name (R258, best effort).** Codex generates a title about a second after the
+first prompt and stores it in `<CODEX_HOME or ~/.codex>/state_5.sqlite`, table `threads`, column
+`name` (`NULL` until the thread has one). It declares `NameCaps.AutoTitle=true` and
+`ObserveName=[sqlite, pane_title]`; no Codex hook payload carries a name. `ReadName` opens the
+database with `mode=ro` and a 250 ms busy timeout, reads `name` for the row whose `id` is the
+bound conversation id, and never writes: the database file is byte-identical after a read.
+`name IS NULL`, and a thread with no row yet, mean "none yet" and change nothing. A missing
+database, a missing `threads` table and a `threads` table without the `id` or `name` column are
+three degrades of the same kind: the name is read from the pane title instead (`[spinner ]<name> |
+<cwd basename>`, read with the per-pane call of §8.1 and accepted only when it carries that
+` | <cwd basename>` suffix, so tmux's host-name default is never adopted), the degrade is
+logged once per process to the audit log, and a row that has no readable name keeps the dummy name
+it already had. The `_5` in the file name is Codex's own schema version, so a release that bumps it
+leaves the file missing and lands in the same path.
+
+Codex does not say whether a human chose a name, so the explicit/generated distinction is a
+**best-effort heuristic**: the first name read for a `derived` row is Codex's generated title
+(`name_source = harness`); a later read that differs from the name deck adopted (ignoring a
+collision suffix `-2`, `-3`) was changed after the generated title, which Codex writes only once,
+so a human chose it inside Codex (`/rename`), and the row becomes `name_source = user`, which
+freezes it. A name changed by deck's own push is held back by the pending-name echo of §8 "Pushing
+a rename" before it reaches this comparison. It can be wrong in the corners: a name a human typed before the
+first prompt is adopted as generated, and only a further change freezes the row.
+
 ---
 
 

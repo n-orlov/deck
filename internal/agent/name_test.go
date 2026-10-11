@@ -10,7 +10,7 @@ import (
 // here in the same commit. Until then every row is the zero value.
 var nameCapsRows = map[string]NameCaps{
 	"claude":  {LaunchName: NameLaunchFlag, AutoTitle: true, PushRename: NamePushSendKeys, ObserveName: []string{ObserveHook, ObserveTranscript, ObservePaneTitle}},
-	"codex":   {LaunchName: NameLaunchSendKeysAfterReady, PushRename: NamePushSendKeys},
+	"codex":   {LaunchName: NameLaunchSendKeysAfterReady, AutoTitle: true, PushRename: NamePushSendKeys, ObserveName: []string{ObserveSQLite, ObservePaneTitle}},
 	"copilot": {LaunchName: NameLaunchFlagNewSessionOnly, AutoTitle: true, PushRename: NamePushSendKeys, ObserveName: []string{ObserveHook, ObserveYAML}},
 	"pi":      {LaunchName: NameLaunchFlag, PushRename: NamePushSendKeys, ObserveName: []string{ObserveExtension}},
 	"shell":   {},
