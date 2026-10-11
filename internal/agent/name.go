@@ -78,6 +78,14 @@ type NameProbeInput struct {
 	// Env carries the resolved session environment values the adapter's
 	// Caps.TranscriptEnvKeys named, as in TranscriptInput.Env.
 	Env map[string]string
+	// TranscriptPath is the transcript file the agent's own hook named
+	// (Claude's transcript_path), or empty when no hook supplied one. An
+	// adapter treats it as untrusted.
+	TranscriptPath string
+	// PaneTitle reads the agent's pane title (tmux #{pane_title}) when
+	// called, or is nil when no pane is available. It is a func so the read
+	// happens only for an adapter that falls back to it.
+	PaneTitle func() string
 }
 
 // NamePushInput carries the name a PushName keystroke plan renames to.

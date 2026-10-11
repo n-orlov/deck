@@ -101,13 +101,15 @@ func hookEventHookSource(settings config.Settings) func() service.EventHookDispa
 // agentStop, session_info_changed) runs after its status write (SPEC §8). It
 // reads the harness's name for the row and never fails or delays the hook for
 // more than that one read: an error is dropped.
-func hookAdopter(db *store.Store, logger *audit.Logger, settings config.Settings) func(context.Context, string) {
+func hookAdopter(db *store.Store, logger *audit.Logger, settings config.Settings) func(context.Context, string, hookrecv.AdoptHint) {
 	sessions := service.Service{
 		Store: db, TMux: tmux.Client{Socket: settings.Socket}, Audit: logger, Clock: settings.Clock,
 		Agents: newAgentRegistry(), ConfigEnv: settings.Env, EventHook: hookEventHookSource(settings),
 		AdoptNames: func() bool { return settings.AdoptHarnessNames },
 	}
-	return func(ctx context.Context, sessionID string) {
-		_, _ = sessions.AdoptName(ctx, sessionID)
+	return func(ctx context.Context, sessionID string, hint hookrecv.AdoptHint) {
+		_, _ = sessions.AdoptNameWith(ctx, sessionID, service.NameHint{
+			TranscriptPath: hint.TranscriptPath, SessionTitle: hint.SessionTitle,
+		})
 	}
 }

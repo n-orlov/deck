@@ -9,7 +9,7 @@ import (
 // test: an adapter task that declares a name capability updates its own row
 // here in the same commit. Until then every row is the zero value.
 var nameCapsRows = map[string]NameCaps{
-	"claude":  {LaunchName: NameLaunchFlag},
+	"claude":  {LaunchName: NameLaunchFlag, AutoTitle: true, ObserveName: []string{ObserveHook, ObserveTranscript, ObservePaneTitle}},
 	"codex":   {},
 	"copilot": {},
 	"pi":      {},

@@ -170,11 +170,16 @@ func (s Service) markPending(ctx context.Context, adapter agent.Adapter, session
 // confirmation: one harness_rename_failed event, the field clears, and the
 // keystrokes are never sent again. A row that has stopped just drops it.
 func (s Service) settlePush(ctx context.Context, session store.Session) {
+	s.settlePushWith(ctx, session, NameHint{})
+}
+
+// settlePushWith is settlePush for a hook that carried a hint.
+func (s Service) settlePushWith(ctx context.Context, session store.Session, hint NameHint) {
 	if rowIsTerminal(session) {
 		_ = s.Store.ClearPendingHarnessName(ctx, session.ID)
 		return
 	}
-	if s.observedPending(ctx, session) {
+	if s.observedPending(ctx, session, hint) {
 		_ = s.Store.ClearPendingHarnessName(ctx, session.ID)
 		return
 	}
@@ -189,11 +194,14 @@ func (s Service) settlePush(ctx context.Context, session store.Session) {
 
 // observedPending reports whether the harness's own current name is the one
 // deck pushed.
-func (s Service) observedPending(ctx context.Context, session store.Session) bool {
+func (s Service) observedPending(ctx context.Context, session store.Session, hint NameHint) bool {
+	if agent.SanitiseHarnessName(hint.SessionTitle) == session.PendingHarnessName {
+		return true
+	}
 	adapter, ok := s.Agents.Lookup(session.Agent)
 	if !ok || session.ConversationID == "" {
 		return false
 	}
-	name, _, ok := agent.ReadName(adapter, s.nameProbe(ctx, adapter, session))
+	name, _, ok := agent.ReadName(adapter, s.nameProbe(ctx, adapter, session, hint))
 	return ok && agent.SanitiseHarnessName(name) == session.PendingHarnessName
 }

@@ -22,6 +22,8 @@ type adoptFakeAdapter struct {
 
 func (a adoptFakeAdapter) Capabilities() agent.Caps {
 	caps := a.Claude.Capabilities()
+	// Claude itself now claims name observation; this fake claims only on request.
+	caps.Name = agent.NameCaps{}
 	if a.claims {
 		caps.Name = agent.NameCaps{ObserveName: []string{agent.ObserveHook}}
 	}

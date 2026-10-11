@@ -1210,6 +1210,31 @@ Claude keeps its own auto-title. `Launch` and `Resume` refuse, with a deck-side 
 names the flag and no argv, a `launch_args` entry that is `-n`, `--name` or `--name=<x>`: deck
 owns the name Claude is given.
 
+**Reading Claude's name (R255).** Claude declares `NameCaps.AutoTitle=true` and
+`ObserveName=[hook, transcript, pane_title]`. A trigger hook (`Stop`, `UserPromptSubmit`) is read
+in this order, and the first source that answers wins:
+
+1. The hook's `session_title`, an optional payload field (a payload without it behaves exactly as
+   before). A non-empty one that differs from the row's name, after sanitising, and is not a
+   placeholder is adopted as a name a human chose: `name_source = user`, which freezes the row. Only
+   a `derived` or `harness` row takes it; a `user` row is never changed.
+2. The tail of the transcript: the hook's `transcript_path`, or, when the hook named none (the
+   reconcile tick), the conversation's own file under `<claude config dir>/projects/<cwd>/<id>.jsonl`.
+   The reader opens the file read-only and reads from the end, at most 512 KiB; when it starts
+   mid-file the cut first line is dropped, and a last line that is not a complete JSON object (a
+   write in progress) is skipped. It understands three record shapes, `custom-title`
+   (`customTitle`), `agent-name` (`agentName`) and `ai-title` (`aiTitle`), and the last such record
+   in the tail wins. `custom-title` and `agent-name` are names a human chose (`explicit`, so
+   `name_source = user`); an `ai-title` is not (`name_source = harness`).
+3. The pane title, read with its own `display-message -p -t =deck_<slug>: #{pane_title}` call per
+   pane and only when the transcript gave no title (`paneFactsFormat` never carries it, since a
+   title is free text). Claude puts an activity glyph and a space in front of its title (`✳ `, or a
+   braille spinner frame); the glyph is stripped, a title without one is not Claude's (tmux shows the
+   host name until Claude sets its own) and `Claude Code` is the placeholder, so both are no name.
+
+`~/.claude/sessions/<pid>.json` is never opened: it holds an auto-title Claude rewrites and is not a
+source. A title from any source is sanitised as above before it is compared or stored.
+
 Subscribed events — a handful per turn, never per tool call:
 
 | event | → status | notes |

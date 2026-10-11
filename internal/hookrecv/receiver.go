@@ -155,6 +155,11 @@ type payload struct {
 	// see Mappings). Not a codex-only payload struct: this is the same
 	// generic payload every hook decodes into, one more field on it.
 	ToolName string `json:"tool_name"`
+	// TranscriptFile (transcript_path) and SessionTitle are Claude's optional payload fields
+	// (SPEC §8.1). Neither is required of any hook; they only hint the name
+	// adoption that follows a trigger hook.
+	TranscriptFile string `json:"transcript_path"`
+	SessionTitle   string `json:"session_title"`
 
 	// Copilot's camelCase payload. All optional: no field here is required of
 	// any hook.
@@ -291,7 +296,7 @@ func ReceiveFrom(ctx context.Context, db Store, raw []byte, origin Origin, at in
 	}
 	result, err = persistHook(ctx, db, p, mapping, session, raw, origin, at, write, result)
 	if err == nil {
-		adoptAfterHook(ctx, origin, p.EventName, result)
+		adoptAfterHook(ctx, origin, p, result)
 	}
 	return result, err
 }
@@ -299,11 +304,11 @@ func ReceiveFrom(ctx context.Context, db Store, raw []byte, origin Origin, at in
 // adoptAfterHook hands a landed trigger hook's row to origin.Adopt. A hook of
 // a launch deck has replaced describes a pane that is gone, so it triggers
 // nothing.
-func adoptAfterHook(ctx context.Context, origin Origin, eventName string, result Result) {
-	if origin.Adopt == nil || result.Superseded || !AdoptionTrigger(eventName) {
+func adoptAfterHook(ctx context.Context, origin Origin, p payload, result Result) {
+	if origin.Adopt == nil || result.Superseded || !AdoptionTrigger(p.EventName) {
 		return
 	}
-	origin.Adopt(ctx, result.SessionID)
+	origin.Adopt(ctx, result.SessionID, AdoptHint{TranscriptPath: p.TranscriptFile, SessionTitle: p.SessionTitle})
 }
 
 // hookWrite is the status write one hook resolves to.

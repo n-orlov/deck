@@ -1,0 +1,2 @@
+{"type":"user","message":{"role":"user","content":"hi"},"sessionId":"s"}
+{"type":"assistant","message":{"role":"assistant","content":"ok"},"sessionId":"s"}

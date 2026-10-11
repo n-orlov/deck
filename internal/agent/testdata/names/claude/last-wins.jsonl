@@ -1,0 +1,3 @@
+{"type":"user","message":{"role":"user","content":"hi"},"sessionId":"s"}
+{"type":"ai-title","aiTitle":"Auto","sessionId":"s"}
+{"type":"custom-title","customTitle":"Chosen later","sessionId":"s"}

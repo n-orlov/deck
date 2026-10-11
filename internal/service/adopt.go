@@ -41,6 +41,19 @@ func (s Service) adoptionOn(session store.Session) bool {
 // caps do not claim ReadName and a name that is empty, equal to the current
 // one or a harness placeholder all leave the row untouched.
 func (s Service) AdoptName(ctx context.Context, sessionID string) (bool, error) {
+	return s.AdoptNameWith(ctx, sessionID, NameHint{})
+}
+
+// NameHint is what a trigger hook's payload adds to an adoption: the transcript
+// file the agent named and the title it reports a human chose. Both are
+// optional and untrusted; the zero value adds nothing.
+type NameHint struct {
+	TranscriptPath string
+	SessionTitle   string
+}
+
+// AdoptNameWith is AdoptName for a hook that carried a hint.
+func (s Service) AdoptNameWith(ctx context.Context, sessionID string, hint NameHint) (bool, error) {
 	if s.Store == nil || s.Clock == nil || s.Agents == nil {
 		return false, nil
 	}
@@ -48,7 +61,7 @@ func (s Service) AdoptName(ctx context.Context, sessionID string) (bool, error) 
 	if err != nil {
 		return false, err
 	}
-	return s.adoptRow(ctx, session)
+	return s.adoptRow(ctx, session, hint)
 }
 
 // adoptOnTick is adoption on a reconcile pass: a row that is gone, terminal or
@@ -64,37 +77,77 @@ func (s Service) adoptOnTick(ctx context.Context, session store.Session) {
 	if rowIsTerminal(session) || !adoptionEligible(session) || !s.adoptionOn(session) {
 		return
 	}
-	_, _ = s.adoptRow(ctx, session)
+	_, _ = s.adoptRow(ctx, session, NameHint{})
 }
 
-func (s Service) adoptRow(ctx context.Context, session store.Session) (bool, error) {
+func (s Service) adoptRow(ctx context.Context, session store.Session, hint NameHint) (bool, error) {
 	if session.PendingHarnessName != "" {
 		// A pushed name is awaiting its echo: settle that first, adopt nothing.
-		s.settlePush(ctx, session)
+		s.settlePushWith(ctx, session, hint)
 		return false, nil
 	}
 	if !adoptionEligible(session) || !s.adoptionOn(session) {
 		return false, nil
 	}
+	if title := usableHarnessName(hint.SessionTitle, session); title != "" {
+		// A title the harness reports in its own hook is a name a human chose.
+		return s.applyAdoption(ctx, session, title, true)
+	}
 	adapter, ok := s.Agents.Lookup(session.Agent)
 	if !ok {
 		return false, nil
 	}
-	name, explicit, ok := agent.ReadName(adapter, s.nameProbe(ctx, adapter, session))
-	name = agent.SanitiseHarnessName(name)
-	if !ok || name == "" || name == session.Name || harnessPlaceholders[name] {
+	name, explicit, ok := agent.ReadName(adapter, s.nameProbe(ctx, adapter, session, hint))
+	if !ok {
+		return false, nil
+	}
+	name = usableHarnessName(name, session)
+	if name == "" {
 		return false, nil
 	}
 	return s.applyAdoption(ctx, session, name, explicit)
 }
 
+// usableHarnessName sanitises a harness-reported title and returns it, or ""
+// when it is empty, equal to the row's current name or a placeholder.
+func usableHarnessName(raw string, session store.Session) string {
+	name := agent.SanitiseHarnessName(raw)
+	if name == session.Name || harnessPlaceholders[name] {
+		return ""
+	}
+	return name
+}
+
 // nameProbe fills the probe input for session: the user's home, the working
 // directory, the bound conversation and the env keys the adapter names.
-func (s Service) nameProbe(ctx context.Context, adapter agent.Adapter, session store.Session) agent.NameProbeInput {
+func (s Service) nameProbe(ctx context.Context, adapter agent.Adapter, session store.Session, hint NameHint) agent.NameProbeInput {
 	home, _ := os.UserHomeDir()
 	return agent.NameProbeInput{
 		Home: home, CWD: session.CWD, ConversationID: session.ConversationID,
-		Env: s.probeEnv(ctx, adapter.Capabilities().TranscriptEnvKeys, session),
+		Env:            s.probeEnv(ctx, adapter.Capabilities().TranscriptEnvKeys, session),
+		TranscriptPath: hint.TranscriptPath,
+		PaneTitle:      s.paneTitleReader(ctx, session),
+	}
+}
+
+// paneTitler is the optional pane access that reads a pane's title.
+type paneTitler interface {
+	PaneTitle(ctx context.Context, slug string) (string, error)
+}
+
+// paneTitleReader returns the read of session's pane title, taken per pane and
+// only when called. A pane that cannot be read has no title.
+func (s Service) paneTitleReader(ctx context.Context, session store.Session) func() string {
+	return func() string {
+		var reader paneTitler = s.TMux
+		if titler, ok := s.NamePane.(paneTitler); ok {
+			reader = titler
+		}
+		title, err := reader.PaneTitle(ctx, session.Slug)
+		if err != nil {
+			return ""
+		}
+		return title
 	}
 }
 

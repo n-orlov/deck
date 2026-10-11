@@ -26,7 +26,18 @@ type Origin struct {
 	// Adopt, when set, is called once for a hook that applied to a live row and
 	// is an adoption trigger (see AdoptionTrigger): the caller reads the
 	// harness's name for that row (SPEC §8). Its failure never fails the hook.
-	Adopt func(ctx context.Context, sessionID string)
+	Adopt func(ctx context.Context, sessionID string, hint AdoptHint)
+}
+
+// AdoptHint is what a trigger hook's own payload says about the row's name:
+// the transcript file the agent named and the title it reports, both
+// optional and untrusted. The zero value is a hook that said neither.
+type AdoptHint struct {
+	// TranscriptPath is the payload's transcript_path (Claude).
+	TranscriptPath string
+	// SessionTitle is the payload's session_title: a name the harness reports
+	// a human chose.
+	SessionTitle string
 }
 
 // CopilotRoot resolves the copilot root the way the adapter does: COPILOT_HOME
