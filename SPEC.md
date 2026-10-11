@@ -1411,7 +1411,7 @@ Copilot exits 1 on it and the failure is then deck's, not a dead pane's.
 **Argv.** `copilot --session-id <conversation-id>`, then the profile's flags (§5), then
 `--no-auto-update`, then the row's `launch_args` verbatim. `Launch` and `Resume` refuse, with a
 deck-side error and no argv, a `launch_args` entry that is `--continue`, `--resume`, `--connect`,
-`--remote`, `--acp` or `--yolo`, bare or in `--flag=value` form, for every profile; any other
+`--remote`, `--acp`, `--yolo`, `-n` or `--name`, bare or in `--flag=value` form, for every profile; any other
 extra argument (for example `--model gpt-5`) is appended unchanged:
 
 | profile | flags |
@@ -1421,11 +1421,21 @@ extra argument (for example `--model gpt-5`) is appended unchanged:
 | `yolo` | `--allow-all` |
 
 `--session-id` creates the session when it is new and resumes it when it exists. **`Resume`
-therefore returns the identical argv to `Launch`** for the same conversation id, profile and
-`launch_args`. It never emits `--resume`, which fails for a session killed before its first
+therefore returns the argv `Launch` returns** for the same conversation id, profile and
+`launch_args`, minus the name flag (below). It never emits `--resume`, which fails for a session killed before its first
 message, so no relaunch special case exists: the adapter does not implement
 `FreshRelauncher` (§9.1) and the service always takes the resume path. No argv built here
 contains `--continue`, `--resume`, `--connect`, `--remote`, `--acp` or `--yolo`.
+
+**Launch name (R259).** Copilot declares `NameCaps.LaunchName=flag_new_session_only`. A row
+whose `name_source` is `user` and whose name is not blank launches a *new* conversation with
+`-n <name>`, once, after the profile's flags and before `--no-auto-update`: the first launch
+and the fresh-once launch, which mints a new conversation id. `Resume` (a relaunch of an
+existing conversation id) never carries `-n`, so Copilot keeps the name it already holds, and
+a `derived` or `harness` row never passes one. The name is sanitised first: `"` becomes `'`,
+control characters go, it is trimmed and cut to 100 runes. A blank name passes no flag. `-n`,
+`--name`, `-n=<x>` and `--name=<x>` in `launch_args` are refused by `Launch` and `Resume` with a
+deck-side error that names the flag and no argv: deck owns the name.
 
 **Capabilities.** Profiles `safe`, `edits` and `yolo` (no `plan`: it falls back to `safe`, §5);
 `AssignsConversationID`, `Resumable` and `HasTranscript` are true; the declared transcript

@@ -24,6 +24,7 @@ func TestCopilot_Capabilities(t *testing.T) {
 		Executable:            "copilot",
 		TranscriptEnvKeys:     []string{"COPILOT_HOME"},
 		RowBadge:              "copilot",
+		Name:                  NameCaps{LaunchName: NameLaunchFlagNewSessionOnly},
 	}
 	if got := adapter.Capabilities(); !reflect.DeepEqual(got, want) {
 		t.Fatalf("Capabilities = %#v, want %#v", got, want)

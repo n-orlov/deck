@@ -53,6 +53,7 @@ func (Copilot) Capabilities() Caps {
 		Executable:            "copilot",
 		TranscriptEnvKeys:     []string{"COPILOT_HOME"},
 		RowBadge:              "copilot",
+		Name:                  NameCaps{LaunchName: NameLaunchFlagNewSessionOnly},
 	}
 }
 
@@ -61,23 +62,32 @@ func (Copilot) Capabilities() Caps {
 // UUID is refused here, because Copilot would exit 1 on it and the failure
 // would otherwise surface as a dead pane.
 func (Copilot) Launch(in LaunchInput) ([]string, error) {
-	return copilotArgv(in.ConversationID, in.Profile, in.ExtraArgs)
+	return copilotArgv(in.ConversationID, in.Profile, copilotLaunchName(in.Name), in.ExtraArgs)
 }
 
-// Resume returns exactly the argv Launch returns for the same conversation id,
-// profile and ExtraArgs. `--session-id` resumes an existing session, whereas
-// `--resume` fails for one killed before its first message, so Resume never
-// emits `--resume` (nor --continue, --connect, --remote or --acp).
+// Resume returns the argv Launch returns for the same conversation id,
+// profile and ExtraArgs, without a name: `-n` names a new session only (R259),
+// and ResumeInput.Name is ignored. `--session-id` resumes an existing session,
+// whereas `--resume` fails for one killed before its first message, so Resume
+// never emits `--resume` (nor --continue, --connect, --remote or --acp).
 func (Copilot) Resume(in ResumeInput) ([]string, error) {
-	return copilotArgv(in.ConversationID, in.Profile, in.ExtraArgs)
+	return copilotArgv(in.ConversationID, in.Profile, "", in.ExtraArgs)
+}
+
+// copilotLaunchName is the value `-n` carries: the name with `"` replaced by
+// `'`, trimmed and cut to 100 runes (Copilot's own limit). "" passes no flag.
+func copilotLaunchName(name string) string {
+	clean, _ := SanitisePushName("copilot", name)
+	return strings.TrimSpace(clean)
 }
 
 // copilotForbiddenExtra lists the flags R216 bans from every copilot argv:
 // alternate identity (--continue, --resume), remote and ACP launch modes
-// (--connect, --remote, --acp) and the --yolo spelling of a permission bypass
+// (--connect, --remote, --acp), the name flags (-n, --name: deck owns the
+// session name, R259) and the --yolo spelling of a permission bypass
 // (deck's yolo profile is --allow-all, chosen through the profile, never
 // through ExtraArgs).
-var copilotForbiddenExtra = []string{"--continue", "--resume", "--connect", "--remote", "--acp", "--yolo"}
+var copilotForbiddenExtra = []string{"--continue", "--resume", "--connect", "--remote", "--acp", "--yolo", "-n", "--name"}
 
 // copilotForbiddenExtraFlag returns the forbidden flag arg spells, bare or in
 // --flag=value form, and "" when arg is allowed.
@@ -91,7 +101,7 @@ func copilotForbiddenExtraFlag(arg string) string {
 	return ""
 }
 
-func copilotArgv(conversationID, profile string, extra []string) ([]string, error) {
+func copilotArgv(conversationID, profile, name string, extra []string) ([]string, error) {
 	flags, ok := copilotProfileFlags[profile]
 	if !ok {
 		return nil, fmt.Errorf("copilot: unsupported permission profile %q", profile)
@@ -106,6 +116,9 @@ func copilotArgv(conversationID, profile string, extra []string) ([]string, erro
 	}
 	argv := []string{"copilot", "--session-id", conversationID}
 	argv = append(argv, flags...)
+	if name != "" {
+		argv = append(argv, "-n", name)
+	}
 	argv = append(argv, "--no-auto-update")
 	return append(argv, extra...), nil
 }

@@ -11,7 +11,7 @@ import (
 var nameCapsRows = map[string]NameCaps{
 	"claude":  {LaunchName: NameLaunchFlag, AutoTitle: true, PushRename: NamePushSendKeys, ObserveName: []string{ObserveHook, ObserveTranscript, ObservePaneTitle}},
 	"codex":   {},
-	"copilot": {},
+	"copilot": {LaunchName: NameLaunchFlagNewSessionOnly},
 	"pi":      {},
 	"shell":   {},
 }

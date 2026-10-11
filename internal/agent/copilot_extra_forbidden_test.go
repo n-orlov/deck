@@ -1,12 +1,15 @@
 package agent
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 // TestCopilot_ExtraArgsRefuseForbiddenFlags guards R216: the alternate
 // identity, remote and ACP launch modes and --yolo may not arrive through
 // ExtraArgs, bare or as --flag=value, on either entrypoint, for any profile.
 func TestCopilot_ExtraArgsRefuseForbiddenFlags(t *testing.T) {
-	forbidden := []string{"--continue", "--resume", "--connect", "--remote", "--acp", "--yolo"}
+	forbidden := []string{"--continue", "--resume", "--connect", "--remote", "--acp", "--yolo", "-n", "--name"}
 	for _, profile := range copilotProfiles {
 		for _, flag := range forbidden {
 			for _, spelling := range []string{flag, flag + "=x"} {
@@ -53,6 +56,22 @@ func TestCopilot_ExtraArgsAllowedStayVerbatim(t *testing.T) {
 		}
 		if _, err := NewCopilot().Launch(LaunchInput{ConversationID: "not-a-uuid", Profile: profile, ExtraArgs: extra}); err == nil {
 			t.Errorf("profile %s: non-UUID id accepted", profile)
+		}
+	}
+}
+
+// TestCopilot_ExtraArgsRefuseNameFlags (R259): deck owns the session name, so a
+// user -n, --name, -n=x or --name=x in launch_args is refused on both
+// entrypoints with an error that names the flag.
+func TestCopilot_ExtraArgsRefuseNameFlags(t *testing.T) {
+	for _, spelling := range []string{"-n", "--name", "-n=x", "--name=x"} {
+		flag, _, _ := strings.Cut(spelling, "=")
+		extra := []string{"--model", "gpt-5", spelling, "mine"}
+		if argv, err := NewCopilot().Launch(LaunchInput{ConversationID: copilotTestID, Profile: "safe", Name: "deck", ExtraArgs: extra}); err == nil || argv != nil || !strings.Contains(err.Error(), flag) {
+			t.Errorf("Launch %q: argv=%q err=%v, want nil argv and an error naming %s", spelling, argv, err, flag)
+		}
+		if argv, err := NewCopilot().Resume(ResumeInput{ConversationID: copilotTestID, Profile: "safe", ExtraArgs: extra}); err == nil || argv != nil {
+			t.Errorf("Resume %q: argv=%q err=%v, want nil argv and an error", spelling, argv, err)
 		}
 	}
 }

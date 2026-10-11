@@ -86,3 +86,37 @@ func TestDerivedNoNameResumeArgvCarriesLaunchInputName(t *testing.T) {
 		t.Fatalf("ResumeInput.Name seen = %q, want [typed \"\"]", spy.resumeNames)
 	}
 }
+
+// TestCopilotNameServiceArgv drives the service's argv builders with the real
+// Copilot adapter (R259): a create of a user row passes -n once, a relaunch of
+// the existing conversation does not, and a derived row never does.
+func TestCopilotNameServiceArgv(t *testing.T) {
+	stubExecutableOnPath(t, "copilot")
+	const id = "7f1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
+	svc, _, _, _ := newAgentTestService(t, nil, "copilot-name-argv")
+	adapter := agent.NewCopilot()
+	session := store.Session{CWD: t.TempDir(), ConversationID: id, PermissionProfile: "safe"}
+	for _, tc := range []struct {
+		name, launch string
+		freshOnce    bool
+		want         bool
+	}{
+		{"relaunch of existing conversation", "typed", false, false},
+		{"derived row", "", false, false},
+		{"fresh-once new conversation", "typed", true, true},
+	} {
+		argv, err := svc.resumeArgv(session, adapter, adapter.Capabilities(), agent.LaunchInput{
+			CWD: session.CWD, ConversationID: id, Profile: "safe", Name: tc.launch,
+		}, tc.freshOnce)
+		if err != nil {
+			t.Fatalf("%s: %v", tc.name, err)
+		}
+		has := false
+		for i, a := range argv {
+			has = has || (a == "-n" && i+1 < len(argv) && argv[i+1] == "typed")
+		}
+		if has != tc.want {
+			t.Errorf("%s: argv %q has -n = %v, want %v", tc.name, argv, has, tc.want)
+		}
+	}
+}

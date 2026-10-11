@@ -49,6 +49,7 @@ type options struct {
 	allowTools   []string
 	allowAll     bool
 	noAutoUpdate bool
+	name         string
 }
 
 func main() {
@@ -261,11 +262,11 @@ func parse(args []string) (options, string) {
 }
 
 var knownFlags = map[string]bool{
-	"--session-id": true, "--plugin-dir": true, "--allow-tool": true, "--allow-all": true, "--no-auto-update": true,
+	"--session-id": true, "--plugin-dir": true, "--allow-tool": true, "--allow-all": true, "--no-auto-update": true, "-n": true,
 }
 
 func flagTakesValue(name string) bool {
-	return name == "--session-id" || name == "--plugin-dir" || name == "--allow-tool"
+	return name == "--session-id" || name == "--plugin-dir" || name == "--allow-tool" || name == "-n"
 }
 
 func assign(result *options, name, value string) {
@@ -276,6 +277,8 @@ func assign(result *options, name, value string) {
 		result.pluginDir = value
 	case "--allow-tool":
 		result.allowTools = append(result.allowTools, value)
+	case "-n":
+		result.name = value
 	case "--allow-all":
 		result.allowAll = true
 	case "--no-auto-update":
@@ -296,6 +299,7 @@ Options:
   --plugin-dir <dir>    Load hooks.json from this plugin directory and run its hook commands.
   --allow-tool=<tool>   Accepted (echoed in the banner), grants nothing.
   --allow-all           Accepted (echoed in the banner), grants nothing.
+  -n <name>             Accepted, names a new session.
   --no-auto-update      Accepted.
   --help, -h            Show this help.
 
