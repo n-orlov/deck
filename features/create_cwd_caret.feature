@@ -56,5 +56,5 @@ Feature: The create modal's cwd field is edited under a caret (requirement 179, 
     Then deck client "A" screen contains "uniqueprojback/"
     When deck client "A" submits the create modal
     Then deck client "A" has session "cwd-caret-back-session" selected
-    And the state database session "cwd-caret-back-session" has cwd exactly the scratch directory labelled "back" plus "/uniqueprojback/"
+    And the state database session "cwd-caret-back-session" has cwd exactly the scratch directory labelled "back" plus "/uniqueprojback"
     When deck client "A" exits cleanly

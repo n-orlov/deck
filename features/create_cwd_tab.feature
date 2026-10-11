@@ -52,7 +52,7 @@ Feature: The create modal's cwd field follows bash's tab-completion contract (re
     Then deck client "A" screen contains the scratch directory labelled "tl" plus "/prefixbbb/"
     When deck client "A" submits the create modal
     Then deck client "A" has session "tab-list-session" selected
-    And the state database session "tab-list-session" has cwd exactly the scratch directory labelled "tl" plus "/prefixbbb/"
+    And the state database session "tab-list-session" has cwd exactly the scratch directory labelled "tl" plus "/prefixbbb"
     When deck client "A" exits cleanly
 
   @requirement-16-tab-does-nothing-when-already-unique

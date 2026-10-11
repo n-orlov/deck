@@ -28,7 +28,7 @@ Feature: The create modal's §11.7 directory-only ghost completion (requirement 
     Then deck client "A" screen contains "uniqueprojright/"
     When deck client "A" submits the create modal
     Then deck client "A" has session "cwd-ghost-right-session" selected
-    And the state database session "cwd-ghost-right-session" has cwd exactly the scratch directory labelled "unique-right" plus "/uniqueprojright/"
+    And the state database session "cwd-ghost-right-session" has cwd exactly the scratch directory labelled "unique-right" plus "/uniqueprojright"
     When deck client "A" exits cleanly
 
   @requirement-14-ghost-end-accepts
@@ -44,7 +44,7 @@ Feature: The create modal's §11.7 directory-only ghost completion (requirement 
     Then deck client "A" screen contains "uniqueprojend/"
     When deck client "A" submits the create modal
     Then deck client "A" has session "cwd-ghost-end-session" selected
-    And the state database session "cwd-ghost-end-session" has cwd exactly the scratch directory labelled "unique-end" plus "/uniqueprojend/"
+    And the state database session "cwd-ghost-end-session" has cwd exactly the scratch directory labelled "unique-end" plus "/uniqueprojend"
     When deck client "A" exits cleanly
 
   @requirement-14-ghost-files-never-candidates
@@ -76,7 +76,7 @@ Feature: The create modal's §11.7 directory-only ghost completion (requirement 
     When deck client "A" presses "right" in the cwd field
     And deck client "A" submits the create modal
     Then deck client "A" has session "cwd-ghost-hidden-session" selected
-    And the state database session "cwd-ghost-hidden-session" has cwd exactly the scratch directory labelled "hidden-dir" plus "/.hiddensecret/"
+    And the state database session "cwd-ghost-hidden-session" has cwd exactly the scratch directory labelled "hidden-dir" plus "/.hiddensecret"
     When deck client "A" exits cleanly
 
   @requirement-14-ghost-tilde-expands
