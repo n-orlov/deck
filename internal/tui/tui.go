@@ -1075,7 +1075,8 @@ type Model struct {
 	// no takeover screen or modal over the main frame, no fit outstanding --
 	// the latch above is dropped so the selected session is fitted to the
 	// NEW panel box. Held while a takeover is open, so a resize that
-	// arrives under a modal or the settings view applies when it closes.
+	// arrives under a modal or the settings view applies when it closes
+	// (releaseHeldRefit schedules it in the closing update itself).
 	previewRefitPending bool
 	// interactivePaneID and interactiveWidth/Height are the pane the
 	// interactive grid is drawn from and the box the window was last fitted
@@ -2675,7 +2676,27 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	// that has nothing real to clamp against.
 	m = m.healInteractiveScrollOffsetFromRender()
 	next, cmd := m.dispatchMessage(message)
-	return m.releaseHeldReload(next, cmd)
+	next, cmd = m.releaseHeldReload(next, cmd)
+	return releaseHeldRefit(next, cmd)
+}
+
+// releaseHeldRefit applies a host resize that was held back because a modal
+// or the settings takeover covered the preview (R239 case 5, SPEC §11): the
+// transition that closes the last covering screen, or the fit that was in
+// flight finishing, schedules the re-fit in that same update, with no
+// previewTick or further user event. Nothing is scheduled while a screen
+// still covers the preview or a fit is in flight, and previewFit itself
+// keeps its own eligibility guards (fit applies, size above the floor).
+func releaseHeldRefit(next tea.Model, cmd tea.Cmd) (tea.Model, tea.Cmd) {
+	model, ok := next.(Model)
+	if !ok || !model.previewRefitPending || model.previewFitInFlight != "" || model.takeoverActive() {
+		return next, cmd
+	}
+	fit := model.previewFit()
+	if fit == nil {
+		return model, cmd
+	}
+	return model, tea.Batch(cmd, fit)
 }
 
 // messageHandler is one entry of the Update dispatch table: the handler

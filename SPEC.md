@@ -2097,7 +2097,7 @@ always did), and the permission badge for non-`safe` **last**. The
   that changes the terminal's size re-fits the selected session's window to the new panel box
   in the same update, with no key, click or selection change in between; a resize to the size
   deck already has is a no-op that issues no tmux call; a resize that arrives while a modal or
-  the settings takeover covers the list is held and applied as soon as that screen closes;
+  the settings takeover covers the list is held and applied by the very update that closes the last covering screen (or lands the fit that was in flight), with no preview tick or other event in between;
   it is **skipped below §11.9's 7-row inner floor**,
   leaving the pane cropped, because a box that small has no transcript in it worth reflowing
   for; and it is **best-effort, owning and restoring nothing** — a session the user looked at
