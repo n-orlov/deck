@@ -1717,7 +1717,9 @@ func sessionLastMessage(h *ScenarioHarness, name string) (string, error) {
 		if err := json.Unmarshal([]byte(line), &entry); err != nil {
 			return "", fmt.Errorf("decode transcript entry %q: %w", line, err)
 		}
-		last = entry.Message
+		if entry.Message != "" {
+			last = entry.Message // name records carry no message
+		}
 	}
 	return last, nil
 }

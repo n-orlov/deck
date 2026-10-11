@@ -3834,6 +3834,13 @@ in the help view.
   the permission and question dialogs, the folder-trust prompt (`FAKE_COPILOT_TRUST=1` starts on it) and a `✗`
   error line, each with the substrings §8.4's probe rules match; it redraws at the new size on `SIGWINCH`, and
   `Ctrl-C` during a turn aborts it back to the idle footer **without firing any hook**, as Copilot does),
+  `fake-claude` keeps a session name the way Claude does: `--name`, a typed `/rename <name>` line and the
+  `rename` pane command append a `custom-title` and a paired `agent-name` record (`sessionId` keyed) to the
+  transcript and set the pane title `✳ <name>` with `OSC 0` (a `--name` on a conversation with no transcript
+  sets the title at once and reaches the transcript with the first prompt, so a name alone never creates it); the `ai-title` pane command appends a generated
+  `ai-title` record (suppressed once a name is explicit); a reopened transcript restores its last title; and
+  `SessionStart`/`UserPromptSubmit` payloads carry `session_title` only for an explicit name, never a
+  generated one (`@harness-names`, `features/harness_names.feature`),
   write transcript files in the real on-disk layout, print recognisable pane text on
   demand, fire hook payloads at `deck _hook` on command, and can be told to hang, crash,
   or exit. They are the *contract* under test — real-agent conformance is a separate,

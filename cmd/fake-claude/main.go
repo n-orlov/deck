@@ -99,6 +99,7 @@ type options struct {
 	permissionMode string
 	settings       string
 	message        string
+	name           string
 }
 
 func main() {
@@ -150,9 +151,20 @@ func runWithIO(args []string, stdin io.Reader, stdout, stderr io.Writer, getenv 
 
 	announceLaunch(stdout, options, encoded)
 
+	sessionNames := newNames(options, getenv, getwd, stdout)
+	if err := sessionNames.launch(options.name); err != nil {
+		fmt.Fprintln(os.Stderr, "fake-claude: name unavailable:", err)
+	}
+
 	if getenv(commandsEnvironment) == "1" {
-		if err := runCommands(stdin, stdout, stderr, options.settings, getenv(fixtureDirectoryEnvironment)); err != nil {
+		if err := runCommandsNamed(stdin, stdout, stderr, options.settings, getenv(fixtureDirectoryEnvironment), sessionNames); err != nil {
 			return 0, err
+		}
+	}
+
+	if options.message != "" {
+		if err := sessionNames.flush(); err != nil {
+			fmt.Fprintln(os.Stderr, "fake-claude: name unavailable:", err)
 		}
 	}
 
@@ -264,8 +276,13 @@ type transcriptEntry struct {
 	Message string `json:"message"`
 }
 
-func appendMessage(path, message string) (err error) {
-	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
+func appendMessage(path, message string) error {
+	return appendJSON(path, transcriptEntry{Message: message})
+}
+
+// appendJSON appends one JSON object as a line of the transcript at path.
+func appendJSON(path string, record any) (err error) {
+	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil { // #nosec G703 -- the transcript path comes from this fake's own session id and home
 		return fmt.Errorf("create transcript directory: %w", err)
 	}
 	file, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600) //nolint:gosec // G304: the transcript path is derived by this fake from its own session id and home
@@ -278,7 +295,7 @@ func appendMessage(path, message string) (err error) {
 		}
 	}()
 
-	encoded, err := json.Marshal(transcriptEntry{Message: message})
+	encoded, err := json.Marshal(record)
 	if err != nil {
 		return fmt.Errorf("encode transcript entry: %w", err)
 	}
@@ -309,7 +326,9 @@ func lastMessage(path string) (string, error) {
 		if err := json.Unmarshal([]byte(line), &entry); err != nil {
 			return "", fmt.Errorf("decode transcript entry: %w", err)
 		}
-		last = entry.Message
+		if entry.Message != "" {
+			last = entry.Message // name records carry no message and never replace one
+		}
 	}
 	if err := scanner.Err(); err != nil {
 		return "", fmt.Errorf("read transcript: %w", err)
@@ -364,6 +383,7 @@ func (o *options) apply(argument, value string) error {
 		if strings.TrimSpace(value) == "" {
 			return fmt.Errorf("invalid value for %s: blank name", argument)
 		}
+		o.name = value
 	case "--settings":
 		if _, err := hookCommands(value); err != nil {
 			return fmt.Errorf("invalid --settings: %w", err)
@@ -434,17 +454,29 @@ func hookCommands(raw string) (map[string]string, error) {
 // Hook subprocesses inherit the fake agent's environment, exactly as a Claude hook
 // does; the harness does not invoke deck _hook itself.
 func runCommands(input io.Reader, stdout, stderr io.Writer, rawSettings, fixtureDirectory string) error {
+	return runCommandsNamed(input, stdout, stderr, rawSettings, fixtureDirectory, nil)
+}
+
+// runCommandsNamed is runCommands for a fake that also keeps a session name
+// (names.go); a nil sessionNames keeps no name.
+func runCommandsNamed(input io.Reader, stdout, stderr io.Writer, rawSettings, fixtureDirectory string, sessionNames *names) error {
 	commands, err := hookCommands(rawSettings)
 	if err != nil {
 		return fmt.Errorf("decode hook settings: %w", err)
 	}
 	scanner := bufio.NewScanner(input)
 	for scanner.Scan() {
+		if name, ok := typedRename(scanner.Text()); ok {
+			if err := sessionNames.rename(name); err != nil {
+				return err
+			}
+			continue
+		}
 		var request fixtureCommand
 		if err := json.Unmarshal(scanner.Bytes(), &request); err != nil {
 			return fmt.Errorf("decode command: %w", err)
 		}
-		done, err := runCommand(stdout, stderr, commands, fixtureDirectory, request)
+		done, err := runCommand(stdout, stderr, commands, fixtureDirectory, request, sessionNames)
 		if err != nil {
 			return err
 		}
@@ -460,7 +492,10 @@ func runCommands(input io.Reader, stdout, stderr io.Writer, rawSettings, fixture
 
 // runCommand executes one pane command; done reports that the command was
 // "exit" and the command loop must end with a clean status.
-func runCommand(stdout, stderr io.Writer, commands map[string]string, fixtureDirectory string, request fixtureCommand) (done bool, err error) {
+func runCommand(stdout, stderr io.Writer, commands map[string]string, fixtureDirectory string, request fixtureCommand, sessionNames *names) (done bool, err error) {
+	if handled, err := sessionNames.nameCommand(request); handled {
+		return false, err
+	}
 	switch request.Command {
 	case "fixture":
 		return false, renderFixture(stdout, fixtureDirectory, request.Name)
@@ -468,6 +503,12 @@ func runCommand(stdout, stderr io.Writer, commands map[string]string, fixtureDir
 		if request.Payload == nil {
 			request.Payload = make(map[string]any)
 		}
+		if request.Event == "UserPromptSubmit" {
+			if err := sessionNames.flush(); err != nil {
+				return false, err
+			}
+		}
+		sessionNames.annotate(request.Event, request.Payload)
 		return false, fireHook(stdout, stderr, commands, request.Event, request.Payload)
 	case "resume":
 		return false, fireResumePair(stdout, stderr, commands, request)
