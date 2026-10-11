@@ -1092,6 +1092,32 @@ empty string means pass no name. `internal/service` fills them from the row only
 `name_source` is `user`, and never with a blank name. A `derived` or `harness` row therefore
 launches with no name flag, so the agent keeps generating its own title.
 
+#### Adopting a harness name (R251)
+
+deck reads the agent's own name for a row and adopts it. Adoption runs from exactly these
+triggers and no others: the `Stop`, `UserPromptSubmit`, `agentStop` and `session_info_changed`
+hooks (after the hook's status write has landed), and the existing reconcile tick. The tick is
+the pass that already runs; adoption adds no ticker, goroutine or poll of its own. A hook of a
+launch deck has replaced, and one that resolves to no row, triggers nothing. `session_info_changed`
+is a hook event that carries no status: it is recorded, never applied.
+
+Only a row whose `name_source` is `derived` or `harness` is eligible, only on a bound
+conversation id, and only through `agent.ReadName` on an adapter whose caps claim it. A `user`
+row is frozen: adoption never changes it. For an eligible row the outcome is one of:
+
+| `ReadName` result | outcome |
+|---|---|
+| no answer, or an empty name | row unchanged |
+| equal to the row's current name | row unchanged |
+| a placeholder (`Claude Code`, `GitHub Copilot`, `π`) | row unchanged |
+| any other name | row renamed; `renamed` event with source `harness:<kind>`; `name_source = harness` |
+| the same, and another row already holds the name or its slug | the name takes the first free suffix `-2`, `-3`, ... |
+| a name the harness reports as `explicit` (a human chose it inside the harness) and that differs from deck's | row renamed as above with `name_source = user`, which freezes it from then on |
+
+Adoption writes the display name only. The tmux session name `deck_<slug>` is never changed. The
+`name_source` check and the write share one store transaction, so a user rename that lands
+meanwhile is not overwritten, and an adoption failure never fails a hook or a reconcile pass.
+
 | | Claude Code | Pi / oh-my-pi | Codex CLI | Copilot CLI | shell (bash/zsh/fish) |
 |---|---|---|---|---|---|
 | **conversation id** | **deck assigns**: `--session-id <uuid>` | **deck assigns**: `--session-id <id>` (created if missing), plus a display name | agent mints it; deck adopts it from the first hook (§8.2) | **deck assigns**: `--session-id <uuid>` (a UUID; any other id is refused by `Launch`) | none |

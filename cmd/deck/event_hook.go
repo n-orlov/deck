@@ -10,6 +10,7 @@ import (
 	"github.com/n-orlov/deck/internal/notify"
 	"github.com/n-orlov/deck/internal/service"
 	"github.com/n-orlov/deck/internal/store"
+	"github.com/n-orlov/deck/internal/tmux"
 )
 
 // dispatchHookEvent offers the event a `deck _hook` run just committed to the
@@ -94,4 +95,18 @@ func hookEventHookSource(settings config.Settings) func() service.EventHookDispa
 		return nil
 	}
 	return func() service.EventHookDispatcher { return dispatcher }
+}
+
+// hookAdopter is the name adoption a trigger hook (Stop, UserPromptSubmit,
+// agentStop, session_info_changed) runs after its status write (SPEC §8). It
+// reads the harness's name for the row and never fails or delays the hook for
+// more than that one read: an error is dropped.
+func hookAdopter(db *store.Store, logger *audit.Logger, settings config.Settings) func(context.Context, string) {
+	sessions := service.Service{
+		Store: db, TMux: tmux.Client{Socket: settings.Socket}, Audit: logger, Clock: settings.Clock,
+		Agents: newAgentRegistry(), ConfigEnv: settings.Env,
+	}
+	return func(ctx context.Context, sessionID string) {
+		_, _ = sessions.AdoptName(ctx, sessionID)
+	}
 }

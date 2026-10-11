@@ -662,6 +662,7 @@ func runHook(ctx context.Context, settings config.Settings, stdin io.Reader) (ru
 		LaunchGeneration: os.Getenv(agent.LaunchGenerationEnv),
 		Event:            os.Getenv(agent.CopilotHookEventEnv),
 		CopilotRoot:      hookrecv.CopilotRoot(os.Getenv, os.UserHomeDir),
+		Adopt:            hookAdopter(db, logger, settings),
 	}, settings.Clock.Now().UnixMilli())
 	if err != nil {
 		return err

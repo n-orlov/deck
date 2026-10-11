@@ -1820,32 +1820,62 @@ func (s *Store) ConsumeFreshOnce(ctx context.Context, sessionID, source string, 
 // either would leave the store in a state CreateSession could never
 // legally reach in the first place.
 func (s *Store) RenameSession(ctx context.Context, sessionID, newName, source string, at int64) error {
+	_, err := s.renameSession(ctx, sessionID, newName, source, nameSourceFor(source), false, at)
+	return err
+}
+
+// AdoptSessionName is RenameSession for a name the harness chose (SPEC §8
+// adoption): it records a renamed event with source (harness:<kind>) and
+// writes nameSource ('harness', or 'user' when the harness says a human chose
+// the name). The check that the row is still 'derived' or 'harness' runs in
+// the same transaction as the write, so a user rename that lands between the
+// caller's read and this call is never overwritten; adopted is false then,
+// and nothing is written.
+func (s *Store) AdoptSessionName(ctx context.Context, sessionID, newName, source, nameSource string, at int64) (adopted bool, err error) {
+	if nameSource != "harness" && nameSource != "user" {
+		return false, fmt.Errorf("adopted name source %q must be harness or user", nameSource)
+	}
+	return s.renameSession(ctx, sessionID, newName, source, nameSource, true, at)
+}
+
+// renameSession is the one rename transaction. adoptableOnly makes it a no-op
+// (false, nil) for a row whose name_source is 'user'.
+func (s *Store) renameSession(ctx context.Context, sessionID, newName, source, nameSource string, adoptableOnly bool, at int64) (bool, error) {
 	slug, err := renameSlug(sessionID, newName, at)
 	if err != nil {
-		return err
+		return false, err
 	}
 	if source == "" {
 		source = "user"
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return fmt.Errorf("begin rename session: %w", err)
+		return false, fmt.Errorf("begin rename session: %w", err)
 	}
 	defer rollbackTx(tx)
-	if err := claimRenameNameTx(ctx, tx, sessionID, newName, slug, at); err != nil {
-		return err
+	if adoptableOnly {
+		var current string
+		if err := tx.QueryRowContext(ctx, `SELECT name_source FROM sessions WHERE id = ?`, sessionID).Scan(&current); err != nil {
+			return false, fmt.Errorf("read name source: %w", err)
+		}
+		if current == "user" {
+			return false, nil
+		}
 	}
-	if err := writeSessionNameTx(ctx, tx, sessionID, newName, nameSourceFor(source)); err != nil {
-		return err
+	if err := claimRenameNameTx(ctx, tx, sessionID, newName, slug, at); err != nil {
+		return false, err
+	}
+	if err := writeSessionNameTx(ctx, tx, sessionID, newName, nameSource); err != nil {
+		return false, err
 	}
 	if _, err := tx.ExecContext(ctx, `INSERT INTO events (session_id, at, kind, reason, payload)
 		VALUES (?, ?, ?, ?, ?)`, sessionID, at, "renamed", source, newName); err != nil {
-		return fmt.Errorf("record rename session event: %w", err)
+		return false, fmt.Errorf("record rename session event: %w", err)
 	}
 	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("commit rename session: %w", err)
+		return false, fmt.Errorf("commit rename session: %w", err)
 	}
-	return nil
+	return true, nil
 }
 
 // renameSlug validates RenameSession's arguments and returns the slug the

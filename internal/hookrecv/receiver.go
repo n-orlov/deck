@@ -76,7 +76,21 @@ var Mappings = map[string]Mapping{
 	"Stop":              {Status: "idle", Kind: "stop", MessageField: "last_assistant_message"},
 	"StopFailure":       {Status: "error", Kind: "stop_failure", ReasonField: "error_type"},
 	"SessionEnd":        {Status: "stopped", Kind: "session_end", ReasonField: "reason"},
+	// session_info_changed is Pi's name-change event (deck's own extension
+	// sends it). It carries no status: it is recorded, never applied, and it
+	// triggers a name adoption.
+	"session_info_changed": {Kind: "session_info_changed"},
 }
+
+// adoptionTriggers are the hook events after which deck reads the harness's
+// name for the row (SPEC §8): Stop, UserPromptSubmit, Copilot's agentStop and
+// Pi's session_info_changed.
+var adoptionTriggers = map[string]bool{
+	"Stop": true, "UserPromptSubmit": true, "agentStop": true, "session_info_changed": true,
+}
+
+// AdoptionTrigger reports whether a hook event name triggers a name adoption.
+func AdoptionTrigger(eventName string) bool { return adoptionTriggers[eventName] }
 
 // sessionEndInSessionReasons are the SessionEnd `reason` values that are
 // documented, in requirement 43's evidence, as an in-session restart rather
@@ -275,7 +289,21 @@ func ReceiveFrom(ctx context.Context, db Store, raw []byte, origin Origin, at in
 		write.eventKind = supersededEventKind(mapping.Kind)
 		write.reason = supersededReason(session.LaunchGeneration, injectedLaunchGeneration)
 	}
-	return persistHook(ctx, db, p, mapping, session, raw, origin, at, write, result)
+	result, err = persistHook(ctx, db, p, mapping, session, raw, origin, at, write, result)
+	if err == nil {
+		adoptAfterHook(ctx, origin, p.EventName, result)
+	}
+	return result, err
+}
+
+// adoptAfterHook hands a landed trigger hook's row to origin.Adopt. A hook of
+// a launch deck has replaced describes a pane that is gone, so it triggers
+// nothing.
+func adoptAfterHook(ctx context.Context, origin Origin, eventName string, result Result) {
+	if origin.Adopt == nil || result.Superseded || !AdoptionTrigger(eventName) {
+		return
+	}
+	origin.Adopt(ctx, result.SessionID)
 }
 
 // hookWrite is the status write one hook resolves to.

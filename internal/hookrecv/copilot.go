@@ -23,6 +23,10 @@ type Origin struct {
 	// CopilotRoot is the resolved copilot root (COPILOT_HOME, else
 	// ~/.copilot) an agentStop transcriptPath must sit under.
 	CopilotRoot string
+	// Adopt, when set, is called once for a hook that applied to a live row and
+	// is an adoption trigger (see AdoptionTrigger): the caller reads the
+	// harness's name for that row (SPEC §8). Its failure never fails the hook.
+	Adopt func(ctx context.Context, sessionID string)
 }
 
 // CopilotRoot resolves the copilot root the way the adapter does: COPILOT_HOME

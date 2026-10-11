@@ -77,7 +77,12 @@ func (s Service) reconcileRow(ctx context.Context, session store.Session, liveBy
 	if pane, crashed := crashedPane(observed); crashed {
 		return s.collectCrashedPane(ctx, session, pane)
 	}
-	return s.reconcileLivePane(ctx, session, observed, staleAfter)
+	if err := s.reconcileLivePane(ctx, session, observed, staleAfter); err != nil {
+		return err
+	}
+	// The existing tick is also an adoption trigger (SPEC §8); never a new poll.
+	s.adoptOnTick(ctx, session)
+	return nil
 }
 
 // rowIsTerminal marks the rows this pass takes no *liveness verdict* from. A
