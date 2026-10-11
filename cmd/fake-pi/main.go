@@ -119,7 +119,13 @@ func runWithIO(args []string, stdin io.Reader, stdout io.Writer, getenv func(str
 
 	if getenv(commandsEnvironment) == "1" {
 		hooks := newExtensionHooks(opts, getenv)
-		if err := runCommands(stdin, stdout, getenv(fixtureDirectoryEnvironment), hooks); err != nil {
+		out := &lockedWriter{w: stdout}
+		control, err := openControlFile(hooks, getenv, out)
+		if err != nil {
+			return 0, err
+		}
+		defer control.close()
+		if err := runCommands(stdin, out, getenv(fixtureDirectoryEnvironment), hooks); err != nil {
 			return 0, err
 		}
 	}

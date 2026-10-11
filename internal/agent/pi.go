@@ -40,7 +40,7 @@ func (Pi) Capabilities() Caps {
 		Resumable:             true,
 		HasTranscript:         true,
 		Executable:            "pi",
-		Name:                  NameCaps{LaunchName: NameLaunchFlag, AutoTitle: false},
+		Name:                  NameCaps{LaunchName: NameLaunchFlag, AutoTitle: false, PushRename: NamePushSendKeys, ObserveName: []string{ObserveExtension}},
 	}
 }
 
@@ -104,6 +104,9 @@ func (Pi) Instrument(in LaunchInput) ([]string, map[string]string) {
 	env := map[string]string{PiHookExecutableEnv: in.DeckExecutable}
 	if in.LaunchGeneration != "" {
 		env[LaunchGenerationEnv] = in.LaunchGeneration
+	}
+	if in.DeckHome != "" {
+		env[PiControlDirEnv] = PiControlDir(in.DeckHome)
 	}
 	return []string{"-e", PiExtensionPath(in.DeckHome)}, env
 }

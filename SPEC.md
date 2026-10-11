@@ -1417,6 +1417,27 @@ status write is untouched: `session_info_changed` writes the event only. `cmd/fa
 name change with the pane command `{"command":"name","name":"x"}` (an empty name is a cleared
 one), firing the extension's `session_info_changed` payload.
 
+**Pushing a rename into Pi: the control file (R263).** Pi declares `PushRename=sendkeys` and
+`ObserveName=[extension]`; the preferred transport is not a keystroke but a per-session control
+file the extension owns. The launch puts `DECK_PI_CONTROL_DIR` in the pane environment, the
+directory `<deck home>/pi/control` of the launching profile's own data root (so a second profile
+has its own directory and never reaches another profile's Pi). In `session_start` the extension
+creates, truncated, `<DECK_PI_CONTROL_DIR>/<Pi session id>.jsonl` (the id deck assigned with
+`--session-id`; an id that is not a single safe path component opens nothing), and watches it.
+Each line deck appends is one JSON object, `{"name":"<sanitised name>"}`; a complete line whose
+name is a non-blank string is handed to `pi.setSessionName()`, any other line is ignored, and a
+partial line waits for its newline. `session_shutdown` stops the watch, closes the file and removes
+it, so a `session_start` that replaces the session inside the same process opens the new session's
+file. A rename push (§8 "Pushing a rename") to a Pi row first tries the file: when it exists and is
+a regular file deck appends the line, sends no keystroke, and holds the sanitised name as pending
+for its echo. That path does not need the idle/running gate or the dialog check, since nothing is
+typed. When the file is unavailable (no extension running, no hook executable in the environment,
+a launch without a data root) the push is the keystroke plan `Ctrl-U`, `/name <name>`, `Enter`
+under the §8 gate, and only then. `setSessionName` fires Pi's `session_info_changed`, so the
+extension reports the pushed name back; the receiver recognises it as the pending push and clears
+it (R252 echo suppression), and it is never adopted as a name a human chose in Pi. `cmd/fake-pi`
+plays the extension's file handling when it runs with the extension and `DECK_PI_CONTROL_DIR`.
+
 Pi has no event for a permission prompt or a failed turn, so a Pi row never reports `waiting` or
 `error` from a hook; those verdicts still come from the probe (§7) and from reconcile.
 

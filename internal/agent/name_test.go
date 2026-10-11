@@ -12,7 +12,7 @@ var nameCapsRows = map[string]NameCaps{
 	"claude":  {LaunchName: NameLaunchFlag, AutoTitle: true, PushRename: NamePushSendKeys, ObserveName: []string{ObserveHook, ObserveTranscript, ObservePaneTitle}},
 	"codex":   {},
 	"copilot": {LaunchName: NameLaunchFlagNewSessionOnly, AutoTitle: true, PushRename: NamePushSendKeys, ObserveName: []string{ObserveHook, ObserveYAML}},
-	"pi":      {LaunchName: NameLaunchFlag},
+	"pi":      {LaunchName: NameLaunchFlag, PushRename: NamePushSendKeys, ObserveName: []string{ObserveExtension}},
 	"shell":   {},
 }
 

@@ -47,6 +47,8 @@ func PiExtensionPath(deckHome string) string {
 // from stopping the row.
 const PiExtensionSource = `// Written by deck. Turns Pi events into ` + "`deck _hook`" + ` payloads (SPEC 8.1).
 import { spawnSync } from "node:child_process";
+import fs from "node:fs";
+import path from "node:path";
 
 const inSessionReasons = { new: "clear", resume: "resume", fork: "resume", reload: "resume" };
 
@@ -70,7 +72,61 @@ export default function (pi) {
       // a hook failure never reaches the agent
     }
   };
+  // The control file (R263): deck appends one JSON line {"name": "..."} per
+  // rename and the extension hands each to pi.setSessionName(). It is opened in
+  // session_start, keyed by Pi's conversation id, and closed in session_shutdown.
+  let control = null;
+  const closeControl = () => {
+    const open = control;
+    control = null;
+    if (!open) return;
+    try {
+      fs.unwatchFile(open.file);
+      fs.closeSync(open.fd);
+      fs.unlinkSync(open.file);
+    } catch (_) {
+      // a file that is already gone is closed
+    }
+  };
+  const drainControl = (open) => {
+    try {
+      const size = fs.fstatSync(open.fd).size;
+      if (size <= open.offset) return;
+      const chunk = Buffer.alloc(size - open.offset);
+      const read = fs.readSync(open.fd, chunk, 0, chunk.length, open.offset);
+      open.offset += read;
+      open.pending += chunk.toString("utf8", 0, read);
+      const lines = open.pending.split("\n");
+      open.pending = lines.pop();
+      for (const line of lines) applyControlLine(line);
+    } catch (_) {
+      // an unreadable control file changes nothing
+    }
+  };
+  const applyControlLine = (line) => {
+    try {
+      const name = JSON.parse(line).name;
+      if (typeof name === "string" && name.trim() !== "") pi.setSessionName(name);
+    } catch (_) {
+      // a line that is not a name is ignored
+    }
+  };
+  const openControl = (id) => {
+    closeControl();
+    const dir = process.env.` + PiControlDirEnv + `;
+    if (!dir || !id || !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(id)) return;
+    try {
+      fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+      const file = path.join(dir, id + ".jsonl");
+      const open = { file, fd: fs.openSync(file, "w+", 0o600), offset: 0, pending: "" };
+      control = open;
+      fs.watchFile(file, { interval: 100, persistent: false }, () => drainControl(open));
+    } catch (_) {
+      // without a control file deck falls back to typing the rename
+    }
+  };
   pi.on("session_start", (e, ctx) => {
+    openControl(ctx && ctx.sessionManager && ctx.sessionManager.getSessionId());
     let name = "";
     try {
       name = pi.getSessionName() || "";
@@ -81,7 +137,10 @@ export default function (pi) {
   });
   pi.on("before_agent_start", (e, ctx) => fire("UserPromptSubmit", ctx, {}));
   pi.on("agent_settled", (e, ctx) => fire("Stop", ctx, {}));
-  pi.on("session_shutdown", (e, ctx) => fire("SessionEnd", ctx, { reason: inSessionReasons[e.reason] || "other" }));
+  pi.on("session_shutdown", (e, ctx) => {
+    closeControl();
+    fire("SessionEnd", ctx, { reason: inSessionReasons[e.reason] || "other" });
+  });
   pi.on("session_info_changed", (e, ctx) => fire("session_info_changed", ctx, { name: e.name || "", cleared: !e.name }));
 }
 `

@@ -92,12 +92,15 @@ func (s Service) pushRename(ctx context.Context, session store.Session) PushResu
 	if !ok || session.Status == "stopped" || !s.adoptionOn(session) {
 		return PushResult{}
 	}
-	if reason := s.pushRefusal(ctx, adapter, session); reason != "" {
-		return s.refusePush(ctx, session, reason)
-	}
 	pushed, ok := agent.SanitisePushName(session.Agent, session.Name)
 	if !ok {
 		return s.refusePush(ctx, session, "the name is empty once cleaned for "+session.Agent)
+	}
+	if result, done := s.pushThroughControl(ctx, adapter, session, pushed); done {
+		return result
+	}
+	if reason := s.pushRefusal(ctx, adapter, session); reason != "" {
+		return s.refusePush(ctx, session, reason)
 	}
 	keys, ok := agent.PushName(adapter, agent.NamePushInput{Name: pushed})
 	if !ok {
@@ -108,6 +111,22 @@ func (s Service) pushRename(ctx context.Context, session store.Session) PushResu
 	}
 	s.markPending(ctx, adapter, session, pushed)
 	return PushResult{Sent: true, Note: "rename sent to " + session.Agent}
+}
+
+// pushThroughControl hands the name to an adapter's control channel (Pi's
+// control file, SPEC §8.3) when it has one open. It types nothing, so neither
+// the status gate nor the dialog check applies. done=false means the channel
+// is unavailable and the keystroke plan is the fallback.
+func (s Service) pushThroughControl(ctx context.Context, adapter agent.Adapter, session store.Session, pushed string) (PushResult, bool) {
+	delivered, err := agent.PushControl(adapter, agent.ControlPushInput{DeckHome: s.DeckHome, ConversationID: session.ConversationID, Name: pushed})
+	if err != nil {
+		return s.failPush(ctx, session, fmt.Sprintf("the control file could not be written: %v", err)), true
+	}
+	if !delivered {
+		return PushResult{}, false
+	}
+	s.markPending(ctx, adapter, session, pushed)
+	return PushResult{Sent: true, Note: "rename sent to " + session.Agent}, true
 }
 
 func (s Service) pushAdapter(session store.Session) (agent.Adapter, bool) {

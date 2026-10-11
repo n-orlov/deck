@@ -125,12 +125,12 @@ func TestPiInstrumentInstallsTheExtensionAndTheLaunchingDeckExecutable(t *testin
 	if len(argv) != 2 || argv[0] != "-e" || argv[1] != "/data/deck/pi/deck-hook.js" {
 		t.Fatalf("pi Instrument argv = %#v, want -e <data root>/pi/deck-hook.js", argv)
 	}
-	if env[PiHookExecutableEnv] != "/opt/deck/bin/deck" || env[LaunchGenerationEnv] != "gen-7" || len(env) != 2 {
+	if env[PiHookExecutableEnv] != "/opt/deck/bin/deck" || env[LaunchGenerationEnv] != "gen-7" || env[PiControlDirEnv] != "/data/deck/pi/control" || len(env) != 3 {
 		t.Fatalf("pi Instrument env = %#v", env)
 	}
 	in.LaunchGeneration = ""
-	if _, env := (Pi{}).Instrument(in); len(env) != 1 || env[PiHookExecutableEnv] == "" {
-		t.Fatalf("pi Instrument env without a lease = %#v, want only the hook executable", env)
+	if _, env := (Pi{}).Instrument(in); len(env) != 2 || env[PiHookExecutableEnv] == "" || env[PiControlDirEnv] == "" {
+		t.Fatalf("pi Instrument env without a lease = %#v, want only the hook executable and the control directory (R263, TestPiControlFile*)", env)
 	}
 }
 
