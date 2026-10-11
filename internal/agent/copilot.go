@@ -53,7 +53,7 @@ func (Copilot) Capabilities() Caps {
 		Executable:            "copilot",
 		TranscriptEnvKeys:     []string{"COPILOT_HOME"},
 		RowBadge:              "copilot",
-		Name:                  NameCaps{LaunchName: NameLaunchFlagNewSessionOnly},
+		Name:                  NameCaps{LaunchName: NameLaunchFlagNewSessionOnly, AutoTitle: true, PushRename: NamePushSendKeys, ObserveName: []string{ObserveHook, ObserveYAML}},
 	}
 }
 
@@ -177,12 +177,9 @@ func (Copilot) TranscriptPaths(in TranscriptInput) (string, bool) {
 	if !safeConversationID(in.ConversationID) {
 		return "", false
 	}
-	root := in.Env["COPILOT_HOME"]
+	root := copilotRoot(in.Env, in.Home)
 	if root == "" {
-		if in.Home == "" {
-			return "", false
-		}
-		root = filepath.Join(in.Home, ".copilot")
+		return "", false
 	}
 	path := filepath.Join(root, "session-state", in.ConversationID, "events.jsonl")
 	if info, err := os.Stat(path); err != nil || !info.Mode().IsRegular() {

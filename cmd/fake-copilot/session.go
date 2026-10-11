@@ -7,7 +7,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
+
+	"gopkg.in/yaml.v3"
 )
 
 // session is one conversation's directory under Copilot's home.
@@ -26,7 +29,11 @@ type session struct {
 // openSession creates the session directory and workspace.yaml when the id is
 // new, and reports a resume when the directory already holds a workspace.yaml.
 // Both happen at launch, before any prompt, exactly as Copilot does.
-func openSession(root, id, cwd string) (*session, error) {
+//
+// name is the explicit `-n` name of a new session ("" for none): it is written
+// as `name:` with `user_named: true`. A session without one is written with
+// `user_named: false` and no `name:` until its first prompt names it.
+func openSession(root, id, cwd, name string) (*session, error) {
 	dir := filepath.Join(root, "session-state", id)
 	sess := &session{id: id, cwd: cwd, dir: dir}
 	if _, err := os.Stat(filepath.Join(dir, "workspace.yaml")); err == nil {
@@ -39,11 +46,65 @@ func openSession(root, id, cwd string) (*session, error) {
 		return nil, fmt.Errorf("create session directory: %w", err)
 	}
 	stamp := time.Now().UTC().Format("2006-01-02T15:04:05.000Z")
-	yaml := fmt.Sprintf("id: %s\ncwd: %s\nclient_name: github/cli\nuser_named: false\ncreated_at: %s\nupdated_at: %s\n", id, cwd, stamp, stamp)
-	if err := os.WriteFile(filepath.Join(dir, "workspace.yaml"), []byte(yaml), 0o600); err != nil {
-		return nil, fmt.Errorf("write workspace.yaml: %w", err)
+	ws := workspaceFile{ID: id, CWD: cwd, ClientName: "github/cli", Name: name, UserNamed: name != "", CreatedAt: stamp, UpdatedAt: stamp}
+	if err := sess.writeWorkspace(ws); err != nil {
+		return nil, err
 	}
 	return sess, nil
+}
+
+// workspaceFile is workspace.yaml, with the fields Copilot 1.0.93 writes. name
+// is absent until the session has one.
+type workspaceFile struct {
+	ID         string `yaml:"id"`
+	CWD        string `yaml:"cwd"`
+	ClientName string `yaml:"client_name"`
+	Name       string `yaml:"name,omitempty"`
+	UserNamed  bool   `yaml:"user_named"`
+	CreatedAt  string `yaml:"created_at"`
+	UpdatedAt  string `yaml:"updated_at"`
+}
+
+func (s *session) workspacePath() string { return filepath.Join(s.dir, "workspace.yaml") }
+
+func (s *session) writeWorkspace(ws workspaceFile) error {
+	data, err := yaml.Marshal(ws)
+	if err != nil {
+		return fmt.Errorf("encode workspace.yaml: %w", err)
+	}
+	if err := os.WriteFile(s.workspacePath(), data, 0o600); err != nil { //nolint:gosec // G703: the fake writes inside the session directory it created from a UUID-checked id
+		return fmt.Errorf("write workspace.yaml: %w", err)
+	}
+	return nil
+}
+
+// generatedNameWords is how many leading words of the first prompt make the
+// title the fake generates, standing in for Copilot's separate title call.
+const generatedNameWords = 5
+
+// nameFromFirstPrompt gives an unnamed session the title Copilot generates
+// after the first prompt: `name:` is set from the prompt and `user_named`
+// stays false. A session that already has a name, or whose prompt is blank, is
+// left alone, as is a later prompt (the caller only asks for the first).
+func (s *session) nameFromFirstPrompt(text string) error {
+	words := strings.Fields(text)
+	if len(words) == 0 {
+		return nil
+	}
+	data, err := os.ReadFile(s.workspacePath()) //nolint:gosec // G703: reads the workspace.yaml in the session directory built from a UUID-checked id
+	if err != nil {
+		return fmt.Errorf("read workspace.yaml: %w", err)
+	}
+	var ws workspaceFile
+	if err := yaml.Unmarshal(data, &ws); err != nil {
+		return fmt.Errorf("parse workspace.yaml: %w", err)
+	}
+	if ws.Name != "" || ws.UserNamed {
+		return nil
+	}
+	ws.Name = strings.Join(words[:min(len(words), generatedNameWords)], " ")
+	ws.UpdatedAt = time.Now().UTC().Format("2006-01-02T15:04:05.000Z")
+	return s.writeWorkspace(ws)
 }
 
 // eventsPath is the transcript Copilot hands to agentStop hooks.

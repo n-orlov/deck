@@ -122,7 +122,7 @@ func startApp(opts options, args []string, stdout, stderr io.Writer, getenv func
 		sayf(stderr, "fake-copilot: neither COPILOT_HOME nor HOME is set\n")
 		return nil, 2
 	}
-	sess, err := openSession(root, id, cwd)
+	sess, err := openSession(root, id, cwd, opts.name)
 	if err != nil {
 		sayf(stderr, "fake-copilot: %v\n", err)
 		return nil, 2
@@ -299,7 +299,7 @@ Options:
   --plugin-dir <dir>    Load hooks.json from this plugin directory and run its hook commands.
   --allow-tool=<tool>   Accepted (echoed in the banner), grants nothing.
   --allow-all           Accepted (echoed in the banner), grants nothing.
-  -n <name>             Accepted, names a new session.
+  -n <name>             Names a new session: workspace.yaml gets name: and user_named: true.
   --no-auto-update      Accepted.
   --help, -h            Show this help.
 

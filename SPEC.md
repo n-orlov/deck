@@ -1437,6 +1437,26 @@ control characters go, it is trimmed and cut to 100 runes. A blank name passes n
 `--name`, `-n=<x>` and `--name=<x>` in `launch_args` are refused by `Launch` and `Resume` with a
 deck-side error that names the flag and no argv: deck owns the name.
 
+**Reading Copilot's name (R260).** Copilot declares `NameCaps.AutoTitle=true` and
+`ObserveName=[hook, yaml]`. The source of truth is `<copilot home>/session-state/<conversation
+id>/workspace.yaml` (the home is the session's `COPILOT_HOME`, else `~/.copilot`), read when a
+trigger hook (`agentStop`, `session_info_changed`) or the reconcile tick asks. The reader parses
+it with a real YAML parser (`gopkg.in/yaml.v3`), so a name holding `:`, `'`, `#` or Unicode comes
+back exactly as Copilot wrote it, and reads at most 64 KiB. A `user_named: false` file with a
+non-empty `name` is Copilot's own generated title: adopted as `name_source = harness`. A
+`user_named: true` file whose name differs from deck's was chosen by a human (`-n`, `/rename`):
+adopted as a name a human chose, which freezes the row. No `name`, a blank one, an `id` that
+names another conversation, an unsafe conversation id, a missing or unparsable file are all "no
+name". deck never writes the file.
+
+**Pushing a rename into Copilot (R260).** Copilot declares `PushRename=sendkeys`. The plan is
+two send-keys calls: the text `/rename <name>`, then a lone `Enter`. The name is cleaned again
+for Copilot (`"` becomes `'`, control characters go, at most 100 runes) and a name with nothing
+left is declined. The push gate, dialog check, echo wait and failure events are those of §8
+"Pushing a rename". `fake-copilot` writes `name:` with `user_named: true` for an explicit `-n`,
+and gives a session without a name a generated `name:` (its first words) with `user_named: false`
+at the first prompt, never replacing a name and never retitling on a later prompt.
+
 **Capabilities.** Profiles `safe`, `edits` and `yolo` (no `plan`: it falls back to `safe`, §5);
 `AssignsConversationID`, `Resumable` and `HasTranscript` are true; the declared transcript
 environment key is `COPILOT_HOME`, resolved from the session's own layering (§6.1), never

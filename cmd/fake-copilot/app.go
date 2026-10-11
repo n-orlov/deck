@@ -109,6 +109,9 @@ func (a *app) prompt(text string, hold bool) error {
 	a.fire("userPromptSubmitted", map[string]any{"prompt": text})
 	if !a.prompted {
 		a.prompted = true
+		if err := a.sess.nameFromFirstPrompt(text); err != nil {
+			return err
+		}
 		source := "new"
 		if a.sess.resumed {
 			source = "resume"
