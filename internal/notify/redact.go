@@ -314,9 +314,14 @@ func quotedKeySlashes(text string, from int, before string) (int, bool) {
 }
 
 // escapedValueEnd reports where a value ends that opens with the escaped
-// quote opener (backslashes and a quote) and closes at the next opener that
-// is not itself the tail of a longer run of backslashes, so a deeper level of
-// escaping inside the value does not close it early.
+// quote opener (s backslashes and a quote) and closes at the next opener that
+// is the real closing quote at the same level of escaping. At level L the
+// opener carries s = 2^(L-1)-1 backslashes and each backslash of the original
+// text is s+1 of them (len(opener)), so the backslashes in front of an opener
+// come in groups of len(opener): a closing quote is preceded by an even
+// number of groups (an original run of backslashes that escapes nothing,
+// however long, as in a value ending in a backslash), an escaped quote inside
+// the value by an odd number.
 func escapedValueEnd(text string, valStart int, opener string) (int, bool) {
 	if !strings.HasPrefix(text[valStart:], opener) {
 		return 0, false
@@ -328,7 +333,8 @@ func escapedValueEnd(text string, valStart int, opener string) (int, bool) {
 			return 0, false
 		}
 		at += from
-		if text[at-1] != '\\' {
+		between := text[from:at]
+		if run := len(between) - len(strings.TrimRight(between, `\`)); run%(2*len(opener)) == 0 {
 			return at + len(opener), true
 		}
 		from = at + 1

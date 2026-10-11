@@ -1658,8 +1658,8 @@ argv[1]: the configured fixed arguments follow it (`script <event> <fixed>...`).
   Redaction masks the value of every secret-shaped `KEY=VALUE` pair in the message (the key
   may be quoted, as in `{"api_key": "v"}`, or quoted with `\"` as in JSON serialised into a JSON
   string, `{\"api_key\":\"v\"}`, at any level of escaping and with or without space around the
-  colon, where the value is masked through its matching escaped quote and the text after it
-  stays; a `KEY: VALUE` pair counts too) and of these other
+  colon, where the value is masked through its matching escaped quote, also when it contains
+  whitespace or ends in backslashes, and the text after it stays; a `KEY: VALUE` pair counts too) and of these other
   shapes, wherever they appear in the message, the reasons and the captured output tail: the
   token after `Bearer` (`Authorization: Bearer <token>` or `Bearer <token>` alone); the value of
   a flag whose last word is `token`, `secret`, `key`, `password`, `passwd` or `credential`

@@ -3,7 +3,9 @@ package notify
 import (
 	"context"
 	"encoding/json"
+	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -445,6 +447,97 @@ func TestSpawnMasksEscapedJSONKeyInEnvPayloadAndStoredOutput(t *testing.T) {
 	}
 	if strings.Count(res.Output, MaskedPlaceholder) < 2 {
 		t.Errorf("stored output = %q, want the placeholder in both the out and err lines", res.Output)
+	}
+}
+
+// jsonLevels serialises doc as JSON text and then as the inside of a JSON
+// string, twice more: levels 1, 2 and 3 of escaping, with json.Marshal doing
+// every escape.
+func jsonLevels(t *testing.T, doc any) [3]string {
+	t.Helper()
+	raw, err := json.Marshal(doc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	levels := [3]string{string(raw)}
+	for i := 1; i < len(levels); i++ {
+		quoted, err := json.Marshal(levels[i-1])
+		if err != nil {
+			t.Fatal(err)
+		}
+		levels[i] = string(quoted[1 : len(quoted)-1])
+	}
+	return levels
+}
+
+// escapedSecretValues are secret values with whitespace, some ending in one
+// or more backslashes, some holding quotes or backslash runs inside.
+var escapedSecretValues = []string{
+	`LEAKA one two\`, `LEAKB one two\\`, `LEAKC one two\\\`, `LEAKD one\ two\\ three`,
+	`LEAKE a "quoted" b\`, `LEAKF tab\there \\"x\\" end\`, `LEAKG\ `, `LEAKH sp\ ace`,
+}
+
+// secretWords are the fragments of a secret value that must not survive
+// redaction: its alphabetic runs of three or more letters.
+func secretWords(value string) []string {
+	return regexp.MustCompile(`[A-Za-z]{3,}`).FindAllString(value, -1)
+}
+
+// A value ending in backslashes is masked through its true closing quote at
+// every serialisation level, and the text after it stays.
+func TestRedactMasksJSONMarshalledSecretsWithTrailingBackslashes(t *testing.T) {
+	for _, key := range []string{"api_key", "password", "client_secret"} {
+		for _, value := range escapedSecretValues {
+			doc := map[string]string{"1before": "KEEPBEFORE x", key: value, "3after": "KEEPAFTER y"}
+			for level, in := range jsonLevels(t, doc) {
+				got := Redact(in, nil)
+				for _, word := range secretWords(value) {
+					if strings.Contains(got, word) {
+						t.Errorf("%s level %d value %q: fragment %q survives in %q", key, level+1, value, word, got)
+					}
+				}
+				if strings.Count(got, MaskedPlaceholder) != 1 || !strings.Contains(got, "KEEPBEFORE x") || !strings.Contains(got, "KEEPAFTER y") {
+					t.Errorf("%s level %d value %q: Redact = %q, want one mask with the neighbours kept", key, level+1, value, got)
+				}
+			}
+		}
+	}
+}
+
+// The same documents, at each level, through Spawn: DECK_EVENT_MESSAGE, the
+// stdin JSON and the stored output tail carry no fragment of the secret.
+func TestSpawnMasksJSONMarshalledSecretsWithTrailingBackslashesOnEverySurface(t *testing.T) {
+	for i, value := range escapedSecretValues {
+		doc := map[string]string{"api_key": value, "after": "KEEPAFTER"}
+		for level, in := range jsonLevels(t, doc) {
+			file := filepath.Join(t.TempDir(), "doc")
+			if err := os.WriteFile(file, []byte("err: "+in+" tail\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			path, dir := captureScript(t, `echo "out: $DECK_EVENT_MESSAGE"; cat `+file+` >&2`)
+			req := baseRequest(path)
+			req.Event.Message = "got " + in + " finish"
+			res, err := Spawn(context.Background(), req)
+			if err != nil || res.Failed() {
+				t.Fatalf("value %d level %d: Spawn = %+v, %v", i, level+1, res, err)
+			}
+			env := envMap(read(t, filepath.Join(dir, "env")))
+			stdin := read(t, filepath.Join(dir, "stdin"))
+			var p struct{ Event struct{ Message string } }
+			if err := json.Unmarshal([]byte(stdin), &p); err != nil {
+				t.Fatal(err)
+			}
+			for name, surface := range map[string]string{"env": env["DECK_EVENT_MESSAGE"], "payload": p.Event.Message, "output": res.Output} {
+				for _, word := range secretWords(value) {
+					if strings.Contains(surface, word) || strings.Contains(stdin, word) {
+						t.Errorf("value %d level %d: %s %q carries %q", i, level+1, name, surface, word)
+					}
+				}
+				if !strings.Contains(surface, MaskedPlaceholder) || !strings.Contains(surface, "KEEPAFTER") {
+					t.Errorf("value %d level %d: %s %q, want a mask and KEEPAFTER", i, level+1, name, surface)
+				}
+			}
+		}
 	}
 }
 
