@@ -105,6 +105,11 @@ var maskShapeCases = []struct {
 }{
 	{"json quoted key", `{"api_key": "sk-x"}`, `{"api_key": ` + MaskedPlaceholder + `}`, "sk-x"},
 	{"json quoted key no space", `"password":"hunter2"`, `"password":` + MaskedPlaceholder, "hunter2"},
+	// JSON serialised into a JSON string: the key's quotes carry backslashes.
+	{"escaped json key", `{\"api_key\":\"sk_live_abcdef123\"}`, `{\"api_key\":` + MaskedPlaceholder + `}`, "sk_live_abcdef123"},
+	{"escaped json key space after colon", `{\"password\": \"hunter2hunter2\"}`, `{\"password\": ` + MaskedPlaceholder + `}`, "hunter2hunter2"},
+	{"escaped json key space before colon", `{\"api_key\" : \"sk_live_spacecolon1\"}`, `{\"api_key\" : ` + MaskedPlaceholder + `}`, "sk_live_spacecolon1"},
+	{"escaped json key two levels", `{\\\"api_key\\\":\\\"sk_live_twolevels1\\\"}`, `{\\\"api_key\\\":` + MaskedPlaceholder + `}`, "sk_live_twolevels1"},
 	{"single quoted key", `{'client_secret' : 'a b'} next`, `{'client_secret' : ` + MaskedPlaceholder + `} next`, "a b"},
 	{"authorization bearer", "Authorization: Bearer abc.def-123", "Authorization: Bearer " + MaskedPlaceholder, "abc.def-123"},
 	{"bearer alone", "curl -H Bearer tok_8f3a2c9d now", "curl -H Bearer " + MaskedPlaceholder + " now", "tok_8f3a2c9d"},

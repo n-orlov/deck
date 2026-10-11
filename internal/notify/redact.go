@@ -271,7 +271,11 @@ func findQuotedKeyValue(text string, from int) (int, int, int, bool) {
 }
 
 // quotedKeyValueAt reports the value span behind the separator at sep when
-// the text between from and sep ends in a quoted secret-shaped key.
+// the text between from and sep ends in a quoted secret-shaped key. The key's
+// quotes may be backslash-escaped, as in JSON serialised into a JSON string,
+// {\"api_key\":\"v\"}: both quotes then carry the same run of backslashes,
+// and a value that opens with that run and a quote ends at the next such run
+// and quote (escapedValueEnd).
 func quotedKeyValueAt(text string, from, sep int) (int, int, bool) {
 	before := strings.TrimRight(text[from:sep], asciiSpace)
 	quoteAt := from + len(before) - 1
@@ -279,12 +283,45 @@ func quotedKeyValueAt(text string, from, sep int) (int, int, bool) {
 	if len(before) == 0 || valStart == len(text) || !isQuote(text[quoteAt]) {
 		return 0, 0, false
 	}
-	keyStart := from + len(strings.TrimRight(before[:len(before)-1], keyBytes))
-	if keyStart == quoteAt || keyStart == 0 || text[keyStart-1] != text[quoteAt] ||
-		!IsSecretShapedKey(text[keyStart:quoteAt]) {
+	// The backslashes in front of the closing quote, then the key itself.
+	body := before[:len(before)-1]
+	slashes := len(body) - len(strings.TrimRight(body, `\`))
+	keyStart := from + len(strings.TrimRight(body[:len(body)-slashes], keyBytes))
+	openAt := keyStart - 1 - slashes
+	if keyStart == quoteAt-slashes || openAt < 0 || text[keyStart-1] != text[quoteAt] ||
+		strings.TrimLeft(text[openAt:keyStart-1], `\`) != "" ||
+		!IsSecretShapedKey(text[keyStart:quoteAt-slashes]) {
 		return 0, 0, false
 	}
+	if slashes > 0 {
+		if end, ok := escapedValueEnd(text, valStart, text[quoteAt-slashes:quoteAt+1]); ok {
+			return valStart, end, true
+		}
+	}
 	return valStart, assignmentValueEnd(text, valStart), true
+}
+
+// escapedValueEnd reports where a value ends that opens with the escaped
+// quote opener (backslashes and a quote) and closes at the next opener that
+// is not itself the tail of a longer run of backslashes, so a deeper level of
+// escaping inside the value does not close it early.
+func escapedValueEnd(text string, valStart int, opener string) (int, bool) {
+	if !strings.HasPrefix(text[valStart:], opener) {
+		return 0, false
+	}
+	from := valStart + len(opener)
+	for from < len(text) {
+		at := strings.Index(text[from:], opener)
+		if at < 0 {
+			return 0, false
+		}
+		at += from
+		if text[at-1] != '\\' {
+			return at + len(opener), true
+		}
+		from = at + 1
+	}
+	return 0, false
 }
 
 // isQuote reports whether b opens or closes a quoted string.
