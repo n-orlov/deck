@@ -1659,7 +1659,8 @@ argv[1]: the configured fixed arguments follow it (`script <event> <fixed>...`).
   a flag whose last word is `token`, `secret`, `key`, `password`, `passwd` or `credential`
   (`--token abc`, `--password=abc`, `--api-key abc`; `--tokens-per-minute 5` is not one); a body
   of at least eight characters behind `sk-`, `ghp_` (also `gho_`, `ghu_`, `ghs_`, `ghr_`),
-  `github_pat_` or `AKIA`; and a three-segment JWT (`eyJ…`.payload.signature). A quoted value (a pair's, a quoted key's, a
+  `github_pat_` or `AKIA`; and a three-segment JWT (header.payload.signature, the header being base64url JSON in any legal
+  spacing, so `{ "alg"…` encoded as `eyAi…` counts as much as `eyJ…`; dotted prose whose first segment is not a JSON object is left alone). A quoted value (a pair's, a quoted key's, a
   flag's or a `Bearer` token's) is masked through its real closing quote: a backslash escapes the byte after it, so
   `"ab\"cd"` and `"a\\"` are each one value and no suffix is left in the clear. Every shape is
   found in the original text and overlapping matches are masked as one span, so another shape

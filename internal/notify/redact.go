@@ -1,6 +1,9 @@
 package notify
 
 import (
+	"bytes"
+	"encoding/base64"
+	"encoding/json"
 	"sort"
 	"strings"
 	"unicode/utf8"
@@ -364,25 +367,46 @@ func findPrefixedBody(text string, from int, prefix string) (int, int, int, bool
 	return 0, 0, 0, false
 }
 
-// findJWT finds a three-segment JSON web token: a base64url header (which
-// always begins eyJ, the encoding of {"), a payload and a signature, joined by
-// dots.
+// findJWT finds a three-segment JSON web token: a base64url JOSE header, a
+// payload and a signature, joined by dots. The header is recognised by what it
+// decodes to (a JSON object), not by its spelling: the encoding of {" begins
+// eyJ, but JSON allows whitespace between the brace and the first key
+// ({ "alg"... encodes to eyAi..., a newline to ewo...), and such a token is as
+// much a credential. The search walks from dot to dot with strings functions,
+// so it stays linear (see asciiSpace): each dot looks back over the one
+// segment before it, and a segment is looked over once.
 func findJWT(text string, from int) (int, int, int, bool) {
 	for from < len(text) {
-		at := strings.Index(text[from:], "eyJ")
-		if at < 0 {
+		dot := strings.IndexByte(text[from:], '.')
+		if dot < 0 {
 			return 0, 0, 0, false
 		}
-		i := from + at
-		from = i + 3
-		if !startsWord(text, i) {
+		dot += from
+		start := from + len(strings.TrimRight(text[from:dot], tokenBytes))
+		from = dot + 1
+		if start == dot || !startsWord(text, start) {
 			continue
 		}
-		if end := jwtEnd(text, i); end > 0 {
-			return i, end, end, true
+		if end := jwtEnd(text, start); end > 0 && isJOSEHeader(text[start:dot]) {
+			return start, end, end, true
 		}
 	}
 	return 0, 0, 0, false
+}
+
+// isJOSEHeader reports whether segment is the base64url encoding of a
+// non-empty JSON object, however the JSON is spaced. A segment that begins
+// eyJ (the encoding of {") is one even when it is cut short.
+func isJOSEHeader(segment string) bool {
+	if strings.HasPrefix(segment, "eyJ") {
+		return true
+	}
+	raw, err := base64.RawURLEncoding.DecodeString(segment)
+	if err != nil || !json.Valid(raw) {
+		return false
+	}
+	object := bytes.Trim(raw, " \t\r\n")
+	return len(object) > 2 && object[0] == '{' && object[len(object)-1] == '}'
 }
 
 // jwtEnd returns where the token whose header starts at i ends, or -1 when

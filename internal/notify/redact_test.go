@@ -86,11 +86,16 @@ func TestTailBufferKeepsTheLastBytesOnARuneStart(t *testing.T) {
 }
 
 const (
-	testJWT    = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"
-	testGHP    = "ghp_aBcDeFgHiJkLmNoPqRsTuVwXyZ0123456789"                   //nolint:gosec // G101: a fixture shaped like a credential on purpose, to prove the mask
-	testPAT    = "github_pat_11ABCDEFG0aBcDeFgHiJkL_mNoPqRsTuVwXyZ0123456789" //nolint:gosec // G101: a fixture shaped like a credential on purpose, to prove the mask
-	testAWSKey = "AKIAIOSFODNN7EXAMPLE"                                       //nolint:gosec // G101: a fixture shaped like a credential on purpose, to prove the mask
-	testSK     = "sk-proj-AbCdEfGhIjKlMnOp1234"
+	testJWT = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"
+	// The same token with the JOSE header spaced the way JSON allows: its first
+	// bytes encode to eyAi, ewog and IHsi, not eyJ.
+	testJWTSpaced  = "eyAiYWxnIjogIkhTMjU2IiwgInR5cCI6ICJKV1QiIH0.eyJzdWIiOiIxMjM0NTY3ODkwIn0.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"
+	testJWTNewline = "ewogICJhbGciOiAiSFMyNTYiCn0.eyJzdWIiOiIxMjM0NTY3ODkwIn0.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"
+	testJWTLeading = "IHsiYWxnIjoiUlMyNTYifSA.eyJzdWIiOiIxIn0.c2lnbmF0dXJlLXNlZ21lbnQ"
+	testGHP        = "ghp_aBcDeFgHiJkLmNoPqRsTuVwXyZ0123456789"                   //nolint:gosec // G101: a fixture shaped like a credential on purpose, to prove the mask
+	testPAT        = "github_pat_11ABCDEFG0aBcDeFgHiJkL_mNoPqRsTuVwXyZ0123456789" //nolint:gosec // G101: a fixture shaped like a credential on purpose, to prove the mask
+	testAWSKey     = "AKIAIOSFODNN7EXAMPLE"                                       //nolint:gosec // G101: a fixture shaped like a credential on purpose, to prove the mask
+	testSK         = "sk-proj-AbCdEfGhIjKlMnOp1234"
 )
 
 // Each secret shape of SPEC §10.1 and the lines next to them that must not be
@@ -116,6 +121,13 @@ var maskShapeCases = []struct {
 	{"github_pat prefix", "pat " + testPAT + " end", "pat " + MaskedPlaceholder + " end", testPAT},
 	{"AKIA prefix", "aws " + testAWSKey + " end", "aws " + MaskedPlaceholder + " end", testAWSKey},
 	{"jwt", "got " + testJWT + " back", "got " + MaskedPlaceholder + " back", "SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"},
+	{"jwt spaced header", "got " + testJWTSpaced + " back", "got " + MaskedPlaceholder + " back", "SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"},
+	{"jwt newline header", "tok=\n" + testJWTNewline + " back", "tok=\n" + MaskedPlaceholder + " back", "SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"},
+	{"jwt leading-space header", "x " + testJWTLeading + ", y", "x " + MaskedPlaceholder + ", y", "c2lnbmF0dXJl"},
+	{"jwt spaced header in quotes", `{"note": "` + testJWTSpaced + `"}`, `{"note": "` + MaskedPlaceholder + `"}`, "SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"},
+	{"dotted prose", "see file.name.txt and e30.e30.x and aGVsbG8.d29ybGQ.IQ end", "see file.name.txt and e30.e30.x and aGVsbG8.d29ybGQ.IQ end", ""},
+	{"non-object json header", "WzEsMl0.eyJhIjoxfQ.c2ln MQ.Mg.Mw", "WzEsMl0.eyJhIjoxfQ.c2ln MQ.Mg.Mw", ""},
+	{"dotted words around", "a.b.c, foo.bar.baz. x.y", "a.b.c, foo.bar.baz. x.y", ""},
 	// A backslash escapes the byte after it inside a quoted value: the secret
 	// is masked through its real closing quote and no suffix survives.
 	{"json escaped quote", `{"api_key": "ab\"cd-LEAK"} tail`, `{"api_key": ` + MaskedPlaceholder + `} tail`, "LEAK"},
@@ -300,5 +312,35 @@ func TestSpawnMasksTheNewShapesInEnvPayloadAndStoredOutput(t *testing.T) {
 		!strings.Contains(res.Output, "Bearer "+MaskedPlaceholder) ||
 		!strings.Contains(res.Output, "--password "+MaskedPlaceholder) {
 		t.Errorf("stored output = %q, want the masked shapes in the tail", res.Output)
+	}
+}
+
+// A JWT whose JOSE header is spaced the way JSON allows is masked in the
+// message (env and stdin) and in the stored output tail, while dotted prose
+// next to it is untouched.
+func TestSpawnMasksAWhitespaceHeaderJWTInEnvPayloadAndStoredOutput(t *testing.T) {
+	path, dir := captureScript(t, `echo "out: $DECK_EVENT_MESSAGE"; echo "err: jwt `+testJWTNewline+` file.name.txt" >&2`)
+	req := baseRequest(path)
+	req.Event.Message = "token " + testJWTSpaced + " in file.name.txt"
+	res, err := Spawn(context.Background(), req)
+	if err != nil || res.Failed() {
+		t.Fatalf("Spawn = %+v, %v", res, err)
+	}
+	env := envMap(read(t, filepath.Join(dir, "env")))
+	var p struct{ Event struct{ Message string } }
+	if err := json.Unmarshal([]byte(read(t, filepath.Join(dir, "stdin"))), &p); err != nil {
+		t.Fatal(err)
+	}
+	want := "token " + MaskedPlaceholder + " in file.name.txt"
+	if env["DECK_EVENT_MESSAGE"] != want || p.Event.Message != want {
+		t.Errorf("message env %q, stdin %q, want %q", env["DECK_EVENT_MESSAGE"], p.Event.Message, want)
+	}
+	for _, leak := range []string{testJWTSpaced, testJWTNewline, "SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"} {
+		if strings.Contains(res.Output, leak) {
+			t.Errorf("stored output tail carries %q: %q", leak, res.Output)
+		}
+	}
+	if !strings.Contains(res.Output, "jwt "+MaskedPlaceholder+" file.name.txt") {
+		t.Errorf("stored output = %q, want the masked JWT and the prose kept", res.Output)
 	}
 }
