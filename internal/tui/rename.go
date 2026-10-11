@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/n-orlov/deck/internal/service"
 	"github.com/n-orlov/deck/internal/store"
 	"github.com/n-orlov/deck/internal/theme"
 	"github.com/n-orlov/deck/internal/tui/lineedit"
@@ -330,7 +331,7 @@ func (m Model) updateRenameDialog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 // place and returning only the resulting tea.Cmd -- the same shape
 // submitCreate/submitEnvEdit already use.
 func (m *Model) submitRename() tea.Cmd {
-	if m.renamer == nil {
+	if m.renamer == nil && m.renamePusher == nil {
 		m.renameNote = "renaming is unavailable"
 		return nil
 	}
@@ -339,11 +340,33 @@ func (m *Model) submitRename() tea.Cmd {
 	}
 	session, _ := m.selectedSession()
 	sessionID, newName := session.ID, m.renameEdit.Value()
-	renamer := m.renamer
+	renamer, pusher := m.renamer, m.renamePusher
 	return func() tea.Msg {
+		if pusher != nil {
+			updated, pushed, err := pusher(context.Background(), sessionID, newName)
+			return sessionRenamed{session: updated, err: err, note: pushed.Note}
+		}
 		updated, err := renamer(context.Background(), sessionID, newName)
 		return sessionRenamed{session: updated, err: err}
 	}
+}
+
+// WithRenamePusher attaches service.Service.RenameAndPush as the rename
+// action: the rename plus the push of the new name into a running harness.
+// Without it the plain renamer is used and no push is attempted.
+func (m Model) WithRenamePusher(pusher func(context.Context, string, string) (store.Session, service.PushResult, error)) Model {
+	m.renamePusher = pusher
+	return m
+}
+
+// pushNoteShown reports whether the rename push note belongs on the footer:
+// it is shown only while the row it describes is the selected one.
+func (m Model) pushNoteShown() bool {
+	if m.pushNote == "" || !m.hasSelectedSession() {
+		return false
+	}
+	session, _ := m.selectedSession()
+	return session.ID == m.pushNoteID
 }
 
 // renameView renders the rename sub-dialog: a single free-text field

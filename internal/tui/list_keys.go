@@ -81,6 +81,7 @@ func (m Model) onKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if m.guardSessionScopedKey(msg.String()) {
 		return m, nil
 	}
+	m.pushNote, m.pushNoteID = "", ""
 	if handle, ok := listKeyHandlers[msg.String()]; ok {
 		return handle(m, msg)
 	}

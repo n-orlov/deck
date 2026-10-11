@@ -264,6 +264,8 @@ func newDeckModel(db *store.Store, settings config.Settings, sessions service.Se
 	// WithTeardownHookReporters wants, so they are passed directly (no
 	// adapter, no discarding).
 	model = model.WithTeardownHookReporters(sessions.Archive, sessions.Delete)
+	// R252: a rename in the `i` dialog is also pushed into a running harness.
+	model = model.WithRenamePusher(sessions.RenameAndPush)
 	// §11.9 interactive mode (task 061, PRD Part II onward) is the one Model
 	// dependency that needs the raw tmux.Client itself rather than one more
 	// narrow func field: window geometry, ownership and dispatcher/transport

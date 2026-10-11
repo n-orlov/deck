@@ -69,6 +69,9 @@ type Service struct {
 	// for CreateAgent and, later, Resume. Only CreateShell tolerates it
 	// being nil; agent creation requires it.
 	Agents *agent.Registry
+	// NamePane is the pane access a rename push uses (the screen read for a
+	// focused dialog and the keystroke plan send). nil is the real tmux client.
+	NamePane PanePort
 	// ConfigEnv mirrors config.toml's [env] table (SPEC §6.3): the layer
 	// between captured_path and the session's own env in PATH resolution
 	// order. A nil map is the common, valid case of no configured overrides.

@@ -121,3 +121,26 @@ func PushName(a Adapter, in NamePushInput) (keys []string, ok bool) {
 	}
 	return pusher.PushName(in)
 }
+
+// DialogDetector is the optional interface of an adapter that can tell, from
+// the text of its pane, that one of the harness's own dialogs (a permission
+// prompt, a trust screen, a picker) has the keyboard focus. A deck rename is
+// never pushed into a focused dialog, because the dialog swallows or
+// misreads the keystrokes (SPEC §8 "Pushing a rename").
+type DialogDetector interface {
+	DialogFocused(screen string) bool
+}
+
+// DialogFocused is the dispatcher for DialogDetector: an adapter that does not
+// implement it reports no dialog.
+func DialogFocused(a Adapter, screen string) bool {
+	detector, ok := a.(DialogDetector)
+	return ok && detector.DialogFocused(screen)
+}
+
+// IsDialogDetector reports whether a can be asked about a focused dialog, so a
+// caller reads the pane only when the answer can matter.
+func IsDialogDetector(a Adapter) bool {
+	_, ok := a.(DialogDetector)
+	return ok
+}

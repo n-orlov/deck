@@ -580,6 +580,14 @@ type Model struct {
 	// unavailable and submitting states so rather than silently doing
 	// nothing.
 	renamer func(context.Context, string, string) (store.Session, error)
+	// renamePusher, when set by WithRenamePusher, replaces renamer: the same
+	// rename, plus the push of the new name into a running harness (SPEC §8
+	// "Pushing a rename"). pushNote is the footer note naming why a push was
+	// refused or failed, shown while pushNoteID stays selected and until the
+	// next list-mode key.
+	renamePusher func(context.Context, string, string) (store.Session, service.PushResult, error)
+	pushNote     string
+	pushNoteID   string
 	// renaming is true while the rename sub-dialog (reachable ONLY from
 	// inside the `i` detail dialog, never as a top-level key) is open;
 	// m.detail stays true underneath it the whole time, so cancelling or
@@ -1917,6 +1925,8 @@ type resumeModeChanged struct {
 type sessionRenamed struct {
 	session store.Session
 	err     error
+	// note is the rename push's footer note (empty when nothing was pushed).
+	note string
 }
 
 // envEdited is the reply to a committed `e` env-editor edit (task 021):
@@ -3979,6 +3989,10 @@ func (m Model) onResumeModeChanged(msg resumeModeChanged) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) onSessionRenamed(msg sessionRenamed) (tea.Model, tea.Cmd) {
+	m.pushNote, m.pushNoteID = "", ""
+	if msg.err == nil && msg.note != "" {
+		m.pushNote, m.pushNoteID = msg.note, msg.session.ID
+	}
 	// Mirrors profileSwitched/resumeModeChanged exactly: a successful
 	// rename closes the rename sub-dialog (m.detail, underneath it,
 	// stays true -- rename is an action inside detail, so submitting
@@ -4965,6 +4979,10 @@ func (m Model) footerLine() string {
 // footerLineContent is footerLine's own composition, before the canvas
 // paint wrapping above.
 func (m Model) footerLineContent() string {
+	if m.pushNoteShown() && !m.computeLayout().BelowMinimum && !m.interactive {
+		width, _ := m.frameSize()
+		return m.elideToWidth(m.pushNote, width)
+	}
 	if m.computeLayout().BelowMinimum {
 		width, _ := m.frameSize()
 		return truncateToWidth(belowMinimumNotice, width)

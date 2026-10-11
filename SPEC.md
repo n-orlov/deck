@@ -420,7 +420,7 @@ CREATE TABLE sessions (
   archived_at        INTEGER NOT NULL DEFAULT 0,
   pinned_at          INTEGER NOT NULL DEFAULT 0, -- sidebar pin (§11); 0 = not pinned, else when it was pinned
   name_source        TEXT NOT NULL DEFAULT 'user' CHECK (name_source IN ('user','derived','harness')), -- who last wrote `name`: user = typed in deck, derived = deck's default from the cwd or first prompt, harness = adopted from the agent's own session title
-  pending_harness_name TEXT,                -- a harness title seen but not adopted; NULL = nothing pending
+  pending_harness_name TEXT,                -- the name deck pushed into the running harness and has not yet seen confirmed (§8 Pushing a rename); NULL = nothing pending
   pending_harness_name_at INTEGER,          -- when it was seen (ms); NULL together with pending_harness_name
   harness_name_adopt INTEGER,               -- tri-state per-session adoption override: NULL = inherit the global setting, 1 = adopt, 0 = never adopt
   hook_executable    TEXT,                      -- absolute path of the deck binary the agent's hook command was last launched with (§11.4); NULL = none recorded
@@ -435,7 +435,7 @@ CREATE TABLE events (               -- append-only within a retention bound: aud
                                     -- renamed: a hook's event (session_start, user_prompt_submitted,
                                     -- notification, permission_request, stop, stop_failure, session_end),
                                     -- probe.<status>, tmux.pane_dead, tmux.session_gone, killed, launch.*,
-                                    -- restart, env_applied, note, set_*, ... It is NOT the event hook's
+                                    -- restart, env_applied, note, set_*, harness_rename_refused, harness_rename_failed, ... It is NOT the event hook's
                                     -- vocabulary: §10.4 maps a stored kind to the offered kind (§10.1)
   reason     TEXT,
   payload    TEXT,                  -- bounded JSON
@@ -1117,6 +1117,42 @@ row is frozen: adoption never changes it. For an eligible row the outcome is one
 Adoption writes the display name only. The tmux session name `deck_<slug>` is never changed. The
 `name_source` check and the write share one store transaction, so a user rename that lands
 meanwhile is not overwritten, and an adoption failure never fails a hook or a reconcile pass.
+
+#### Pushing a rename (R252)
+
+A rename in the `i` dialog (`name_source = user`, the tmux slug untouched) is also pushed into the
+running agent when its adapter declares `PushRename = sendkeys`. The push is a keystroke plan from
+`agent.PushName`, sent one `send-keys` call per element, in order, to the pane id resolved once from
+the slug: `Enter` goes as a tmux key name and every other element, a control byte included, as
+literal text. A shell, an adapter that does not claim `sendkeys` and a name the adapter declines
+send nothing.
+
+The plan is sent only when the row's status is `idle` or `running` and no harness dialog is focused.
+An adapter that can recognise its own dialogs (a permission prompt, a trust screen, a picker)
+implements `agent.DialogDetector`, and deck reads the pane's visible screen to ask it. Any other
+status, or a focused dialog, is refused: deck sends no keystroke, records a `harness_rename_refused`
+event whose reason names why, and shows a footer note with the same reason while the row stays
+selected, until the next list key.
+
+| status | push |
+|---|---|
+| `idle`, `running`, no dialog focused | the plan is sent |
+| `waiting` | refused: the harness is waiting for an answer |
+| `starting` | refused: the harness is still starting |
+| `error` | refused: the harness is in an error state |
+| a harness dialog is focused | refused: the dialog would swallow the keystrokes |
+| `stopped` | nothing is sent and nothing is logged; the name goes in at the next launch |
+
+The rename itself always stands; a refused or failed push never fails it.
+
+After a send, an adapter that claims an observation source has the pushed name held in
+`pending_harness_name`, stamped with the send time. While a name is pending, the hook and tick
+observe path does not adopt anything for that row. When the observed harness name equals the pending
+name, the push is confirmed: the field clears, and the echo is not adopted, so `name_source` and
+`name` are unchanged by it. When a pending name stays unconfirmed for 30 seconds, the push failed:
+deck records exactly one `harness_rename_failed` event, clears the field, and never sends the
+keystrokes again. A plan that cannot be sent is the same failure at once: one `harness_rename_failed`
+event, one attempt. A row that stops while a name is pending drops it silently.
 
 | | Claude Code | Pi / oh-my-pi | Codex CLI | Copilot CLI | shell (bash/zsh/fish) |
 |---|---|---|---|---|---|

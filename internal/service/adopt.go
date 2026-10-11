@@ -45,13 +45,25 @@ func (s Service) AdoptName(ctx context.Context, sessionID string) (bool, error) 
 // adoptOnTick is adoption on a reconcile pass: a row that is gone, terminal or
 // not eligible is skipped, and a failure is never allowed to fail the pass.
 func (s Service) adoptOnTick(ctx context.Context, session store.Session) {
-	if s.Agents == nil || rowIsTerminal(session) || !adoptionEligible(session) {
+	if s.Agents == nil {
+		return
+	}
+	if session.PendingHarnessName != "" {
+		s.settlePush(ctx, session)
+		return
+	}
+	if rowIsTerminal(session) || !adoptionEligible(session) {
 		return
 	}
 	_, _ = s.adoptRow(ctx, session)
 }
 
 func (s Service) adoptRow(ctx context.Context, session store.Session) (bool, error) {
+	if session.PendingHarnessName != "" {
+		// A pushed name is awaiting its echo: settle that first, adopt nothing.
+		s.settlePush(ctx, session)
+		return false, nil
+	}
 	if !adoptionEligible(session) {
 		return false, nil
 	}
