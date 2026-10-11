@@ -1,0 +1,43 @@
+                                                                                     sync.(*WaitGrou
+p).Wait(0x4940a6a25a0)
+                        /usr/local/go/src/sync/waitgroup.go:206 +0x85 fp=0x4940a7e7f58 sp=0x4940a7e7
+f30 pc=0x497c65
+               github.com/charmbracelet/bubbletea.(*Program).execBatchMsg(0x4940a5ccf00, {0x4940a618
+030, 0x2, 0x4940a860e70?})
+                                /go-cache/mod/github.com/charmbracelet/bubbletea@v1.3.10/tea.go:572
++0x125 fp=0x4940a7e7fb0 sp=0x4940a7e7f58 pc=0x835065
+                                                    github.com/charmbracelet/bubbletea.(*Program).ev
+entLoop.gowrap1()
+                        /go-cache/mod/github.com/charmbracelet/bubbletea@v1.3.10/tea.go:474 +0x25 fp
+=0x4940a7e7fe0 sp=0x4940a7e7fb0 pc=0x834c85
+                                           runtime.goexit({})
+                                                                /usr/local/go/src/runtime/asm_amd64.
+s:1771 +0x1 fp=0x4940a7e7fe8 sp=0x4940a7e7fe0 pc=0x48b541
+                                                         created by github.com/charmbracelet/bubblet
+ea.(*Program).eventLoop in goroutine 1
+                                        /go-cache/mod/github.com/charmbracelet/bubbletea@v1.3.10/tea
+.go:474 +0x3f2
+
+              rax    0xca
+                         rbx    0x0
+                                   rcx    0x48d083
+                                                  rdx    0x0
+                                                            rdi    0xecf218
+                                                                           rsi    0x80
+                                                                                      rbp    0x7ffe2
+01746b8
+       rsp    0x7ffe20174670
+                            r8     0x0
+                                      r9     0x0
+                                                r10    0x0
+                                                          r11    0x286
+                                                                      r12    0x4940a4a0008
+                                                                                          r13    0x1
+                                                                                                   r
+14    0xecdaa0
+              r15    0xb
+                        rip    0x48d081
+                                       rflags 0x286
+                                                   cs     0x33
+                                                              fs     0x0
+                                                                        gs     0x0
