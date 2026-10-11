@@ -157,6 +157,7 @@ func (m *Model) detailOpenLaunchInputs() {
 	}
 	m.launchInputsLoginShell = session.LoginShell
 	m.launchInputsEventHook = eventHookModeOf(session.EventHookEnabled)
+	m.launchInputsAdopt = eventHookModeOf(session.HarnessNameAdopt)
 	m.launchInputsNote = ""
 	m.launchInputsScroll = 0
 }

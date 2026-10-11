@@ -30,7 +30,7 @@ import (
 // launchInputsFieldRows' own order: pre_launch, post_destroy, launch_args,
 // login_shell -- SPEC §6.2's own listing order, and the order R108
 // documents its "four editable launch inputs" in.
-const launchInputsFieldCount = 6
+const launchInputsFieldCount = 7
 
 // launchInputsTextFieldCount sizes the shared line editors (§11.11), which are
 // indexed by field position: the text fields are pre_launch, post_destroy,
@@ -47,6 +47,9 @@ const (
 	// apply immediately and set no dirty flag.
 	launchInputsFieldEventHook
 	launchInputsFieldEventHookEvents
+	// launchInputsFieldAdoptNames is the session's harness-name adoption
+	// override (SPEC §11.4): a tri-state like the event hook's, applied at once.
+	launchInputsFieldAdoptNames
 )
 
 // launchInputsFieldIsText reports whether field accepts free-typed runes,
@@ -54,7 +57,7 @@ const (
 // field) that only left/right/space change -- mirroring
 // createFieldIsText's identical role for the create modal's own field set.
 func launchInputsFieldIsText(field int) bool {
-	return field != launchInputsFieldLoginShell && field != launchInputsFieldEventHook
+	return field != launchInputsFieldLoginShell && field != launchInputsFieldEventHook && field != launchInputsFieldAdoptNames
 }
 
 // launchArgsToText renders a session's stored LaunchArgs as the same JSON
@@ -114,6 +117,7 @@ func (m Model) launchInputsFieldRows() []struct{ label, value, help string } {
 		{launchInputsLabels[3], loginShell + " (space toggles)", "runs the pane command through $SHELL -lc, letting rc files rewrite PATH -- restart-to-apply"},
 		{launchInputsLabels[4], eventHookModeName(m.launchInputsEventHook) + " (left/right cycles: inherit, on, off)", "whether the event hook (event_hook) runs for this session; inherit follows event_hook_default -- applies immediately, no restart"},
 		{launchInputsLabels[5], m.launchInputsFieldText(launchInputsFieldEventHookEvents), "kinds offered to the hook, e.g. waiting, error, ended; replaces the global list; empty inherits it, none offers nothing -- applies immediately, no restart"},
+		{launchInputsLabels[6], eventHookModeName(m.launchInputsAdopt) + " (left/right cycles: inherit, on, off)", "whether deck adopts the harness's session name and pushes renames into it; inherit follows adopt_harness_names; off means neither -- applies immediately, no restart"},
 	}
 }
 
@@ -133,7 +137,7 @@ func (m Model) launchInputsFieldLabel(field int) string {
 }
 
 // launchInputsLabels are the four rows' labels, in field order.
-var launchInputsLabels = [launchInputsFieldCount]string{"Pre-launch command", "Post-destroy command", "Launch args (JSON array)", "Login shell", "Event hook (event_hook_enabled)", "Event hook kinds (event_hook_events)"}
+var launchInputsLabels = [launchInputsFieldCount]string{"Pre-launch command", "Post-destroy command", "Launch args (JSON array)", "Login shell", "Event hook (event_hook_enabled)", "Event hook kinds (event_hook_events)", "Adopt harness name (harness_name_adopt)"}
 
 // launchInputsFieldWidth is the number of cells a text field has inside the
 // dialog's box once its label has been drawn: the editor scrolls within it, so
@@ -317,6 +321,8 @@ func (m *Model) cycleLaunchInputsField(delta int) {
 		m.launchInputsLoginShell = !m.launchInputsLoginShell
 	case launchInputsFieldEventHook:
 		m.launchInputsEventHook = cycleEventHookMode(m.launchInputsEventHook, delta)
+	case launchInputsFieldAdoptNames:
+		m.launchInputsAdopt = cycleEventHookMode(m.launchInputsAdopt, delta)
 	}
 }
 
@@ -349,11 +355,31 @@ func (m *Model) submitLaunchInputs() tea.Cmd {
 		m.launchInputsNote = "editing the event hook is unavailable"
 		return nil
 	}
+	w.adopt = eventHookModeOf(session.HarnessNameAdopt) != m.launchInputsAdopt
+	if w.adopt && m.adoptSetter == nil {
+		m.launchInputsNote = "editing harness name adoption is unavailable"
+		return nil
+	}
 	// The four launch inputs are written (and launch_dirty set) as before,
 	// except when only the event-hook controls changed: those apply
 	// immediately and must not flag a restart that has nothing to carry.
-	w.launch = !w.hook || w.launchInputsDiffer(session)
-	return w.cmd(session.ID, m.launchInputsSetter, m.eventHookSetter)
+	w.launch = (!w.hook && !w.adopt) || w.launchInputsDiffer(session)
+	return w.cmd(session.ID, launchInputsSetters{launch: m.launchInputsSetter, hook: m.eventHookSetter, adopt: m.adoptSetter})
+}
+
+// launchInputsSetters are the three writes a submit may need.
+type launchInputsSetters struct {
+	launch func(context.Context, string, string, string, []string, bool) (store.Session, error)
+	hook   func(context.Context, string, *bool, []string) (store.Session, error)
+	adopt  func(context.Context, string, *bool) (store.Session, error)
+}
+
+// WithAdoptSetter attaches the action that stores a session's own harness-name
+// adoption override (service.Service.SetHarnessNameAdopt). It sets no dirty
+// flag. A Model without it reports the edit as unavailable.
+func (m Model) WithAdoptSetter(setter func(context.Context, string, *bool) (store.Session, error)) Model {
+	m.adoptSetter = setter
+	return m
 }
 
 // launchInputsWrite is one submit of the launch-inputs editor: the typed
@@ -365,7 +391,8 @@ type launchInputsWrite struct {
 	loginShell             bool
 	enabled                *bool
 	events                 []string
-	launch, hook           bool
+	adoptMode              *bool
+	launch, hook, adopt    bool
 }
 
 // launchInputsForm reads and validates the editor's fields.
@@ -380,7 +407,7 @@ func (m Model) launchInputsForm() (launchInputsWrite, error) {
 	}
 	return launchInputsWrite{
 		preLaunch: m.launchInputsValue(launchInputsFieldPreLaunch), postDestroy: m.launchInputsValue(launchInputsFieldPostDestroy),
-		args: args, loginShell: m.launchInputsLoginShell, enabled: m.launchInputsEventHook.enabled(), events: events,
+		args: args, loginShell: m.launchInputsLoginShell, enabled: m.launchInputsEventHook.enabled(), events: events, adoptMode: m.launchInputsAdopt.enabled(),
 	}, nil
 }
 
@@ -393,19 +420,24 @@ func (w launchInputsWrite) launchInputsDiffer(session store.Session) bool {
 
 // cmd runs the writes the submit needs, in order, and reports the row as the
 // last of them left it.
-func (w launchInputsWrite) cmd(sessionID string, setter func(context.Context, string, string, string, []string, bool) (store.Session, error), hookSetter func(context.Context, string, *bool, []string) (store.Session, error)) tea.Cmd {
+func (w launchInputsWrite) cmd(sessionID string, setters launchInputsSetters) tea.Cmd {
 	return func() tea.Msg {
 		var (
 			updated store.Session
 			err     error
 		)
 		if w.launch {
-			if updated, err = setter(context.Background(), sessionID, w.preLaunch, w.postDestroy, w.args, w.loginShell); err != nil {
+			if updated, err = setters.launch(context.Background(), sessionID, w.preLaunch, w.postDestroy, w.args, w.loginShell); err != nil {
 				return launchInputsSaved{session: updated, err: err}
 			}
 		}
 		if w.hook {
-			updated, err = hookSetter(context.Background(), sessionID, w.enabled, w.events)
+			if updated, err = setters.hook(context.Background(), sessionID, w.enabled, w.events); err != nil {
+				return launchInputsSaved{session: updated, err: err}
+			}
+		}
+		if w.adopt {
+			updated, err = setters.adopt(context.Background(), sessionID, w.adoptMode)
 		}
 		return launchInputsSaved{session: updated, err: err}
 	}

@@ -758,6 +758,19 @@ var Schema = []Field{
 		Scope: ScopeGlobal,
 	},
 	{
+		Section: "",
+		Key:     "adopt_harness_names",
+		Kind:    KindToggle,
+		Default: true,
+		Description: "Whether deck adopts the session name a harness chose (its own " +
+			"title, SPEC \u00a78 and \u00a711.4) and pushes a rename typed in deck into a " +
+			"running harness, for a session whose own adoption override is inherit. On by " +
+			"default. Off means no adoption and no push; deck still passes a typed name " +
+			"to the harness at launch. A session's own override in the i dialog beats this " +
+			"key either way. Applies immediately.",
+		Scope: ScopeGlobal,
+	},
+	{
 		Section:       "",
 		Key:           "event_hook_events",
 		Kind:          KindListOfStrings,

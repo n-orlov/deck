@@ -105,6 +105,7 @@ func hookAdopter(db *store.Store, logger *audit.Logger, settings config.Settings
 	sessions := service.Service{
 		Store: db, TMux: tmux.Client{Socket: settings.Socket}, Audit: logger, Clock: settings.Clock,
 		Agents: newAgentRegistry(), ConfigEnv: settings.Env, EventHook: hookEventHookSource(settings),
+		AdoptNames: func() bool { return settings.AdoptHarnessNames },
 	}
 	return func(ctx context.Context, sessionID string) {
 		_, _ = sessions.AdoptName(ctx, sessionID)

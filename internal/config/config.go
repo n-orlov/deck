@@ -155,6 +155,10 @@ type Settings struct {
 	// EventHookDefault mirrors event_hook_default (SPEC §10.2): whether the
 	// hook is on for a session whose own flag is inherit. False by default.
 	EventHookDefault bool
+	// AdoptHarnessNames mirrors adopt_harness_names (SPEC §11.4): whether deck
+	// adopts a harness's session name and pushes its own renames into a running
+	// harness, for a session whose own override is inherit. True by default.
+	AdoptHarnessNames bool
 	// EventHookEvents mirrors event_hook_events (SPEC §10.2): the offered
 	// kinds the hook fires for by default. Defaults to waiting, error, ended.
 	EventHookEvents []string
@@ -422,6 +426,7 @@ func applyFileConfig(settings *Settings, fileCfg FileConfig) {
 	settings.Agent = fileCfg.Agent
 	settings.EventHook = fileCfg.EventHook
 	settings.EventHookDefault = fileCfg.EventHookDefault
+	settings.AdoptHarnessNames = fileCfg.AdoptHarnessNames
 	settings.EventHookEvents = slices.Clone(fileCfg.EventHookEvents)
 	settings.EventHookTimeout = fileCfg.EventHookTimeout
 	settings.SortOrder = fileCfg.SortOrder

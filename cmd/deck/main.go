@@ -162,6 +162,7 @@ func runTUI(settings config.Settings, stderr io.Writer) int {
 	host, _ := os.Hostname()
 	eventHook := service.NewLiveEventHook(settings, notify.Deck{Host: host, Version: buildVersion()}, os.Environ())
 	sessions.EventHook = eventHook.Dispatcher
+	sessions.AdoptNames = eventHook.AdoptNames
 	// The TUI owns pane-text sampling. Its reconcile callback performs liveness
 	// first and then probes stale eligible agents; the hidden hook command below
 	// deliberately wires only ReconcileWithin and can therefore never probe. It
@@ -284,6 +285,7 @@ func newDeckModel(db *store.Store, settings config.Settings, sessions service.Se
 	// clears once a relaunch has actually carried them into a live pane.
 	model = model.WithLaunchInputsSetter(sessions.SetLaunchInputs)
 	model = model.WithEventHookSetter(sessions.SetEventHook)
+	model = model.WithAdoptSetter(sessions.SetHarnessNameAdopt)
 	// R130 part 2's `i`-dialog-only `g` move-group picker (SPEC §11) is
 	// wired the same way and for the same reason: one narrow dependency,
 	// added without growing the positional chain above any further.

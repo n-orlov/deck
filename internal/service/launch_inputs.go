@@ -47,6 +47,26 @@ func (s Service) SetLaunchInputs(ctx context.Context, sessionID, preLaunch, post
 	return s.Store.GetSession(ctx, sessionID)
 }
 
+// SetHarnessNameAdopt stores a session's own adoption override (SPEC §11.4):
+// nil inherits adopt_harness_names, otherwise on or off. It touches neither
+// dirty flag nor tmux, because adoption and push read the column when they
+// run, so the change applies at once.
+func (s Service) SetHarnessNameAdopt(ctx context.Context, sessionID string, adopt *bool) (store.Session, error) {
+	if s.Store == nil || s.Clock == nil {
+		return store.Session{}, errors.New("editing harness name adoption requires a store and clock")
+	}
+	if sessionID == "" {
+		return store.Session{}, errors.New("session id is required")
+	}
+	if _, err := s.Store.GetSession(ctx, sessionID); err != nil {
+		return store.Session{}, fmt.Errorf("get session %q: %w", sessionID, err)
+	}
+	if err := s.Store.SetHarnessNameAdopt(ctx, sessionID, adopt, "user", s.Clock.Now().UnixMilli()); err != nil {
+		return store.Session{}, err
+	}
+	return s.Store.GetSession(ctx, sessionID)
+}
+
 // SetEventHook stores a session's own event-hook controls, event_hook_enabled
 // (nil inherits event_hook_default) and event_hook_events (nil inherits the
 // global list), SPEC §10.2. Unlike SetLaunchInputs it touches neither

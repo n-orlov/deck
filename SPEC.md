@@ -739,7 +739,7 @@ schema:
 
 | where | keys |
 |---|---|
-| top level | `allow_yolo` (default false, §5), `yolo_default` (default false, §5 — inert unless `allow_yolo`), `stale_after` (default 45 s, §7), `capture_min_interval` (§9.4), `tmux_mouse` (default true, §3.2 — `false` restores tmux's own default and with it the arrow-key behaviour), `event_retention_days` (default 30, §12), `pre_launch` (empty by default, §6.4 — the global launch hook), `agent` (empty by default, §3.4 — the kind `deck new` creates when `--agent` is absent; it is a string stored verbatim and checked against the registered kinds only when `deck new` uses it, so a kind deck does not know fails there with `unknown agent kind`; the create dialog ignores it), `post_destroy` (empty by default, §9.2 — the global teardown hook), `event_hook` (empty by default, §10.1 — the one event script; empty makes §10 inert), `event_hook_default` (default false, §10.2), `event_hook_events` (default `["waiting","error","ended"]`, §10.2), `event_hook_timeout` (default 3 s, §10.3) |
+| top level | `allow_yolo` (default false, §5), `yolo_default` (default false, §5 — inert unless `allow_yolo`), `stale_after` (default 45 s, §7), `capture_min_interval` (§9.4), `tmux_mouse` (default true, §3.2 — `false` restores tmux's own default and with it the arrow-key behaviour), `event_retention_days` (default 30, §12), `pre_launch` (empty by default, §6.4 — the global launch hook), `agent` (empty by default, §3.4 — the kind `deck new` creates when `--agent` is absent; it is a string stored verbatim and checked against the registered kinds only when `deck new` uses it, so a kind deck does not know fails there with `unknown agent kind`; the create dialog ignores it), `post_destroy` (empty by default, §9.2 — the global teardown hook), `event_hook` (empty by default, §10.1 — the one event script; empty makes §10 inert), `event_hook_default` (default false, §10.2), `adopt_harness_names` (default true, §11.4), `event_hook_events` (default `["waiting","error","ended"]`, §10.2), `event_hook_timeout` (default 3 s, §10.3) |
 | `[env]` | the middle PATH/env layer (§6.1) |
 | `[ui]` | `theme` (§11.6), `ascii` (§11), `mouse` (default true, §11.8), `preview_fit` (default true, §11), `preview_paint` (default `"fit"`, one of `fit`/`nofit`/`bg`/`off`, §11.3), `sort_order` (default `"attention"`, one of `attention`/`created`/`activity`/`name`, §11), `default_group_first` (default false, §11), `attach_on_new` (default true, §11), `attach_on_click` (default true, §11.8), `select_on_drag` (default true, §11.8), `attach_on_resume` (default false, §9.1), `recent_cwd_limit` (default 5, §11.7). **Not** `layout_mode`, `sidebar_width` or the recent-directory list itself — those are machine-local UI state/history and live in `state.db` (§11.2, §11.7), so a keypress never rewrites this file |
 
@@ -773,7 +773,8 @@ view (§11.5) uses: `allow_yolo`, `yolo_default`, `ui.theme`, `ui.ascii`, `ui.mo
 terminal's mouse reporting is switched on or off with it), `ui.preview_fit`, `ui.preview_paint`,
 `ui.sort_order` (the loaded sessions are re-sorted, the selection stays on its session),
 `ui.default_group_first`, `ui.attach_on_new`, `ui.attach_on_click`, `ui.select_on_drag`,
-`ui.attach_on_resume`, `event_hook`, `event_hook_default`, `event_hook_events` and
+`ui.attach_on_resume`, `event_hook`, `event_hook_default`, `adopt_harness_names` (the next adoption or
+push follows it), `event_hook_events` and
 `event_hook_timeout` (the dispatcher reads them from the running settings when an event fires,
 so the next event follows them). A key the file did not change is left as it is, and a key a `DECK_*`
 variable overrides stays pinned to the environment. A changed user theme file re-resolves the
@@ -1093,6 +1094,10 @@ empty string means pass no name. `internal/service` fills them from the row only
 launches with no name flag, so the agent keeps generating its own title.
 
 #### Adopting a harness name (R251)
+
+Adoption, and the push of the next section, run for a row only while the setting allows it: the
+row's own `harness_name_adopt` override when set, otherwise the global `adopt_harness_names`
+(§11.4). When it is off, neither the hook triggers nor the tick adopt, and a rename is not pushed.
 
 deck reads the agent's own name for a row and adopts it. Adoption runs from exactly these
 triggers and no others: the `Stop`, `UserPromptSubmit`, `agentStop` and `session_info_changed`
@@ -2663,6 +2668,21 @@ restart*: submitting writes them through their own mutator, which sets neither `
 a launch input beside them still sets `launch_dirty`, for the launch input). No top-level key
 is added; both dialogs are reached exactly as before.
 
+**The harness-name adoption setting and its per-session override (§8).** The global key
+`adopt_harness_names` (a boolean, **on** by default) decides whether deck adopts the name a
+harness chose for a session and pushes a name typed in deck into a running harness. Off means
+neither: no row is renamed from a harness's title, and `r` renames the row in deck alone and
+sends nothing to the pane (a name typed on a `user` row still reaches the harness at its next
+launch). It applies immediately, on the next hook, tick or rename after a save or a config
+reload. A session's own **adoption override** is the nullable column `harness_name_adopt`
+(§4), a cycled selection (`←`/`→`/`space`) of *inherit* (the default; follow
+`adopt_harness_names`), *on* and *off*, edited in the **launch-inputs editor** as the last
+field, `Adopt harness name (harness_name_adopt)`, mirroring `event_hook_enabled`: *on* adopts
+and pushes for that session even while the global key is off, *off* does neither even while it
+is on. Like the event-hook fields it is read when adoption or a push runs, so its help says
+*applies immediately, no restart*, and submitting it sets neither `env_dirty` nor `launch_dirty`.
+The create dialog does not offer it; a new row inherits.
+
 **The last hook result and the script probe (§10.3).** Deck has no separate health screen: the
 health view is the block of lines above the panels that already carries the tmux note (§9.5),
 and it holds the event hook's lines. Both surfaces show the newest hook result recorded in the
@@ -2734,6 +2754,9 @@ the TUI must be the place it is edited.
   other three keys use the ordinary editors (`event_hook` the text editor, `event_hook_default`
   a toggle, `event_hook_timeout` an integer stepped by `+`/`-`, never below 1 s). All four are
   global scope and apply to the running client on save (§6.5), so none says *restart-to-apply*.
+- **`adopt_harness_names` is a toggle** in the General category, on by default, global scope. It
+  applies to the running client on save (§6.5), so it does not say *restart-to-apply*; a
+  session's own override (§11.4) beats it in both directions.
 - Navigation, spelled out because the takeover is not a §11.4 dialog and the main view has
   no `tab` binding for it to echo (§11.3): `tab`/`←`/`→` switch between the category list
   and the field list, `↑`/`↓` move within the focused list, `/` searches, `ctrl+s` saves,

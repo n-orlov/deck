@@ -42,6 +42,9 @@ func TestSettingsKeyOpensAndEscCloses(t *testing.T) {
 func TestSettingsViewRendersSchemaDerivedCategoriesAndFields(t *testing.T) {
 	model := New(nil, config.Settings{}, "")
 	model.settingsOpen = true
+	// A frame tall enough to hold the whole General list: the General category
+	// has outgrown the minimum frame, which scrolls its tail out of view.
+	model.height = 40
 	view := model.settingsView()
 
 	categories := settingsCategories()

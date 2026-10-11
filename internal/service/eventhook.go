@@ -311,8 +311,9 @@ func (h hookSession) HookFired() []notify.Fired { return notify.DecodeFired(h.st
 // reload changes a key, so the next event already follows the new value. It is
 // safe for concurrent use: reconcile runs off the UI goroutine.
 type LiveEventHook struct {
-	mu sync.Mutex
-	d  EventHookDispatcher
+	mu    sync.Mutex
+	d     EventHookDispatcher
+	adopt bool
 }
 
 // NewLiveEventHook starts from the settings deck launched with. deck and
@@ -329,6 +330,15 @@ func (l *LiveEventHook) Set(settings config.Settings) {
 	defer l.mu.Unlock()
 	l.d.Policy = notify.PolicyFromSettings(settings)
 	l.d.Timeout = settings.EventHookTimeout
+	l.adopt = settings.AdoptHarnessNames
+}
+
+// AdoptNames is the Service.AdoptNames source: the running adopt_harness_names
+// (SPEC §11.4), which a settings save or config reload keeps current.
+func (l *LiveEventHook) AdoptNames() bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.adopt
 }
 
 // Dispatcher is the Service.EventHook source: the current settings as a

@@ -214,6 +214,7 @@ func TestLaunchInputsEditorUpDownMoveBetweenAllFieldsTabDoesNot(t *testing.T) {
 		launchInputsFieldLoginShell,
 		launchInputsFieldEventHook,
 		launchInputsFieldEventHookEvents,
+		launchInputsFieldAdoptNames,
 		launchInputsFieldPreLaunch, // wraps
 	}
 	for i, want := range wantDown {
@@ -225,7 +226,8 @@ func TestLaunchInputsEditorUpDownMoveBetweenAllFieldsTabDoesNot(t *testing.T) {
 	}
 
 	wantUp := []int{
-		launchInputsFieldEventHookEvents, // wraps backward
+		launchInputsFieldAdoptNames, // wraps backward
+		launchInputsFieldEventHookEvents,
 		launchInputsFieldEventHook,
 		launchInputsFieldLoginShell,
 		launchInputsFieldLaunchArgs,

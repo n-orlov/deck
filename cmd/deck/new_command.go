@@ -192,5 +192,6 @@ func newSessionService(db *store.Store, settings config.Settings, logger *audit.
 		GlobalPreLaunch:   settings.PreLaunch,
 		GlobalPostDestroy: settings.PostDestroy,
 		RecentCwdLimit:    settings.RecentCwdLimit,
+		AdoptNames:        func() bool { return settings.AdoptHarnessNames },
 	}
 }

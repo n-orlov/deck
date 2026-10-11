@@ -46,6 +46,7 @@ type FileConfig struct {
 	Agent                string
 	EventHook            string
 	EventHookDefault     bool
+	AdoptHarnessNames    bool
 	EventHookEvents      []string
 	EventHookTimeout     time.Duration
 	Env                  map[string]string
@@ -202,6 +203,7 @@ var toggleSetters = map[string]func(*FileConfig, bool){
 	"ui.select_on_drag":      func(c *FileConfig, v bool) { c.SelectOnDrag = v },
 	"ui.attach_on_resume":    func(c *FileConfig, v bool) { c.AttachOnResume = v },
 	"event_hook_default":     func(c *FileConfig, v bool) { c.EventHookDefault = v },
+	"adopt_harness_names":    func(c *FileConfig, v bool) { c.AdoptHarnessNames = v },
 }
 
 var integerSetters = map[string]func(*FileConfig, int){

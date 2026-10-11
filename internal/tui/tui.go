@@ -630,6 +630,10 @@ type Model struct {
 	// launchInputsEventHook is the fifth field, event_hook_enabled (cycled);
 	// the sixth, event_hook_events, is the text editor at its own index.
 	launchInputsEventHook eventHookMode
+	// launchInputsAdopt is the seventh field, the harness-name adoption
+	// override (cycled like the event hook); adoptSetter stores it.
+	launchInputsAdopt eventHookMode
+	adoptSetter       func(context.Context, string, *bool) (store.Session, error)
 	// eventHookSetter stores the session's own event-hook controls
 	// (WithEventHookSetter); it never sets a dirty flag.
 	eventHookSetter    func(context.Context, string, *bool, []string) (store.Session, error)

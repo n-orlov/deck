@@ -1650,6 +1650,7 @@ func settingsEditsFromSettings(s config.Settings) config.FileConfig {
 		Agent:                s.File.Agent,
 		EventHook:            s.File.EventHook,
 		EventHookDefault:     s.File.EventHookDefault,
+		AdoptHarnessNames:    s.File.AdoptHarnessNames,
 		EventHookEvents:      slices.Clone(s.File.EventHookEvents),
 		EventHookTimeout:     s.File.EventHookTimeout,
 		Env:                  settingsCloneEnv(s.File.Env),
@@ -1711,6 +1712,10 @@ var settingsTableToggles = map[string]struct {
 	"event_hook_default": {
 		get: func(c config.FileConfig) bool { return c.EventHookDefault },
 		set: func(c *config.FileConfig, v bool) { c.EventHookDefault = v },
+	},
+	"adopt_harness_names": {
+		get: func(c config.FileConfig) bool { return c.AdoptHarnessNames },
+		set: func(c *config.FileConfig, v bool) { c.AdoptHarnessNames = v },
 	},
 	"ui.attach_on_new": {
 		get: func(c config.FileConfig) bool { return c.AttachOnNew },

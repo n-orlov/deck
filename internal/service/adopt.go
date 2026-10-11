@@ -23,6 +23,16 @@ func adoptionEligible(session store.Session) bool {
 	return session.NameSource == "derived" || session.NameSource == "harness"
 }
 
+// adoptionOn reports whether name adoption and rename push are enabled for
+// session (SPEC §11.4): the session's own override when set, else the global
+// adopt_harness_names, which is on when Service.AdoptNames is nil.
+func (s Service) adoptionOn(session store.Session) bool {
+	if session.HarnessNameAdopt != nil {
+		return *session.HarnessNameAdopt
+	}
+	return s.AdoptNames == nil || s.AdoptNames()
+}
+
 // AdoptName reads the harness's current name for one session and adopts it
 // (SPEC §8 "Adopting a harness name"). It is the entry the hook paths call
 // (Stop, UserPromptSubmit, agentStop, session_info_changed); the reconcile
@@ -51,7 +61,7 @@ func (s Service) adoptOnTick(ctx context.Context, session store.Session) {
 		s.settlePush(ctx, session)
 		return
 	}
-	if rowIsTerminal(session) || !adoptionEligible(session) {
+	if rowIsTerminal(session) || !adoptionEligible(session) || !s.adoptionOn(session) {
 		return
 	}
 	_, _ = s.adoptRow(ctx, session)
@@ -63,7 +73,7 @@ func (s Service) adoptRow(ctx context.Context, session store.Session) (bool, err
 		s.settlePush(ctx, session)
 		return false, nil
 	}
-	if !adoptionEligible(session) {
+	if !adoptionEligible(session) || !s.adoptionOn(session) {
 		return false, nil
 	}
 	adapter, ok := s.Agents.Lookup(session.Agent)

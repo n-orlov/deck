@@ -39,6 +39,9 @@ func (m *Model) settingsApplyLiveEventHook(edited, previous config.FileConfig) {
 	if edited.EventHookDefault != previous.EventHookDefault {
 		m.settings.EventHookDefault = edited.EventHookDefault
 	}
+	if edited.AdoptHarnessNames != previous.AdoptHarnessNames {
+		m.settings.AdoptHarnessNames = edited.AdoptHarnessNames
+	}
 	if !slices.Equal(edited.EventHookEvents, previous.EventHookEvents) {
 		m.settings.EventHookEvents = slices.Clone(edited.EventHookEvents)
 	}

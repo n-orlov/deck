@@ -339,6 +339,10 @@ type Session struct {
 	// the push was sent.
 	PendingHarnessName   string
 	PendingHarnessNameAt int64
+	// HarnessNameAdopt is the sessions.harness_name_adopt tri-state (SPEC
+	// §11.4): nil inherits adopt_harness_names, otherwise the session's own
+	// on/off for adopting the harness's name and pushing renames into it.
+	HarnessNameAdopt *bool
 	// GroupID is SPEC §4's sessions.group_id column verbatim: the manual
 	// group (§11) this row belongs to, nil exactly when the column reads
 	// NULL -- either because the row has never been assigned a group (the
@@ -798,18 +802,19 @@ func scanSession(row interface {
 	var loginShell, killedByUser, acknowledged, envDirty, launchDirty int
 	var paneExitStatus, eventHookEnabled sql.NullInt64
 	var eventHookEvents, pendingName sql.NullString
-	var pendingAt sql.NullInt64
+	var pendingAt, nameAdopt sql.NullInt64
 	if err := row.Scan(&session.ID, &session.Name, &session.Slug, &session.CWD,
 		&session.Agent, &session.CapturedPath, &session.Status, &session.StatusReason, &session.StatusSource,
 		&session.StatusAt, &session.CreatedAt, &killedByUser, &paneExitStatus, &crashTail,
 		&session.NotifyEpoch, &lastMessage, &acknowledged, &launchArgsJSON, &envJSON, &preLaunch, &postDestroy,
 		&loginShell, &session.PermissionProfile, &permissionProfileReason, &conversationID, &resumePin, &session.ResumeState,
 		&groupID, &groupName, &session.LastProbeAt, &envDirty, &session.DeletedAt, &session.ArchivedAt, &launchDirty,
-		&leaseOwner, &session.PinnedAt, &session.HookExecutable, &eventHookEnabled, &eventHookEvents, &session.NameSource, &pendingName, &pendingAt); err != nil {
+		&leaseOwner, &session.PinnedAt, &session.HookExecutable, &eventHookEnabled, &eventHookEvents, &session.NameSource, &pendingName, &pendingAt, &nameAdopt); err != nil {
 		return Session{}, err
 	}
 	session.EventHookEnabled, session.EventHookEvents = decodeEventHook(eventHookEnabled, eventHookEvents)
 	session.PendingHarnessName, session.PendingHarnessNameAt = pendingName.String, pendingAt.Int64
+	session.HarnessNameAdopt, _ = decodeEventHook(nameAdopt, sql.NullString{})
 	// Only the generation half is surfaced: the launcher identity is lease
 	// bookkeeping (SPEC §9.3) that no reader outside this package needs, while
 	// the generation is the discriminator a hook hands back (issue #11, R74).
@@ -855,7 +860,7 @@ const sessionColumns = `sessions.id, sessions.name, slug, cwd, agent, captured_p
 		launch_args, env, pre_launch, post_destroy, login_shell, permission_profile, permission_profile_reason, conversation_id, resume_pin, resume_state,
 		sessions.group_id, groups.name, last_probe_at, env_dirty, deleted_at, archived_at, launch_dirty,
 		COALESCE(launch_lease_owner, ''), pinned_at, COALESCE(hook_executable, ''),
-		event_hook_enabled, event_hook_events, name_source, pending_harness_name, pending_harness_name_at`
+		event_hook_enabled, event_hook_events, name_source, pending_harness_name, pending_harness_name_at, harness_name_adopt`
 
 // sessionsFromClause is every sessionColumns-backed query's shared FROM:
 // a LEFT JOIN against groups so GroupName resolves (or reads back empty

@@ -89,7 +89,7 @@ var pushStatusRefusals = map[string]string{
 // nothing and say nothing: a stopped row takes the name at its next launch.
 func (s Service) pushRename(ctx context.Context, session store.Session) PushResult {
 	adapter, ok := s.pushAdapter(session)
-	if !ok || session.Status == "stopped" {
+	if !ok || session.Status == "stopped" || !s.adoptionOn(session) {
 		return PushResult{}
 	}
 	if reason := s.pushRefusal(ctx, adapter, session); reason != "" {

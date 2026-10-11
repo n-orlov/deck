@@ -72,6 +72,10 @@ type Service struct {
 	// NamePane is the pane access a rename push uses (the screen read for a
 	// focused dialog and the keystroke plan send). nil is the real tmux client.
 	NamePane PanePort
+	// AdoptNames reports the global adopt_harness_names (SPEC §11.4), read per
+	// adoption and per push so a live settings change applies to the next one.
+	// nil means on, the default. A session's own override beats it.
+	AdoptNames func() bool
 	// ConfigEnv mirrors config.toml's [env] table (SPEC §6.3): the layer
 	// between captured_path and the session's own env in PATH resolution
 	// order. A nil map is the common, valid case of no configured overrides.
