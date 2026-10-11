@@ -12,7 +12,12 @@ Feature: The next start reclaims a leaked interactive pipe (Part II, R89, task 0
 
   @requirement-89-reclaim-leaked-interactive-pipe
   Scenario: SIGKILL mid-interactive leaks pipe-pane and a temp dir; the next start reclaims both
-    Given deck client "victim" is started
+    # The window is compared with its size before entry, so nothing may fit it
+    # between the baseline and the entry: a passive preview fit lands on its own
+    # schedule, and on a loaded host before the entry on some runs and after it
+    # on others, which moves what "before entry" means (SPEC §11.9 records the
+    # size at entry). The passive fit is covered in preview.feature.
+    Given deck client "victim" is started with preview fit disabled
     And deck client "victim" creates shell session "leaky"
     Then within one configured reconcile interval deck client "victim" screen contains "running"
     And deck client "victim" selects session "leaky"
@@ -25,7 +30,7 @@ Feature: The next start reclaims a leaked interactive pipe (Part II, R89, task 0
     When deck client "victim" is killed with SIGKILL
     Then tmux pane pipe is armed for session "leaky"
     And a deck interactive pipe temp directory for session "leaky" exists on disk
-    Given deck client "rescuer" is started
+    Given deck client "rescuer" is started with preview fit disabled
     Then tmux pane pipe is not armed for session "leaky"
     And no deck interactive pipe temp directory for session "leaky" exists on disk
     And tmux window "deck_leaky" option "@deck_isize_owner" is unset in the window scope

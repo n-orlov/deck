@@ -448,14 +448,21 @@ func privateTMuxWindowForSessionStillMatches(ctx context.Context, name, label st
 	if !ok {
 		return fmt.Errorf("no private tmux window geometry was captured as %q", label)
 	}
-	got, err := privateWindowGeometry(ctx, h, name)
-	if err != nil {
-		return err
-	}
-	if got != want {
-		return fmt.Errorf("private tmux window for session %q geometry changed: captured %q as %q, now %q", name, label, want, got)
-	}
-	return nil
+	// The restore that puts the window back is the client's reaction to a
+	// click or a key, and tmux applies it a moment after the step that sent
+	// it returned: on a loaded host the geometry read right away still shows
+	// the pre-restore size. Wait for the match; a window that never returns
+	// to the captured size still fails.
+	return pollUntil(5*time.Second, func() error {
+		got, err := privateWindowGeometry(ctx, h, name)
+		if err != nil {
+			return err
+		}
+		if got != want {
+			return fmt.Errorf("private tmux window for session %q geometry changed: captured %q as %q, now %q", name, label, want, got)
+		}
+		return nil
+	})
 }
 
 // privateTMuxWindowForSessionDoesNotReportGeometry is the direct,

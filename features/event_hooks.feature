@@ -156,9 +156,14 @@ Feature: The event hook (SPEC section 10), end to end against the released binar
     And the capture script holds each invocation open for several seconds
     And deck client "A" is started
     When deck client "A" creates claude session "closing" with permission profile "safe"
-    And fake Claude session "closing" exits its pane cleanly
+    # The agent fires SessionEnd while it is still shutting down, so the hook
+    # lands before the pane is gone. Exiting the pane first lets the running
+    # client's reconcile record the vanished session and offer its own `ended`
+    # (SPEC §10.4) before the hook arrives, on a loaded host, and the scenario
+    # would then count two invocations for one end.
     And the released deck _hook receives "SessionEnd" for session "closing" using injected identity and returns within 3 seconds:
       | reason | logout |
+    And fake Claude session "closing" exits its pane cleanly
     Then the capture script has recorded exactly 1 invocation
     And capture invocation 1 has the event kind "ended" as its only argument
     And capture invocation 1 has stdin JSON field "event.kind" equal to "ended"

@@ -58,7 +58,12 @@ Feature: Interactive mode refuses rather than degrades in three named cases (Par
     # ALREADY interactive must leave by the ordinary exit path (window
     # geometry restored, ownership released) rather than staying
     # interactive and rendering into a box below the measured floor.
-    Given deck client "shrink" is started
+    # The window is compared with its size before entry, so nothing may fit it
+    # between the baseline and the entry: a passive preview fit lands on its own
+    # schedule, and on a loaded host before the entry on some runs and after it
+    # on others, which moves what "before entry" means (SPEC §11.9 records the
+    # size at entry). The passive fit is covered in preview.feature.
+    Given deck client "shrink" is started with preview fit disabled
     And deck client "shrink" creates shell session "live"
     Then within one configured reconcile interval deck client "shrink" screen contains "running"
     And deck client "shrink" selects session "live"

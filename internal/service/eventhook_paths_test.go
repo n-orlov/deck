@@ -103,6 +103,7 @@ func probeWaitingFixture(t *testing.T, name string) (Service, *store.Store, stor
 	}); err != nil {
 		t.Fatal(err)
 	}
+	waitForPaneText(t, svc.TMux, session.Slug, "Do you want to proceed?")
 	const staleAfter = 45 * time.Second
 	clock.Advance()
 	return svc, db, session, staleAfter
@@ -547,5 +548,24 @@ func TestReconcileDetectedDeathOfAnOptedOutSessionRecordsButNeverSpawns(t *testi
 	_ = eventSeqOf(t, db, session.ID, "tmux.session_gone")
 	if log.count() != 0 {
 		t.Fatalf("an opted-out session spawned %v", log.kinds)
+	}
+}
+
+// waitForPaneText polls until the pane of slug shows want. A pane starts
+// empty and the shell in it prints on its own schedule, so a probe taken
+// right after Create can sample a blank screen on a loaded host and the test
+// would then be asserting on a pane the fixture has not reached yet.
+func waitForPaneText(t *testing.T, client tmux.Client, slug, want string) {
+	t.Helper()
+	deadline := time.Now().Add(30 * time.Second)
+	for {
+		preview, err := client.CapturePreview(context.Background(), slug)
+		if err == nil && preview.Live && strings.Contains(string(preview.Bytes), want) {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("pane %s never showed %q (live=%v, err=%v)", slug, want, preview.Live, err)
+		}
+		time.Sleep(20 * time.Millisecond)
 	}
 }

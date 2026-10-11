@@ -208,18 +208,25 @@ func TestPolicyFromSettingsSplitsTheCommandOnWhitespace(t *testing.T) {
 }
 
 // A reason that is all KEY=VALUE pairs and separators is the costliest text
-// for the free-text masking Start runs before handing the payload over; the
-// detach bound must hold for it too, and the secrets must still be masked.
+// for the free-text masking Start runs before handing the payload over; Start
+// must still return without waiting for the script, and the secrets must
+// still be masked. The script holds itself open until the test releases it
+// (or twenty seconds pass), so "Start did not wait" is a fact read off the
+// script's state when Start returns, not a duration compared with a clock:
+// the masking is CPU work whose wall time a loaded -race host stretches many
+// times over.
 func TestStartHandsOverAReasonFullOfAssignmentsWithoutWaiting(t *testing.T) {
-	path, dir := captureScript(t, "sleep 1\necho finished > \"$d/finished\"")
+	path, dir := captureScript(t, "i=0\nwhile [ ! -e \"$d/release\" ] && [ $i -lt 400 ]; do i=$((i+1)); sleep 0.05; done\necho finished > \"$d/finished\"")
 	req := baseRequest(path)
 	req.Session.Reason = strings.Repeat("a=b API_TOKEN=hunter2 :: = ", 3<<20/2/26)
-	started := time.Now()
 	if err := Start(req); err != nil {
 		t.Fatal(err)
 	}
-	if elapsed := time.Since(started); elapsed >= time.Second {
-		t.Fatalf("Start took %s: it waited for the script", elapsed)
+	if _, err := os.Stat(filepath.Join(dir, "finished")); err == nil {
+		t.Fatal("Start returned only after the script finished: it waited for the script")
+	}
+	if err := os.WriteFile(filepath.Join(dir, "release"), []byte("go"), 0o600); err != nil {
+		t.Fatal(err)
 	}
 	waitFile(t, filepath.Join(dir, "finished"))
 	if raw := read(t, filepath.Join(dir, "stdin")); strings.Contains(raw, "hunter2") || !strings.Contains(raw, "API_TOKEN="+MaskedPlaceholder) {

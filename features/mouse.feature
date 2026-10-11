@@ -124,7 +124,12 @@ Feature: §11.8 mouse bindings and the [ui] mouse / DECK_MOUSE opt-out (requirem
     # satisfy regardless of which session is the interactive target) is
     # SPEC's own named safeguard for "which pane is receiving your
     # keystrokes".
-    Given deck client "A" is started
+    # The window is compared with its size before entry, so nothing may fit it
+    # between the baseline and the entry: a passive preview fit lands on its own
+    # schedule, and on a loaded host before the entry on some runs and after it
+    # on others, which moves what "before entry" means (SPEC §11.9 records the
+    # size at entry). The passive fit is covered in preview.feature.
+    Given deck client "A" is started with preview fit disabled
     When deck client "A" creates shell session "retarget-first"
     And deck client "A" creates shell session "retarget-second"
     And within one configured reconcile interval deck client "A" screen contains "running"

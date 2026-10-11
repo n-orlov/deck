@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"image/color"
+	"time"
 
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/cucumber/godog"
@@ -128,7 +129,35 @@ func cellHasAttr(cell *uv.Cell, name string) (bool, error) {
 	}
 }
 
+// cellSettleBound is how long a positive cell assertion waits for the frame to
+// show what a preceding keystroke or click caused: the step that sent it
+// returns when the write does, not when deck has repainted, and on a loaded
+// host the repaint lags by far more than the pacing pause after the send. A
+// failing assertion still fails, only after this long; the negative cell
+// assertions read once.
+const cellSettleBound = 5 * time.Second
+
 func cellHasForeground(ctx context.Context, name string, row, col int, want string) error {
+	return pollUntil(cellSettleBound, func() error { return cellHasForegroundNow(ctx, name, row, col, want) })
+}
+
+func cellHasBackground(ctx context.Context, name string, row, col int, want string) error {
+	return pollUntil(cellSettleBound, func() error { return cellHasBackgroundNow(ctx, name, row, col, want) })
+}
+
+func cellHasContent(ctx context.Context, name string, row, col int, want string) error {
+	return pollUntil(cellSettleBound, func() error { return cellHasContentNow(ctx, name, row, col, want) })
+}
+
+func cellHasAttribute(ctx context.Context, name string, row, col int, attr string) error {
+	return pollUntil(cellSettleBound, func() error { return cellHasAttributeNow(ctx, name, row, col, attr) })
+}
+
+func cellHasNoBackgroundSet(ctx context.Context, name string, row, col int) error {
+	return pollUntil(cellSettleBound, func() error { return cellHasNoBackgroundSetNow(ctx, name, row, col) })
+}
+
+func cellHasForegroundNow(ctx context.Context, name string, row, col int, want string) error {
 	client, err := assertionClient(ctx, name)
 	if err != nil {
 		return err
@@ -160,7 +189,7 @@ func cellDoesNotHaveForeground(ctx context.Context, name string, row, col int, u
 	return nil
 }
 
-func cellHasBackground(ctx context.Context, name string, row, col int, want string) error {
+func cellHasBackgroundNow(ctx context.Context, name string, row, col int, want string) error {
 	client, err := assertionClient(ctx, name)
 	if err != nil {
 		return err
@@ -182,7 +211,7 @@ func cellHasBackground(ctx context.Context, name string, row, col int, want stri
 // composed as plain text regardless of whether canvasBackground/colorToken
 // emit any SGR around them, so this assertion holds under NO_COLOR exactly
 // the way the background-token assertions above hold under colour.
-func cellHasContent(ctx context.Context, name string, row, col int, want string) error {
+func cellHasContentNow(ctx context.Context, name string, row, col int, want string) error {
 	client, err := assertionClient(ctx, name)
 	if err != nil {
 		return err
@@ -197,7 +226,7 @@ func cellHasContent(ctx context.Context, name string, row, col int, want string)
 	return nil
 }
 
-func cellHasAttribute(ctx context.Context, name string, row, col int, attr string) error {
+func cellHasAttributeNow(ctx context.Context, name string, row, col int, attr string) error {
 	client, err := assertionClient(ctx, name)
 	if err != nil {
 		return err
@@ -434,7 +463,7 @@ func cellsRangeHaveBackgroundToken(ctx context.Context, name string, row, colSta
 // Style.Bg, exactly the way cellBackgroundHex/cellDoesNotHaveBackground do
 // it, so "no colour at all" is never confused with "some colour that
 // happens not to be the unwanted one".
-func cellHasNoBackgroundSet(ctx context.Context, name string, row, col int) error {
+func cellHasNoBackgroundSetNow(ctx context.Context, name string, row, col int) error {
 	client, err := assertionClient(ctx, name)
 	if err != nil {
 		return err

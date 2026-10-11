@@ -154,10 +154,6 @@ func startDeckInteractiveFixture(t *testing.T, binary, socketPrefix string, extr
 
 	windowTarget := soleSessionWindowTarget(t, home)
 	client := tmux.Client{Socket: socket, Timeout: 5 * time.Second}
-	before, err := client.CaptureWindowGeometry(context.Background(), windowTarget)
-	if err != nil {
-		t.Fatalf("capture window geometry before entering interactive mode: %v", err)
-	}
 
 	if _, err := terminal.Write([]byte("\r")); err != nil {
 		t.Fatalf("send enter to enter interactive mode: %v", err)
@@ -179,9 +175,31 @@ func startDeckInteractiveFixture(t *testing.T, binary, socketPrefix string, extr
 	}
 
 	return &interactiveCleanupFixture{
-		home: home, socket: socket, windowTarget: windowTarget, before: before,
+		home: home, socket: socket, windowTarget: windowTarget, before: recordedPreEntryGeometry(t, socket, windowTarget),
 		terminal: terminal, output: output, done: done, cmd: cmd,
 	}
+}
+
+// recordedPreEntryGeometry is the geometry interactive mode promises to put
+// the window back to: the pre-entry geometry it recorded on the window itself
+// (tmux.IsizeGeometryOption, SPEC §11.9) when it took the claim, restored by
+// the plain `window-size` unset the restore recipe ends with. It is read back
+// from the armed window rather than sampled before pressing Enter: deck fits
+// a new session's window to the preview pane a little after its row reads
+// "running", so a size read just before Enter lands on either side of that fit
+// depending on host load, while the record is exactly what entry saw.
+func recordedPreEntryGeometry(t *testing.T, socket, target string) tmux.WindowGeometry {
+	t.Helper()
+	output, err := exec.Command("tmux", "-L", socket, "show-options", "-wv", "-t", target, tmux.IsizeGeometryOption).CombinedOutput()
+	if err != nil {
+		t.Fatalf("read %s on %q after entering interactive mode: %v: %s", tmux.IsizeGeometryOption, target, err, output)
+	}
+	recorded, ok := tmux.ParseIsizeGeometry(strings.TrimSpace(string(output)))
+	if !ok {
+		t.Fatalf("%s on %q = %q after entering interactive mode, want a recorded pre-entry geometry", tmux.IsizeGeometryOption, target, output)
+	}
+	recorded.WindowSizeSet, recorded.WindowSizeValue = false, ""
+	return recorded
 }
 
 // assertInteractiveClaimTornDown is the shared assertion both the SIGTERM

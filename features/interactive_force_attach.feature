@@ -53,8 +53,13 @@ Feature: Forced entry into interactive mode answers a waiting row
   # once the displaced client (A) has been through the lost-attach dialog
   # and the winner (B) has left by the ordinary exit path.
   Scenario: the window survives entry, a steal, the displaced client's dismissal and the winner's exit unchanged
-    Given deck client "A" is started
-    And deck client "B" is started
+    # The window is compared with its size before entry, so nothing may fit it
+    # between the baseline and the entry: a passive preview fit lands on its own
+    # schedule, and on a loaded host before the entry on some runs and after it
+    # on others, which moves what "before entry" means (SPEC §11.9 records the
+    # size at entry). The passive fit is covered in preview.feature.
+    Given deck client "A" is started with preview fit disabled
+    And deck client "B" is started with preview fit disabled
     And deck client "A" creates shell session "chained"
     Then within one configured reconcile interval deck client "B" screen contains "chained"
     And deck client "A" selects session "chained"

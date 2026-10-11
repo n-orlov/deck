@@ -236,14 +236,34 @@ func liveTmuxEnvironmentHasKeyWithValue(ctx context.Context, name, key, want str
 // task 021's write path could make agree with each other while still
 // disagreeing with the actual running process.
 func livePaneProcessEnvironmentKey(ctx context.Context, name, key string) (string, error) {
-	value, found, err := livePaneProcessEnvironmentLookup(ctx, name, key)
-	if err != nil {
-		return "", err
+	return pollLivePaneProcessEnvironmentKey(ctx, name, key, func(string) bool { return true })
+}
+
+// pollLivePaneProcessEnvironmentKey reads the key until it is present and
+// accept approves its value, or ten seconds pass. tmux reports #{pane_pid}
+// the moment it forks the pane, before the child has exec'd the shell, and a
+// /proc/<pid>/environ read in that window shows the server's environment
+// instead of the launch's: on a loaded host the key is "absent" or carries a
+// stale value for a while even though the launch is correct. Only a positive
+// lookup waits; an absence assertion stays a single read.
+func pollLivePaneProcessEnvironmentKey(ctx context.Context, name, key string, accept func(string) bool) (string, error) {
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		value, found, err := livePaneProcessEnvironmentLookup(ctx, name, key)
+		if err == nil && found && accept(value) {
+			return value, nil
+		}
+		if time.Now().After(deadline) {
+			if err != nil {
+				return "", err
+			}
+			if !found {
+				return "", fmt.Errorf("live pane process environment for session %q has no key %q at all", name, key)
+			}
+			return value, nil
+		}
+		time.Sleep(25 * time.Millisecond)
 	}
-	if !found {
-		return "", fmt.Errorf("live pane process environment for session %q has no key %q at all", name, key)
-	}
-	return value, nil
 }
 
 // livePaneProcessEnvironmentLookup is livePaneProcessEnvironmentKey's
@@ -352,7 +372,7 @@ func livePaneProcessEnvironmentKeyStillMatchesCaptured(ctx context.Context, name
 // pane, the NEW process's own /proc/<pid>/environ must carry the edited
 // value literally, not merely differ from whatever was captured before.
 func livePaneProcessEnvironmentKeyEquals(ctx context.Context, name, key, want string) error {
-	got, err := livePaneProcessEnvironmentKey(ctx, name, key)
+	got, err := pollLivePaneProcessEnvironmentKey(ctx, name, key, func(v string) bool { return v == want })
 	if err != nil {
 		return err
 	}
