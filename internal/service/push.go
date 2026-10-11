@@ -3,7 +3,6 @@ package service
 import (
 	"context"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/n-orlov/deck/internal/agent"
@@ -96,14 +95,18 @@ func (s Service) pushRename(ctx context.Context, session store.Session) PushResu
 	if reason := s.pushRefusal(ctx, adapter, session); reason != "" {
 		return s.refusePush(ctx, session, reason)
 	}
-	keys, ok := agent.PushName(adapter, agent.NamePushInput{Name: strings.TrimSpace(session.Name)})
+	pushed, ok := agent.SanitisePushName(session.Agent, session.Name)
+	if !ok {
+		return s.refusePush(ctx, session, "the name is empty once cleaned for "+session.Agent)
+	}
+	keys, ok := agent.PushName(adapter, agent.NamePushInput{Name: pushed})
 	if !ok {
 		return s.refusePush(ctx, session, "the "+session.Agent+" adapter declined to build a rename")
 	}
 	if err := s.panePort().SendPlan(ctx, session.Slug, keys); err != nil {
 		return s.failPush(ctx, session, fmt.Sprintf("the keystrokes could not be sent: %v", err))
 	}
-	s.markPending(ctx, adapter, session)
+	s.markPending(ctx, adapter, session, pushed)
 	return PushResult{Sent: true, Note: "rename sent to " + session.Agent}
 }
 
@@ -151,13 +154,14 @@ func (s Service) failPush(ctx context.Context, session store.Session, reason str
 }
 
 // markPending holds the pushed name in pending_harness_name when the adapter
-// can report a name back, so the observe path can recognise the echo. An
+// can report a name back, so the observe path can recognise the echo of pushed
+// (the name as sanitised for the harness). An
 // adapter with no observation source can never confirm, so nothing is held.
-func (s Service) markPending(ctx context.Context, adapter agent.Adapter, session store.Session) {
+func (s Service) markPending(ctx context.Context, adapter agent.Adapter, session store.Session, pushed string) {
 	if !adapter.Capabilities().Name.ClaimsRead() {
 		return
 	}
-	_ = s.Store.SetPendingHarnessName(ctx, session.ID, strings.TrimSpace(session.Name), s.Clock.Now().UnixMilli())
+	_ = s.Store.SetPendingHarnessName(ctx, session.ID, pushed, s.Clock.Now().UnixMilli())
 }
 
 // settlePush resolves a row's pending pushed name on a tick or hook. The
@@ -191,5 +195,5 @@ func (s Service) observedPending(ctx context.Context, session store.Session) boo
 		return false
 	}
 	name, _, ok := agent.ReadName(adapter, s.nameProbe(ctx, adapter, session))
-	return ok && strings.TrimSpace(name) == session.PendingHarnessName
+	return ok && agent.SanitiseHarnessName(name) == session.PendingHarnessName
 }

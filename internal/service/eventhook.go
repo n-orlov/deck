@@ -256,6 +256,9 @@ func (d EventHookDispatcher) claim(ctx context.Context, sessionID, kind, reason 
 	if !decision.Spawn {
 		return decision, state, nil
 	}
+	if kind == notify.KindRenamed {
+		return decision, state, nil
+	}
 	won, err := d.Store.ClaimHookPair(ctx, sessionID, kind, reason)
 	if err != nil {
 		return decision, state, err

@@ -43,7 +43,7 @@ const (
 // event_hook_events (and a session's own list) may name. A prompt, an env
 // change, a note and every other stored events.kind (SPEC §4) are the audit
 // trail's and are never offered.
-var EventHookKinds = []string{"started", "resumed", "waiting", "idle", "error", "ended", "killed"}
+var EventHookKinds = []string{"started", "resumed", "waiting", "idle", "error", "ended", "killed", "renamed"}
 
 // Paths are the locations used by deck at runtime. DECK_HOME deliberately
 // supplies a single root for all mutable state, making isolated runs simple.

@@ -349,3 +349,17 @@ func TestDeathKindsDedupeIndependentlyWithinOneEpoch(t *testing.T) {
 		t.Fatal("a session whose own list omits ended spawned for a vanished session")
 	}
 }
+
+// TestDispatchRenamedIsNeverDeduped: a rename is a fact, not an attention
+// episode, so a (renamed, source) pair already fired in the epoch spawns again.
+func TestDispatchRenamedIsNeverDeduped(t *testing.T) {
+	fired := []Fired{{Kind: KindRenamed, Reason: "harness:claude"}}
+	policy := Policy{Command: []string{"/bin/true"}, Default: true, Events: []string{"renamed"}}
+	got := Dispatch(policy, &fakeRow{fired: fired}, KindRenamed, "harness:claude")
+	if !got.Spawn {
+		t.Fatalf("Dispatch = %+v, want renamed to spawn again", got)
+	}
+	if kind, ok := OfferedKind("renamed", "user"); !ok || kind != KindRenamed {
+		t.Fatalf("OfferedKind(renamed) = %q, %v", kind, ok)
+	}
+}

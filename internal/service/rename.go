@@ -45,5 +45,6 @@ func (s Service) Rename(ctx context.Context, sessionID, newName string) (store.S
 	if err := s.reapedHolderFiles(ctx, reapedHolders); err != nil {
 		return store.Session{}, fmt.Errorf("clean up the session reaped by reusing name %q: %w", trimmed, err)
 	}
+	s.offerRenamed(ctx, sessionID, "user", trimmed)
 	return s.Store.GetSession(ctx, sessionID)
 }

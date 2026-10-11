@@ -10016,7 +10016,7 @@ Event hook (script set in config.toml or settings; SPEC §10)
   whole feature is inert. deck filters before it spawns: an event whose
   kind is not enabled for the session never starts a process.
   argv      script <kind> [fixed args...]; kind is argv[1], one of
-            started resumed waiting idle error ended killed.
+            started resumed waiting idle error ended killed renamed.
   env       every DECK_SESSION_* variable (as pre_launch sees them), plus
             DECK_EVENT_KIND, DECK_EVENT_REASON, DECK_EVENT_MESSAGE
             (truncated, secrets redacted; withheld for a sensitive

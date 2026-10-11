@@ -763,7 +763,7 @@ and its arguments separated by spaces; no shell), `event_hook_default` a boolean
 by default; `[]` is a real value, no kind offered) and `event_hook_timeout` whole seconds, or a
 quoted duration, of at least 1 (3 by default). Validation is at load, like every key: a word in
 `event_hook_events` outside the offered set of §10.1 (`started`, `resumed`, `waiting`, `idle`,
-`error`, `ended`, `killed`; `prompt`, `env` and `note` are not offered), a malformed array, or an
+`error`, `ended`, `killed`, `renamed`; `prompt`, `env` and `note` are not offered), a malformed array, or an
 `event_hook_timeout` below 1 is an error naming the file, the line and the key. Settings
 writes them back through the same atomic writer.
 
@@ -1114,6 +1114,15 @@ row is frozen: adoption never changes it. For an eligible row the outcome is one
 | the same, and another row already holds the name or its slug | the name takes the first free suffix `-2`, `-3`, ... |
 | a name the harness reports as `explicit` (a human chose it inside the harness) and that differs from deck's | row renamed as above with `name_source = user`, which freezes it from then on |
 
+A harness title is untrusted input, so `agent.SanitiseHarnessName` cleans it before any of the
+checks above: terminal escape sequences (CSI, OSC and their string forms), C0 and C1 control
+characters, bidi and zero-width marks are removed; tabs and newlines become a space and runs of
+whitespace collapse; a leading glyph prefix (the Claude `✳` and spinner frames, Pi's `π - `) is
+stripped; and the result is cut to 200 runes. A title that is empty after cleaning is no answer, so
+nothing is adopted. The adopted name is stored as data only: it is never put in a shell command or
+in a launch argv (a `derived` or `harness` row launches with no name, R250), and adoption sends no
+keystroke.
+
 Adoption writes the display name only. The tmux session name `deck_<slug>` is never changed. The
 `name_source` check and the write share one store transaction, so a user rename that lands
 meanwhile is not overwritten, and an adoption failure never fails a hook or a reconcile pass.
@@ -1126,6 +1135,12 @@ running agent when its adapter declares `PushRename = sendkeys`. The push is a k
 the slug: `Enter` goes as a tmux key name and every other element, a control byte included, as
 literal text. A shell, an adapter that does not claim `sendkeys` and a name the adapter declines
 send nothing.
+
+The name in the plan is the row's name cleaned per harness by `agent.SanitisePushName`: control
+characters and escape sequences are removed first; then Copilot takes 1-100 runes and no `"` (a
+`"` becomes `'`, and the name is cut to 100 runes), Claude is cut to 200 runes, and any other kind
+to 200. A name that is empty after cleaning is refused (`harness_rename_refused`): a blank name is
+never passed to a harness. The echo check compares the cleaned name.
 
 The plan is sent only when the row's status is `idle` or `running` and no harness dialog is focused.
 An adapter that can recognise its own dialogs (a permission prompt, a trust screen, a picker)
@@ -1745,10 +1760,16 @@ Invocation: `event_hook <event>`. When `event_hook` is an argv, the event kind i
 argv[1]: the configured fixed arguments follow it (`script <event> <fixed>...`).
 
 - **argv[1]** is the event kind, one of the **offered set**: `started`, `resumed`,
-  `waiting`, `idle`, `error`, `ended`, `killed`. Nothing else is offered: a typed
+  `waiting`, `idle`, `error`, `ended`, `killed`, `renamed`. Nothing else is offered: a typed
   `prompt`, an `env` change, a `note` and every other stored kind (§4, mapped by §10.4) are the
   audit trail's, and a hook for each keystroke-grained event would be noise on the agent's
   critical path.
+- **`renamed`** is offered when a session's name changes. Its `event.reason` (and
+  `DECK_EVENT_REASON`) is the rename's **source**, the same text the stored `renamed` event
+  records (§4): `user` for a rename typed in deck (the `i` dialog), `harness:<kind>` (for
+  example `harness:claude`) for a name deck adopted from its harness (§8 "Adopting a harness
+  name"). The new name is `session.name` and `event.message`; the tmux slug is never part of it.
+  It is not in the default `event_hook_events`, so it spawns only when a list names it.
 - **NUL is stripped.** A NUL byte in any string exported in the environment or the payload (the
   session fields, the offered kind, both reasons, the message, the deck host and version) is removed
   before anything else, because a NUL in an environment entry makes the OS refuse the whole spawn; the
@@ -1841,6 +1862,9 @@ argv[1]: the configured fixed arguments follow it (`script <event> <fixed>...`).
   output tail is never logged; it lives only on the event row. A detached session-end spawn
   (below) logs `"detached": true` and no exit status or duration, because deck never waits for
   either. An offer that spawns nothing (inert, disabled, unlisted, deduped) logs nothing.
+- **`renamed` is never deduped.** A rename is a fact and not an attention episode, so every
+  rename spawns the hook again, even for a source that already fired in the epoch, and no pair
+  is added to `hook_fired`.
 - **Dedupe by epoch, not forever.** `notify_epoch` increments whenever the session leaves an
   attention state (§7). Within one epoch, a `(kind, reason)` pair spawns the hook once: a
   re-fired prompt in the same attention episode is one spawn, and the same prompt tomorrow is
@@ -1918,6 +1942,7 @@ nothing and never spawns:
 | `tmux.pane_dead` | reconcile | `error` |
 | `tmux.session_gone` | reconcile | `ended` |
 | `killed` | the user | `killed` |
+| `renamed` | the user, or adoption from a harness | `renamed` (reason = the source, above) |
 
 Every other stored kind (`user_prompt_submitted`, `error_occurred`, `probe.running`,
 `launch.ready`, `launch.failed`, `restart`, a `.superseded` or

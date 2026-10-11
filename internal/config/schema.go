@@ -765,7 +765,7 @@ var Schema = []Field{
 		ElementValues: EventHookKinds,
 		Description: "The event kinds the hook is offered by default (SPEC \u00a710.1-\u00a710.2), " +
 			"edited here as comma-separated text, e.g. waiting, error, ended. Any of " +
-			"started, resumed, waiting, idle, error, ended, killed; any other word " +
+			"started, resumed, waiting, idle, error, ended, killed, renamed; any other word " +
 			"is refused. A session's own list replaces this one entirely, never " +
 			"merges with it. Applies immediately.",
 		Scope: ScopeGlobal,

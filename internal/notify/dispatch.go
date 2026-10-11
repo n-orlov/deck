@@ -8,6 +8,11 @@ import (
 	"github.com/n-orlov/deck/internal/config"
 )
 
+// KindRenamed is the offered kind of a session rename. It is the one offered
+// kind outside the epoch dedupe (SPEC §10.3): its reason is the rename's
+// source, and a second rename from the same source is a new fact.
+const KindRenamed = "renamed"
+
 // Policy is the global half of the dispatch decision (SPEC §6.5): the
 // configured event_hook argv, event_hook_default and event_hook_events.
 type Policy struct {
@@ -98,6 +103,10 @@ func Dispatch(policy Policy, session SessionSource, kind, reason string) Decisio
 	if !slices.Contains(effectiveList(policy, session), kind) {
 		return Decision{Skip: SkipNotListed}
 	}
+	if kind == KindRenamed {
+		// A rename is a fact, not an attention episode: every one is offered.
+		return Decision{Spawn: true, Fired: session.HookFired()}
+	}
 	pair := Fired{Kind: kind, Reason: reason}
 	fired := session.HookFired()
 	if slices.Contains(fired, pair) {
@@ -181,6 +190,7 @@ var storedKindOffers = map[string]string{
 	"tmux.pane_dead":     "error",
 	"tmux.session_gone":  "ended",
 	"killed":             "killed",
+	"renamed":            "renamed",
 }
 
 // probeOffers maps the status a probe classified to an offered kind.

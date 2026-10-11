@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"strings"
 
 	"github.com/n-orlov/deck/internal/agent"
 	"github.com/n-orlov/deck/internal/store"
@@ -72,7 +71,7 @@ func (s Service) adoptRow(ctx context.Context, session store.Session) (bool, err
 		return false, nil
 	}
 	name, explicit, ok := agent.ReadName(adapter, s.nameProbe(ctx, adapter, session))
-	name = strings.TrimSpace(name)
+	name = agent.SanitiseHarnessName(name)
 	if !ok || name == "" || name == session.Name || harnessPlaceholders[name] {
 		return false, nil
 	}
@@ -137,6 +136,7 @@ func (s Service) applyAdoption(ctx context.Context, session store.Session, name 
 	if err != nil || !adopted {
 		return false, err
 	}
+	s.offerRenamed(ctx, session.ID, "harness:"+session.Agent, unique)
 	if err := s.reapedHolderFiles(ctx, holders); err != nil {
 		return true, fmt.Errorf("clean up the session reaped by adopting name %q: %w", unique, err)
 	}
@@ -170,4 +170,13 @@ func nameTaken(rows []store.Session, sessionID, candidate string) bool {
 		}
 	}
 	return false
+}
+
+// offerRenamed offers a committed rename to the event hook (SPEC §10.4). The
+// reason is the rename's source: "user" for a rename typed in deck and
+// "harness:<kind>" for a name adopted from a harness.
+func (s Service) offerRenamed(ctx context.Context, sessionID, source, name string) {
+	s.offerHook(ctx, HookEvent{
+		SessionID: sessionID, StoredKind: "renamed", Reason: source, Message: name, At: s.Clock.Now(),
+	})
 }
