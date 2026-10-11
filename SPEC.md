@@ -3101,11 +3101,14 @@ must be restored afterwards.
 - **Only deck's own pipe directories are reclaimed.** The start-time reclaim scans the shared
   temp directory for `deck-interactive-pipe-*` entries, a place any local user can write to, so
   it removes an entry only when it is a real directory (`lstat`, never a symlink), owned by the
-  current user, with no permission bit beyond `0700` — what deck itself creates. Each entry is
+  current user, with permission mode exactly `0700` (any other mode, tighter or looser, and any
+  setuid/setgid/sticky bit disqualify it) — what deck itself creates. A fresh pipe directory is
+  always created separately and never reuses a skipped entry. Each entry is
   re-checked with its own `lstat` right before it is touched, never trusted from the scan's
   listing, so an entry swapped for a symlink after the scan is still recognised as one. A
-  symlink, a directory owned by someone else and a directory looser than `0700` are left in
-  place and not reported.
+  symlink, a non-directory, a directory owned by someone else and a directory whose mode is not
+  `0700` (looser, such as `0755`, or restrictive, such as `0500` or `0600`) are left in place
+  and not reported.
 - **A pipe still being armed is not a leak.** An entry's claim record is written only once the
   whole entry has succeeded, so a second deck starting while the first is mid-entry would
   otherwise find a record-less directory and delete the FIFO the entry is arming. Every pipe

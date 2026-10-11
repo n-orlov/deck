@@ -395,6 +395,38 @@ func TestReclaimLeavesAWorldReadableDirectoryAlone(t *testing.T) {
 	}
 }
 
+// TestReclaimLeavesAnyNon0700DirectoryAlone pins the exact trust rule: an
+// owned real directory is reclaimed only at mode 0700. Restrictive modes
+// (0500, 0600, 0300, 0100, 0000) and special-bit modes are as untrusted as a
+// loose one, and are left in place with their contents.
+func TestReclaimLeavesAnyNon0700DirectoryAlone(t *testing.T) {
+	modes := map[string]os.FileMode{
+		"0500": 0o500, "0600": 0o600, "0300": 0o300, "0100": 0o100, "0000": 0o000,
+		"0770": 0o770, "0701": 0o701, "sticky0700": 0o700 | os.ModeSticky,
+		"setgid0700": 0o700 | os.ModeSetgid,
+	}
+	for name, mode := range modes {
+		t.Run(name, func(t *testing.T) {
+			withIsolatedInteractivePipeTempRoot(t)
+			dir := plantInteractivePipeEntry(t, 0o700)
+			if err := os.Chmod(dir, mode); err != nil {
+				t.Fatalf("chmod %v: %v", mode, err)
+			}
+			t.Cleanup(func() { _ = os.Chmod(dir, 0o700) })
+			reclaimed := reclaimWithOwnerCheck(t, func(os.FileInfo) bool { return true })
+			if len(reclaimed) != 0 {
+				t.Fatalf("reclaimed = %v, want none for mode %v", reclaimed, mode)
+			}
+			if err := os.Chmod(dir, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := os.Stat(filepath.Join(dir, "marker")); err != nil {
+				t.Fatalf("mode %v dir was touched: %v", mode, err)
+			}
+		})
+	}
+}
+
 func TestInteractivePipeOwnedByCurrentUserMatchesTheRealOwner(t *testing.T) {
 	info, err := os.Lstat(t.TempDir())
 	if err != nil {

@@ -216,7 +216,8 @@ var interactivePipeOwnedByCurrentUser = func(info os.FileInfo) bool {
 // isReclaimableInteractivePipeDir is the trust check a scan result must
 // pass before anything under it is touched: the entry is a real directory
 // (Lstat, so a symlink is never followed or removed), owned by the current
-// user, and grants no permission bit beyond 0700. The shared temp root is
+// user, and has permission mode exactly 0700 (no other permission bit, set
+// or missing, and no setuid/setgid/sticky bit). The shared temp root is
 // world-writable, so any other local user can plant a deck-interactive-pipe-*
 // entry; only what deck's own os.MkdirTemp (0700, this uid) could have made
 // is reclaimed, and everything else stays in place and unreported.
@@ -225,7 +226,7 @@ func isReclaimableInteractivePipeDir(dir string) bool {
 	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
 		return false
 	}
-	if info.Mode().Perm()&^0o700 != 0 {
+	if info.Mode()&(os.ModePerm|os.ModeSetuid|os.ModeSetgid|os.ModeSticky) != 0o700 {
 		return false
 	}
 	return interactivePipeOwnedByCurrentUser(info)
