@@ -417,3 +417,52 @@ func TestMergedWalkMasksEveryShapeAsShapesRunOut(t *testing.T) {
 		}
 	}
 }
+
+// A secret behind a backslash-escaped JSON key (the shape a JSON document
+// takes once it is embedded in a JSON string) is masked on every surface the
+// script sees: DECK_EVENT_MESSAGE, the stdin JSON and the stored output tail.
+func TestSpawnMasksEscapedJSONKeyInEnvPayloadAndStoredOutput(t *testing.T) {
+	const secret = "sk_live_abcdef123"
+	path, dir := captureScript(t, `printf '%s\n' "out: $DECK_EVENT_MESSAGE"; printf '%s\n' 'err: {\"api_key\":\"sk_live_abcdef123\"}' >&2`)
+	req := baseRequest(path)
+	req.Event.Message = `got {\"api_key\":\"sk_live_abcdef123\"} done`
+	res, err := Spawn(context.Background(), req)
+	if err != nil || res.Failed() {
+		t.Fatalf("Spawn = %+v, %v", res, err)
+	}
+	env := envMap(read(t, filepath.Join(dir, "env")))
+	stdin := read(t, filepath.Join(dir, "stdin"))
+	var p struct{ Event struct{ Message string } }
+	if err := json.Unmarshal([]byte(stdin), &p); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(env["DECK_EVENT_MESSAGE"], secret) || strings.Contains(p.Event.Message, secret) ||
+		strings.Contains(stdin, secret) || strings.Contains(res.Output, secret) {
+		t.Errorf("a surface carries the secret: env %q, stdin %q, output %q", env["DECK_EVENT_MESSAGE"], stdin, res.Output)
+	}
+	if !strings.Contains(env["DECK_EVENT_MESSAGE"], MaskedPlaceholder) || !strings.Contains(p.Event.Message, MaskedPlaceholder) {
+		t.Errorf("message env %q, stdin %q, want the placeholder", env["DECK_EVENT_MESSAGE"], p.Event.Message)
+	}
+	if strings.Count(res.Output, MaskedPlaceholder) < 2 {
+		t.Errorf("stored output = %q, want the placeholder in both the out and err lines", res.Output)
+	}
+}
+
+// Masking an escaped-JSON-shaped input stays linear: a 1 MiB run of
+// backslashes and a 1 MiB run of `\"k\":` each finish in well under a second.
+func TestMaskSecretAssignmentsStaysLinearOnEscapedInputs(t *testing.T) {
+	const size = 1 << 20
+	for name, in := range map[string]string{
+		"backslashes":  strings.Repeat(`\`, size),
+		"escaped keys": strings.Repeat(`\"k\":`, size/len(`\"k\":`)+1)[:size],
+	} {
+		start := time.Now()
+		got := maskSecretAssignments(in)
+		if elapsed := time.Since(start); elapsed >= time.Second {
+			t.Errorf("%s: masking %d bytes took %v, want under 1s", name, len(in), elapsed)
+		}
+		if len(got) > len(in)+len(MaskedPlaceholder) {
+			t.Errorf("%s: output grew from %d to %d bytes", name, len(in), len(got))
+		}
+	}
+}
