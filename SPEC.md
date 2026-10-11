@@ -1659,7 +1659,9 @@ argv[1]: the configured fixed arguments follow it (`script <event> <fixed>...`).
   a flag whose last word is `token`, `secret`, `key`, `password`, `passwd` or `credential`
   (`--token abc`, `--password=abc`, `--api-key abc`; `--tokens-per-minute 5` is not one); a body
   of at least eight characters behind `sk-`, `ghp_` (also `gho_`, `ghu_`, `ghs_`, `ghr_`),
-  `github_pat_` or `AKIA`; and a three-segment JWT (`eyJ…`.payload.signature). The same masking
+  `github_pat_` or `AKIA`; and a three-segment JWT (`eyJ…`.payload.signature). A quoted value (a pair's, a quoted key's or a
+  flag's) is masked through its real closing quote: a backslash escapes the byte after it, so
+  `"ab\"cd"` and `"a\\"` are each one value and no suffix is left in the clear. The same masking
   feeds `DECK_EVENT_MESSAGE`, the stdin JSON and the stored script-output tail. Anything else is
   left byte-for-byte as it was. Redaction also removes
   every non-empty session env value, of any length, by value, from the message and from the

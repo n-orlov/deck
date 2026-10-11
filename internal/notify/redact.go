@@ -334,17 +334,41 @@ func jwtEnd(text string, i int) int {
 }
 
 // assignmentValueEnd returns where the value starting at start ends: after
-// the closing quote of a quoted string, else at the next whitespace.
+// the closing quote of a quoted string, else at the next whitespace. A
+// backslash escapes the byte after it inside a quoted string, so "a\"b" is one
+// value and the secret is masked through its real closing quote, never to an
+// escaped one that leaves a suffix in the clear. A quote that never closes
+// falls back to the next whitespace, as the regular expression this scan
+// replaced did.
 func assignmentValueEnd(text string, start int) int {
-	if quote := text[start]; quote == '"' || quote == '\'' {
-		if closing := strings.IndexByte(text[start+1:], quote); closing >= 0 {
-			return start + 1 + closing + 1
+	if quote := text[start]; isQuote(quote) {
+		if closing := closingQuote(text, start+1, quote); closing >= 0 {
+			return closing + 1
 		}
 	}
 	if i := strings.IndexAny(text[start+1:], asciiSpace); i >= 0 {
 		return start + 1 + i
 	}
 	return len(text)
+}
+
+// closingQuote returns the index of the first quote at or after from that is
+// not escaped by a backslash, or -1. It jumps from quote or backslash to the
+// next with strings.IndexAny, so it stays linear (see asciiSpace).
+func closingQuote(text string, from int, quote byte) int {
+	stops := `\` + string(quote)
+	for from < len(text) {
+		at := strings.IndexAny(text[from:], stops)
+		if at < 0 {
+			return -1
+		}
+		from += at
+		if text[from] == quote {
+			return from
+		}
+		from += 2 // a backslash and the byte it escapes
+	}
+	return -1
 }
 
 // scrubValues lists the session env values to remove by value, longest first
