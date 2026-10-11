@@ -52,6 +52,7 @@ func (Claude) Capabilities() Caps {
 		HasTranscript:         true,
 		Executable:            "claude",
 		TranscriptEnvKeys:     []string{claudeConfigDirKey},
+		Name:                  NameCaps{LaunchName: NameLaunchFlag},
 	}
 }
 
@@ -161,8 +162,7 @@ func (c Claude) Launch(in LaunchInput) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	argv := append([]string{"claude", "--session-id", in.ConversationID}, permArgs...)
-	return append(argv, in.ExtraArgs...), nil
+	return claudeArgv([]string{"claude", "--session-id", in.ConversationID}, permArgs, in.Name, in.ExtraArgs)
 }
 
 // Resume returns the argv that resumes the Claude conversation named by
@@ -176,8 +176,35 @@ func (c Claude) Resume(in ResumeInput) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	argv := append([]string{"claude", "--resume", in.ConversationID}, permArgs...)
-	return append(argv, in.ExtraArgs...), nil
+	return claudeArgv([]string{"claude", "--resume", in.ConversationID}, permArgs, in.Name, in.ExtraArgs)
+}
+
+// claudeArgv assembles head, the permission flags, the name flag and extra.
+// A non-blank name rides as `--name <name>` (R254): Claude shows it in its
+// own session list and resume picker. A blank name passes no flag at all, so
+// a derived or harness row keeps Claude's own auto-title. Extra arguments
+// that spell the name flag are refused: deck owns the name.
+func claudeArgv(head, permArgs []string, name string, extra []string) ([]string, error) {
+	for _, arg := range extra {
+		if bad := claudeForbiddenExtraFlag(arg); bad != "" {
+			return nil, fmt.Errorf("claude: extra argument %q is refused: %s is not allowed in launch args (deck passes the session name itself)", arg, bad)
+		}
+	}
+	argv := append(append([]string{}, head...), permArgs...)
+	if name = strings.TrimSpace(name); name != "" {
+		argv = append(argv, "--name", name)
+	}
+	return append(argv, extra...), nil
+}
+
+// claudeForbiddenExtraFlag returns the name flag arg spells (`-n`, `--name`
+// or `--name=<x>`), and "" when arg is allowed.
+func claudeForbiddenExtraFlag(arg string) string {
+	name, _, _ := strings.Cut(arg, "=")
+	if name == "-n" || name == "--name" {
+		return name
+	}
+	return ""
 }
 
 var claudeHookEvents = []string{

@@ -1201,6 +1201,15 @@ Two consequences to design for rather than discover: a project's own hooks fire 
 sessions too, and on the session-end path they share the same budget `_hook` is racing —
 which is one more reason that path never waits for the event hook (§10.3).
 
+**Launch name (R254).** Claude declares `NameCaps.LaunchName=flag`. A row whose `name_source`
+is `user` and whose name is not blank launches with `--name <name>`: on the first launch
+(`--session-id`), on `--resume`, and on the fresh `--session-id` relaunch of a conversation
+that has no transcript yet (R207). Each carries the flag exactly once, after the permission
+flags and before the row's `launch_args`. A `derived` or `harness` row passes no name flag, so
+Claude keeps its own auto-title. `Launch` and `Resume` refuse, with a deck-side error that
+names the flag and no argv, a `launch_args` entry that is `-n`, `--name` or `--name=<x>`: deck
+owns the name Claude is given.
+
 Subscribed events — a handful per turn, never per tool call:
 
 | event | → status | notes |

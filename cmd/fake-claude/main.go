@@ -360,6 +360,10 @@ func (o *options) apply(argument, value string) error {
 			return fmt.Errorf("invalid value for --permission-mode: %q", value)
 		}
 		o.permissionMode = value
+	case "--name", "-n":
+		if strings.TrimSpace(value) == "" {
+			return fmt.Errorf("invalid value for %s: blank name", argument)
+		}
 	case "--settings":
 		if _, err := hookCommands(value); err != nil {
 			return fmt.Errorf("invalid --settings: %w", err)
