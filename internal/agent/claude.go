@@ -100,7 +100,14 @@ const (
 // file whose target metadata cannot be read) is never mistaken for absent;
 // only an explicit not-exist result is absence.
 func claudeTranscriptLookup(in TranscriptInput) (string, transcriptState) {
-	project := strings.ReplaceAll(in.CWD, string(filepath.Separator), "-")
+	// The stored cwd may carry a trailing slash, a doubled separator or a
+	// "." / ".." element; Claude keys the project dir by the cleaned path, so
+	// clean before encoding (an empty cwd stays empty, not ".").
+	cwd := in.CWD
+	if cwd != "" {
+		cwd = filepath.Clean(cwd)
+	}
+	project := strings.ReplaceAll(cwd, string(filepath.Separator), "-")
 	path := filepath.Join(in.Home, ".claude", "projects", project, in.ConversationID+".jsonl")
 	if _, err := os.Lstat(path); err != nil {
 		if errors.Is(err, fs.ErrNotExist) {

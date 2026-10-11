@@ -1399,7 +1399,9 @@ every session reads `stopped · resumable`, and `r` brings one back:
   1. Claude, the conversation **not locked**, the home directory known, no `CLAUDE_CONFIG_DIR`
      in the session's env layering (session env over config `[env]` over the tmux server's
      environment, falling back to deck's own), and **no transcript file** at
-     `$HOME/.claude/projects/<cwd with separators as "-">/<conversation id>.jsonl` →
+     `$HOME/.claude/projects/<cwd with separators as "-">/<conversation id>.jsonl`, where the
+     stored cwd is cleaned (`filepath.Clean`: no trailing or doubled separator, no `.` or `..`
+     element) before its separators are encoded, and the row's stored cwd is not changed →
      `--session-id <the same uuid>`. The conversation id on the row is unchanged.
   2. A transcript file exists → `--resume <uuid>`, even when its metadata cannot be read (a
      symlink whose target is unreadable still counts as an existing entry). Absence has to be

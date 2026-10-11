@@ -213,3 +213,35 @@ func assertNoContinueOrResume(t *testing.T, argv []string) {
 		}
 	}
 }
+
+// A stored cwd with a trailing or doubled separator, or a "." / ".." element,
+// is cleaned before it is encoded into Claude's project dir (#79, R244).
+func TestClaudeTranscriptLookupCleansCWD(t *testing.T) {
+	root := t.TempDir()
+	home := t.TempDir()
+	const id = "7f1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
+	clean := filepath.Join(root, "a", "b")
+	project := filepath.Join(home, ".claude", "projects", strings.ReplaceAll(clean, string(filepath.Separator), "-"))
+	if err := os.MkdirAll(project, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	want := filepath.Join(project, id+".jsonl")
+	if err := os.WriteFile(want, []byte("{}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cases := []struct{ name, cwd string }{
+		{"plain", root + "/a/b"},
+		{"trailing slash", root + "/a/b/"},
+		{"doubled trailing slash", root + "/a/b//"},
+		{"dot element", root + "/a/./b"},
+		{"dotdot element", root + "/a/b/../b"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, ok := NewClaude().TranscriptPaths(TranscriptInput{Home: home, CWD: tc.cwd, ConversationID: id})
+			if !ok || got != want {
+				t.Fatalf("TranscriptPaths(%q) = %q, %v; want %q, true", tc.cwd, got, ok, want)
+			}
+		})
+	}
+}

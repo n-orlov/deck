@@ -243,3 +243,17 @@ func TestResumeArgvUnreadableTranscriptEntryResumes(t *testing.T) {
 	}
 	wantArgvHead(t, relaunchArgv(t, Service{}, session), "--resume")
 }
+
+// #79 / R244: a stored cwd ending in "/" must find the transcript recorded
+// under the cleaned cwd, so the relaunch resumes instead of starting a second
+// conversation on the same id. The row's stored cwd is not migrated.
+func TestResumeArgvTrailingSlashCWDResumes(t *testing.T) {
+	home := isolateAgentHome(t)
+	cleaned := t.TempDir()
+	session := claudeRelaunchSession(cleaned + "/")
+	recordClaudeTranscript(t, home, cleaned, session.ConversationID)
+	wantArgvHead(t, relaunchArgv(t, Service{}, session), "--resume")
+	if session.CWD != cleaned+"/" {
+		t.Fatalf("stored cwd = %q, want it unchanged %q", session.CWD, cleaned+"/")
+	}
+}
