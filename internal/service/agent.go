@@ -183,7 +183,7 @@ func (s Service) insertAgentRow(ctx context.Context, input AgentCreateInput, pla
 		return store.Session{}, err
 	}
 	session, err := s.Store.CreateSession(ctx, store.CreateSessionInput{
-		ID: plan.id, Name: input.Name, CWD: input.CWD, Agent: plan.adapter.Kind(), CapturedPath: plan.capturedPath,
+		ID: plan.id, Name: input.Name, CWD: filepath.Clean(input.CWD), Agent: plan.adapter.Kind(), CapturedPath: plan.capturedPath,
 		Status: "starting", StatusSource: "user", StatusAt: now, CreatedAt: now,
 		LaunchArgs: input.LaunchArgs, Env: input.Env, PreLaunch: input.PreLaunch, LoginShell: input.LoginShell,
 		PostDestroy:       input.PostDestroy,

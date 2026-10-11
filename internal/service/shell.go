@@ -272,7 +272,7 @@ func (s Service) insertShellRow(ctx context.Context, input ShellCreateInput, pla
 		return store.Session{}, err
 	}
 	session, err := s.Store.CreateSession(ctx, store.CreateSessionInput{
-		ID: plan.id, Name: input.Name, CWD: input.CWD, Agent: "shell", CapturedPath: plan.capturedPath,
+		ID: plan.id, Name: input.Name, CWD: filepath.Clean(input.CWD), Agent: "shell", CapturedPath: plan.capturedPath,
 		Status: "starting", StatusSource: "user", StatusAt: plan.now, CreatedAt: plan.now,
 		PreLaunch: input.PreLaunch, PostDestroy: input.PostDestroy, GroupID: input.GroupID,
 		EventHookEnabled: input.EventHookEnabled, EventHookEvents: input.EventHookEvents,

@@ -377,7 +377,7 @@ CREATE TABLE sessions (
   id                 TEXT PRIMARY KEY,      -- deck's own uuid, stable forever
   name               TEXT NOT NULL UNIQUE,
   slug               TEXT NOT NULL UNIQUE,  -- tmux session = deck_<slug>
-  cwd                TEXT NOT NULL,         -- create-time, never overwritten; NOT unique (R2)
+  cwd                TEXT NOT NULL,         -- create-time (the cleaned path), never overwritten; NOT unique (R2)
   last_cwd           TEXT,                  -- pane's cwd at the last capture (§9.4); resume target
   agent              TEXT NOT NULL,         -- claude | pi | codex | copilot | shell
   launch_args        TEXT NOT NULL DEFAULT '[]', -- JSON array, extra agent args
@@ -2755,7 +2755,8 @@ create modal's `cwd`, and any later path field, behave identically:
 **Recent working directories.** deck remembers the last **5** distinct directories a
 session was created in, most-recent-first, in `state.db` (§4's `recent_cwds`) — not in
 `config.toml`, since it is machine-local history rather than preference. The limit is
-`[ui] recent_cwd_limit` (default 5, §6.5). Creating a session promotes its `cwd` to the
+`[ui] recent_cwd_limit` (default 5, §6.5). Creating a session stores its `cwd` as the cleaned path (`filepath.Clean`: no trailing or doubled
+separator, no `.` element; agent and shell sessions alike) and promotes that `cwd` to the
 front, deduplicated by resolved absolute path, evicting the oldest beyond the limit.
 
 - The `cwd` field is **pre-filled with the most recent entry**, so the common case —
