@@ -63,6 +63,8 @@ type options struct {
 	// extension is the file named by -e/--extension: the deck-owned Pi
 	// extension whose events become `deck _hook` calls (hook.go).
 	extension string
+	// name is the value of --name/-n: the session's display name (R261).
+	name string
 }
 
 func main() {
@@ -149,6 +151,9 @@ func announceLaunch(stdout io.Writer, opts options, encodedArgv []byte) {
 	}
 	if opts.approve {
 		sayln(stdout, "fake-pi approve: true")
+	}
+	if opts.name != "" {
+		sayf(stdout, "fake-pi name: %s\n", opts.name)
 	}
 	if opts.extension != "" {
 		sayf(stdout, "fake-pi extension: %s\n", opts.extension)
@@ -573,6 +578,14 @@ func parse(args []string) (options, error) {
 			continue
 		case "--approve":
 			result.approve = true
+			continue
+		case "-n", "--name":
+			value, err := flagValue(args, index)
+			if err != nil {
+				return result, err
+			}
+			index++
+			result.name = value
 			continue
 		case "-e", "--extension":
 			value, err := flagValue(args, index)

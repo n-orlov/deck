@@ -40,37 +40,58 @@ func (Pi) Capabilities() Caps {
 		Resumable:             true,
 		HasTranscript:         true,
 		Executable:            "pi",
+		Name:                  NameCaps{LaunchName: NameLaunchFlag, AutoTitle: false},
 	}
 }
 
-// Launch returns the argv that starts Pi under in.Profile, followed by
-// in.ExtraArgs.
+// Launch returns the argv that starts Pi under in.Profile, then `--name <n>`
+// for a row whose name deck owns (in.Name is non-blank only for `user` rows,
+// R261), followed by in.ExtraArgs.
 func (p Pi) Launch(in LaunchInput) ([]string, error) {
 	if in.ConversationID == "" {
 		return nil, fmt.Errorf("pi: launch requires a caller-assigned conversation id")
 	}
-	argv := []string{"pi", "--session-id", in.ConversationID}
-	if flag, ok := piProfileFlags[in.Profile]; ok {
-		argv = append(argv, flag)
-	} else if in.Profile != "safe" && in.Profile != "" {
-		return nil, fmt.Errorf("pi: unsupported permission profile %q", in.Profile)
-	}
-	return append(argv, in.ExtraArgs...), nil
+	return piArgv(in.ConversationID, in.Profile, in.Name, in.ExtraArgs)
 }
 
 // Resume returns the argv that resumes the Pi session named by
-// in.ConversationID under in.Profile, followed by in.ExtraArgs.
+// in.ConversationID under in.Profile, then `--name <n>` for a `user` row,
+// followed by in.ExtraArgs.
 func (p Pi) Resume(in ResumeInput) ([]string, error) {
 	if in.ConversationID == "" {
 		return nil, fmt.Errorf("pi: resume requires a conversation id")
 	}
-	argv := []string{"pi", "--session-id", in.ConversationID}
-	if flag, ok := piProfileFlags[in.Profile]; ok {
-		argv = append(argv, flag)
-	} else if in.Profile != "safe" && in.Profile != "" {
-		return nil, fmt.Errorf("pi: unsupported permission profile %q", in.Profile)
+	return piArgv(in.ConversationID, in.Profile, in.Name, in.ExtraArgs)
+}
+
+// piArgv builds the argv Launch and Resume share: Pi reuses --session-id for
+// both. -n/--name in extra is refused; a blank name passes no flag.
+func piArgv(conversationID, profile, name string, extra []string) ([]string, error) {
+	for _, arg := range extra {
+		if bad := piForbiddenExtraFlag(arg); bad != "" {
+			return nil, fmt.Errorf("pi: extra argument %q is refused: %s is not allowed in launch args (deck passes the session name itself)", arg, bad)
+		}
 	}
-	return append(argv, in.ExtraArgs...), nil
+	argv := []string{"pi", "--session-id", conversationID}
+	if flag, ok := piProfileFlags[profile]; ok {
+		argv = append(argv, flag)
+	} else if profile != "safe" && profile != "" {
+		return nil, fmt.Errorf("pi: unsupported permission profile %q", profile)
+	}
+	if clean, ok := SanitisePushName("pi", name); ok {
+		argv = append(argv, "--name", clean)
+	}
+	return append(argv, extra...), nil
+}
+
+// piForbiddenExtraFlag returns the name flag arg spells (`-n`, `--name` or
+// `--name=<x>`), and "" when arg is allowed.
+func piForbiddenExtraFlag(arg string) string {
+	flag, _, _ := strings.Cut(arg, "=")
+	if flag == "-n" || flag == "--name" {
+		return flag
+	}
+	return ""
 }
 
 // Instrument installs deck's Pi extension (PiExtensionSource) with `-e` and

@@ -1402,6 +1402,16 @@ has one: for a database newer than the hook binary, that is the R204 restart mes
 Pi has no event for a permission prompt or a failed turn, so a Pi row never reports `waiting` or
 `error` from a hook; those verdicts still come from the probe (§7) and from reconcile.
 
+**Launch name (R261).** Pi declares `NameCaps.LaunchName=flag` and `AutoTitle=false`: Pi never
+titles a session itself, so deck's name is the only name it has. A row whose `name_source` is
+`user` and whose name is not blank launches and resumes with `--name <name>`, once, after the
+profile's flag (`--approve`) and before the row's `launch_args`; the flag rides every launch
+and every resume, so the name survives a restart. A `derived` or `harness` row passes no
+`--name`, and a blank name never passes one. The name is sanitised first (control characters
+go, whitespace collapses, it is trimmed and cut to the shared harness limit). `-n`, `--name`
+and `--name=<x>` in `launch_args` are refused by `Launch` and `Resume` with an error naming
+the flag, because deck owns the name. `cmd/fake-pi` accepts `-n`/`--name <value>` and echoes it.
+
 ### 8.4 Copilot CLI
 
 GitHub Copilot CLI is the fifth agent kind, `copilot` (executable `copilot`). Deck assigns the

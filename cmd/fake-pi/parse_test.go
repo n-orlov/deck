@@ -31,3 +31,15 @@ func TestParseRejectsAnUnknownFlagAndAMissingSessionIDValue(t *testing.T) {
 		}
 	}
 }
+
+func TestParseNameFlag(t *testing.T) {
+	for _, flag := range []string{"-n", "--name"} {
+		got, err := parse([]string{"--session-id", "s1", flag, "my work"})
+		if err != nil || got.name != "my work" || got.sessionID != "s1" {
+			t.Errorf("parse with %s = (%+v, %v)", flag, got, err)
+		}
+		if _, err := parse([]string{flag}); err == nil {
+			t.Errorf("parse(%s) with no value succeeded", flag)
+		}
+	}
+}

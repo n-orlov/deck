@@ -120,3 +120,36 @@ func TestCopilotNameServiceArgv(t *testing.T) {
 		}
 	}
 }
+
+// TestPiNameServiceArgv drives the service's argv builders with the real Pi
+// adapter (R261): a user row passes --name on resume, a derived row never does.
+func TestPiNameServiceArgv(t *testing.T) {
+	stubExecutableOnPath(t, "pi")
+	const id = "9b2d1c64-3e5f-4a6b-8c7d-0e1f2a3b4c5d"
+	svc, _, _, _ := newAgentTestService(t, nil, "pi-name-argv")
+	adapter := agent.NewPi()
+	session := store.Session{CWD: t.TempDir(), ConversationID: id, PermissionProfile: "safe"}
+	for _, tc := range []struct {
+		name, source, row string
+		want              bool
+	}{
+		{"user row", "user", "typed", true},
+		{"derived row", "derived", "pi-1234", false},
+	} {
+		s := session
+		s.Name, s.NameSource = tc.row, tc.source
+		argv, err := svc.resumeArgv(s, adapter, adapter.Capabilities(), agent.LaunchInput{
+			CWD: s.CWD, ConversationID: id, Profile: "safe", Name: launchName(s),
+		}, false)
+		if err != nil {
+			t.Fatalf("%s: %v", tc.name, err)
+		}
+		has := false
+		for i, a := range argv {
+			has = has || (a == "--name" && i+1 < len(argv) && argv[i+1] == tc.row)
+		}
+		if has != tc.want {
+			t.Errorf("%s: argv %q has --name = %v, want %v", tc.name, argv, has, tc.want)
+		}
+	}
+}
