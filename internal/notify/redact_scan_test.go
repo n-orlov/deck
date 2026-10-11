@@ -7,8 +7,9 @@ import (
 )
 
 // oracleAssignment is the regular expression the linear scanner replaced; it
-// is the specification of which pairs the scanner must find.
-var oracleAssignment = regexp.MustCompile(`([A-Za-z0-9_.\-]+)(\s*[=:]\s*)("[^"]*"|'[^']*'|\S+)`)
+// is the specification of which pairs the scanner must find, with one
+// extension: a backslash escapes the byte after it inside a quoted value.
+var oracleAssignment = regexp.MustCompile(`([A-Za-z0-9_.\-]+)(\s*[=:]\s*)("(?:[^"\\]|\\(?s:.))*"|'(?:[^'\\]|\\(?s:.))*'|\S+)`)
 
 func oracleMask(text string) string {
 	return oracleAssignment.ReplaceAllStringFunc(text, func(match string) string {
@@ -25,7 +26,7 @@ func TestMaskKeyValuePairsAgreesWithTheRegexpItReplaced(t *testing.T) {
 		"", "plain words only", "API_TOKEN=abc", "API_TOKEN = abc def", "api-key: \"two words\" next",
 		"password='a b' tail", "password='unterminated tail", `token="unterminated tail`, "TOKEN=", "TOKEN=   ",
 		"=TOKEN", ": x", "a=b=c", "SECRET_X=a:b SECRET_Y:c", "x_token=1\nPASSWORD:\n2", "TOKEN=\"a\"rest AUTH=z",
-		"é_TOKEN=v ünï=TOKEN", "my.secret-key:v", "TOKEN==v", "TOKEN=:v", "a TOKEN\t=\tv b", "KEY=\x00\xff bin",
+		`token="a\"b" rest`, `token='a\\' rest`, `token="a\`, "é_TOKEN=v ünï=TOKEN", "my.secret-key:v", "TOKEN==v", "TOKEN=:v", "a TOKEN\t=\tv b", "KEY=\x00\xff bin",
 	} {
 		if got, want := maskKeyValuePairs(text), oracleMask(text); got != want {
 			t.Errorf("maskKeyValuePairs(%q) = %q, want %q", text, got, want)
@@ -34,7 +35,7 @@ func TestMaskKeyValuePairsAgreesWithTheRegexpItReplaced(t *testing.T) {
 }
 
 func TestMaskKeyValuePairsAgreesWithTheRegexpOnEveryShortSequence(t *testing.T) {
-	pieces := []string{"TOKEN", "k", "=", ":", " ", "\n", `"`, "'", "-", "é", "\xff"}
+	pieces := []string{"TOKEN", "k", "=", ":", " ", "\n", `"`, "'", "-", "é", "\xff", `\`}
 	var walk func(prefix string, depth int)
 	walk = func(prefix string, depth int) {
 		if got, want := maskKeyValuePairs(prefix), oracleMask(prefix); got != want {
@@ -71,7 +72,7 @@ func TestMaskKeyValuePairsMasksEveryPairInAVeryLongText(t *testing.T) {
 func TestMaskKeyValuePairsAgreesWithTheRegexpOnRandomTexts(t *testing.T) {
 	pieces := []string{
 		"TOKEN", "api_key", "k", "v", "=", ":", "=", ":", " ", "  ", "\t", "\n", "\r", "\f", `"`, "'", "-", ".", "é", "\xff",
-		"PASSWORD", "x y", "secret", "a=b", "::", "= ",
+		"PASSWORD", "x y", "secret", "a=b", "::", "= ", `\`, `\"`, `\'`,
 	}
 	// A fixed linear congruential stream: the same texts every run.
 	state := 74

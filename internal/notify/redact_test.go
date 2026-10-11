@@ -116,6 +116,17 @@ var maskShapeCases = []struct {
 	{"github_pat prefix", "pat " + testPAT + " end", "pat " + MaskedPlaceholder + " end", testPAT},
 	{"AKIA prefix", "aws " + testAWSKey + " end", "aws " + MaskedPlaceholder + " end", testAWSKey},
 	{"jwt", "got " + testJWT + " back", "got " + MaskedPlaceholder + " back", "SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"},
+	// A backslash escapes the byte after it inside a quoted value: the secret
+	// is masked through its real closing quote and no suffix survives.
+	{"json escaped quote", `{"api_key": "ab\"cd-LEAK"} tail`, `{"api_key": ` + MaskedPlaceholder + `} tail`, "LEAK"},
+	{"json escaped backslash then close", `"password":"a\\" tail`, `"password":` + MaskedPlaceholder + ` tail`, ""},
+	{"json backslash backslash quote", `"secret":"a\\\"LEAK" tail`, `"secret":` + MaskedPlaceholder + ` tail`, "LEAK"},
+	{"single quoted key escaped quote", `{'client_secret': 'it\'s LEAK'} next`, `{'client_secret': ` + MaskedPlaceholder + `} next`, "LEAK"},
+	{"key value escaped quote", `API_TOKEN="a\"b LEAK" rest`, `API_TOKEN=` + MaskedPlaceholder + ` rest`, "LEAK"},
+	{"flag escaped quote space", `run --token "a\"b LEAK" go`, "run --token " + MaskedPlaceholder + " go", "LEAK"},
+	{"flag escaped quote equals", `run --password='x\'y LEAK' go`, "run --password=" + MaskedPlaceholder + " go", "LEAK"},
+	{"flag escaped backslash", `run --api-key "a\\" go`, "run --api-key " + MaskedPlaceholder + " go", ""},
+	{"escaped quote in a non-secret", `{"author": "a\"b c"}`, `{"author": "a\"b c"}`, ""},
 	// Already masked before: they stay masked.
 	{"export", "export GITHUB_TOKEN=x", "export GITHUB_TOKEN=" + MaskedPlaceholder, "=x"},
 	{"aws colon", "AWS_SECRET_ACCESS_KEY: x", "AWS_SECRET_ACCESS_KEY: " + MaskedPlaceholder, ": x"},
@@ -168,6 +179,33 @@ func TestMaskSecretAssignmentsStaysLinearOnAVeryLongText(t *testing.T) {
 // One shape per field the script sees: the message in DECK_EVENT_MESSAGE and
 // on stdin, and the script's own output in the stored tail, all through the
 // same masking.
+func TestSpawnMasksEscapedQuotedValuesInEnvPayloadAndStoredOutput(t *testing.T) {
+	path, dir := captureScript(t, `echo "out: $DECK_EVENT_MESSAGE"; echo 'err: {"password": "x\"OUTLEAK y"} --token "q\"FLAGLEAK z" end' >&2`)
+	req := baseRequest(path)
+	req.Event.Message = `got {"api_key": "ab\"MSGLEAK"} and --secret "s\"ARGLEAK t" done`
+	res, err := Spawn(context.Background(), req)
+	if err != nil || res.Failed() {
+		t.Fatalf("Spawn = %+v, %v", res, err)
+	}
+	env := envMap(read(t, filepath.Join(dir, "env")))
+	var p struct{ Event struct{ Message string } }
+	if err := json.Unmarshal([]byte(read(t, filepath.Join(dir, "stdin"))), &p); err != nil {
+		t.Fatal(err)
+	}
+	want := `got {"api_key": ` + MaskedPlaceholder + `} and --secret ` + MaskedPlaceholder + " done"
+	if env["DECK_EVENT_MESSAGE"] != want || p.Event.Message != want {
+		t.Errorf("message env %q, stdin %q, want %q", env["DECK_EVENT_MESSAGE"], p.Event.Message, want)
+	}
+	for _, leak := range []string{"MSGLEAK", "ARGLEAK", "OUTLEAK", "FLAGLEAK", " y\"", " z\"", " t\""} {
+		if strings.Contains(res.Output, leak) || strings.Contains(env["DECK_EVENT_MESSAGE"], leak) || strings.Contains(p.Event.Message, leak) {
+			t.Errorf("a surface carries %q: output %q", leak, res.Output)
+		}
+	}
+	if !strings.Contains(res.Output, `"password": `+MaskedPlaceholder) || !strings.Contains(res.Output, "--token "+MaskedPlaceholder+" end") {
+		t.Errorf("stored output = %q, want the masked shapes in the tail", res.Output)
+	}
+}
+
 func TestSpawnMasksTheNewShapesInEnvPayloadAndStoredOutput(t *testing.T) {
 	const secret = testGHP
 	path, dir := captureScript(t, `echo "out: $DECK_EVENT_MESSAGE"; echo "err: curl -H 'Authorization: Bearer tok-leak-12345' --password hunter2x" >&2`)
