@@ -20,6 +20,7 @@ import (
 // screen. Every wait is a poll on one of those observables with a deadline;
 // no step relies on a fixed sleep to be synchronised.
 func registerHarnessNameSteps(sc *godog.ScenarioContext) {
+	registerHarnessNameCodexSteps(sc)
 	sc.Step(`^deck client "([^"]+)" creates claude session with a blank name expecting the derived name "([^"]+)"$`, clientCreatesClaudeSessionWithBlankName)
 	sc.Step(`^deck client "([^"]+)" is started with the fake agents in a fresh directory labelled "([^"]+)" with the clock frozen at "([^"]+)"$`, clientStartedWithFakeAgentsInFreshDirectory)
 	sc.Step(`^fake Claude session "([^"]+)" generates the title "([^"]+)"$`, fakeClaudeGeneratesTitle)
@@ -38,6 +39,12 @@ func registerHarnessNameSteps(sc *godog.ScenarioContext) {
 // with the name left blank, so the row is created name_source=derived with the
 // clock-derived default name the step names.
 func clientCreatesClaudeSessionWithBlankName(ctx context.Context, clientName, derived string) error {
+	return clientCreatesAgentSessionWithBlankName(ctx, clientName, "claude", derived)
+}
+
+// clientCreatesAgentSessionWithBlankName is the blank-name create for any
+// agent the create modal offers.
+func clientCreatesAgentSessionWithBlankName(ctx context.Context, clientName, agentName, derived string) error {
 	h, err := assertionHarness(ctx)
 	if err != nil {
 		return err
@@ -49,7 +56,7 @@ func clientCreatesClaudeSessionWithBlankName(ctx context.Context, clientName, de
 	if err := client.Send("n"); err != nil {
 		return err
 	}
-	if err := ensureCreateModalAgent(ctx, client, "claude"); err != nil {
+	if err := ensureCreateModalAgent(ctx, client, agentName); err != nil {
 		return err
 	}
 	offsets := auditOffsets(h)

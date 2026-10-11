@@ -359,9 +359,16 @@ func runCommands(input io.Reader, stdout, stderr io.Writer, hooks map[string]str
 		trusted:   trusted,
 		resumeID:  resumeID,
 		codexHome: codexHome,
+		names:     newThreadNames(codexHome, stdout),
 	}
 	scanner := bufio.NewScanner(input)
 	for scanner.Scan() {
+		if name, ok := typedRename(scanner.Text()); ok {
+			if err := runner.names.rename(name); err != nil {
+				return err
+			}
+			continue
+		}
 		var request paneRequest
 		if err := json.Unmarshal(scanner.Bytes(), &request); err != nil {
 			return fmt.Errorf("decode command: %w", err)
@@ -400,16 +407,20 @@ type commandRunner struct {
 	resumeID       string
 	codexHome      string
 	session        *codexSession
+	names          *threadNames
 }
 
 // run executes one pane command; done is true once a clean "exit" ended the
 // command loop.
 func (r *commandRunner) run(request paneRequest) (done bool, err error) {
+	if handled, err := r.names.nameCommand(request); handled {
+		return false, err
+	}
 	switch request.Command {
 	case "hook":
 		return false, fireHook(r.stdout, r.stderr, r.hooks, r.trusted, request.Event, request.Payload)
 	case "prompt":
-		r.session, err = submitPrompt(r.stdout, r.stderr, r.hooks, r.trusted, r.session, r.resumeID, r.codexHome, request.Text)
+		r.session, err = submitPrompt(r.stdout, r.stderr, r.hooks, r.trusted, r.session, r.resumeID, r.codexHome, request.Text, r.names)
 		return false, err
 	case "permission":
 		return false, requestPermission(r.stdout, r.stderr, r.hooks, r.trusted, r.session, request.ToolName)
@@ -535,7 +546,7 @@ func writeRolloutSessionMeta(codexHome, id, cwd string) (string, error) {
 // to and creates the rollout transcript. session is nil on the very first
 // call and is returned (possibly newly allocated) so the caller can thread
 // it through the rest of the pane-command loop.
-func submitPrompt(stdout, stderr io.Writer, hooks map[string]string, trusted bool, session *codexSession, resumeID, codexHome, text string) (*codexSession, error) {
+func submitPrompt(stdout, stderr io.Writer, hooks map[string]string, trusted bool, session *codexSession, resumeID, codexHome, text string, names *threadNames) (*codexSession, error) {
 	if session == nil {
 		id := resumeID
 		source := "startup"
@@ -553,6 +564,9 @@ func submitPrompt(stdout, stderr io.Writer, hooks map[string]string, trusted boo
 			return nil, err
 		}
 		session = &codexSession{id: id, cwd: cwd, rolloutPath: rolloutPath}
+		if err := names.start(id, rolloutPath); err != nil {
+			return session, err
+		}
 		// Announced so a black-box scenario (or this package's own tests)
 		// that only invoked the pane, never argv, can still learn the id
 		// this fixture minted -- exactly the id a real deck would adopt off
@@ -611,10 +625,18 @@ func stopTurn(stdout, stderr io.Writer, hooks map[string]string, trusted bool, s
 	if err := fireHook(stdout, stderr, hooks, trusted, "Stop", session.payload(map[string]any{"last_assistant_message": message})); err != nil {
 		return err
 	}
+	// The real TUI repaints its screen when the turn ends, so the working
+	// indicator ("esc to interrupt") of the turn that just finished is gone;
+	// without the clear it would stay in view and the screen would still
+	// classify as running.
+	say(stdout, clearScreen)
 	sayf(stdout, "• %s\n", message)
 	sayln(stdout, "› Ask Codex to do anything")
 	return nil
 }
+
+// clearScreen erases the visible screen and homes the cursor.
+const clearScreen = "\x1b[2J\x1b[H"
 
 // codexPaneStates are self-contained pane snapshots -- each is everything a
 // single tmux capture-pane call would see at that one moment, never

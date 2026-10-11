@@ -20,7 +20,7 @@ const EventHarnessNameSent = "harness_name_sent"
 // screen that is not ready (a modal, a banner, a working turn) just waits for
 // the next tick. Only a starting row is considered, so a harness that is
 // already past its first prompt is never typed into by this path. The attempt
-// is recorded once, sent or failed, and never repeated.
+// is recorded once, before it is made, and never repeated.
 func (s Service) applyLaunchName(ctx context.Context, session store.Session) {
 	adapter, name, ok := s.launchSendTarget(session)
 	if !ok {
@@ -36,8 +36,12 @@ func (s Service) applyLaunchName(ctx context.Context, session store.Session) {
 	if !ok {
 		return
 	}
-	s.sendRename(ctx, adapter, session, pushed)
+	// The attempt is recorded before the keystrokes go out: sendRename holds
+	// the adapter's gap between the text and its Enter, and a tick that
+	// fires inside that gap must find the marker or it types the name again
+	// into the same input line.
 	_ = s.Store.RecordSessionEvent(ctx, session.ID, EventHarnessNameSent, name, s.Clock.Now().UnixMilli())
+	s.sendRename(ctx, adapter, session, pushed)
 }
 
 // launchSendTarget is the adapter and name a launch-time keystroke rename

@@ -198,3 +198,20 @@ func TestCodexRenamePushWhenIdle(t *testing.T) {
 		t.Fatal("codex is not a prompt gate")
 	}
 }
+
+// TestCodexRenameLaunchTickInsideTheGapDoesNotRetype: the reconcile tick keeps
+// running while the 700 ms gap between the text and Enter is held, and a tick
+// inside the gap must not type the name into the same input line again (the
+// pane would receive "/rename x/rename x" and one Enter).
+func TestCodexRenameLaunchTickInsideTheGapDoesNotRetype(t *testing.T) {
+	svc, db, pane := newCodexRig(t, codexFixture(t, "starting"))
+	session := codexRow(t, db, "c5", "starting", "user")
+	svc.Pause = func(ctx context.Context, d time.Duration) error {
+		svc.applyLaunchName(ctx, session) // the next tick, mid-gap
+		return pane.pause(ctx, d)
+	}
+	svc.applyLaunchName(context.Background(), session)
+	if !reflect.DeepEqual(pane.log, codexWant("c5")) {
+		t.Fatalf("log = %v, want the name typed once: %v", pane.log, codexWant("c5"))
+	}
+}

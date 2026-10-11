@@ -1376,7 +1376,8 @@ The text is sent only when the probe reports the prompt ready (`agent.PromptGate
 composer of a fresh or an idle session, with no update, trust or approval modal over it. A
 working turn, an error, a typed draft and a modal are not ready, and nothing is sent. The
 reconcile tick applies a `user` row's name to a row still `starting`, retrying on later ticks
-until the screen is ready, and records `harness_name_sent` (reason: the name) so a name is
+until the screen is ready, and records `harness_name_sent` (reason: the name) before the
+keystrokes go out, so a tick inside the gap never types the name twice, and so a name is
 typed once per value and never repeated by a relaunch. A later rename of a live row takes the
 same plan through the push gate of §8 "Pushing a rename", which here also accepts a
 `starting` row because a never-prompted Codex stays `starting`. A send that fails records
@@ -3841,6 +3842,13 @@ in the help view.
   `ai-title` record (suppressed once a name is explicit); a reopened transcript restores its last title; and
   `SessionStart`/`UserPromptSubmit` payloads carry `session_title` only for an explicit name, never a
   generated one (`@harness-names`, `features/harness_names.feature`),
+  `fake-codex` keeps a thread name the way Codex does: the first prompt creates the thread row in
+  `$CODEX_HOME/state_5.sqlite` (`threads.name` NULL until named); a typed `/rename <name>` line or the `rename`
+  pane command sets the name, appends `{"id","thread_name","updated_at"}` to `session_index.jsonl` and sets the
+  pane title `<name> | <cwd basename>` with `OSC 0` (a name typed before the first prompt is held, shown in the
+  title and persisted with the thread); the `ai-title` pane command names a still-unnamed thread once and is
+  ignored afterwards; no hook payload carries a name; a `stop` repaints the screen without the finished turn's
+  working indicator (`@harness-names`, `features/harness_names_codex.feature`),
   write transcript files in the real on-disk layout, print recognisable pane text on
   demand, fire hook payloads at `deck _hook` on command, and can be told to hang, crash,
   or exit. They are the *contract* under test — real-agent conformance is a separate,
