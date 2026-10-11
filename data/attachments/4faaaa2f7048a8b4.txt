@@ -1,0 +1,29 @@
+                                                                   created by github.com/charmbracel
+et/bubbletea.(*Program).execBatchMsg in goroutine 447
+                                                        /go-cache/mod/github.com/charmbracelet/bubbl
+etea@v1.3.10/tea.go:549 +0x106
+
+                              rax    0xca
+                                         rbx    0x0
+                                                   rcx    0x48d083
+                                                                  rdx    0x0
+                                                                            rdi    0xf474a0
+                                                                                           rsi    0x
+80
+  rbp    0x364ae4339728
+                       rsp    0x364ae43396e0
+                                            r8     0x0
+                                                      r9     0x0
+                                                                r10    0x0
+                                                                          r11    0x286
+                                                                                      r12    0x33320
+20020
+     r13    0x364ae45985a0
+                          r14    0x364ae453ed20
+                                               r15    0xffffffffffffffff
+                                                                        rip    0x48d081
+                                                                                       rflags 0x286
+                                                                                                   c
+s     0x33
+          fs     0x0
+                    gs     0x0

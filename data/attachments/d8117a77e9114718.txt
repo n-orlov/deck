@@ -1,0 +1,30 @@
++ deck - sessions -----------------+  born-live interactive 61x27 fitted - Ctrl+Q to leave  -------+
+| socket: deck_test_40051_388      | $ echo typed-$((6*7))-reached                                 |
+| v default  (1)                   | typed-42-reached                                              |
+| > ~ born-live running            | $                                                             |
+|   <relative-time>                       |                                                               |
+|                                  |                                                               |
+|                                  |                                                               |
+|                                  |                                                               |
+|                                  |                                                               |
+|                                  |                                                               |
+|                                  |                                                               |
+|                                  |                                                               |
+|                                  |                                                               |
+|                                  |                                                               |
+|                                  |                                                               |
+|                                  |                                                               |
+|                                  |                                                               |
+|                                  |                                                               |
+|                                  |                                                               |
+|                                  |                                                               |
+|                                  |                                                               |
+|                                  |                                                               |
+|                                  |                                                               |
+|                                  |                                                               |
+|                                  |                                                               |
+|                                  |                                                               |
+|                                  |                                                               |
+|                                  |                                                               |
++----------------------------------+---------------------------------------------------------------+
+keystrokes forward to the live pane - sidebar wheel scrolls the list - Ctrl+Q leave interactive mode
