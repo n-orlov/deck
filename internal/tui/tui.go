@@ -8916,7 +8916,7 @@ func (m *Model) submitCreate() tea.Cmd {
 		m.createError = err.Error()
 		return nil
 	}
-	name := m.resolveCreateName(resolvedCWD)
+	name, nameSource := m.resolveCreateName(resolvedCWD)
 	// validateCreateFields already proved the kinds parse.
 	events, _ := parseEventKinds(m.createText(createFieldEventHookEvents))
 	if m.createAgent != "shell" {
@@ -8935,7 +8935,7 @@ func (m *Model) submitCreate() tea.Cmd {
 			return nil
 		}
 		input := service.AgentCreateInput{
-			Name: name, CWD: resolvedCWD, Agent: m.createAgent,
+			Name: name, NameSource: nameSource, CWD: resolvedCWD, Agent: m.createAgent,
 			PermissionProfile: m.createProfile, LaunchArgs: launchArgs, Env: env,
 			PreLaunch: m.createText(createFieldPreLaunch), LoginShell: m.createLoginShell, PostDestroy: m.createText(createFieldPostDestroy),
 			GroupID: m.createGroupIDPointer(), EventHookEnabled: m.createEventHook.enabled(), EventHookEvents: events,
@@ -8960,7 +8960,7 @@ func (m *Model) submitCreate() tea.Cmd {
 		// Post-destroy field (task 026) is passed through the same way, so a
 		// shell session's own teardown hook can be set at create time exactly
 		// as an agent session's can.
-		session, err := create(context.Background(), service.ShellCreateInput{Name: name, CWD: cwd, PreLaunch: preLaunch, PostDestroy: postDestroy, GroupID: groupID, EventHookEnabled: hookEnabled, EventHookEvents: events})
+		session, err := create(context.Background(), service.ShellCreateInput{Name: name, NameSource: nameSource, CWD: cwd, PreLaunch: preLaunch, PostDestroy: postDestroy, GroupID: groupID, EventHookEnabled: hookEnabled, EventHookEvents: events})
 		return shellCreated{session: session, err: err}
 	}
 }
@@ -8985,10 +8985,16 @@ func (m *Model) submitCreate() tea.Cmd {
 // no cwd at all, so the two must not stay wired together -- this
 // function owns its own basename-of-cwd derivation now, group.go's
 // group-key seam owns none.
-func (m *Model) resolveCreateName(resolvedCWD string) string {
+func (m *Model) resolveCreateName(resolvedCWD string) (name, nameSource string) {
 	if trimmed := strings.TrimSpace(m.createText(createFieldName)); trimmed != "" {
-		return trimmed
+		return trimmed, "user"
 	}
+	return m.deriveCreateName(resolvedCWD), "derived"
+}
+
+// deriveCreateName is the blank-name default's text: the name is recorded as
+// `derived` provenance (R248) by resolveCreateName.
+func (m *Model) deriveCreateName(resolvedCWD string) string {
 	now := time.Now()
 	if m.settings.Clock != nil {
 		now = m.settings.Clock.Now()

@@ -18,8 +18,10 @@ import (
 // ShellCreateInput contains the user supplied fields for a plain shell session.
 type ShellCreateInput struct {
 	Name string
-	CWD  string
-	Env  map[string]string
+	// NameSource is who chose Name (R248): "user" or "derived"; empty is "user".
+	NameSource string
+	CWD        string
+	Env        map[string]string
 	// PreLaunch is this shell session's own launch hook (SPEC §6.4), the
 	// per-session counterpart of Service.GlobalPreLaunch: one shell line run
 	// in the pane, after the global hook and before the shell itself, joined
@@ -273,7 +275,7 @@ func (s Service) insertShellRow(ctx context.Context, input ShellCreateInput, pla
 	}
 	session, err := s.Store.CreateSession(ctx, store.CreateSessionInput{
 		ID: plan.id, Name: input.Name, CWD: filepath.Clean(input.CWD), Agent: "shell", CapturedPath: plan.capturedPath,
-		Status: "starting", StatusSource: "user", StatusAt: plan.now, CreatedAt: plan.now,
+		Status: "starting", StatusSource: "user", StatusAt: plan.now, CreatedAt: plan.now, NameSource: input.NameSource,
 		PreLaunch: input.PreLaunch, PostDestroy: input.PostDestroy, GroupID: input.GroupID,
 		EventHookEnabled: input.EventHookEnabled, EventHookEvents: input.EventHookEvents,
 	})

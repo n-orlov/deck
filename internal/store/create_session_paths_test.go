@@ -99,3 +99,29 @@ func TestCreateSessionReportsAGroupLookupFailureAndRollsBack(t *testing.T) {
 		t.Fatalf("a failed create left %d session rows (err %v), want none", n, err)
 	}
 }
+
+// TestCreateSessionNameSourceIsStoredAndValidated (R248): the provenance given
+// at create is what GetSession reads back, empty means user, and a value the
+// column would reject is refused before any insert.
+func TestCreateSessionNameSourceIsStoredAndValidated(t *testing.T) {
+	st := openTombstoneTestStore(t)
+	ctx := context.Background()
+	for _, want := range []struct{ id, given, stored string }{
+		{"ns-empty", "", "user"}, {"ns-user", "user", "user"}, {"ns-derived", "derived", "derived"}, {"ns-harness", "harness", "harness"},
+	} {
+		in := newCreateInput(want.id, want.id)
+		in.NameSource = want.given
+		created, err := st.CreateSession(ctx, in)
+		if err != nil || created.NameSource != want.stored {
+			t.Fatalf("create with name source %q = %q, %v, want %q", want.given, created.NameSource, err, want.stored)
+		}
+		if got, err := st.GetSession(ctx, want.id); err != nil || got.NameSource != want.stored {
+			t.Fatalf("GetSession name source = %q, %v, want %q", got.NameSource, err, want.stored)
+		}
+	}
+	bad := newCreateInput("ns-bad", "ns-bad")
+	bad.NameSource = "typed"
+	if _, err := st.CreateSession(ctx, bad); err == nil || !strings.Contains(err.Error(), "name source") {
+		t.Fatalf("create with an unknown name source: err = %v, want a name source refusal", err)
+	}
+}

@@ -229,7 +229,9 @@ profile's socket is `deck-<name>` (§3.4); everything below applies to it unchan
   common case is "start something here, now", and making the user invent a name first is a
   toll on the product's fastest path. Names are unique, so a collision appends the smallest
   free `-2`, `-3` suffix rather than failing the create. Two consequences worth stating: the
-  default is only *derived*, not special — rename (§11.4) treats it like any other name; and
+  default is only *derived*, not special — rename (§11.4) treats it like any other name; the
+  row records the derived name as `name_source = 'derived'` provenance (§4) while a typed name
+  stores `user`, and so does a later rename; and
   under §13.1's frozen clock it is deterministic, so a second session created in the same
   scenario exercises the collision suffix instead of flaking on it.
 - One window, one pane per session (R6/non-goals). No drawers, no extra windows.
@@ -295,7 +297,8 @@ so that work and home, or two organisations, never share a session list. (It is 
   TUI: `deck new --agent <kind> [--name <n>] [--cwd <dir>] [--permission <p>]` (each option
   also as `--option=value`) creates one detached session on the resolved profile
   (`DECK_PROFILE`, else `default`) through the same service as the create dialog and prints its
-  name. `--cwd` defaults to the working directory, `--name` to its basename, `--permission`
+  name. `--cwd` defaults to the working directory, `--name` to its basename (stored as `derived`
+  provenance, §3.2; a given `--name` stores `user`), `--permission`
   to `safe`. `<kind>` is any registered agent -- `claude`, `codex`, `copilot`, `pi`, `shell` --
   and is taken from `--agent`, else from config.toml's `agent` key (§6.5); neither is exit 2
   `error: deck new needs --agent KIND (or an agent key in config.toml)`. An unregistered kind
@@ -496,6 +499,8 @@ Invariants:
   the column) and records who last wrote `name`; every migrated row reads `user`, so a name that
   existed before the upgrade is never overwritten. The other three columns are nullable and
   every migrated row reads them `NULL`: nothing pending, and no per-session adoption override.
+  The create modal and `deck new` write `derived` when the name was left blank and `user` when it
+  was typed; a harness adoption writes `harness`.
   A rename writes `name_source` in the same transaction as `name` and the `renamed` event, whose
   `reason` is the source of the rename; a source other than `derived` or `harness` is `user`.
 
@@ -2178,7 +2183,7 @@ always did), and the permission badge for non-`safe` **last**. The
   attach. `stopped`, `archived`, and a `starting` row whose pane does not exist yet render
   a one-line placeholder naming the state. Stale bytes are never presented as live.
 - Since there is no CLI (R7), **every** capability is reachable and discoverable in the
-  UI: create modal (name, cwd picker, agent — available kinds only, §6.3 — permission profile, env, pre_launch,
+  UI: create modal (name — blank is filled in and recorded as `derived` provenance, §3.2 —, cwd picker, agent — available kinds only, §6.3 — permission profile, env, pre_launch,
   post_destroy, args), env editor, launch-inputs editor (§6.2), permission switcher,
   pin/unpin, rename, health
   view (tmux version, socket, agents on PATH, PATH resolvability, optional unit install),

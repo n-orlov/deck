@@ -112,15 +112,15 @@ func newCreateInput(opts newCreateArgs, kind string, getwd func() (string, error
 	if err != nil {
 		return service.AgentCreateInput{}, err
 	}
-	name := opts.name
+	name, nameSource := opts.name, "user"
 	if name == "" {
-		name = filepath.Base(cwd)
+		name, nameSource = filepath.Base(cwd), "derived"
 	}
 	profile := opts.permission
 	if profile == "" {
 		profile = "safe"
 	}
-	return service.AgentCreateInput{Name: name, CWD: cwd, Agent: kind, PermissionProfile: profile}, nil
+	return service.AgentCreateInput{Name: name, NameSource: nameSource, CWD: cwd, Agent: kind, PermissionProfile: profile}, nil
 }
 
 // runNewCommand is `deck new --agent KIND ...`: it creates one detached agent

@@ -263,6 +263,9 @@ type CreateSessionInput struct {
 	StatusSource string
 	StatusAt     int64
 	CreatedAt    int64
+	// NameSource records who chose Name (R248): "user" (typed or renamed),
+	// "derived" (the blank-name default) or "harness" (adopted). Empty is "user".
+	NameSource string
 
 	// LaunchArgs are extra argv tokens appended after the adapter's own
 	// flags. Persisted as a JSON array; a nil slice round-trips as an empty
@@ -328,6 +331,8 @@ type Session struct {
 	StatusSource string
 	StatusAt     int64
 	CreatedAt    int64
+	// NameSource is SPEC §4's sessions.name_source: "user", "derived" or "harness".
+	NameSource string
 	// GroupID is SPEC §4's sessions.group_id column verbatim: the manual
 	// group (§11) this row belongs to, nil exactly when the column reads
 	// NULL -- either because the row has never been assigned a group (the
@@ -584,8 +589,8 @@ func (s *Store) CreateSession(ctx context.Context, input CreateSessionInput) (Se
 	return Session{
 		ID: input.ID, Name: input.Name, Slug: slug, CWD: input.CWD, Agent: input.Agent,
 		Status: input.Status, StatusSource: input.StatusSource, StatusAt: input.StatusAt, CreatedAt: input.CreatedAt,
-		Acknowledged: true,
-		LaunchArgs:   input.LaunchArgs, Env: input.Env, PreLaunch: input.PreLaunch, PostDestroy: input.PostDestroy, LoginShell: input.LoginShell,
+		NameSource: input.NameSource, Acknowledged: true,
+		LaunchArgs: input.LaunchArgs, Env: input.Env, PreLaunch: input.PreLaunch, PostDestroy: input.PostDestroy, LoginShell: input.LoginShell,
 		EventHookEnabled: input.EventHookEnabled, EventHookEvents: input.EventHookEvents,
 		PermissionProfile: input.PermissionProfile, PermissionProfileReason: input.PermissionProfileReason,
 		ConversationID: input.ConversationID,
@@ -605,14 +610,35 @@ func normalizeCreateInput(input CreateSessionInput) (CreateSessionInput, string,
 	if slug == "" {
 		return input, "", fmt.Errorf("session name %q does not produce a usable slug", input.Name)
 	}
-	input.Status = valueOrDefault(input.Status, "starting")
-	input.StatusSource = valueOrDefault(input.StatusSource, "user")
 	if input.StatusAt == 0 || input.CreatedAt == 0 {
 		return input, "", errors.New("session status_at and created_at timestamps are required")
 	}
+	input, err := applyCreateDefaults(input)
+	if err != nil {
+		return input, "", err
+	}
+	return input, slug, nil
+}
+
+// applyCreateDefaults fills the documented defaults of a CreateSessionInput.
+func applyCreateDefaults(input CreateSessionInput) (CreateSessionInput, error) {
+	var err error
+	input.Status = valueOrDefault(input.Status, "starting")
+	input.StatusSource = valueOrDefault(input.StatusSource, "user")
 	input.ResumeState = valueOrDefault(input.ResumeState, "auto")
 	input.PermissionProfile = valueOrDefault(input.PermissionProfile, "safe")
-	return input, slug, nil
+	input.NameSource, err = normalizeNameSource(input.NameSource)
+	return input, err
+}
+
+// normalizeNameSource defaults an empty provenance to "user" and refuses a
+// value the sessions.name_source column would reject.
+func normalizeNameSource(source string) (string, error) {
+	source = valueOrDefault(source, "user")
+	if source != "user" && source != "derived" && source != "harness" {
+		return "", fmt.Errorf("session name source %q is not user, derived or harness", source)
+	}
+	return source, nil
 }
 
 // valueOrDefault returns def when value is empty.
@@ -668,13 +694,13 @@ func insertSessionRowTx(ctx context.Context, tx *sql.Tx, input CreateSessionInpu
 	_, err := tx.ExecContext(ctx, `INSERT INTO sessions
 		(id, name, slug, cwd, agent, captured_path, status, status_source, status_at, created_at,
 		 launch_args, env, pre_launch, post_destroy, login_shell, permission_profile, permission_profile_reason, conversation_id, resume_pin, resume_state, group_id,
-		 event_hook_enabled, event_hook_events)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		 event_hook_enabled, event_hook_events, name_source)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		input.ID, input.Name, slug, input.CWD, input.Agent, input.CapturedPath,
 		input.Status, input.StatusSource, input.StatusAt, input.CreatedAt,
 		launchArgsJSON, envJSON, nullableString(input.PreLaunch), nullableString(input.PostDestroy), input.LoginShell,
 		input.PermissionProfile, nullableString(input.PermissionProfileReason), nullableString(input.ConversationID), nullableString(input.ResumePin), input.ResumeState,
-		nullableGroupID(input.GroupID), eventHookEnabledArg(input.EventHookEnabled), eventHookEventsArg(input.EventHookEvents))
+		nullableGroupID(input.GroupID), eventHookEnabledArg(input.EventHookEnabled), eventHookEventsArg(input.EventHookEvents), input.NameSource)
 	if err != nil {
 		if strings.Contains(err.Error(), "sessions.name") || strings.Contains(err.Error(), "UNIQUE constraint failed: sessions.name") {
 			return fmt.Errorf("session name %q already exists", input.Name)
@@ -772,7 +798,7 @@ func scanSession(row interface {
 		&session.NotifyEpoch, &lastMessage, &acknowledged, &launchArgsJSON, &envJSON, &preLaunch, &postDestroy,
 		&loginShell, &session.PermissionProfile, &permissionProfileReason, &conversationID, &resumePin, &session.ResumeState,
 		&groupID, &groupName, &session.LastProbeAt, &envDirty, &session.DeletedAt, &session.ArchivedAt, &launchDirty,
-		&leaseOwner, &session.PinnedAt, &session.HookExecutable, &eventHookEnabled, &eventHookEvents); err != nil {
+		&leaseOwner, &session.PinnedAt, &session.HookExecutable, &eventHookEnabled, &eventHookEvents, &session.NameSource); err != nil {
 		return Session{}, err
 	}
 	session.EventHookEnabled, session.EventHookEvents = decodeEventHook(eventHookEnabled, eventHookEvents)
@@ -821,7 +847,7 @@ const sessionColumns = `sessions.id, sessions.name, slug, cwd, agent, captured_p
 		launch_args, env, pre_launch, post_destroy, login_shell, permission_profile, permission_profile_reason, conversation_id, resume_pin, resume_state,
 		sessions.group_id, groups.name, last_probe_at, env_dirty, deleted_at, archived_at, launch_dirty,
 		COALESCE(launch_lease_owner, ''), pinned_at, COALESCE(hook_executable, ''),
-		event_hook_enabled, event_hook_events`
+		event_hook_enabled, event_hook_events, name_source`
 
 // sessionsFromClause is every sessionColumns-backed query's shared FROM:
 // a LEFT JOIN against groups so GroupName resolves (or reads back empty

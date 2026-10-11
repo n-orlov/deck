@@ -18,7 +18,9 @@ import (
 // session (SPEC §5/§8), as opposed to a plain shell (see ShellCreateInput).
 type AgentCreateInput struct {
 	Name string
-	CWD  string
+	// NameSource is who chose Name (R248): "user" or "derived"; empty is "user".
+	NameSource string
+	CWD        string
 	// Agent is the adapter kind to launch, e.g. "claude" or "pi".
 	Agent string
 	// PermissionProfile is the requested SPEC §5 profile name. If the
@@ -184,7 +186,7 @@ func (s Service) insertAgentRow(ctx context.Context, input AgentCreateInput, pla
 	}
 	session, err := s.Store.CreateSession(ctx, store.CreateSessionInput{
 		ID: plan.id, Name: input.Name, CWD: filepath.Clean(input.CWD), Agent: plan.adapter.Kind(), CapturedPath: plan.capturedPath,
-		Status: "starting", StatusSource: "user", StatusAt: now, CreatedAt: now,
+		Status: "starting", StatusSource: "user", StatusAt: now, CreatedAt: now, NameSource: input.NameSource,
 		LaunchArgs: input.LaunchArgs, Env: input.Env, PreLaunch: input.PreLaunch, LoginShell: input.LoginShell,
 		PostDestroy:       input.PostDestroy,
 		PermissionProfile: plan.profile, PermissionProfileReason: plan.degradationReason, ConversationID: plan.conversationID,
