@@ -64,6 +64,10 @@ type Caps struct {
 	// nothing, so those kinds' rows are byte-identical to before; copilot
 	// declares "copilot" (R220).
 	RowBadge string
+	// Name declares how this adapter's agent takes and reports a session
+	// name (SPEC §8, R249). The zero value claims nothing: no launch name,
+	// no auto-title, no push, no observation.
+	Name NameCaps
 }
 
 // SupportsProfile reports whether p is one of the profiles Caps declares.
@@ -121,6 +125,12 @@ type LaunchInput struct {
 	LaunchGeneration string
 	// DeckHome is the resolved data root whose state database receives hooks.
 	DeckHome string
+	// Name is the session name an adapter passes to its agent at launch, when
+	// its Caps.Name.LaunchName says it can. Empty means pass no name: deck
+	// fills it only from a row whose name_source is 'user', so a derived or
+	// harness name (or a blank one) never reaches the agent and never
+	// suppresses the agent's own auto-title (R250).
+	Name string
 }
 
 // LaunchGenerationEnv names the pane environment variable carrying the
@@ -135,6 +145,9 @@ type ResumeInput struct {
 	ConversationID string
 	Profile        string
 	ExtraArgs      []string
+	// Name is the session name to pass on a resume, with LaunchInput.Name's
+	// meaning: empty means pass no name.
+	Name string
 }
 
 // TranscriptInput carries what an adapter needs to locate its own

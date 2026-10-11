@@ -1060,6 +1060,38 @@ than faking it:
 | `Probe(pane string) (status, reason string)` | pane-text classification where no hook exists (§7) |
 | `TranscriptPaths(in) ([]string, error)` | cross-session search over transcripts (§12) |
 
+### Session names (R249, R250)
+
+`Caps.Name` is a `NameCaps` declaring how the agent takes, generates, accepts and reports a
+session name. Its zero value claims nothing, and an adapter that declares nothing is never
+asked about names:
+
+```go
+type NameCaps struct {
+    LaunchName  NameLaunch // none | flag | flag_new_session_only | sendkeys_after_ready | extension
+    AutoTitle   bool       // the agent generates its own title
+    PushRename  NamePush   // none | sendkeys | extension
+    ObserveName []string   // hook | pane_title | transcript | sqlite | yaml | extension
+}
+```
+
+Two optional interfaces serve those fields, and a caller reaches them only through the
+`agent.ReadName` and `agent.PushName` dispatchers, which ask an adapter only when its caps
+claim the capability:
+
+| method | asked only when | returns |
+|---|---|---|
+| `ReadName(in NameProbeInput) (name string, explicit bool, ok bool)` | `ObserveName` is non-empty | the agent's best current name for a bound conversation id; `explicit` says a human chose it |
+| `PushName(in NamePushInput) (keys []string, ok bool)` | `PushRename` is `sendkeys` | the keystroke plan, one send-keys call per element, that renames the running agent |
+
+An adapter that implements either method without claiming it is never called: the dispatcher
+returns "no answer" and the spy records zero calls.
+
+`LaunchInput.Name` and `ResumeInput.Name` carry the name an adapter passes to its agent; an
+empty string means pass no name. `internal/service` fills them from the row only when
+`name_source` is `user`, and never with a blank name. A `derived` or `harness` row therefore
+launches with no name flag, so the agent keeps generating its own title.
+
 | | Claude Code | Pi / oh-my-pi | Codex CLI | Copilot CLI | shell (bash/zsh/fish) |
 |---|---|---|---|---|---|
 | **conversation id** | **deck assigns**: `--session-id <uuid>` | **deck assigns**: `--session-id <id>` (created if missing), plus a display name | agent mints it; deck adopts it from the first hook (§8.2) | **deck assigns**: `--session-id <uuid>` (a UUID; any other id is refused by `Launch`) | none |

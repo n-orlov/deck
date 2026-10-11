@@ -262,6 +262,7 @@ func (s Service) buildAgentLaunch(ctx context.Context, input AgentCreateInput, p
 	launchInput := agent.LaunchInput{
 		CWD: session.CWD, ConversationID: plan.conversationID, Profile: plan.profile, ExtraArgs: input.LaunchArgs,
 		DeckExecutable: s.DeckExecutable, DeckSessionID: session.ID, DeckHome: s.DeckHome,
+		Name: launchName(session),
 	}
 	argv, err := plan.adapter.Launch(launchInput)
 	if err != nil {

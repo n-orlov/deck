@@ -120,6 +120,7 @@ func (s Service) Resume(ctx context.Context, sessionID string) (store.Session, R
 	launchInput := agent.LaunchInput{
 		CWD: session.CWD, ConversationID: conversationID, Profile: session.PermissionProfile, ExtraArgs: session.LaunchArgs,
 		DeckExecutable: s.DeckExecutable, DeckSessionID: session.ID, DeckHome: s.DeckHome,
+		Name: launchName(session),
 		// The lease this call just acquired names this launch (issue #11,
 		// R74); the adapter exports it so the pane's hooks carry it.
 		LaunchGeneration: lease.LaunchGeneration,
@@ -351,6 +352,7 @@ func (s Service) resumeArgv(session store.Session, adapter agent.Adapter, caps a
 	} else {
 		argv, err = adapter.Resume(agent.ResumeInput{
 			CWD: session.CWD, ConversationID: launchInput.ConversationID, Profile: session.PermissionProfile, ExtraArgs: session.LaunchArgs,
+			Name: launchInput.Name,
 		})
 	}
 	if err != nil {
