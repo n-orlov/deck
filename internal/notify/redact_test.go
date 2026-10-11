@@ -344,3 +344,38 @@ func TestSpawnMasksAWhitespaceHeaderJWTInEnvPayloadAndStoredOutput(t *testing.T)
 		t.Errorf("stored output = %q, want the masked JWT and the prose kept", res.Output)
 	}
 }
+
+// The scan's byte-class and byte-search helpers replace strings.Trim*/IndexAny
+// (which rebuild a lookup table per call); each must agree with the standard
+// function it replaced, on every position of the first hit.
+func TestScanHelpersAgreeWithTheStringsFunctionsTheyReplace(t *testing.T) {
+	texts := []string{"", "x", "  \tab=c  ", "key_1-2 = v", "a'b\"c", "\"a'", "'a\"", "Bearer b", "bB", "Bb", "xxBxxbxx", "xxbxxBxx", "none", "\\a\"b"}
+	for _, text := range texts {
+		for name, set := range map[string]string{"space": asciiSpace, "key": keyBytes, "token": tokenBytes, "sep": "=:"} {
+			bs := newByteSet(set)
+			if got, want := bs.trimLeft(text), strings.TrimLeft(text, set); got != want {
+				t.Errorf("%s trimLeft(%q) = %q, want %q", name, text, got, want)
+			}
+			if got, want := bs.trimRight(text), strings.TrimRight(text, set); got != want {
+				t.Errorf("%s trimRight(%q) = %q, want %q", name, text, got, want)
+			}
+			if got, want := bs.indexAny(text), strings.IndexAny(text, set); got != want {
+				t.Errorf("%s indexAny(%q) = %d, want %d", name, text, got, want)
+			}
+			if got, want := bs.runLen(text), len(text)-len(strings.TrimLeft(text, set)); got != want {
+				t.Errorf("%s runLen(%q) = %d, want %d", name, text, got, want)
+			}
+		}
+		if got, want := indexByteFold(text, 'b'), strings.IndexAny(text, "bB"); got != want {
+			t.Errorf("indexByteFold(%q) = %d, want %d", text, got, want)
+		}
+		if got, want := indexQuote(text), strings.IndexAny(text, `"'`); got != want {
+			t.Errorf("indexQuote(%q) = %d, want %d", text, got, want)
+		}
+		for _, quote := range []byte{'"', '\''} {
+			if got, want := indexQuoteOrBackslash(text, quote), strings.IndexAny(text, `\`+string(quote)); got != want {
+				t.Errorf("indexQuoteOrBackslash(%q, %q) = %d, want %d", text, quote, got, want)
+			}
+		}
+	}
+}

@@ -49,7 +49,7 @@ func maskKeyValuePairs(text string) string { return maskSpans(text, findKeyValue
 func findKeyValuePair(text string, from int) (int, int, int, bool) {
 	pos := from
 	for pos < len(text) {
-		sepAt := strings.IndexAny(text[pos:], "=:")
+		sepAt := sepSet.indexAny(text[pos:])
 		if sepAt < 0 {
 			return 0, 0, 0, false
 		}
@@ -57,9 +57,9 @@ func findKeyValuePair(text string, from int) (int, int, int, bool) {
 		// The pair around the separator: the key run before it (not reaching
 		// back past pos, where the previous pair ended) and the offset where
 		// its value starts. No key before it or no value after it: no pair.
-		beforeSep := strings.TrimRight(text[pos:sep], asciiSpace)
-		keyStart, keyEnd := pos+len(strings.TrimRight(beforeSep, keyBytes)), pos+len(beforeSep)
-		valStart := len(text) - len(strings.TrimLeft(text[sep+1:], asciiSpace))
+		beforeSep := spaceSet.trimRight(text[pos:sep])
+		keyStart, keyEnd := pos+len(keySet.trimRight(beforeSep)), pos+len(beforeSep)
+		valStart := len(text) - len(spaceSet.trimLeft(text[sep+1:]))
 		if keyStart == keyEnd || valStart == len(text) {
 			pos = sep + 1
 			continue
@@ -224,15 +224,65 @@ func startsWord(text string, i int) bool {
 	return i == 0 || strings.IndexByte(keyBytes, text[i-1]) < 0
 }
 
-// runLen is the length of the leading run of text made of bytes in set.
-func runLen(text, set string) int { return len(text) - len(strings.TrimLeft(text, set)) }
+// byteSet is a 256-entry membership table for one character class. The
+// strings.Trim*/IndexAny functions rebuild such a table on every call, which
+// dominated the free-text scan's cost (a profile of maskSecretAssignments on a
+// 1.5 MB reason); building each class once keeps the scan linear and cheap.
+type byteSet [256]bool
+
+func newByteSet(chars string) *byteSet {
+	var s byteSet
+	for i := 0; i < len(chars); i++ {
+		s[chars[i]] = true
+	}
+	return &s
+}
+
+var (
+	spaceSet = newByteSet(asciiSpace)
+	keySet   = newByteSet(keyBytes)
+	tokenSet = newByteSet(tokenBytes)
+	sepSet   = newByteSet("=:")
+)
+
+// runLen is the length of the leading run of text made of bytes in the set.
+func (s *byteSet) runLen(text string) int {
+	i := 0
+	for i < len(text) && s[text[i]] {
+		i++
+	}
+	return i
+}
+
+func (s *byteSet) trimLeft(text string) string { return text[s.runLen(text):] }
+
+func (s *byteSet) trimRight(text string) string {
+	end := len(text)
+	for end > 0 && s[text[end-1]] {
+		end--
+	}
+	return text[:end]
+}
+
+// indexAny is the index of the first byte of text in the set, or -1.
+func (s *byteSet) indexAny(text string) int {
+	for i := 0; i < len(text); i++ {
+		if s[text[i]] {
+			return i
+		}
+	}
+	return -1
+}
 
 // findQuotedKeyValue finds the value of a secret-shaped KEY whose key is
 // quoted, "api_key": "v" or 'password'='v', which maskKeyValuePairs does not
 // see because the quote sits between the key and the separator.
 func findQuotedKeyValue(text string, from int) (int, int, int, bool) {
+	if indexQuote(text[from:]) < 0 {
+		return 0, 0, 0, false // no quote anywhere ahead: one assembly scan, not a per-separator walk
+	}
 	for from < len(text) {
-		sepAt := strings.IndexAny(text[from:], "=:")
+		sepAt := sepSet.indexAny(text[from:])
 		if sepAt < 0 {
 			return 0, 0, 0, false
 		}
@@ -248,13 +298,13 @@ func findQuotedKeyValue(text string, from int) (int, int, int, bool) {
 // quotedKeyValueAt reports the value span behind the separator at sep when
 // the text between from and sep ends in a quoted secret-shaped key.
 func quotedKeyValueAt(text string, from, sep int) (int, int, bool) {
-	before := strings.TrimRight(text[from:sep], asciiSpace)
+	before := spaceSet.trimRight(text[from:sep])
 	quoteAt := from + len(before) - 1
-	valStart := len(text) - len(strings.TrimLeft(text[sep+1:], asciiSpace))
+	valStart := len(text) - len(spaceSet.trimLeft(text[sep+1:]))
 	if len(before) == 0 || valStart == len(text) || !isQuote(text[quoteAt]) {
 		return 0, 0, false
 	}
-	keyStart := from + len(strings.TrimRight(before[:len(before)-1], keyBytes))
+	keyStart := from + len(keySet.trimRight(before[:len(before)-1]))
 	if keyStart == quoteAt || keyStart == 0 || text[keyStart-1] != text[quoteAt] ||
 		!IsSecretShapedKey(text[keyStart:quoteAt]) {
 		return 0, 0, false
@@ -270,7 +320,7 @@ func isQuote(b byte) bool { return b == '"' || b == '\'' }
 // quoted token through its closing quote.
 func findBearerToken(text string, from int) (int, int, int, bool) {
 	for from < len(text) {
-		at := strings.IndexAny(text[from:], "bB")
+		at := indexByteFold(text[from:], 'b')
 		if at < 0 {
 			return 0, 0, 0, false
 		}
@@ -280,7 +330,7 @@ func findBearerToken(text string, from int) (int, int, int, bool) {
 		if afterWord >= len(text) || !strings.EqualFold(text[i:afterWord], "bearer") || !startsWord(text, i) {
 			continue
 		}
-		start := len(text) - len(strings.TrimLeft(text[afterWord:], asciiSpace))
+		start := len(text) - len(spaceSet.trimLeft(text[afterWord:]))
 		if start == afterWord || start == len(text) {
 			continue
 		}
@@ -313,7 +363,7 @@ func findSecretFlagValue(text string, from int) (int, int, int, bool) {
 // resumes either way.
 func secretFlagValueAt(text string, i int) (start, end, next int, ok bool) {
 	nameStart := i + 2
-	nameLen := runLen(text[nameStart:], keyBytes)
+	nameLen := keySet.runLen(text[nameStart:])
 	if nameLen == 0 || !startsWord(text, i) {
 		return 0, 0, nameStart, false
 	}
@@ -335,7 +385,7 @@ func secretFlagValueAt(text string, i int) (start, end, next int, ok bool) {
 func flagValueStart(text string, at int) (int, bool) {
 	start := at + 1
 	if text[at] != '=' {
-		start = len(text) - len(strings.TrimLeft(text[at:], asciiSpace))
+		start = len(text) - len(spaceSet.trimLeft(text[at:]))
 		if start == at {
 			return 0, false
 		}
@@ -360,7 +410,7 @@ func findPrefixedBody(text string, from int, prefix string) (int, int, int, bool
 		if !startsWord(text, i) {
 			continue
 		}
-		if body := runLen(text[bodyStart:], tokenBytes); body >= minPrefixedBody {
+		if body := tokenSet.runLen(text[bodyStart:]); body >= minPrefixedBody {
 			return i, bodyStart + body, bodyStart + body, true
 		}
 	}
@@ -382,7 +432,7 @@ func findJWT(text string, from int) (int, int, int, bool) {
 			return 0, 0, 0, false
 		}
 		dot += from
-		start := from + len(strings.TrimRight(text[from:dot], tokenBytes))
+		start := from + len(tokenSet.trimRight(text[from:dot]))
 		from = dot + 1
 		if start == dot || !startsWord(text, start) {
 			continue
@@ -412,12 +462,12 @@ func isJOSEHeader(segment string) bool {
 // jwtEnd returns where the token whose header starts at i ends, or -1 when
 // the header is not followed by two dot-joined, non-empty segments.
 func jwtEnd(text string, i int) int {
-	end := i + runLen(text[i:], tokenBytes)
+	end := i + tokenSet.runLen(text[i:])
 	for segment := 0; segment < 2; segment++ {
 		if end >= len(text) || text[end] != '.' {
 			return -1
 		}
-		n := runLen(text[end+1:], tokenBytes)
+		n := tokenSet.runLen(text[end+1:])
 		if n == 0 {
 			return -1
 		}
@@ -439,7 +489,7 @@ func assignmentValueEnd(text string, start int) int {
 			return closing + 1
 		}
 	}
-	if i := strings.IndexAny(text[start+1:], asciiSpace); i >= 0 {
+	if i := spaceSet.indexAny(text[start+1:]); i >= 0 {
 		return start + 1 + i
 	}
 	return len(text)
@@ -447,11 +497,10 @@ func assignmentValueEnd(text string, start int) int {
 
 // closingQuote returns the index of the first quote at or after from that is
 // not escaped by a backslash, or -1. It jumps from quote or backslash to the
-// next with strings.IndexAny, so it stays linear (see asciiSpace).
+// next with indexQuoteOrBackslash, so it stays linear (see asciiSpace).
 func closingQuote(text string, from int, quote byte) int {
-	stops := `\` + string(quote)
 	for from < len(text) {
-		at := strings.IndexAny(text[from:], stops)
+		at := indexQuoteOrBackslash(text[from:], quote)
 		if at < 0 {
 			return -1
 		}
@@ -460,6 +509,43 @@ func closingQuote(text string, from int, quote byte) int {
 			return from
 		}
 		from += 2 // a backslash and the byte it escapes
+	}
+	return -1
+}
+
+// indexByteFold is the index of the first b or its upper-case form in text
+// (b is a lower-case ASCII letter), or -1. Each IndexByte is an assembly scan
+// that the race detector does not instrument per byte; the second one is cut
+// at the first hit of the first, so the pair stays one forward scan.
+func indexByteFold(text string, b byte) int {
+	lower := strings.IndexByte(text, b)
+	if lower < 0 {
+		return strings.IndexByte(text, b-'a'+'A')
+	}
+	if upper := strings.IndexByte(text[:lower], b-'a'+'A'); upper >= 0 {
+		return upper
+	}
+	return lower
+}
+
+// indexQuote is the index of the first single or double quote in text, or -1.
+func indexQuote(text string) int {
+	double := strings.IndexByte(text, '"')
+	if double < 0 {
+		return strings.IndexByte(text, '\'')
+	}
+	if single := strings.IndexByte(text[:double], '\''); single >= 0 {
+		return single
+	}
+	return double
+}
+
+// indexQuoteOrBackslash is the index of the first quote or backslash in text.
+func indexQuoteOrBackslash(text string, quote byte) int {
+	for i := 0; i < len(text); i++ {
+		if c := text[i]; c == quote || c == '\\' {
+			return i
+		}
 	}
 	return -1
 }
