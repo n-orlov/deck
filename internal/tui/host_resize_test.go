@@ -171,15 +171,66 @@ func TestHostResizeToTheCurrentSizeIssuesNoTmuxCall(t *testing.T) {
 	})
 }
 
-func TestHostResizeUnderATakeoverAppliesWhenItCloses(t *testing.T) {
-	for _, tc := range []struct {
-		name  string
-		open  func(*Model)
-		close func(*Model)
-	}{
-		{"modal", func(m *Model) { m.help = true }, func(m *Model) { m.help = false }},
-		{"settings", func(m *Model) { m.settingsOpen = true }, func(m *Model) { m.settingsOpen = false }},
-	} {
+// runCmds runs a command the way the event loop would -- flattening a
+// tea.Batch -- and returns every message it produced.
+func runCmds(cmd tea.Cmd) []tea.Msg {
+	if cmd == nil {
+		return nil
+	}
+	msg := cmd()
+	if batch, ok := msg.(tea.BatchMsg); ok {
+		var out []tea.Msg
+		for _, c := range batch {
+			out = append(out, runCmds(c)...)
+		}
+		return out
+	}
+	return []tea.Msg{msg}
+}
+
+// feedFitDone runs cmd and feeds the previewFitDone it yields back into the
+// model; it returns false when no fit was scheduled. It never injects a
+// previewTick.
+func feedFitDone(t *testing.T, m Model, cmd tea.Cmd) (Model, bool) {
+	t.Helper()
+	for _, msg := range runCmds(cmd) {
+		if done, ok := msg.(previewFitDone); ok {
+			updated, _ := m.Update(done)
+			return updated.(Model), true
+		}
+	}
+	return m, false
+}
+
+func keyPress(m Model, key tea.KeyMsg) (Model, tea.Cmd) {
+	updated, cmd := m.Update(key)
+	return updated.(Model), cmd
+}
+
+var (
+	keyEsc      = tea.KeyMsg{Type: tea.KeyEscape}
+	keyQuestion = tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'?'}}
+	keyI        = tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'i'}}
+)
+
+// takeoverCases open a covering screen on the model and close it through the
+// screen's own key path (Update), never by clearing a field.
+var takeoverCases = []struct {
+	name  string
+	open  func(*Model)
+	close tea.KeyMsg
+}{
+	{"help", func(m *Model) { m.help = true }, keyQuestion},
+	{"help-escape", func(m *Model) { m.help = true }, keyEsc},
+	{"settings", func(m *Model) { m.settingsOpen = true }, keyEsc},
+	{"detail", func(m *Model) { m.detail = true }, keyI},
+	{"event-log", func(m *Model) { m.eventLogOpen = true }, keyEsc},
+	{"delete-confirm", func(m *Model) { m.deleteConfirming = true }, keyEsc},
+	{"archive-confirm", func(m *Model) { m.archiveConfirming = true }, keyEsc},
+}
+
+func TestHostResizeUnderATakeoverAppliesTheMomentItCloses(t *testing.T) {
+	for _, tc := range takeoverCases {
 		t.Run(tc.name, func(t *testing.T) {
 			slug := "hostresizeunder" + tc.name
 			m, socket, wireLog := newHostResizeModel(t, slug, 100, 30)
@@ -205,9 +256,126 @@ func TestHostResizeUnderATakeoverAppliesWhenItCloses(t *testing.T) {
 				t.Fatalf("a tick under the takeover returned %d commands, want only the reschedule", got)
 			}
 
-			tc.close(&m)
-			m = settleTickFit(t, m)
+			// The closing key itself schedules the fit: no tick, no other event.
+			m, cmd = keyPress(m, tc.close)
+			if m.takeoverActive() {
+				t.Fatalf("key %q did not close the %s screen", tc.close.String(), tc.name)
+			}
+			m, ok := feedFitDone(t, m, cmd)
+			if !ok {
+				t.Fatalf("closing the %s screen scheduled no fit", tc.name)
+			}
 			wantPaneAtPreviewBox(t, m, socket, slug)
+			if w, _ := paneSizeForTest(t, socket, "deck_"+slug); w <= oldW {
+				t.Fatalf("pane width %d did not grow past %d", w, oldW)
+			}
+
+			// Applied once: a further event schedules nothing and calls tmux not at all.
+			truncateWireLog(t, wireLog)
+			m, cmd = keyPress(m, tea.KeyMsg{Type: tea.KeyDown})
+			if _, again := feedFitDone(t, m, cmd); again {
+				t.Fatal("the held resize was applied twice")
+			}
+			if n := countWireCommands(t, wireLog, "resize-window"); n != 0 {
+				t.Fatalf("%d resize-window calls after the held resize was applied", n)
+			}
 		})
 	}
+}
+
+func TestHostResizeHeldAcrossStackedTakeoversAppliesWhenTheLastCloses(t *testing.T) {
+	const slug = "hostresizestacked"
+	m, socket, _ := newHostResizeModel(t, slug, 100, 30)
+	m = settleTickFit(t, m)
+	m.help, m.detail = true, true
+	m, _ = resize(m, 140, 40)
+	// Opening the event log over them as well, then closing it, leaves the
+	// help/detail pair still covering the preview.
+	m.eventLogOpen = true
+	m, cmd := keyPress(m, keyEsc)
+	if _, ok := feedFitDone(t, m, cmd); ok {
+		t.Fatal("a fit was scheduled while another screen still covers the preview")
+	}
+	if !m.previewRefitPending {
+		t.Fatal("the held resize was dropped while a screen still covers the preview")
+	}
+	m, cmd = keyPress(m, keyEsc) // help's Cancel clears help and detail together
+	m, ok := feedFitDone(t, m, cmd)
+	if !ok {
+		t.Fatal("closing the last covering screen scheduled no fit")
+	}
+	wantPaneAtPreviewBox(t, m, socket, slug)
+}
+
+func TestHostResizeHeldBehindAFitInFlightAppliesWhenThatFitLands(t *testing.T) {
+	const slug = "hostresizeinflight"
+	m, socket, _ := newHostResizeModel(t, slug, 100, 30)
+	// A fit for the old size is outstanding while the screen opens, the
+	// resize arrives and the screen closes.
+	updated, tickCmd := m.Update(previewTick(time.Now()))
+	m = updated.(Model)
+	cmds := previewTickCmds(t, tickCmd)
+	if len(cmds) != 2 || m.previewFitInFlight == "" {
+		t.Fatalf("expected a fit in flight, got %d commands, in flight %q", len(cmds), m.previewFitInFlight)
+	}
+	staleFit := cmds[1]
+	m.help = true
+	m, _ = resize(m, 140, 40)
+	m, cmd := keyPress(m, keyQuestion)
+	if _, ok := feedFitDone(t, m, cmd); ok {
+		t.Fatal("a second fit was scheduled while one is in flight")
+	}
+	if m.previewFitInFlight == "" {
+		t.Fatal("the in-flight marker was cleared by the screen closing")
+	}
+	// The outstanding fit lands (it fitted the pane to whatever the box was
+	// when it ran); landing it schedules the held re-fit with no tick.
+	done := runCmds(staleFit)
+	updated, cmd = m.Update(done[0])
+	m = updated.(Model)
+	m, ok := feedFitDone(t, m, cmd)
+	if !ok {
+		t.Fatal("the fit landing did not apply the held resize")
+	}
+	wantPaneAtPreviewBox(t, m, socket, slug)
+}
+
+func TestHostResizeUnderATakeoverBelowTheFloorOrUnchangedSchedulesNothing(t *testing.T) {
+	t.Run("below the floor", func(t *testing.T) {
+		const slug = "hostresizebelowfloor"
+		m, socket, wireLog := newHostResizeModel(t, slug, 100, 30)
+		m = settleTickFit(t, m)
+		oldW, oldH := paneSizeForTest(t, socket, "deck_"+slug)
+		m.help = true
+		m, _ = resize(m, 100, 9)
+		truncateWireLog(t, wireLog)
+		m, cmd := keyPress(m, keyQuestion)
+		if _, ok := feedFitDone(t, m, cmd); ok {
+			t.Fatal("a fit was scheduled for a box below the 7-row floor")
+		}
+		if m.previewRefitPending {
+			t.Fatal("the held resize stayed pending after the screen closed")
+		}
+		if w, h := paneSizeForTest(t, socket, "deck_"+slug); w != oldW || h != oldH {
+			t.Fatalf("pane went %dx%d -> %dx%d below the floor", oldW, oldH, w, h)
+		}
+	})
+	t.Run("unchanged size", func(t *testing.T) {
+		const slug = "hostresizeunchangedunder"
+		m, _, wireLog := newHostResizeModel(t, slug, 100, 30)
+		m = settleTickFit(t, m)
+		m.help = true
+		m, _ = resize(m, 100, 30)
+		if m.previewRefitPending {
+			t.Fatal("a same-size resize armed a re-fit")
+		}
+		truncateWireLog(t, wireLog)
+		m, cmd := keyPress(m, keyQuestion)
+		if _, ok := feedFitDone(t, m, cmd); ok {
+			t.Fatal("closing a screen after a same-size resize scheduled a fit")
+		}
+		if n := countWireCommands(t, wireLog, "resize-window"); n != 0 {
+			t.Fatalf("%d resize-window calls for a same-size resize", n)
+		}
+	})
 }
