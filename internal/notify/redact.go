@@ -33,15 +33,22 @@ const (
 // same text was ~50 ns a byte, which put the detached hook's session-end
 // handoff past its bound under load (SPEC §10.3). The scan steps from
 // separator to separator with strings functions rather than Go loops: see
-// asciiSpace. It is the key=value pass of maskSecretAssignments and is held to
-// the regular expression it replaced (redact_scan_test.go).
-func maskKeyValuePairs(text string) string {
-	var out strings.Builder
-	copied, pos := 0, 0
+// asciiSpace. findKeyValuePair is its key=value shape in maskSecretAssignments.
+// It is held to the regular expression it replaced, walked so that a
+// non-secret pair's value is searched too (redact_scan_test.go).
+func maskKeyValuePairs(text string) string { return maskSpans(text, findKeyValuePair) }
+
+// findKeyValuePair finds the value of the next secret-shaped KEY=VALUE or
+// KEY: VALUE pair at or after from (see maskKeyValuePairs). The value of a
+// pair whose key is not a secret is searched for pairs too, so the secret in
+// "error: GITHUB_TOKEN=abc" is masked: the regular expression this scan
+// replaced took GITHUB_TOKEN=abc for the value of error and left it whole.
+func findKeyValuePair(text string, from int) (int, int, int, bool) {
+	pos := from
 	for pos < len(text) {
 		sepAt := strings.IndexAny(text[pos:], "=:")
 		if sepAt < 0 {
-			break
+			return 0, 0, 0, false
 		}
 		sep := pos + sepAt
 		// The pair around the separator: the key run before it (not reaching
@@ -54,28 +61,19 @@ func maskKeyValuePairs(text string) string {
 			pos = sep + 1
 			continue
 		}
-		valEnd := assignmentValueEnd(text, valStart)
 		if IsSecretShapedKey(text[keyStart:keyEnd]) {
-			if out.Cap() == 0 {
-				out.Grow(len(text))
-			}
-			out.WriteString(text[copied:valStart])
-			out.WriteString(MaskedPlaceholder)
-			copied = valEnd
+			valEnd := assignmentValueEnd(text, valStart)
+			return valStart, valEnd, valEnd, true
 		}
-		pos = valEnd
+		pos = valStart
 	}
-	if copied == 0 {
-		return text
-	}
-	out.WriteString(text[copied:])
-	return out.String()
+	return 0, 0, 0, false
 }
 
 // The other secret shapes maskSecretAssignments finds (SPEC §10.1). Every one
-// is a separate linear pass over strings functions, like the key=value scan,
-// that masks a span of the text: a span finder returns the span to mask and
-// where to resume.
+// is a span finder over strings functions, like the key=value scan: it
+// returns the next span to mask and where to resume, and
+// maskSecretAssignments merges the spans of every shape in one walk.
 const (
 	// tokenBytes is the body of a key, token or JWT segment.
 	tokenBytes = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-"
@@ -129,19 +127,92 @@ func maskSpans(text string, find spanFinder) string {
 // value of a KEY=VALUE or KEY: VALUE pair whose key is secret-shaped, also
 // when the key is quoted ("api_key": "v"); the token after Bearer; the value
 // of a secret-shaped flag (--token abc, --password=abc); a body behind a
-// well-known prefix (sk-, ghp_, github_pat_, AKIA); and a JWT. Each is its
-// own linear pass: none uses a regular expression (see maskKeyValuePairs).
+// well-known prefix (sk-, ghp_, github_pat_, AKIA); and a JWT. None uses a
+// regular expression (see maskKeyValuePairs).
+//
+// Every shape is found in the original text, and the spans are merged in one
+// left-to-right walk: the earliest span wins and absorbs every span that
+// overlaps it. Masking shape by shape instead let a later shape inside a
+// quoted value (the Bearer in --password "a\" Bearer b") be masked first,
+// taking the value's closing quote with it, so the quoted value's own mask
+// stopped at a space and left its suffix in the clear.
 func maskSecretAssignments(text string) string {
-	text = maskSpans(text, findQuotedKeyValue)
-	text = maskSpans(text, findBearerToken)
-	text = maskSpans(text, findSecretFlagValue)
+	finders := []spanFinder{findQuotedKeyValue, findBearerToken, findSecretFlagValue}
 	for _, prefix := range wellKnownPrefixes {
-		text = maskSpans(text, func(text string, from int) (int, int, int, bool) {
+		finders = append(finders, func(text string, from int) (int, int, int, bool) {
 			return findPrefixedBody(text, from, prefix)
 		})
 	}
-	text = maskSpans(text, findJWT)
-	return maskKeyValuePairs(text)
+	finders = append(finders, findJWT, findKeyValuePair)
+	merger := spanMerger{cursors: make([]spanCursor, len(finders))}
+	for i, find := range finders {
+		merger.cursors[i].find = find
+	}
+	return maskSpans(text, merger.find)
+}
+
+// spanCursor holds one shape's next span, so the merged walk asks each shape
+// again only once the walk has passed that span: every shape's search stays
+// one forward scan, and the merge stays linear.
+type spanCursor struct {
+	find              spanFinder
+	start, end        int
+	queried, ok, done bool
+}
+
+// advance finds the shape's next span at or after from, unless the one it
+// holds already starts there or later.
+func (c *spanCursor) advance(text string, from int) {
+	if c.done || (c.queried && c.start >= from) {
+		return
+	}
+	c.start, c.end, _, c.ok = c.find(text, from)
+	c.queried, c.done = true, !c.ok
+}
+
+// spanMerger merges the spans of every shape into non-overlapping spans.
+type spanMerger struct{ cursors []spanCursor }
+
+// find is a spanFinder over every shape at once: the earliest span at or
+// after from, grown by every span that starts inside it.
+func (m *spanMerger) find(text string, from int) (int, int, int, bool) {
+	start, ok := m.earliest(text, from)
+	if !ok {
+		return 0, 0, 0, false
+	}
+	end := m.absorb(text, start, start)
+	return start, end, end, true
+}
+
+// earliest is where the first span at or after from starts.
+func (m *spanMerger) earliest(text string, from int) (int, bool) {
+	start, ok := 0, false
+	for i := range m.cursors {
+		c := &m.cursors[i]
+		c.advance(text, from)
+		if c.ok && (!ok || c.start < start) {
+			start, ok = c.start, true
+		}
+	}
+	return start, ok
+}
+
+// absorb grows the span [start, end) by every span that starts at start or
+// inside it, until none does, and moves each absorbed shape past it.
+func (m *spanMerger) absorb(text string, start, end int) int {
+	for grown := true; grown; {
+		grown = false
+		for i := range m.cursors {
+			c := &m.cursors[i]
+			for c.ok && (c.start < end || c.start == start) {
+				if c.end > end {
+					end, grown = c.end, true
+				}
+				c.advance(text, c.end)
+			}
+		}
+	}
+	return end
 }
 
 // startsWord reports whether index i begins a word: it is not preceded by a
@@ -192,7 +263,8 @@ func quotedKeyValueAt(text string, from, sep int) (int, int, bool) {
 func isQuote(b byte) bool { return b == '"' || b == '\'' }
 
 // findBearerToken finds the token after the word Bearer (any case), as in an
-// Authorization header or a curl argument.
+// Authorization header or a curl argument: up to the next whitespace, or a
+// quoted token through its closing quote.
 func findBearerToken(text string, from int) (int, int, int, bool) {
 	for from < len(text) {
 		at := strings.IndexAny(text[from:], "bB")
@@ -209,10 +281,7 @@ func findBearerToken(text string, from int) (int, int, int, bool) {
 		if start == afterWord || start == len(text) {
 			continue
 		}
-		end := len(text)
-		if j := strings.IndexAny(text[start:], asciiSpace); j >= 0 {
-			end = start + j
-		}
+		end := assignmentValueEnd(text, start)
 		return start, end, end, true
 	}
 	return 0, 0, 0, false

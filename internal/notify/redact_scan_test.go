@@ -7,18 +7,33 @@ import (
 )
 
 // oracleAssignment is the regular expression the linear scanner replaced; it
-// is the specification of which pairs the scanner must find, with one
-// extension: a backslash escapes the byte after it inside a quoted value.
+// is the specification of what a pair is, with one extension: a backslash
+// escapes the byte after it inside a quoted value.
 var oracleAssignment = regexp.MustCompile(`([A-Za-z0-9_.\-]+)(\s*[=:]\s*)("(?:[^"\\]|\\(?s:.))*"|'(?:[^'\\]|\\(?s:.))*'|\S+)`)
 
+// oracleMask walks the pairs the regular expression finds, left to right:
+// a secret pair's value is masked and the walk resumes after it; a pair whose
+// key is not a secret masks nothing and the walk resumes at its value, so a
+// pair inside that value ("error: GITHUB_TOKEN=abc") is found too.
 func oracleMask(text string) string {
-	return oracleAssignment.ReplaceAllStringFunc(text, func(match string) string {
-		parts := oracleAssignment.FindStringSubmatch(match)
-		if !IsSecretShapedKey(parts[1]) {
-			return match
+	var out strings.Builder
+	copied, pos := 0, 0
+	for pos < len(text) {
+		m := oracleAssignment.FindStringSubmatchIndex(text[pos:])
+		if m == nil {
+			break
 		}
-		return parts[1] + parts[2] + MaskedPlaceholder
-	})
+		keyStart, keyEnd, valStart, valEnd := pos+m[2], pos+m[3], pos+m[6], pos+m[7]
+		if !IsSecretShapedKey(text[keyStart:keyEnd]) {
+			pos = valStart
+			continue
+		}
+		out.WriteString(text[copied:valStart])
+		out.WriteString(MaskedPlaceholder)
+		copied, pos = valEnd, valEnd
+	}
+	out.WriteString(text[copied:])
+	return out.String()
 }
 
 func TestMaskKeyValuePairsAgreesWithTheRegexpItReplaced(t *testing.T) {
@@ -26,7 +41,7 @@ func TestMaskKeyValuePairsAgreesWithTheRegexpItReplaced(t *testing.T) {
 		"", "plain words only", "API_TOKEN=abc", "API_TOKEN = abc def", "api-key: \"two words\" next",
 		"password='a b' tail", "password='unterminated tail", `token="unterminated tail`, "TOKEN=", "TOKEN=   ",
 		"=TOKEN", ": x", "a=b=c", "SECRET_X=a:b SECRET_Y:c", "x_token=1\nPASSWORD:\n2", "TOKEN=\"a\"rest AUTH=z",
-		`token="a\"b" rest`, `token='a\\' rest`, `token="a\`, "é_TOKEN=v ünï=TOKEN", "my.secret-key:v", "TOKEN==v", "TOKEN=:v", "a TOKEN\t=\tv b", "KEY=\x00\xff bin",
+		`token="a\"b" rest`, "error: GITHUB_TOKEN=abc", `note="see API_KEY=v" x`, "a=b=TOKEN=c", `token='a\\' rest`, `token="a\`, "é_TOKEN=v ünï=TOKEN", "my.secret-key:v", "TOKEN==v", "TOKEN=:v", "a TOKEN\t=\tv b", "KEY=\x00\xff bin",
 	} {
 		if got, want := maskKeyValuePairs(text), oracleMask(text); got != want {
 			t.Errorf("maskKeyValuePairs(%q) = %q, want %q", text, got, want)
