@@ -1,0 +1,29 @@
+m_amd64.s:1771 +0x1 fp=0x31a41b86bfe8 sp=0x31a41b86bfe0 pc=0x48b541
+                                                                   created by github.com/charmbracel
+et/bubbletea.(*Program).execBatchMsg in goroutine 260
+                                                        /go-cache/mod/github.com/charmbracelet/bubbl
+etea@v1.3.10/tea.go:549 +0x106
+
+                              rax    0xca
+                                         rbx    0x0
+                                                   rcx    0x48d083
+                                                                  rdx    0x0
+                                                                            rdi    0xece218
+                                                                                           rsi    0x
+80
+  rbp    0x7ffe269444d8
+                       rsp    0x7ffe26944490
+                                            r8     0x0
+                                                      r9     0x0
+                                                                r10    0x0
+                                                                          r11    0x286
+                                                                                      r12    0x1
+                                                                                                r13
+   0x1
+      r14    0xeccaa0
+                     r15    0x1
+                               rip    0x48d081
+                                              rflags 0x286
+                                                          cs     0x33
+                                                                     fs     0x0
+                                                                               gs     0x0
