@@ -283,14 +283,8 @@ func quotedKeyValueAt(text string, from, sep int) (int, int, bool) {
 	if len(before) == 0 || valStart == len(text) || !isQuote(text[quoteAt]) {
 		return 0, 0, false
 	}
-	// The backslashes in front of the closing quote, then the key itself.
-	body := before[:len(before)-1]
-	slashes := len(body) - len(strings.TrimRight(body, `\`))
-	keyStart := from + len(strings.TrimRight(body[:len(body)-slashes], keyBytes))
-	openAt := keyStart - 1 - slashes
-	if keyStart == quoteAt-slashes || openAt < 0 || text[keyStart-1] != text[quoteAt] ||
-		strings.TrimLeft(text[openAt:keyStart-1], `\`) != "" ||
-		!IsSecretShapedKey(text[keyStart:quoteAt-slashes]) {
+	slashes, ok := quotedKeySlashes(text, from, before)
+	if !ok {
 		return 0, 0, false
 	}
 	if slashes > 0 {
@@ -299,6 +293,24 @@ func quotedKeyValueAt(text string, from, sep int) (int, int, bool) {
 		}
 	}
 	return valStart, assignmentValueEnd(text, valStart), true
+}
+
+// quotedKeySlashes checks that before (the text from from up to the
+// separator, trailing space trimmed) ends in a quoted secret-shaped key and
+// returns the run of backslashes that escapes each of its two quotes.
+func quotedKeySlashes(text string, from int, before string) (int, bool) {
+	quoteAt := from + len(before) - 1
+	// The backslashes in front of the closing quote, then the key itself.
+	body := before[:len(before)-1]
+	slashes := len(body) - len(strings.TrimRight(body, `\`))
+	keyStart := from + len(strings.TrimRight(body[:len(body)-slashes], keyBytes))
+	openAt := keyStart - 1 - slashes
+	if keyStart == quoteAt-slashes || openAt < 0 || text[keyStart-1] != text[quoteAt] ||
+		strings.TrimLeft(text[openAt:keyStart-1], `\`) != "" ||
+		!IsSecretShapedKey(text[keyStart:quoteAt-slashes]) {
+		return 0, false
+	}
+	return slashes, true
 }
 
 // escapedValueEnd reports where a value ends that opens with the escaped
