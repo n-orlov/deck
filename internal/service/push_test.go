@@ -149,6 +149,8 @@ func TestPushGate(t *testing.T) {
 // caps do not claim sendkeys never receive a plan and never log a refusal.
 func TestPushGateIgnoresAdaptersWithoutSendKeys(t *testing.T) {
 	svc, db, _, _ := newAgentTestService(t, nil, "push-none")
+	// Claude claims sendkeys now (R256), so stand in for an adapter that does not.
+	svc.Agents.Register(adoptFakeAdapter{claims: false, asked: new(int)})
 	rec := &sendRecorder{}
 	svc.NamePane = rec
 	row := adoptRow(t, db, "row-a", "old name", "derived")

@@ -1235,6 +1235,21 @@ in this order, and the first source that answers wins:
 `~/.claude/sessions/<pid>.json` is never opened: it holds an auto-title Claude rewrites and is not a
 source. A title from any source is sanitised as above before it is compared or stored.
 
+**Pushing a rename into Claude (R256).** Claude declares `NameCaps.PushRename = sendkeys` and its
+`PushName` returns a three-element keystroke plan, one `send-keys` call per element, in this order:
+
+1. `Ctrl-U` (the byte `0x15`, typed as literal text), which clears the input line so a half-typed
+   prompt is not glued onto the command;
+2. `/rename <name>`, the command and the name as one literal text delivery;
+3. `Enter`, as a lone tmux key name in a delivery of its own, never folded into the text, so Claude
+   has the command on its input line before it is submitted.
+
+The name is cleaned for Claude before it is typed: control characters and escape sequences are
+removed (so a newline can never submit the command early) and it is cut to 200 runes. `PushName`
+applies this itself as well as the service, and declines (`ok = false`) a name with nothing left, so
+a blank name is never typed. The generic gate (status `idle` or `running`, no focused dialog, the echo
+check and the 30-second confirmation) is the one in "Pushing a rename" above.
+
 Subscribed events — a handful per turn, never per tool call:
 
 | event | → status | notes |

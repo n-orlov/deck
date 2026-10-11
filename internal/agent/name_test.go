@@ -9,7 +9,7 @@ import (
 // test: an adapter task that declares a name capability updates its own row
 // here in the same commit. Until then every row is the zero value.
 var nameCapsRows = map[string]NameCaps{
-	"claude":  {LaunchName: NameLaunchFlag, AutoTitle: true, ObserveName: []string{ObserveHook, ObserveTranscript, ObservePaneTitle}},
+	"claude":  {LaunchName: NameLaunchFlag, AutoTitle: true, PushRename: NamePushSendKeys, ObserveName: []string{ObserveHook, ObserveTranscript, ObservePaneTitle}},
 	"codex":   {},
 	"copilot": {},
 	"pi":      {},
@@ -101,12 +101,13 @@ func TestNameDispatchCallsAClaimedMethod(t *testing.T) {
 }
 
 func TestNameDispatchIgnoresAnAdapterWithoutTheMethods(t *testing.T) {
-	// claude implements neither optional method yet; the dispatcher must
+	// codex implements neither optional method yet (claude now implements
+	// both; TestClaudePushPlan covers its PushName); the dispatcher must
 	// decline rather than assert.
-	if _, _, ok := ReadName(NewClaude(), NameProbeInput{}); ok {
+	if _, _, ok := ReadName(NewCodex(), NameProbeInput{}); ok {
 		t.Error("ReadName answered for an adapter with no ReadName")
 	}
-	if _, ok := PushName(NewClaude(), NamePushInput{Name: "x"}); ok {
+	if _, ok := PushName(NewCodex(), NamePushInput{Name: "x"}); ok {
 		t.Error("PushName answered for an adapter with no PushName")
 	}
 }

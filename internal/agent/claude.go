@@ -53,7 +53,7 @@ func (Claude) Capabilities() Caps {
 		Executable:            "claude",
 		TranscriptEnvKeys:     []string{claudeConfigDirKey},
 		Name: NameCaps{
-			LaunchName: NameLaunchFlag, AutoTitle: true,
+			LaunchName: NameLaunchFlag, AutoTitle: true, PushRename: NamePushSendKeys,
 			ObserveName: []string{ObserveHook, ObserveTranscript, ObservePaneTitle},
 		},
 	}
