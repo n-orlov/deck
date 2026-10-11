@@ -73,9 +73,10 @@ Feature: Forced entry into interactive mode answers a waiting row
     When deck client "A" dismisses the lost-attach dialog
     Then deck client "A" screen contains "deck - sessions"
     When deck client "B" leaves interactive mode
-    Then the private tmux window for session "chained" still matches "before-any-entry"
-    And tmux window "deck_chained" option "@deck_isize_owner" is unset in the window scope
-    And tmux window "deck_chained" option "@deck_isize_geometry" is unset in the window scope
+    Then deck client "B" screen contains "deck - sessions"
+    And the private tmux window for session "chained" still matches "before-any-entry"
+    And tmux window "deck_chained" option "@deck_isize_owner" becomes unset in the window scope
+    And tmux window "deck_chained" option "@deck_isize_geometry" becomes unset in the window scope
     And deck client "A" exits cleanly
     And deck client "B" exits cleanly
 
@@ -114,8 +115,8 @@ Feature: Forced entry into interactive mode answers a waiting row
     Then deck client "A" screen contains "deck - sessions"
     And the private tmux window for session "grabbed" reports geometry "80x23"
     And tmux window "deck_grabbed" option "window-size" is unset in the window scope
-    And tmux window "deck_grabbed" option "@deck_isize_owner" is unset in the window scope
-    And tmux window "deck_grabbed" option "@deck_isize_geometry" is unset in the window scope
+    And tmux window "deck_grabbed" option "@deck_isize_owner" becomes unset in the window scope
+    And tmux window "deck_grabbed" option "@deck_isize_geometry" becomes unset in the window scope
     And the real tmux client attached to session "grabbed" detaches
     And deck client "A" exits cleanly
 

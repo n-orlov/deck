@@ -26,16 +26,6 @@ func registerInteractiveFocusSteps(sc *godog.ScenarioContext) {
 // change to show: SendAwaitingInteractive returns the moment the frame does.
 const interactiveSettleBound = 150 * time.Millisecond
 
-// interactiveModeBound is the longest SendAwaitingInteractive waits for the
-// mode change to show once the frame is not already in the target mode. The
-// settle bound above was calibrated on an idle machine; on a loaded -race
-// host the pty write, deck's Update and the repaint together take several
-// times that, and a step that gave up at 150ms handed the next step a frame
-// still in the old mode. Returning early on the first matching frame keeps
-// the common case as fast as before; only a mode that never changes (a
-// refused entry) pays the whole bound.
-const interactiveModeBound = 3 * time.Second
-
 // interactiveFrameMarker is the text only interactive mode's frame carries
 // (the preview title's "Ctrl+Q to leave" and the footer's "Ctrl+Q leave
 // interactive mode").
@@ -43,14 +33,14 @@ const interactiveFrameMarker = "Ctrl+Q"
 
 // SendAwaitingInteractive writes keys, then waits until the frame shows
 // interactive mode (wantInteractive) or the list view again (!wantInteractive),
-// for at most interactiveModeBound. deck's Update claims the window, arms
+// for at most interactiveSettleBound. deck's Update claims the window, arms
 // the transport and flips its interactive flag (or tears all of that down)
 // synchronously before the next View, so a frame that already shows the new
 // mode proves the whole entry or exit sequence has finished -- what the
 // fixed pause only hoped for. When the frame never shows the change (a
-// refused entry, a cropped title) the wait runs out interactiveModeBound, and
-// a frame that already showed the target mode before the write proves
-// nothing, so it is paced for interactiveSettleBound as before.
+// refused entry, a cropped title) the wait runs out the same bound the fixed
+// pause had, and a frame that already showed the target mode before the
+// write proves nothing, so it is paced for the full bound as before.
 func (d *ScreenDriver) SendAwaitingInteractive(ctx context.Context, keys string, wantInteractive bool) error {
 	showing := func() bool { return strings.Contains(d.Frame(false), interactiveFrameMarker) }
 	already := showing() == wantInteractive
@@ -61,7 +51,7 @@ func (d *ScreenDriver) SendAwaitingInteractive(ctx context.Context, keys string,
 		time.Sleep(interactiveSettleBound)
 		return nil
 	}
-	waitCtx, cancel := context.WithTimeout(ctx, interactiveModeBound)
+	waitCtx, cancel := context.WithTimeout(ctx, interactiveSettleBound)
 	defer cancel()
 	for showing() != wantInteractive {
 		select {

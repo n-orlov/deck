@@ -3,6 +3,7 @@ package features
 import (
 	"context"
 	"os/exec"
+	"strings"
 	"testing"
 	"time"
 )
@@ -143,5 +144,37 @@ func TestAssertTmuxOptionUnsetInScope(t *testing.T) {
 	// It is still genuinely unset in the OTHER scope.
 	if err := assertTmuxOptionUnsetInScope(ctx, socket, "s0", tmuxOptionScopeGlobal, "@deck_isize_owner"); err != nil {
 		t.Fatalf("global scope should still read unset: %v", err)
+	}
+}
+
+// The "becomes unset" wait passes once a release that lands after the first
+// read does, and still fails -- with the option's value in the error -- when
+// the option is never released, so it waits for the release without ever
+// excusing a claim that stays.
+func TestWaitTmuxOptionUnsetInScopeWaitsForALateReleaseAndFailsOnAStaleClaim(t *testing.T) {
+	socket, cleanup := newBareTmuxSession(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	setTmuxOption(t, socket, "-w", "-t", "s0", "@late", "claimed")
+	released := make(chan struct{})
+	go func() {
+		defer close(released)
+		time.Sleep(300 * time.Millisecond)
+		_ = exec.Command("tmux", "-L", socket, "set-option", "-w", "-u", "-t", "s0", "@late").Run()
+	}()
+	started := time.Now()
+	if err := waitTmuxOptionUnsetInScope(ctx, socket, "s0", tmuxOptionScopeWindow, "@late", 5*time.Second); err != nil {
+		t.Fatalf("a release 300ms in was not waited for: %v", err)
+	}
+	if time.Since(started) < 250*time.Millisecond {
+		t.Fatalf("returned after %s, before the option was released", time.Since(started))
+	}
+	<-released
+
+	setTmuxOption(t, socket, "-w", "-t", "s0", "@stale", "claimed")
+	err := waitTmuxOptionUnsetInScope(ctx, socket, "s0", tmuxOptionScopeWindow, "@stale", 300*time.Millisecond)
+	if err == nil || !strings.Contains(err.Error(), `"claimed", want unset`) {
+		t.Fatalf("a claim that is never released = %v, want the want-unset failure", err)
 	}
 }

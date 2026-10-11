@@ -35,7 +35,8 @@ Feature: §11.8 mouse bindings and the [ui] mouse / DECK_MOUSE opt-out (requirem
     Then deck client "A" screen contains "deck - sessions"
     And deck client "A" has session "click-enter-bravo" selected
     When deck client "A" enters interactive mode
-    Then deck client "A" frame still matches the captured "click-entered-bravo" frame
+    Then deck client "A" screen contains "Ctrl+Q"
+    And deck client "A" frame still matches the captured "click-entered-bravo" frame
     When deck client "A" leaves interactive mode
     And deck client "A" exits cleanly
 

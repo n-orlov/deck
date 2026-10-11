@@ -345,25 +345,37 @@ func TestSpawnMasksAWhitespaceHeaderJWTInEnvPayloadAndStoredOutput(t *testing.T)
 	}
 }
 
-// The scan's byte-class and byte-search helpers replace strings.Trim*/IndexAny
-// (which rebuild a lookup table per call); each must agree with the standard
-// function it replaced, on every position of the first hit.
+// runLen (the one byte-class helper of the scan; the rest call the strings
+// package directly, so that no Go loop or wrapper of ours pays a race-detector
+// atomic per byte under the nightly lane's -race -covermode=atomic) must agree
+// with a plain per-byte reference on every text, non-ASCII and invalid UTF-8
+// included. The byte-search helpers are held to the strings function each
+// replaced, on every position of the first hit.
 func TestScanHelpersAgreeWithTheStringsFunctionsTheyReplace(t *testing.T) {
-	texts := []string{"", "x", "  \tab=c  ", "key_1-2 = v", "a'b\"c", "\"a'", "'a\"", "Bearer b", "bB", "Bb", "xxBxxbxx", "xxbxxBxx", "none", "\\a\"b"}
+	texts := []string{"", "x", "  \tab=c  ", "key_1-2 = v", "a'b\"c", "\"a'", "'a\"", "Bearer b", "bB", "Bb", "xxBxxbxx", "xxbxxBxx", "none", "\\a\"b", "é=é", "k\xff=\xfev", "=", ":"}
+	// Long texts put the first hit on either side of every doubling window of
+	// indexByteFold, with only one case present or both in either order.
+	for _, at := range []int{0, 1, 63, 64, 65, 127, 128, 129, 300, 1000} {
+		for _, other := range []int{-1, 0, 70, 500, 999} {
+			for _, cases := range [][2]string{{"b", "B"}, {"B", "b"}, {"B", "B"}, {"b", "b"}} {
+				raw := []byte(strings.Repeat("x", 1100))
+				raw[at] = cases[0][0]
+				if other >= 0 && other != at {
+					raw[other] = cases[1][0]
+				}
+				texts = append(texts, string(raw))
+			}
+		}
+	}
+	texts = append(texts, strings.Repeat("x", 4096))
 	for _, text := range texts {
-		for name, set := range map[string]string{"space": asciiSpace, "key": keyBytes, "token": tokenBytes, "sep": "=:"} {
-			bs := newByteSet(set)
-			if got, want := bs.trimLeft(text), strings.TrimLeft(text, set); got != want {
-				t.Errorf("%s trimLeft(%q) = %q, want %q", name, text, got, want)
+		for name, set := range map[string]string{"space": asciiSpace, "key": keyBytes, "token": tokenBytes, "sep": sepBytes} {
+			lead := 0
+			for lead < len(text) && strings.IndexByte(set, text[lead]) >= 0 {
+				lead++
 			}
-			if got, want := bs.trimRight(text), strings.TrimRight(text, set); got != want {
-				t.Errorf("%s trimRight(%q) = %q, want %q", name, text, got, want)
-			}
-			if got, want := bs.indexAny(text), strings.IndexAny(text, set); got != want {
-				t.Errorf("%s indexAny(%q) = %d, want %d", name, text, got, want)
-			}
-			if got, want := bs.runLen(text), len(text)-len(strings.TrimLeft(text, set)); got != want {
-				t.Errorf("%s runLen(%q) = %d, want %d", name, text, got, want)
+			if got := runLen(text, set); got != lead {
+				t.Errorf("%s runLen(%q) = %d, want %d", name, text, got, lead)
 			}
 		}
 		if got, want := indexByteFold(text, 'b'), strings.IndexAny(text, "bB"); got != want {
@@ -376,6 +388,27 @@ func TestScanHelpersAgreeWithTheStringsFunctionsTheyReplace(t *testing.T) {
 			if got, want := indexQuoteOrBackslash(text, quote), strings.IndexAny(text, `\`+string(quote)); got != want {
 				t.Errorf("indexQuoteOrBackslash(%q, %q) = %d, want %d", text, quote, got, want)
 			}
+		}
+	}
+}
+
+// A shape that runs out of spans leaves the merged walk: the shapes still
+// holding spans keep being merged, and the last shape alone needs no merge.
+// Each text below ends with a different number of shapes still alive, and
+// every secret in it must be masked exactly once with its neighbours intact.
+func TestMergedWalkMasksEveryShapeAsShapesRunOut(t *testing.T) {
+	mask := MaskedPlaceholder
+	cases := []struct{ name, in, want string }{
+		{"one shape only", "a=b API_TOKEN=s1 c=d API_KEY=s2", "a=b API_TOKEN=" + mask + " c=d API_KEY=" + mask},
+		{"bearer then pairs", "Authorization: Bearer abcdefghij then API_TOKEN=s1 end", "Authorization: Bearer " + mask + " then API_TOKEN=" + mask + " end"},
+		{"pairs then bearer", "API_TOKEN=s1 then Bearer abcdefghij", "API_TOKEN=" + mask + " then Bearer " + mask},
+		{"prefix inside a quoted value", `--password "ab sk-abcdefghij cd" after`, "--password " + mask + " after"},
+		{"three shapes in turn", "sk-abcdefghij --token t1 API_KEY=s2 Bearer abcdefghij", mask + " --token " + mask + " API_KEY=" + mask + " Bearer " + mask},
+		{"prose untouched", "see file.name.txt and task-x: done", "see file.name.txt and task-x: done"},
+	}
+	for _, tc := range cases {
+		if got := Redact(tc.in, nil); got != tc.want {
+			t.Errorf("%s: Redact(%q) = %q, want %q", tc.name, tc.in, got, tc.want)
 		}
 	}
 }

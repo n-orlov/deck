@@ -124,6 +124,32 @@ func scopeWord(scope tmuxOptionScope) string {
 func registerTmuxOptionScopeSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^tmux window "([^"]+)" option "([^"]+)" is "([^"]+)" in the (global|window) scope$`, tmuxWindowOptionIsInScope)
 	sc.Step(`^tmux window "([^"]+)" option "([^"]+)" is unset in the (global|window) scope$`, tmuxWindowOptionIsUnsetInScope)
+	sc.Step(`^tmux window "([^"]+)" option "([^"]+)" becomes unset in the (global|window) scope$`, tmuxWindowOptionBecomesUnsetInScope)
+}
+
+// tmuxOptionReleaseBound is how long the "becomes unset" step waits for a
+// release that deck performs in the tmux command its exit schedules: the
+// frame is back on the list the moment the mode flag flips, a beat before
+// that command has run, and on a loaded host the beat is long.
+const tmuxOptionReleaseBound = 5 * time.Second
+
+// tmuxWindowOptionBecomesUnsetInScope is for a release the previous step
+// triggered asynchronously: it passes the first time the option reads unset
+// and fails, with the last read's error, if it is still set after
+// tmuxOptionReleaseBound. The immediate "is unset" step stays a single read,
+// because that one also proves an option was never claimed.
+func tmuxWindowOptionBecomesUnsetInScope(ctx context.Context, target, name, scopeWord string) error {
+	h, err := scenarioHarness(ctx)
+	if err != nil {
+		return err
+	}
+	return waitTmuxOptionUnsetInScope(ctx, h.Socket, target, parseTmuxOptionScope(scopeWord), name, tmuxOptionReleaseBound)
+}
+
+func waitTmuxOptionUnsetInScope(ctx context.Context, socket, target string, scope tmuxOptionScope, name string, bound time.Duration) error {
+	return pollUntil(bound, func() error {
+		return assertTmuxOptionUnsetInScope(ctx, socket, target, scope, name)
+	})
 }
 
 func tmuxWindowOptionIsInScope(ctx context.Context, target, name, want, scopeWord string) error {
