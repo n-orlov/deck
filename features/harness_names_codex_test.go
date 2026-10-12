@@ -251,28 +251,39 @@ func fakeCodexThreadIsNamed(ctx context.Context, session, want string) error {
 	})
 }
 
-// fakeCodexThreadHasNoName is a point-in-time check: callers order it after a
-// step that already proved the fake processed its input.
+// fakeCodexThreadHasNoName asserts the thread's name is NULL at one point in
+// time. Deck binds the conversation id on a tick after the prompt, and the
+// previous step only proves the fake's pane answered, so the id and the
+// thread row are preconditions this step waits for; the NULL assertion itself
+// is read once both exist, never retried.
 func fakeCodexThreadHasNoName(ctx context.Context, session string) error {
 	h, err := assertionHarness(ctx)
 	if err != nil {
 		return err
 	}
-	id, err := codexConversation(h, session)
-	if err != nil {
-		return err
+	ctx, cancel := withDefaultWaitDeadline(ctx)
+	defer cancel()
+	for {
+		id, idErr := codexConversation(h, session)
+		if idErr == nil {
+			name, found, rowErr := codexThreadRow(h, id)
+			if rowErr != nil {
+				return rowErr
+			}
+			if found {
+				if name.Valid {
+					return fmt.Errorf("fake Codex thread of session %q is named %q, want NULL", session, name.String)
+				}
+				return nil
+			}
+			idErr = fmt.Errorf("fake Codex has no thread %s yet", id)
+		}
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("fake Codex thread of session %q never became observable before the no-name check: %w", session, idErr)
+		case <-time.After(20 * time.Millisecond):
+		}
 	}
-	name, found, err := codexThreadRow(h, id)
-	if err != nil {
-		return err
-	}
-	if !found {
-		return fmt.Errorf("fake Codex has no thread %s for session %q", id, session)
-	}
-	if name.Valid {
-		return fmt.Errorf("fake Codex thread of session %q is named %q, want NULL", session, name.String)
-	}
-	return nil
 }
 
 // fakeCodexIndexEndsWith polls session_index.jsonl for the thread's latest
