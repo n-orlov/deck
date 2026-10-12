@@ -142,7 +142,7 @@ func fakeCodexIsPromptedWith(ctx context.Context, name, text string) error {
 	if err != nil {
 		return err
 	}
-	slug, err := sessionSlugByName(h, name)
+	slug, err := codexPaneSlug(h, name)
 	if err != nil {
 		return err
 	}

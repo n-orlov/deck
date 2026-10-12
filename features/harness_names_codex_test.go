@@ -5,10 +5,12 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/cucumber/godog"
@@ -35,6 +37,35 @@ func clientCreatesCodexSessionWithBlankName(ctx context.Context, clientName, der
 	return clientCreatesAgentSessionWithBlankName(ctx, clientName, "codex", derived)
 }
 
+// codexPaneSlugs remembers, per scenario, the tmux slug each name resolved to.
+// A rename never touches the slug (SPEC §3.2), but deck adopts a Codex title
+// on any tick, so a step that follows a title-generating step can find the
+// row already renamed and "by name" would race the adoption. Names resolve
+// through the store first; the remembered slug answers only when the store
+// no longer holds the name.
+var codexPaneSlugs sync.Map // *ScenarioHarness -> map[string]string
+
+type codexSlugBook struct {
+	mu    sync.Mutex
+	slugs map[string]string
+}
+
+func codexPaneSlug(h *ScenarioHarness, name string) (string, error) {
+	book, _ := codexPaneSlugs.LoadOrStore(h, &codexSlugBook{slugs: map[string]string{}})
+	b := book.(*codexSlugBook)
+	slug, err := sessionSlugByName(h, name)
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if err == nil {
+		b.slugs[name] = slug
+		return slug, nil
+	}
+	if known, ok := b.slugs[name]; ok && errors.Is(err, sql.ErrNoRows) {
+		return known, nil
+	}
+	return "", err
+}
+
 // sendFakeCodexPaneLine types one line into the fake Codex pane: a JSON pane
 // command, or the "/rename <name>" a human types inside Codex.
 func sendFakeCodexPaneLine(ctx context.Context, name, line string) error {
@@ -42,7 +73,7 @@ func sendFakeCodexPaneLine(ctx context.Context, name, line string) error {
 	if err != nil {
 		return err
 	}
-	slug, err := sessionSlugByName(h, name)
+	slug, err := codexPaneSlug(h, name)
 	if err != nil {
 		return err
 	}
@@ -80,7 +111,7 @@ func fakeCodexPaneShows(ctx context.Context, name, text string) error {
 	if err != nil {
 		return err
 	}
-	slug, err := sessionSlugByName(h, name)
+	slug, err := codexPaneSlug(h, name)
 	if err != nil {
 		return err
 	}
@@ -128,7 +159,7 @@ func fakeCodexPaneIsTitled(ctx context.Context, name, title string) error {
 	if err != nil {
 		return err
 	}
-	slug, err := sessionSlugByName(h, name)
+	slug, err := codexPaneSlug(h, name)
 	if err != nil {
 		return err
 	}
