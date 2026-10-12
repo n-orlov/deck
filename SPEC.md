@@ -1476,19 +1476,27 @@ a regular file deck appends the line, sends no keystroke, and holds the sanitise
 for its echo. That path does not need the idle/running gate or the dialog check, since nothing is
 typed. When the file is unavailable (no extension running, no hook executable in the environment,
 a launch without a data root) the push is the keystroke plan `Ctrl-U`, `/name <name>`, `Enter`
-under the §8 gate, and only then. `setSessionName` fires Pi's `session_info_changed`, so the
+under the §8 gate, and only then. Part of that gate is Pi's dialog check: the adapter is a
+`DialogDetector` that reports a focused dialog when a screen line carries the key hints Pi draws at
+the foot of a selector or input dialog (`↑↓ navigate` or `enter submit`, together with `cancel`;
+with the default keybindings `↑↓ navigate  enter select  escape/ctrl+c cancel`, the line every
+`ui.select` and `ui.confirm` dialog shows). While one is up the push is refused with "a harness
+dialog is focused", because the typed line would answer the dialog instead of renaming. `setSessionName` fires Pi's `session_info_changed`, so the
 extension reports the pushed name back; the receiver recognises it as the pending push and clears
 it (R252 echo suppression), and it is never adopted as a name a human chose in Pi. `cmd/fake-pi`
 plays the extension's file handling when it runs with the extension and `DECK_PI_CONTROL_DIR`:
 it opens the control file at its `start` pane command (session_start), not at launch, so a Pi row
-that has not started has no file and a rename push to it takes the gated keystroke path.
+that has not started has no file and a rename push to it takes the gated keystroke path. Its
+`dialog` pane command draws a `ui.confirm` selector with that hint line, and the next typed line that
+is not a JSON command answers the dialog and never reaches the editor.
 `cmd/fake-pi` persists a name the way Pi does, as `{"type":"session_info","id":"<8 hex>",
 "parentId":<previous entry id or null>,"timestamp":"<ISO-8601>","name":"<name>"}` lines in the
 session file (`~/.pi/agent/sessions/--<cwd>--/<timestamp>_<id>.jsonl`): `--name` appends one at
 launch and fires no hook, and the `name` pane command, a typed `/name <name>` line and a control-file
 line each append one and fire `session_info_changed`. The fixture never writes a name on its own,
 as Pi never titles a session. `features/harness_names_pi.feature` (`@harness-names`) covers the
-explicit, deck-rename-pushed, harness-side-rename-adopted and refused cases through those records.
+explicit, deck-rename-pushed, harness-side-rename-adopted and focused-dialog refusal cases through
+those records.
 
 Pi has no event for a permission prompt or a failed turn, so a Pi row never reports `waiting` or
 `error` from a hook; those verdicts still come from the probe (§7) and from reconcile.

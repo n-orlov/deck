@@ -32,6 +32,9 @@ func registerHarnessNamePiSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^the fake Pi control file of session "([^"]+)" is open$`, fakePiControlFileIsOpen)
 	sc.Step(`^the fake Pi control file of session "([^"]+)" does not exist$`, fakePiControlFileDoesNotExist)
 	sc.Step(`^the fake Pi pane of session "([^"]+)" shows "([^"]+)"$`, fakeCopilotPaneShows)
+	sc.Step(`^the fake Pi pane of session "([^"]+)" does not show "([^"]+)"$`, fakePiPaneDoesNotShow)
+	sc.Step(`^the deck extension of fake Pi session "([^"]+)" loses its control file$`, fakePiLosesControlFile)
+	sc.Step(`^fake Pi session "([^"]+)" opens a confirm dialog "([^"]+)"$`, fakePiOpensConfirmDialog)
 }
 
 // piSessionInfo is the fields of a session_info entry the steps read.
@@ -225,4 +228,48 @@ func fakePiPromptedAndFinishes(ctx context.Context, session string) error {
 // entry and the extension reports session_info_changed.
 func fakePiIsRenamedInside(ctx context.Context, session, title string) error {
 	return sendFakePiCommand(ctx, session, map[string]any{"command": "name", "name": title}, "session_info_changed")
+}
+
+// fakePiLosesControlFile removes the session's control file, as when the
+// extension could not keep it: deck's push then falls back to keystrokes.
+func fakePiLosesControlFile(ctx context.Context, session string) error {
+	h, err := assertionHarness(ctx)
+	if err != nil {
+		return err
+	}
+	id, err := codexConversation(h, session)
+	if err != nil {
+		return err
+	}
+	return os.Remove(piControlFilePath(h, id))
+}
+
+// fakePiOpensConfirmDialog plays an extension's ui.confirm and returns once the
+// pane shows the selector's key-hint line, the text deck's Pi adapter reads.
+func fakePiOpensConfirmDialog(ctx context.Context, session, title string) error {
+	if err := sendFakeCodexCommand(ctx, session, map[string]any{"command": "dialog", "name": title}); err != nil {
+		return err
+	}
+	return fakeCopilotPaneShows(ctx, session, "enter select  escape/ctrl+c cancel")
+}
+
+// fakePiPaneDoesNotShow reads the pane's scrollback once: callers assert it
+// after the event that decided the outcome has already been observed.
+func fakePiPaneDoesNotShow(ctx context.Context, session, text string) error {
+	h, err := assertionHarness(ctx)
+	if err != nil {
+		return err
+	}
+	slug, err := sessionSlugByName(h, session)
+	if err != nil {
+		return err
+	}
+	out, err := tmuxOutput(ctx, h, "capture-pane", "-p", "-J", "-S", "-", "-t", "deck_"+slug)
+	if err != nil {
+		return err
+	}
+	if strings.Contains(string(out), text) {
+		return fmt.Errorf("fake Pi pane of session %q shows %q:\n%s", session, text, out)
+	}
+	return nil
 }

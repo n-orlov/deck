@@ -149,10 +149,11 @@ func recordLaunchName(opts options, getenv func(string) string, getwd func() (st
 }
 
 // sessionState is what the loaded extension holds between pane commands: the
-// control file session_start opened.
+// control file session_start opened and whether a dialog is waiting.
 type sessionState struct {
 	mu      sync.Mutex
 	control *controlFile
+	dialog  bool
 	open    func(extensionHooks, io.Writer) (*controlFile, error)
 }
 

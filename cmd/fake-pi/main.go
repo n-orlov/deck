@@ -399,19 +399,29 @@ func runCommand(request fixtureCommand, output io.Writer, fixtureDirectory strin
 		return hooks.setName(output, request.Name)
 	case "start":
 		return hooks.start(output)
+	case "dialog":
+		return hooks.openDialog(output, request.Name)
+	case "answer":
+		return hooks.answerDialog(output, request.Name)
 	default:
 		return fmt.Errorf("unknown command %q", request.Command)
 	}
 }
 
+// decodeCommand decodes one JSON pane command.
+func decodeCommand(line []byte, request *fixtureCommand) error {
+	if err := json.Unmarshal(line, request); err != nil {
+		return fmt.Errorf("decode command: %w", err)
+	}
+	return nil
+}
+
 func runCommands(input io.Reader, output io.Writer, fixtureDirectory string, hooks extensionHooks) error {
 	scanner := bufio.NewScanner(input)
 	for scanner.Scan() {
-		var request fixtureCommand
-		if name, typed := typedName(scanner.Bytes()); typed {
-			request = fixtureCommand{Command: "name", Name: name}
-		} else if err := json.Unmarshal(scanner.Bytes(), &request); err != nil {
-			return fmt.Errorf("decode command: %w", err)
+		request, err := commandFor(scanner.Bytes(), hooks)
+		if err != nil {
+			return err
 		}
 		if err := runCommand(request, output, fixtureDirectory, hooks); err != nil {
 			return err
@@ -792,6 +802,10 @@ when the name is empty. --name appends a session_info entry at launch and fires 
 A start command, {"command":"start"}, plays session_start: the extension opens its control file
 (when DECK_PI_CONTROL_DIR names one) and fires SessionStart with session_name set to the name
 the session file holds, if any. Until then deck's rename push finds no control file.
+A dialog command, {"command":"dialog","name":"Allow bash?"}, plays an extension's ui.confirm:
+the pane shows the selector with its "↑↓ navigate  enter select  escape/ctrl+c cancel" hint, and
+the next typed line that is not a JSON command answers it ("fake-pi dialog answered: <line>")
+instead of reaching the editor, so a typed "/name x" then renames nothing.
 A hook command has the form {"command":"hook","event":"SessionStart","payload":{...}}. It
 plays the loaded extension: the event must be one the extension file subscribes, and its
 DECK_PI_HOOK_EXECUTABLE then runs with the single argument "_hook" and no shell, with the
