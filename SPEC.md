@@ -767,7 +767,7 @@ schema:
 |---|---|
 | top level | `allow_yolo` (default false, §5), `yolo_default` (default false, §5 — inert unless `allow_yolo`), `stale_after` (default 45 s, §7), `capture_min_interval` (§9.4), `tmux_mouse` (default true, §3.2 — `false` restores tmux's own default and with it the arrow-key behaviour), `event_retention_days` (default 30, §12), `pre_launch` (empty by default, §6.4 — the global launch hook), `agent` (empty by default, §3.4 — the kind `deck new` creates when `--agent` is absent; it is a string stored verbatim and checked against the registered kinds only when `deck new` uses it, so a kind deck does not know fails there with `unknown agent kind`; the create dialog ignores it), `post_destroy` (empty by default, §9.2 — the global teardown hook), `event_hook` (empty by default, §10.1 — the one event script; empty makes §10 inert), `event_hook_default` (default false, §10.2), `adopt_harness_names` (default true, §11.4), `bookmarks` (default false, `DECK_BOOKMARKS`, §11.5 — the numbered session bookmarks), `event_hook_events` (default `["waiting","error","ended"]`, §10.2), `event_hook_timeout` (default 3 s, §10.3) |
 | `[env]` | the middle PATH/env layer (§6.1) |
-| `[ui]` | `theme` (§11.6), `ascii` (§11), `mouse` (default true, §11.8), `preview_fit` (default true, §11), `preview_paint` (default `"fit"`, one of `fit`/`nofit`/`bg`/`off`, §11.3), `sort_order` (default `"attention"`, one of `attention`/`created`/`activity`/`name`, §11), `default_group_first` (default false, §11), `attach_on_new` (default true, §11), `attach_on_click` (default true, §11.8), `select_on_drag` (default true, §11.8), `attach_on_resume` (default false, §9.1), `recent_cwd_limit` (default 5, §11.7). **Not** `layout_mode`, `sidebar_width` or the recent-directory list itself — those are machine-local UI state/history and live in `state.db` (§11.2, §11.7), so a keypress never rewrites this file |
+| `[ui]` | `theme` (§11.6), `ascii` (§11), `mouse` (default true, §11.8), `preview_fit` (default true, §11), `preview_paint` (default `"fit"`, one of `fit`/`nofit`/`bg`/`off`, §11.3), `sort_order` (default `"attention"`, one of `attention`/`created`/`activity`/`name`, §11), `default_group_first` (default false, §11), `attach_on_new` (default true, §11), `attach_on_click` (default true, §11.8), `select_on_drag` (default true, §11.8), `attach_on_resume` (default false, §9.1), `recent_cwd_limit` (default 5, §11.7). **Not** `layout_mode`, `sidebar_width` or the recent-directory list itself — those are machine-local UI state/history and live in `state.db` (§11.2, §11.7), so a keypress never rewrites this file, `note_timeout` (whole seconds or a quoted duration, at least 1; default 10, `DECK_NOTE_TIMEOUT` in whole seconds overrides it, §11.3 — how long a transient footer note stays up) |
 
 The settings view (§11.5) edits this file: `,` opens it and `,` or `esc` closes it (§11.5
 spells out the discard prompt and the text-entry modes where `,` is a literal character).
@@ -799,7 +799,7 @@ view (§11.5) uses: `allow_yolo`, `yolo_default`, `ui.theme`, `ui.ascii`, `ui.mo
 terminal's mouse reporting is switched on or off with it), `ui.preview_fit`, `ui.preview_paint`,
 `ui.sort_order` (the loaded sessions are re-sorted, the selection stays on its session),
 `ui.default_group_first`, `ui.attach_on_new`, `ui.attach_on_click`, `ui.select_on_drag`,
-`ui.attach_on_resume`, `event_hook`, `event_hook_default`, `adopt_harness_names` (the next adoption or
+`ui.attach_on_resume`, `ui.note_timeout` (the next note follows it), `event_hook`, `event_hook_default`, `adopt_harness_names` (the next adoption or
 push follows it), `bookmarks`, `event_hook_events` and
 `event_hook_timeout` (the dispatcher reads them from the running settings when an event fires,
 so the next event follows them). A key the file did not change is left as it is, and a key a `DECK_*`
@@ -2930,6 +2930,15 @@ truncated-but-honest frame beats an unpredictable one.
   dialog, which shows the attach error wrapped across lines. The banners above the
   frame, the pending-delete prompt and the filter status line are not notes and keep their
   own rows.
+- **A note expires.** The selection-copy, field-copy, attach-failure, resume and archive-undone
+  notes clear on their own `[ui] note_timeout` after they were set (10 s by default; whole
+  seconds, at least 1; `DECK_NOTE_TIMEOUT` overrides the file; a save applies it to the next
+  note). The tick is generation-guarded: a note set again, even with the same text, starts a
+  new tick, and a tick left over from an older note clears nothing, so a note replaced before
+  it expires keeps its full time. The kill, delete and archive undo notes keep their `Undo` /
+  delete-grace windows and the teardown-hook note keeps `Undo`; the rename push note and the
+  attached bookmark message keep their own lifetimes. Every note still clears on the next
+  event that clears it today.
 
 ### 11.4 Dialogs
 

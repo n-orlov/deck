@@ -674,6 +674,27 @@ var Schema = []Field{
 		Scope: ScopeGlobal,
 	},
 	{
+		Section: "ui",
+		Key:     "note_timeout",
+		Kind:    KindInteger,
+		Default: int(DefaultNoteTimeout.Seconds()),
+		Unit:    "seconds",
+		IntBounds: Bounds{
+			Min: 1, // a non-positive timeout is a load error naming the key.
+		},
+		Description: "How long a transient note in the footer's right-aligned slot " +
+			"(a copy, attach, resume or teardown-hook message; SPEC \u00a711) stays " +
+			"up before it clears on its own, 10 seconds by default. The undo notes " +
+			"(kill, delete, archive) keep the DECK_UNDO_MS window and the delete " +
+			"grace instead, and a note still clears on the next event as before. " +
+			"DECK_NOTE_TIMEOUT overrides the file when set (whole seconds, at " +
+			"least 1). Applies immediately.",
+		// requirement 19: footerNoteExpiryCmd reads m.settings.NoteTimeout when
+		// a note is set, and settingsApplyLiveScalars copies a saved change
+		// into it, so the next note already follows a ctrl+s with no restart.
+		Scope: ScopeGlobal,
+	},
+	{
 		Section: "",
 		Key:     "pre_launch",
 		Kind:    KindString,

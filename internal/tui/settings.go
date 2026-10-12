@@ -590,6 +590,9 @@ func (m *Model) settingsApplyLiveScalars(edited, previous config.FileConfig) {
 		m.settings.PreviewFit = edited.PreviewFit
 	}
 	m.settingsApplyLiveAttach(overrides, edited, previous)
+	if settingsLiveChanged(overrides, "ui.note_timeout", edited.NoteTimeout, previous.NoteTimeout) {
+		m.settings.NoteTimeout = edited.NoteTimeout
+	}
 	if settingsLiveChanged(overrides, "bookmarks", edited.Bookmarks, previous.Bookmarks) {
 		m.settings.Bookmarks = edited.Bookmarks
 	}
@@ -1661,6 +1664,7 @@ func settingsEditsFromSettings(s config.Settings) config.FileConfig {
 		Bookmarks:            s.File.Bookmarks,
 		EventHookEvents:      slices.Clone(s.File.EventHookEvents),
 		EventHookTimeout:     s.File.EventHookTimeout,
+		NoteTimeout:          s.File.NoteTimeout,
 		Env:                  settingsCloneEnv(s.File.Env),
 	}
 }
@@ -1784,6 +1788,8 @@ func settingsIntegerValue(f config.Field, cfg config.FileConfig) int {
 		return cfg.EventRetentionDays
 	case "event_hook_timeout":
 		return int(cfg.EventHookTimeout.Seconds())
+	case "ui.note_timeout":
+		return int(cfg.NoteTimeout.Seconds())
 	default:
 		v, _ := f.Default.(int)
 		return v
@@ -1809,6 +1815,8 @@ func settingsSetInteger(cfg *config.FileConfig, f config.Field, v int) {
 		cfg.EventRetentionDays = v
 	case "event_hook_timeout":
 		cfg.EventHookTimeout = time.Duration(v) * time.Second
+	case "ui.note_timeout":
+		cfg.NoteTimeout = time.Duration(v) * time.Second
 	}
 }
 

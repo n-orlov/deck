@@ -50,6 +50,7 @@ type FileConfig struct {
 	Bookmarks            bool
 	EventHookEvents      []string
 	EventHookTimeout     time.Duration
+	NoteTimeout          time.Duration
 	Env                  map[string]string
 }
 
@@ -213,6 +214,7 @@ var integerSetters = map[string]func(*FileConfig, int){
 	"capture_min_interval": func(c *FileConfig, v int) { c.CaptureMinInterval = time.Duration(v) * time.Second },
 	"interactive_ms":       func(c *FileConfig, v int) { c.InteractiveInterval = time.Duration(v) * time.Millisecond },
 	"ui.recent_cwd_limit":  func(c *FileConfig, v int) { c.RecentCwdLimit = v },
+	"ui.note_timeout":      func(c *FileConfig, v int) { c.NoteTimeout = time.Duration(v) * time.Second },
 	"event_retention_days": func(c *FileConfig, v int) { c.EventRetentionDays = v },
 	"event_hook_timeout":   func(c *FileConfig, v int) { c.EventHookTimeout = time.Duration(v) * time.Second },
 }

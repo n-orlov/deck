@@ -232,6 +232,7 @@ var reloadEdits = map[string]string{
 	"ui.attach_on_click":     "[ui]\nattach_on_click = false\n",
 	"ui.select_on_drag":      "[ui]\nselect_on_drag = false\n",
 	"ui.attach_on_resume":    "[ui]\nattach_on_resume = true\n",
+	"ui.note_timeout":        "[ui]\nnote_timeout = 4\n",
 	"pre_launch":             "pre_launch = \"echo hi\"\n",
 	"agent":                  "agent = \"shell\"\n",
 	"post_destroy":           "post_destroy = \"echo bye\"\n",

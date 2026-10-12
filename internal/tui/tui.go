@@ -574,10 +574,10 @@ type Model struct {
 	// without claiming a rebuild when no teardown hook ever ran.
 	archiveUndoHookRan bool
 	// archiveUndoneRebuildNote/archiveUndoneRebuildGeneration are that
-	// promise's own transient toast, on DECK_UNDO_MS and generation-tied
-	// exactly like the three undo trios above: raised when an archive undo
-	// (`u`) succeeds for an archive whose post_destroy ran, cleared by its own
-	// tick. It reverses nothing itself, so it offers no key.
+	// promise's own transient toast: raised when an archive undo (`u`)
+	// succeeds for an archive whose post_destroy ran, cleared by the
+	// generation-guarded [ui] note_timeout tick (footerNoteExpired). It
+	// reverses nothing itself, so it offers no key.
 	archiveUndoneRebuildNote       bool
 	archiveUndoneRebuildGeneration int
 	profileSwitching               bool
@@ -1797,12 +1797,6 @@ type sessionUnarchived struct {
 	teardownHookRan bool
 }
 
-// archiveUndoneRebuildNoteExpired fires DECK_UNDO_MS after an archive undo
-// raised the post_destroy rebuild toast, and is generation-tied for
-// archiveUndoExpired's own reason: a stale tick must not clear a newer
-// toast. Nothing is reaped or reversed when it fires.
-type archiveUndoneRebuildNoteExpired int
-
 // sessionReaped carries task 106's grace-window expiry result back: a
 // failure is surfaced (the row was already gone from the default view, so
 // there is nothing to reload) but is not silently swallowed.
@@ -2712,7 +2706,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	next, cmd := m.dispatchMessage(message)
 	next, cmd = m.releaseHeldReload(next, cmd)
 	next, cmd = releaseHeldRefit(next, cmd)
-	return stampFooterNotes(prev, next), cmd
+	return stampFooterNotes(prev, next, cmd)
 }
 
 // releaseHeldRefit applies a host resize that was held back because a modal
@@ -2754,54 +2748,54 @@ var messageHandlers map[reflect.Type]messageHandler
 
 func init() {
 	messageHandlers = map[reflect.Type]messageHandler{
-		reflect.TypeFor[tea.WindowSizeMsg]():               handlerFor(Model.onWindowSizeMsg),
-		reflect.TypeFor[sessionsLoaded]():                  handlerFor(Model.onSessionsLoaded),
-		reflect.TypeFor[archivedSessionsLoaded]():          handlerFor(Model.onArchivedSessionsLoaded),
-		reflect.TypeFor[eventLogLoaded]():                  handlerFor(Model.onEventLogLoaded),
-		reflect.TypeFor[detailDroppedHookLoaded]():         handlerFor(Model.onDetailDroppedHookLoaded),
-		reflect.TypeFor[shellCreated]():                    handlerFor(Model.onShellCreated),
-		reflect.TypeFor[attachFinished]():                  handlerFor(Model.onAttachFinished),
-		reflect.TypeFor[sessionKilled]():                   handlerFor(Model.onSessionKilled),
-		reflect.TypeFor[undoExpired]():                     handlerFor(Model.onUndoExpired),
-		reflect.TypeFor[sessionsPinned]():                  handlerFor(Model.onSessionsPinned),
-		reflect.TypeFor[sessionAcknowledged]():             handlerFor(Model.onSessionAcknowledged),
-		reflect.TypeFor[sessionArchived]():                 handlerFor(Model.onSessionArchived),
-		reflect.TypeFor[archiveUndoExpired]():              handlerFor(Model.onArchiveUndoExpired),
-		reflect.TypeFor[archiveUndoneRebuildNoteExpired](): handlerFor(Model.onArchiveUndoneRebuildNoteExpired),
-		reflect.TypeFor[teardownHookNoteExpired]():         handlerFor(Model.onTeardownHookNoteExpired),
-		reflect.TypeFor[sessionDeleted]():                  handlerFor(Model.onSessionDeleted),
-		reflect.TypeFor[deleteGraceExpired]():              handlerFor(Model.onDeleteGraceExpired),
-		reflect.TypeFor[sessionRestored]():                 handlerFor(Model.onSessionRestored),
-		reflect.TypeFor[sessionUnarchived]():               handlerFor(Model.onSessionUnarchived),
-		reflect.TypeFor[sessionReaped]():                   handlerFor(Model.onSessionReaped),
-		reflect.TypeFor[sessionsBulkKilled]():              handlerFor(Model.onSessionsBulkKilled),
-		reflect.TypeFor[batchUndoExpired]():                handlerFor(Model.onBatchUndoExpired),
-		reflect.TypeFor[sessionsBulkResumed]():             handlerFor(Model.onSessionsBulkResumed),
-		reflect.TypeFor[sessionsBulkDeleted]():             handlerFor(Model.onSessionsBulkDeleted),
-		reflect.TypeFor[batchDeleteGraceExpired]():         handlerFor(Model.onBatchDeleteGraceExpired),
-		reflect.TypeFor[sessionsBulkReaped]():              handlerFor(Model.onSessionsBulkReaped),
-		reflect.TypeFor[sessionsBulkRestored]():            handlerFor(Model.onSessionsBulkRestored),
-		reflect.TypeFor[uiStatePersisted]():                handlerFor(Model.onUIStatePersisted),
-		reflect.TypeFor[sessionResumed]():                  handlerFor(Model.onSessionResumed),
-		reflect.TypeFor[sessionRestarted]():                handlerFor(Model.onSessionRestarted),
-		reflect.TypeFor[envInjected]():                     handlerFor(Model.onEnvInjected),
-		reflect.TypeFor[profileSwitched]():                 handlerFor(Model.onProfileSwitched),
-		reflect.TypeFor[resumeModeChanged]():               handlerFor(Model.onResumeModeChanged),
-		reflect.TypeFor[sessionRenamed]():                  handlerFor(Model.onSessionRenamed),
-		reflect.TypeFor[launchInputsSaved]():               handlerFor(Model.onLaunchInputsSaved),
-		reflect.TypeFor[sessionGroupMoved]():               handlerFor(Model.onSessionGroupMoved),
-		reflect.TypeFor[envEdited]():                       handlerFor(Model.onEnvEdited),
-		reflect.TypeFor[reconcileTick]():                   handlerFor(Model.onReconcileTick),
-		reflect.TypeFor[previewTick]():                     handlerFor(Model.onPreviewTick),
-		reflect.TypeFor[configPollTick]():                  handlerFor(Model.onConfigPollTick),
-		reflect.TypeFor[configPolled]():                    handlerFor(Model.onConfigPolled),
-		reflect.TypeFor[interactiveDisplacementChecked]():  handlerFor(Model.onInteractiveDisplacementChecked),
-		reflect.TypeFor[previewFitDone]():                  handlerFor(Model.onPreviewFitDone),
-		reflect.TypeFor[entryRefusalHolderRecheckDone]():   handlerFor(Model.onEntryRefusalHolderRecheckDone),
-		reflect.TypeFor[previewCaptured]():                 handlerFor(Model.onPreviewCaptured),
-		reflect.TypeFor[animationTick]():                   handlerFor(Model.onAnimationTick),
-		reflect.TypeFor[tea.KeyMsg]():                      handlerFor(Model.onKeyMsg),
-		reflect.TypeFor[tea.MouseMsg]():                    handlerFor(Model.onMouseMsg),
+		reflect.TypeFor[tea.WindowSizeMsg]():              handlerFor(Model.onWindowSizeMsg),
+		reflect.TypeFor[sessionsLoaded]():                 handlerFor(Model.onSessionsLoaded),
+		reflect.TypeFor[archivedSessionsLoaded]():         handlerFor(Model.onArchivedSessionsLoaded),
+		reflect.TypeFor[eventLogLoaded]():                 handlerFor(Model.onEventLogLoaded),
+		reflect.TypeFor[detailDroppedHookLoaded]():        handlerFor(Model.onDetailDroppedHookLoaded),
+		reflect.TypeFor[shellCreated]():                   handlerFor(Model.onShellCreated),
+		reflect.TypeFor[attachFinished]():                 handlerFor(Model.onAttachFinished),
+		reflect.TypeFor[sessionKilled]():                  handlerFor(Model.onSessionKilled),
+		reflect.TypeFor[undoExpired]():                    handlerFor(Model.onUndoExpired),
+		reflect.TypeFor[sessionsPinned]():                 handlerFor(Model.onSessionsPinned),
+		reflect.TypeFor[sessionAcknowledged]():            handlerFor(Model.onSessionAcknowledged),
+		reflect.TypeFor[sessionArchived]():                handlerFor(Model.onSessionArchived),
+		reflect.TypeFor[archiveUndoExpired]():             handlerFor(Model.onArchiveUndoExpired),
+		reflect.TypeFor[footerNoteExpired]():              handlerFor(Model.onFooterNoteExpired),
+		reflect.TypeFor[teardownHookNoteExpired]():        handlerFor(Model.onTeardownHookNoteExpired),
+		reflect.TypeFor[sessionDeleted]():                 handlerFor(Model.onSessionDeleted),
+		reflect.TypeFor[deleteGraceExpired]():             handlerFor(Model.onDeleteGraceExpired),
+		reflect.TypeFor[sessionRestored]():                handlerFor(Model.onSessionRestored),
+		reflect.TypeFor[sessionUnarchived]():              handlerFor(Model.onSessionUnarchived),
+		reflect.TypeFor[sessionReaped]():                  handlerFor(Model.onSessionReaped),
+		reflect.TypeFor[sessionsBulkKilled]():             handlerFor(Model.onSessionsBulkKilled),
+		reflect.TypeFor[batchUndoExpired]():               handlerFor(Model.onBatchUndoExpired),
+		reflect.TypeFor[sessionsBulkResumed]():            handlerFor(Model.onSessionsBulkResumed),
+		reflect.TypeFor[sessionsBulkDeleted]():            handlerFor(Model.onSessionsBulkDeleted),
+		reflect.TypeFor[batchDeleteGraceExpired]():        handlerFor(Model.onBatchDeleteGraceExpired),
+		reflect.TypeFor[sessionsBulkReaped]():             handlerFor(Model.onSessionsBulkReaped),
+		reflect.TypeFor[sessionsBulkRestored]():           handlerFor(Model.onSessionsBulkRestored),
+		reflect.TypeFor[uiStatePersisted]():               handlerFor(Model.onUIStatePersisted),
+		reflect.TypeFor[sessionResumed]():                 handlerFor(Model.onSessionResumed),
+		reflect.TypeFor[sessionRestarted]():               handlerFor(Model.onSessionRestarted),
+		reflect.TypeFor[envInjected]():                    handlerFor(Model.onEnvInjected),
+		reflect.TypeFor[profileSwitched]():                handlerFor(Model.onProfileSwitched),
+		reflect.TypeFor[resumeModeChanged]():              handlerFor(Model.onResumeModeChanged),
+		reflect.TypeFor[sessionRenamed]():                 handlerFor(Model.onSessionRenamed),
+		reflect.TypeFor[launchInputsSaved]():              handlerFor(Model.onLaunchInputsSaved),
+		reflect.TypeFor[sessionGroupMoved]():              handlerFor(Model.onSessionGroupMoved),
+		reflect.TypeFor[envEdited]():                      handlerFor(Model.onEnvEdited),
+		reflect.TypeFor[reconcileTick]():                  handlerFor(Model.onReconcileTick),
+		reflect.TypeFor[previewTick]():                    handlerFor(Model.onPreviewTick),
+		reflect.TypeFor[configPollTick]():                 handlerFor(Model.onConfigPollTick),
+		reflect.TypeFor[configPolled]():                   handlerFor(Model.onConfigPolled),
+		reflect.TypeFor[interactiveDisplacementChecked](): handlerFor(Model.onInteractiveDisplacementChecked),
+		reflect.TypeFor[previewFitDone]():                 handlerFor(Model.onPreviewFitDone),
+		reflect.TypeFor[entryRefusalHolderRecheckDone]():  handlerFor(Model.onEntryRefusalHolderRecheckDone),
+		reflect.TypeFor[previewCaptured]():                handlerFor(Model.onPreviewCaptured),
+		reflect.TypeFor[animationTick]():                  handlerFor(Model.onAnimationTick),
+		reflect.TypeFor[tea.KeyMsg]():                     handlerFor(Model.onKeyMsg),
+		reflect.TypeFor[tea.MouseMsg]():                   handlerFor(Model.onMouseMsg),
 	}
 }
 
@@ -3477,13 +3471,6 @@ func (m Model) onArchiveUndoExpired(msg archiveUndoExpired) (tea.Model, tea.Cmd)
 	return m, nil
 }
 
-func (m Model) onArchiveUndoneRebuildNoteExpired(msg archiveUndoneRebuildNoteExpired) (tea.Model, tea.Cmd) {
-	if int(msg) == m.archiveUndoneRebuildGeneration {
-		m.archiveUndoneRebuildNote = false
-	}
-	return m, nil
-}
-
 func (m Model) onTeardownHookNoteExpired(msg teardownHookNoteExpired) (tea.Model, tea.Cmd) {
 	if int(msg) == m.teardownHookNoteGeneration {
 		m.teardownHookNote = ""
@@ -3607,13 +3594,10 @@ func (m Model) onSessionUnarchived(msg sessionUnarchived) (tea.Model, tea.Cmd) {
 	if msg.teardownHookRan {
 		// SPEC.md:508 / help's Hooks section: a post_destroy that ran is not
 		// undone by u -- the row comes back stopped and the next r rebuilds
-		// whatever the hook released. Say so, on its own DECK_UNDO_MS window.
+		// whatever the hook released. Say so; the note expires on the footer
+		// notes' [ui] note_timeout tick (R283), which Update schedules.
 		m.archiveUndoneRebuildNote = true
 		m.archiveUndoneRebuildGeneration++
-		rebuildGeneration := m.archiveUndoneRebuildGeneration
-		return m, tea.Batch(m.loadSessions, m.loadArchivedSessions, tea.Tick(m.settings.Undo, func(_ time.Time) tea.Msg {
-			return archiveUndoneRebuildNoteExpired(rebuildGeneration)
-		}))
 	}
 	// Both loads, not just loadSessions: the row is in m.sessions only
 	// because m.archivedSessions still holds it (requirement 33's

@@ -285,6 +285,7 @@ var fieldRenderers = map[string]func(FileConfig) string{
 	"ui.sort_order":          func(c FileConfig) string { return strconv.Quote(c.SortOrder) },
 	"ui.preview_paint":       func(c FileConfig) string { return strconv.Quote(c.PreviewPaint) },
 	"ui.recent_cwd_limit":    func(c FileConfig) string { return strconv.Itoa(c.RecentCwdLimit) },
+	"ui.note_timeout":        func(c FileConfig) string { return strconv.Itoa(int(c.NoteTimeout.Seconds())) },
 	"event_retention_days":   func(c FileConfig) string { return strconv.Itoa(c.EventRetentionDays) },
 	"ui.theme":               func(c FileConfig) string { return strconv.Quote(c.Theme) },
 	"pre_launch":             func(c FileConfig) string { return strconv.Quote(c.PreLaunch) },

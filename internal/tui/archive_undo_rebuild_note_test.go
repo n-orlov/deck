@@ -86,14 +86,15 @@ func TestArchiveUndoSaysTheNextRRebuildsWhatPostDestroyReleased(t *testing.T) {
 				t.Fatalf("the archive toast survived its own undo:\n%s", view)
 			}
 
-			// Its own DECK_UNDO_MS window, generation-tied like its siblings: a
-			// stale tick leaves it alone, the matching one takes it away.
-			got, _ := model.Update(archiveUndoneRebuildNoteExpired(model.archiveUndoneRebuildGeneration - 1))
+			// Generation-tied on the footer notes' [ui] note_timeout tick
+			// (R283; covered further by TestFooterNoteExpiry*): a stale tick
+			// leaves it alone, the matching one takes it away.
+			got, _ := model.Update(footerNoteExpired{src: noteArchiveUndoneRebuild, gen: model.archiveUndoneRebuildGeneration - 1})
 			model = got.(Model)
 			if !model.archiveUndoneRebuildNote {
 				t.Fatal("a stale rebuild-note tick cleared the current note")
 			}
-			got, _ = model.Update(archiveUndoneRebuildNoteExpired(model.archiveUndoneRebuildGeneration))
+			got, _ = model.Update(footerNoteExpired{src: noteArchiveUndoneRebuild, gen: model.archiveUndoneRebuildGeneration})
 			model = got.(Model)
 			if model.archiveUndoneRebuildNote {
 				t.Fatal("the matching rebuild-note tick left the note on screen")

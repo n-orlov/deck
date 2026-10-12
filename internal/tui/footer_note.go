@@ -3,6 +3,7 @@ package tui
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -198,11 +199,12 @@ func (m Model) footerNote() string {
 // sources this message set, changed or renewed (footerNoteRenewal moved,
 // even with the text unchanged), so footerNote can tell the newest from an
 // older one. A source that is no longer set loses its stamp.
-func stampFooterNotes(prev Model, next tea.Model) tea.Model {
+func stampFooterNotes(prev Model, next tea.Model, cmd tea.Cmd) (tea.Model, tea.Cmd) {
 	model, ok := next.(Model)
 	if !ok {
-		return next
+		return next, cmd
 	}
+	var ticks []tea.Cmd
 	for src := footerNoteSource(0); src < footerNoteSourceCount; src++ {
 		text := model.footerNoteText(src)
 		switch {
@@ -211,9 +213,72 @@ func stampFooterNotes(prev Model, next tea.Model) tea.Model {
 		case text != prev.footerNoteText(src), footerNoteRenewal[src](model) != footerNoteRenewal[src](prev):
 			model.footerNoteClock++
 			model.footerNoteStamp[src] = model.footerNoteClock
+			if tick := model.footerNoteExpiryTick(src); tick != nil {
+				ticks = append(ticks, tick)
+			}
 		}
 	}
-	return model
+	if len(ticks) == 0 {
+		return model, cmd
+	}
+	return model, tea.Batch(append(ticks, cmd)...)
+}
+
+// footerNoteExpires marks the sources the [ui] note_timeout tick ends (R283):
+// the four plain-text sources and the archive-undone rebuild note. The five
+// undo-style sources keep DECK_UNDO_MS / the delete grace, and the teardown
+// hook note keeps DECK_UNDO_MS; the rename push note and the attached
+// bookmark message are unchanged and keep their own lifetimes.
+var footerNoteExpires = [footerNoteSourceCount]bool{
+	noteAttachError:          true,
+	noteResume:               true,
+	noteSelectionCopy:        true,
+	noteFieldCopy:            true,
+	noteArchiveUndoneRebuild: true,
+}
+
+// footerNoteExpired fires [ui] note_timeout after a note was set or renewed.
+// It carries the renewal token the note had then, so it is generation-guarded:
+// a tick from an older note, or from a note since replaced by a newer one
+// (even one with identical text), finds a different token and clears nothing.
+type footerNoteExpired struct {
+	src footerNoteSource
+	gen int
+}
+
+// footerNoteExpiryTick is the tick that ends src's note as it stands now, or
+// nil for a source the note_timeout does not govern. A Settings that carries
+// no NoteTimeout (the zero value: a Model built without config.Load, which
+// always resolves one of at least a second) schedules no expiry at all.
+func (m Model) footerNoteExpiryTick(src footerNoteSource) tea.Cmd {
+	timeout := m.settings.NoteTimeout
+	if !footerNoteExpires[src] || timeout <= 0 {
+		return nil
+	}
+	msg := footerNoteExpired{src: src, gen: footerNoteRenewal[src](m)}
+	return tea.Tick(timeout, func(time.Time) tea.Msg { return msg })
+}
+
+// onFooterNoteExpired clears the note when it is still the one the tick was
+// started for. Clearing is the same write the next event performs, so an
+// older note behind it (an undo window) is untouched.
+func (m Model) onFooterNoteExpired(msg footerNoteExpired) (tea.Model, tea.Cmd) {
+	if !footerNoteExpires[msg.src] || footerNoteRenewal[msg.src](m) != msg.gen {
+		return m, nil
+	}
+	switch msg.src {
+	case noteAttachError:
+		m.setAttachError("")
+	case noteResume:
+		m.setResumeNote("")
+	case noteSelectionCopy:
+		m.setSelectionCopyNote("")
+	case noteFieldCopy:
+		m.setFieldCopyNote("")
+	case noteArchiveUndoneRebuild:
+		m.archiveUndoneRebuildNote = false
+	}
+	return m, nil
 }
 
 // footerNoteGap is the minimum blank run between the footer's own content

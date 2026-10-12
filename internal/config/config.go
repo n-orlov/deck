@@ -32,6 +32,10 @@ const (
 	// DefaultEventHookTimeout is how long the event script (SPEC §10.3) may
 	// run before it is killed when config.toml sets no event_hook_timeout.
 	DefaultEventHookTimeout = 3 * time.Second
+
+	// DefaultNoteTimeout is how long a transient footer note stays up when
+	// neither config.toml's [ui] note_timeout nor DECK_NOTE_TIMEOUT sets it.
+	DefaultNoteTimeout = 10 * time.Second
 	// DefaultProfile is the flat, unnamed layout and socket "deck" (SPEC
 	// §3.4): the profile `deck`/`deck default`/an unset DECK_PROFILE all
 	// resolve to, byte-for-byte, with no migration and profiles/default/
@@ -165,6 +169,10 @@ type Settings struct {
 	// and no footer or help line mentions them. DECK_BOOKMARKS overrides the
 	// file when set, the same shape DECK_SELECT_ON_DRAG has.
 	Bookmarks bool
+	// NoteTimeout mirrors config.toml's [ui] note_timeout key (R283, SPEC
+	// \u00a711): how long a transient footer note stays up before it clears
+	// on its own. DECK_NOTE_TIMEOUT (whole seconds) overrides the file.
+	NoteTimeout time.Duration
 	// EventHookEvents mirrors event_hook_events (SPEC §10.2): the offered
 	// kinds the hook fires for by default. Defaults to waiting, error, ended.
 	EventHookEvents []string
@@ -434,6 +442,7 @@ func applyFileConfig(settings *Settings, fileCfg FileConfig) {
 	settings.EventHookDefault = fileCfg.EventHookDefault
 	settings.AdoptHarnessNames = fileCfg.AdoptHarnessNames
 	settings.Bookmarks = fileCfg.Bookmarks
+	settings.NoteTimeout = fileCfg.NoteTimeout
 	settings.EventHookEvents = slices.Clone(fileCfg.EventHookEvents)
 	settings.EventHookTimeout = fileCfg.EventHookTimeout
 	settings.SortOrder = fileCfg.SortOrder
@@ -517,6 +526,21 @@ var envOverrideSteps = []envOverrideStep{
 	boolOverrideStep("DECK_TMUX_MOUSE", "tmux_mouse", func(s *Settings) *bool { return &s.TmuxMouse }),
 	interactiveIntervalOverride,
 	interactiveTransportOverride,
+	noteTimeoutOverride,
+}
+
+func noteTimeoutOverride(getenv func(string) string, settings *Settings, overrides map[string]string) error {
+	raw := getenv("DECK_NOTE_TIMEOUT")
+	if raw == "" {
+		return nil
+	}
+	value, err := strconv.Atoi(raw)
+	if err != nil || value <= 0 {
+		return fmt.Errorf("DECK_NOTE_TIMEOUT must be a positive integer in seconds")
+	}
+	settings.NoteTimeout = time.Duration(value) * time.Second
+	overrides["ui.note_timeout"] = "DECK_NOTE_TIMEOUT"
+	return nil
 }
 
 func previewPaintOverride(getenv func(string) string, settings *Settings, overrides map[string]string) error {
