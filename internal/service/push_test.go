@@ -48,7 +48,7 @@ type sendRecorder struct {
 	err   error
 }
 
-func (r *sendRecorder) Screen(context.Context, string) (string, error) { return "screen", nil }
+func (r *sendRecorder) Screen(context.Context, string) (string, error) { return claudeReadyScreen, nil }
 
 func (r *sendRecorder) SendPlan(_ context.Context, _ string, plan []string) error {
 	r.plans = append(r.plans, plan)

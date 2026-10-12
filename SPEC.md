@@ -1291,6 +1291,19 @@ applies this itself as well as the service, and declines (`ok = false`) a name w
 a blank name is never typed. The generic gate (status `idle` or `running`, no focused dialog, the echo
 check and the 30-second confirmation) is the one in "Pushing a rename" above.
 
+**Claude's push gate (R267).** Claude implements `agent.DialogDetector` and `agent.PromptGate`, so the
+push reads the pane's visible screen and sends the plan only when the composer is ready and no dialog
+is focused, whatever status the row stores (a stored `running` or `idle` can be stale while a
+permission prompt is up). A dialog is focused when the screen shows a permission or trust prompt
+(`Do you want to proceed?`, `Do you trust the files in this folder`, `Esc to cancel`), a numbered option
+under the selection cursor, or a pane the probe classifies as waiting. The composer is ready when the
+last line that starts with the prompt glyph (`❯` or `>`, after any box border) holds nothing, or only
+Claude's `Try "..."` placeholder: earlier such lines are echoed turns, a draft after the glyph is
+unsent text, and a screen with no such line (startup) has no composer. Because the plan opens with
+`Ctrl-U`, this keeps a user's half-typed prompt from being discarded. A refused push sends no key,
+records one `harness_rename_refused` event naming why, and shows the footer note, as for any other
+refusal.
+
 Subscribed events — a handful per turn, never per tool call:
 
 | event | → status | notes |

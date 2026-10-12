@@ -202,6 +202,10 @@ func announceLaunch(stdout io.Writer, options options, encodedArgv []byte) {
 	if options.permissionMode != "" {
 		sayf(stdout, "fake-claude permission-mode: %s\n", options.permissionMode)
 	}
+	// The empty composer a rename push waits for (R267). It uses ">" rather
+	// than "❯" so the pane probe's idle rule ("Claude Code" with "❯") is not
+	// tripped by the banner.
+	sayln(stdout, "> ")
 }
 
 // replayAndRecord implements the per-conversation transcript persisted at the real

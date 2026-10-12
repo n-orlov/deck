@@ -73,7 +73,9 @@ func TestAdoptNameAllJunkTitleIsNotAdopted(t *testing.T) {
 // recordingPane records the keystroke plans a push sends.
 type recordingPane struct{ plans [][]string }
 
-func (p *recordingPane) Screen(context.Context, string) (string, error) { return "", nil }
+func (p *recordingPane) Screen(context.Context, string) (string, error) {
+	return claudeReadyScreen, nil
+}
 func (p *recordingPane) SendPlan(_ context.Context, _ string, plan []string) error {
 	p.plans = append(p.plans, plan)
 	return nil

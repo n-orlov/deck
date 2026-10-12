@@ -198,7 +198,7 @@ func TestPaneFixtureCommandRendersNamedFileByteForByte(t *testing.T) {
 	if code, err := runWithIO(nil, input, &output, io.Discard, getenv, testGetwd(t)); err != nil || code != 0 {
 		t.Fatalf("runWithIO = (%d, %v)", code, err)
 	}
-	got := bytes.TrimPrefix(output.Bytes(), []byte("Fake Claude Code\nfake-claude argv: null\n"))
+	got := bytes.TrimPrefix(output.Bytes(), []byte("Fake Claude Code\nfake-claude argv: null\n> \n"))
 	if !bytes.Equal(got, want) {
 		t.Fatalf("rendered bytes = %q, want %q (complete output %q)", got, want, output.Bytes())
 	}
