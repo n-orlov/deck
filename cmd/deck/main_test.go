@@ -225,7 +225,9 @@ func TestDeckBinaryShellCreateAndSlugCollisionThroughPTY(t *testing.T) {
 	if _, err := terminal.Write([]byte("x")); err != nil {
 		t.Fatal(err)
 	}
-	waitForScreen(t, output, done, "resumable")
+	// The kill note owns the footer line (SPEC §11.3), so the stopped row is
+	// read from the preview panel, which every client draws for a stopped row.
+	waitForScreen(t, output, done, "Session is stopped")
 	if _, err := terminal.Write([]byte("q")); err != nil {
 		t.Fatal(err)
 	}
@@ -361,11 +363,13 @@ func TestDeckBinaryRefreshesAllConcurrentClients(t *testing.T) {
 
 	// Kill through a different TUI and apply the same single deadline to all
 	// surviving clients, including the client that performed the kill.
+	// The kill note owns the footer line on the killing client (SPEC §11.3),
+	// so the stopped row is read from the preview panel on all three.
 	second.send("x")
 	waitForScreensWithin(t, []screenWait{
-		{output: first.output, done: first.done, want: "resumable"},
-		{output: second.output, done: second.done, want: "resumable"},
-		{output: third.output, done: third.done, want: "resumable"},
+		{output: first.output, done: first.done, want: "Session is stopped"},
+		{output: second.output, done: second.done, want: "Session is stopped"},
+		{output: third.output, done: third.done, want: "Session is stopped"},
 	}, deadline)
 }
 
