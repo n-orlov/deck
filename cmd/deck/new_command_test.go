@@ -107,11 +107,11 @@ func TestResolveNewAgentAcceptsCopilotAndRefusesUnknownKinds(t *testing.T) {
 func TestNewCreateInputDefaultsFromTheWorkingDirectory(t *testing.T) {
 	wd := func() (string, error) { return "/repo/api", nil }
 	in, err := newCreateInput(newCreateArgs{}, "copilot", wd)
-	if err != nil || in.Name != "api" || in.CWD != "/repo/api" || in.Agent != "copilot" || in.PermissionProfile != "safe" {
+	if err != nil || in.Name != "" || in.NameSource != "derived" || in.CWD != "/repo/api" || in.Agent != "copilot" || in.PermissionProfile != "safe" {
 		t.Fatalf("defaults = %+v, %v", in, err)
 	}
 	in, err = newCreateInput(newCreateArgs{name: "n", cwd: "/x/y", permission: "edits"}, "copilot", wd)
-	if err != nil || in.Name != "n" || in.CWD != "/x/y" || in.PermissionProfile != "edits" {
+	if err != nil || in.Name != "n" || in.NameSource != "user" || in.CWD != "/x/y" || in.PermissionProfile != "edits" {
 		t.Fatalf("explicit = %+v, %v", in, err)
 	}
 }

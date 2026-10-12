@@ -97,8 +97,8 @@ func newAgentRegistry() *agent.Registry {
 }
 
 // newCreateInput turns the parsed options and the chosen kind into the create
-// service's input: cwd defaults to the working directory, the name to the
-// cwd's basename.
+// service's input: cwd defaults to the working directory; a blank name is left blank for
+// createDetachedSession to derive.
 func newCreateInput(opts newCreateArgs, kind string, getwd func() (string, error)) (service.AgentCreateInput, error) {
 	cwd := opts.cwd
 	if cwd == "" {
@@ -112,9 +112,11 @@ func newCreateInput(opts newCreateArgs, kind string, getwd func() (string, error
 	if err != nil {
 		return service.AgentCreateInput{}, err
 	}
+	// A blank name stays blank here: createDetachedSession derives it
+	// (`<cwd-basename>-<MMDD-HHMM>`, first free suffix) once the store is open.
 	name, nameSource := opts.name, "user"
-	if name == "" {
-		name, nameSource = filepath.Base(cwd), "derived"
+	if strings.TrimSpace(name) == "" {
+		name, nameSource = "", "derived"
 	}
 	profile := opts.permission
 	if profile == "" {
@@ -168,6 +170,13 @@ func createDetachedSession(settings config.Settings, registry *agent.Registry, i
 	db, sessions, err := openDetachedService(settings, registry)
 	if err != nil {
 		return store.Session{}, err
+	}
+	if input.Name == "" {
+		input.Name, input.NameSource, err = sessions.ResolveBlankName(context.Background(), "", input.CWD)
+		if err != nil {
+			_ = db.Close()
+			return store.Session{}, err
+		}
 	}
 	session, err := sessions.CreateAgent(context.Background(), input)
 	_ = db.Close()

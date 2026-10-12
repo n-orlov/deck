@@ -44,7 +44,7 @@ import (
 // any kind (that concept left with the removed Workspace field and
 // store.DefaultWorkspace; SPEC.md:203-204's OWN basename-of-cwd rule for
 // the create modal's blank-name default is unrelated and now lives in
-// tui.go's createNameCWDBasename, never through this seam).
+// service.DerivedSessionName, never through this seam).
 func sessionGroupKey(session store.Session) string {
 	return session.GroupName
 }

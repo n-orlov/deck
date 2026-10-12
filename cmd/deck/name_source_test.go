@@ -89,6 +89,7 @@ func TestNameSourceEntryPoints(t *testing.T) {
 	// The recent-cwd list outlives a subtest, so the modal's prefilled cwd must too.
 	sharedCWD := t.TempDir()
 	// Each case creates (or renames) one row and names the stored source it must leave.
+	var blankNewName string
 	cases := []struct {
 		name   string
 		run    func(t *testing.T) (rowName string)
@@ -110,14 +111,20 @@ func TestNameSourceEntryPoints(t *testing.T) {
 			return newRowName(t, db, before)
 		}, "derived"},
 		{"blank deck new", func(t *testing.T) string {
-			if code, _, stderr := runWithEnv(t, nil, "new", "--agent", "copilot", "--cwd", blankCWD); code != 0 {
+			code, stdout, stderr := runWithEnv(t, nil, "new", "--agent", "copilot", "--cwd", blankCWD)
+			if code != 0 {
 				t.Fatalf("blank deck new: exit %d %q", code, stderr)
 			}
-			return "blank-cwd"
+			name := strings.TrimSpace(stdout)
+			if !strings.HasPrefix(name, "blank-cwd-") {
+				t.Fatalf("blank deck new named %q, want blank-cwd-<MMDD-HHMM>", name)
+			}
+			blankNewName = name
+			return name
 		}, "derived"},
 		{"deck rename", func(t *testing.T) string {
 			// Rename a derived row: the user's rename must flip it to user.
-			if _, err := svc.Rename(context.Background(), sessionIDByName(t, db, "blank-cwd"), "renamed-by-user"); err != nil {
+			if _, err := svc.Rename(context.Background(), sessionIDByName(t, db, blankNewName), "renamed-by-user"); err != nil {
 				t.Fatal(err)
 			}
 			return "renamed-by-user"

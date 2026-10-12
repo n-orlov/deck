@@ -297,8 +297,10 @@ so that work and home, or two organisations, never share a session list. (It is 
   TUI: `deck new --agent <kind> [--name <n>] [--cwd <dir>] [--permission <p>]` (each option
   also as `--option=value`) creates one detached session on the resolved profile
   (`DECK_PROFILE`, else `default`) through the same service as the create dialog and prints its
-  name. `--cwd` defaults to the working directory, `--name` to its basename (stored as `derived`
-  provenance, §3.2; a given `--name` stores `user`), `--permission`
+  name. `--cwd` defaults to the working directory, a blank or omitted `--name` to the same
+  `<basename of cwd>-<MMDD-HHMM>` default as the create modal (§3.2; collisions take the first
+  free `-2`, `-3` suffix; stored as `derived` provenance; a given `--name` stores `user` and is
+  used verbatim), `--permission`
   to `safe`. `<kind>` is any registered agent -- `claude`, `codex`, `copilot`, `pi`, `shell` --
   and is taken from `--agent`, else from config.toml's `agent` key (§6.5); neither is exit 2
   `error: deck new needs --agent KIND (or an agent key in config.toml)`. An unregistered kind
