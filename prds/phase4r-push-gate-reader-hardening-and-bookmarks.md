@@ -90,8 +90,8 @@ Symbols are as of `c7689cffbde`; drift is expected and is not a finding.
   filter or expands the group so the row is selected and visible. One test per case (filtered out, collapsed
   group, pinned, visible).
 - **R279 (spec).** SPEC.md §4 (data model), §8 (push gate, readers) and §11 (keys, menu, footer) state the
-  above in present tense, in the commits that change the behaviour, and say that Ctrl+digit is not supported
-  on Bubble Tea v1.
+  above in present tense, in the commits that change the behaviour, and say that Ctrl+digit is deliberately not bound
+  (it needs user tmux configuration and collides with legacy keys for 2..8).
 
 Pre-split into tasks at plan time: R267, R268, R269, R270+R271, R272, R273, R274, R275, R276, R277, R278,
 then the three sweep tasks. R279 is satisfied inside each task, not as a docs-only task.
