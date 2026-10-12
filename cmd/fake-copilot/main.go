@@ -133,6 +133,7 @@ func startApp(opts options, args []string, stdout, stderr io.Writer, getenv func
 		return nil, 2
 	}
 	var scr *screen
+	rawOut := stdout
 	if getenv(screenEnvironment) == "1" {
 		scr = &screen{out: stdout, size: terminalSize(stdout), record: sizeRecorder(getenv), cwd: cwd, allowAll: opts.allowAll, sessionID: sess.id}
 		if getenv(trustEnvironment) == "1" {
@@ -142,7 +143,9 @@ func startApp(opts options, args []string, stdout, stderr io.Writer, getenv func
 		stdout = scr
 	}
 	announceLaunch(stdout, opts, sess, encoded)
-	return &app{opts: opts, sess: sess, out: stdout, errOut: stderr, hooks: newHookRunner(opts.pluginDir, cwd), screen: scr}, 0
+	launched := &app{opts: opts, sess: sess, out: stdout, errOut: stderr, hooks: newHookRunner(opts.pluginDir, cwd), screen: scr, titleOut: rawOut}
+	launched.setTitle(sess.currentName())
+	return launched, 0
 }
 
 // copilotRoot is Copilot's own home: $COPILOT_HOME, else $HOME/.copilot.

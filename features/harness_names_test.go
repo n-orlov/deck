@@ -21,6 +21,7 @@ import (
 // no step relies on a fixed sleep to be synchronised.
 func registerHarnessNameSteps(sc *godog.ScenarioContext) {
 	registerHarnessNameCodexSteps(sc)
+	registerHarnessNameCopilotSteps(sc)
 	sc.Step(`^deck client "([^"]+)" creates claude session with a blank name expecting the derived name "([^"]+)"$`, clientCreatesClaudeSessionWithBlankName)
 	sc.Step(`^deck client "([^"]+)" is started with the fake agents in a fresh directory labelled "([^"]+)" with the clock frozen at "([^"]+)"$`, clientStartedWithFakeAgentsInFreshDirectory)
 	sc.Step(`^fake Claude session "([^"]+)" generates the title "([^"]+)"$`, fakeClaudeGeneratesTitle)

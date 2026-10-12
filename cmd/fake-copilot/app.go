@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"syscall"
 	"time"
 )
@@ -23,6 +24,9 @@ type app struct {
 	ended    bool
 	// screen is the rendered TUI, nil unless FAKE_COPILOT_SCREEN=1.
 	screen *screen
+	// titleOut is where the terminal title goes: the raw stdout, never the
+	// screen's transcript.
+	titleOut io.Writer
 }
 
 type command struct {
@@ -37,6 +41,9 @@ type command struct {
 
 // dispatch runs one pane command. The first result reports a quit.
 func (a *app) dispatch(line string) (bool, error) {
+	if name, ok := typedRename(line); ok {
+		return false, a.rename(name)
+	}
 	var request command
 	if err := json.Unmarshal([]byte(line), &request); err != nil {
 		return false, fmt.Errorf("decode command: %w", err)
@@ -69,6 +76,38 @@ func (a *app) dispatch(line string) (bool, error) {
 	default:
 		return false, fmt.Errorf("unknown command %q", request.Command)
 	}
+}
+
+// typedRename recognises the line deck types to push a name, and the one a
+// human types: "/rename <name>" or its alias "/session rename <name>".
+func typedRename(line string) (string, bool) {
+	line = strings.TrimSpace(line)
+	for _, prefix := range []string{"/rename ", "/session rename "} {
+		if rest, ok := strings.CutPrefix(line, prefix); ok && strings.TrimSpace(rest) != "" {
+			return rest, true
+		}
+	}
+	return "", false
+}
+
+// rename writes a typed name to workspace.yaml (user_named: true) and sets the
+// terminal title, as Copilot does, idle or mid-turn.
+func (a *app) rename(name string) error {
+	written, err := a.sess.rename(name)
+	if err != nil {
+		return err
+	}
+	a.setTitle(written)
+	return nil
+}
+
+// setTitle puts "<name> - GitHub Copilot" in the terminal title with OSC 0; a
+// blank name leaves the title alone.
+func (a *app) setTitle(name string) {
+	if name == "" || a.titleOut == nil {
+		return
+	}
+	say(a.titleOut, titleSequence(name+" - GitHub Copilot"))
 }
 
 // base is the part of every hook payload: sessionId, timestamp (epoch ms), cwd.
@@ -109,9 +148,11 @@ func (a *app) prompt(text string, hold bool) error {
 	a.fire("userPromptSubmitted", map[string]any{"prompt": text})
 	if !a.prompted {
 		a.prompted = true
-		if err := a.sess.nameFromFirstPrompt(text); err != nil {
+		generated, err := a.sess.nameFromFirstPrompt(text)
+		if err != nil {
 			return err
 		}
+		a.setTitle(generated)
 		source := "new"
 		if a.sess.resumed {
 			source = "resume"

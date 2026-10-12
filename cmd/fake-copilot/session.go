@@ -82,29 +82,65 @@ func (s *session) writeWorkspace(ws workspaceFile) error {
 // title the fake generates, standing in for Copilot's separate title call.
 const generatedNameWords = 5
 
+// readWorkspace parses the session's workspace.yaml.
+func (s *session) readWorkspace() (workspaceFile, error) {
+	var ws workspaceFile
+	data, err := os.ReadFile(s.workspacePath()) //nolint:gosec // G703: reads the workspace.yaml in the session directory built from a UUID-checked id
+	if err != nil {
+		return ws, fmt.Errorf("read workspace.yaml: %w", err)
+	}
+	if err := yaml.Unmarshal(data, &ws); err != nil {
+		return ws, fmt.Errorf("parse workspace.yaml: %w", err)
+	}
+	return ws, nil
+}
+
+// setName writes name: and user_named: and returns the name now on disk.
+func (s *session) setName(ws workspaceFile, name string, userNamed bool) (string, error) {
+	ws.Name, ws.UserNamed = name, userNamed
+	ws.UpdatedAt = time.Now().UTC().Format("2006-01-02T15:04:05.000Z")
+	return name, s.writeWorkspace(ws)
+}
+
+// currentName is the name workspace.yaml holds now ("" for none or unreadable).
+func (s *session) currentName() string {
+	ws, err := s.readWorkspace()
+	if err != nil {
+		return ""
+	}
+	return ws.Name
+}
+
 // nameFromFirstPrompt gives an unnamed session the title Copilot generates
 // after the first prompt: `name:` is set from the prompt and `user_named`
 // stays false. A session that already has a name, or whose prompt is blank, is
-// left alone, as is a later prompt (the caller only asks for the first).
-func (s *session) nameFromFirstPrompt(text string) error {
+// left alone, as is a later prompt (the caller only asks for the first). The
+// result is the generated name, "" when nothing changed.
+func (s *session) nameFromFirstPrompt(text string) (string, error) {
 	words := strings.Fields(text)
 	if len(words) == 0 {
-		return nil
+		return "", nil
 	}
-	data, err := os.ReadFile(s.workspacePath()) //nolint:gosec // G703: reads the workspace.yaml in the session directory built from a UUID-checked id
+	ws, err := s.readWorkspace()
+	if err != nil || ws.Name != "" || ws.UserNamed {
+		return "", err
+	}
+	return s.setName(ws, strings.Join(words[:min(len(words), generatedNameWords)], " "), false)
+}
+
+// rename is a human's /rename inside Copilot: the name is written with
+// `user_named: true`, at once, and a generated title never replaces it. The
+// result is the name written, "" for a blank one.
+func (s *session) rename(name string) (string, error) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return "", nil
+	}
+	ws, err := s.readWorkspace()
 	if err != nil {
-		return fmt.Errorf("read workspace.yaml: %w", err)
+		return "", err
 	}
-	var ws workspaceFile
-	if err := yaml.Unmarshal(data, &ws); err != nil {
-		return fmt.Errorf("parse workspace.yaml: %w", err)
-	}
-	if ws.Name != "" || ws.UserNamed {
-		return nil
-	}
-	ws.Name = strings.Join(words[:min(len(words), generatedNameWords)], " ")
-	ws.UpdatedAt = time.Now().UTC().Format("2006-01-02T15:04:05.000Z")
-	return s.writeWorkspace(ws)
+	return s.setName(ws, name, true)
 }
 
 // eventsPath is the transcript Copilot hands to agentStop hooks.

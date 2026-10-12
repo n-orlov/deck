@@ -1547,7 +1547,10 @@ for Copilot (`"` becomes `'`, control characters go, at most 100 runes) and a na
 left is declined. The push gate, dialog check, echo wait and failure events are those of §8
 "Pushing a rename". `fake-copilot` writes `name:` with `user_named: true` for an explicit `-n`,
 and gives a session without a name a generated `name:` (its first words) with `user_named: false`
-at the first prompt, never replacing a name and never retitling on a later prompt.
+at the first prompt, never replacing a name and never retitling on a later prompt. A typed
+`/rename <name>` (or `/session rename <name>`) line, deck's push or a human's, writes the name with
+`user_named: true` at once, idle or mid-turn, and the fixture titles its terminal
+`<name> - GitHub Copilot` (OSC 0) whenever a name is set, at launch included.
 
 **Capabilities.** Profiles `safe`, `edits` and `yolo` (no `plan`: it falls back to `safe`, §5);
 `AssignsConversationID`, `Resumable` and `HasTranscript` are true; the declared transcript
