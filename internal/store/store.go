@@ -1851,6 +1851,22 @@ func (s *Store) AdoptSessionName(ctx context.Context, sessionID, newName, source
 	return s.renameSession(ctx, sessionID, newName, source, nameSource, true, at)
 }
 
+// FreezeSessionName records that a human chose the row's current name inside
+// the harness without changing the name: name_source becomes 'user' and
+// nothing else (the name, the slug and the events stay as they are). It
+// reports whether the row changed; a row already 'user' is left alone.
+func (s *Store) FreezeSessionName(ctx context.Context, sessionID string) (bool, error) {
+	result, err := s.db.ExecContext(ctx, `UPDATE sessions SET name_source = 'user' WHERE id = ? AND name_source != 'user'`, sessionID)
+	if err != nil {
+		return false, fmt.Errorf("freeze session name: %w", err)
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("check freeze session name: %w", err)
+	}
+	return affected > 0, nil
+}
+
 // renameSession is the one rename transaction. adoptableOnly makes it a no-op
 // (false, nil) for a row whose name_source is 'user'.
 func (s *Store) renameSession(ctx context.Context, sessionID, newName, source, nameSource string, adoptableOnly bool, at int64) (bool, error) {

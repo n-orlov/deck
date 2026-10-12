@@ -1118,6 +1118,7 @@ row is frozen: adoption never changes it. For an eligible row the outcome is one
 | any other name | row renamed; `renamed` event with source `harness:<kind>`; `name_source = harness` |
 | the same, and another row already holds the name or its slug | the name takes the first free suffix `-2`, `-3`, ... |
 | a name the harness reports as `explicit` (a human chose it inside the harness) and that differs from deck's | row renamed as above with `name_source = user`, which freezes it from then on |
+| the same, but suffix resolution leaves the displayed name unchanged | no rename, no `renamed` event and the slug untouched, yet `name_source = user`: the row is frozen from then on |
 
 A harness title is untrusted input, so `agent.SanitiseHarnessName` cleans it before any of the
 checks above: terminal escape sequences (CSI, OSC and their string forms), C0 and C1 control

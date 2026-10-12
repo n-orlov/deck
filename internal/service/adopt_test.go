@@ -158,3 +158,75 @@ func TestAdoptNameOnTickAdoptsLiveEligibleRows(t *testing.T) {
 		t.Fatalf("tmux session deck_%s live=%v err=%v after adoption", derived.Slug, live, err)
 	}
 }
+
+// TestAdoptExplicitNameFreezesWithoutRename is R251's provenance-only
+// transition: an explicit harness name that differs from deck's stored name
+// freezes the row as name_source=user even when collision suffixing leaves the
+// displayed name unchanged; a later generated title cannot overwrite it.
+func TestAdoptExplicitNameFreezesWithoutRename(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		rowSource  string
+		stored     string
+		holder     string // another row's name that forces the suffix
+		read       string
+		explicit   bool
+		wantSource string
+	}{
+		{name: "derived row, name clash", rowSource: "derived", stored: "Fix the parser-2", holder: "Fix the parser", read: "Fix the parser", explicit: true, wantSource: "user"},
+		{name: "harness row, name clash", rowSource: "harness", stored: "Fix the parser-2", holder: "Fix the parser", read: "Fix the parser", explicit: true, wantSource: "user"},
+		{name: "derived row, slug clash only", rowSource: "derived", stored: "fix the parser-2", holder: "Fix the parser", read: "fix the parser", explicit: true, wantSource: "user"},
+		{name: "a generated name is not a freeze", rowSource: "derived", stored: "Fix the parser-2", holder: "Fix the parser", read: "Fix the parser", explicit: false, wantSource: "derived"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			svc, db, _, _ := newAgentTestService(t, nil, "adopt-freeze")
+			asked := 0
+			adapter := adoptFakeAdapter{claims: true, name: tc.read, explicit: tc.explicit, ok: true, asked: &asked}
+			svc.Agents.Register(adapter)
+			adoptRow(t, db, "other", tc.holder, "user")
+			row := adoptRow(t, db, "row-a", tc.stored, tc.rowSource)
+
+			renamed, err := svc.AdoptName(context.Background(), row.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			got, err := db.GetSession(context.Background(), row.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if renamed || got.Name != tc.stored || got.Slug != row.Slug || got.NameSource != tc.wantSource {
+				t.Fatalf("renamed=%v name=%q slug=%q source=%q; want unrenamed %q %q source %q", renamed, got.Name, got.Slug, got.NameSource, tc.stored, row.Slug, tc.wantSource)
+			}
+			assertAdoptionEvent(t, db, row.ID, false)
+
+			// A later generated title must not overwrite a frozen row.
+			svc.Agents.Register(adoptFakeAdapter{claims: true, name: "Later generated title", ok: true, asked: &asked})
+			if tc.wantSource == "user" {
+				if renamed, err := svc.AdoptName(context.Background(), row.ID); err != nil || renamed {
+					t.Fatalf("later title renamed=%v err=%v; want a frozen row untouched", renamed, err)
+				}
+				if again, _ := db.GetSession(context.Background(), row.ID); again.Name != tc.stored || again.NameSource != "user" {
+					t.Fatalf("frozen row became %q/%q", again.Name, again.NameSource)
+				}
+			}
+		})
+	}
+}
+
+// TestAdoptExplicitHookTitleFreezesWithoutRename: the same transition through
+// the hook's own session_title hint.
+func TestAdoptExplicitHookTitleFreezesWithoutRename(t *testing.T) {
+	svc, db, _, _ := newAgentTestService(t, nil, "adopt-freeze-hint")
+	asked := 0
+	svc.Agents.Register(adoptFakeAdapter{claims: true, ok: false, asked: &asked})
+	adoptRow(t, db, "other", "Fix the parser", "user")
+	row := adoptRow(t, db, "row-a", "Fix the parser-2", "derived")
+	renamed, err := svc.AdoptNameWith(context.Background(), row.ID, NameHint{SessionTitle: "Fix the parser"})
+	if err != nil || renamed {
+		t.Fatalf("renamed=%v err=%v", renamed, err)
+	}
+	got, _ := db.GetSession(context.Background(), row.ID)
+	if got.Name != "Fix the parser-2" || got.NameSource != "user" || got.Slug != row.Slug {
+		t.Fatalf("row = %q/%q/%q", got.Name, got.NameSource, got.Slug)
+	}
+}

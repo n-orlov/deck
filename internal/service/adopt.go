@@ -183,14 +183,24 @@ func (s Service) resolveProbeKey(ctx context.Context, key string) string {
 // applyAdoption renames session to the harness's name. An explicit name (a
 // human chose it inside the harness) is recorded as name_source=user, which
 // freezes the row; any other is name_source=harness. The event source is
-// harness:<kind>. The tmux slug is never written.
+// harness:<kind>. The tmux slug is never written. An explicit name that
+// differs from the stored one freezes the row even when suffix resolution
+// leaves the displayed name unchanged (provenance only: no rename, no event).
 func (s Service) applyAdoption(ctx context.Context, session store.Session, name string, explicit bool) (bool, error) {
 	nameSource := "harness"
 	if explicit {
 		nameSource = "user"
 	}
 	unique, err := s.uniqueAdoptedName(ctx, session.ID, name)
-	if err != nil || unique == session.Name {
+	if err != nil {
+		return false, err
+	}
+	if unique == session.Name {
+		// The collision suffix resolved back to the stored name: nothing to
+		// rename, but a name a human chose in the harness still freezes the row.
+		if explicit {
+			_, err = s.Store.FreezeSessionName(ctx, session.ID)
+		}
 		return false, err
 	}
 	holders, err := s.tombstonedNameHolders(ctx, unique)
