@@ -30,12 +30,15 @@ type ScenarioHarness struct {
 	tmuxSpawnWindowCount   int
 	tmuxSpawnWindowSeconds int
 
-	clients         []*ScreenDriver
-	namedClients    map[string]*ScreenDriver
-	workingDir      string
-	sentinel        []byte
-	databaseFixture []byte
-	newerRefusal    string
+	clients      []*ScreenDriver
+	namedClients map[string]*ScreenDriver
+	workingDir   string
+	// sessionNameAliases maps a scenario's label for an unnamed session to the
+	// row id deck gave it (clientCreatesUnnamedAgentSession).
+	sessionNameAliases map[string]string
+	sentinel           []byte
+	databaseFixture    []byte
+	newerRefusal       string
 	// v1FixtureSessionID, when set by v1DatabaseFixtureWithSession, is the id
 	// a fixture inserted directly into a v1 sessions table before the
 	// released binary opened and migrated the database (task 010), so a

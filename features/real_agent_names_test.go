@@ -29,6 +29,7 @@ func registerRealAgentNamesSteps(sc *godog.ScenarioContext) {
 	for kind, display := range map[string]string{"claude": "Claude", "pi": "Pi"} {
 		sc.Step(`^the installed `+display+` CLI resolves on PATH, or this scenario is skipped with a stated reason$`, realNamesCLIOrSkip(kind))
 	}
+	sc.Step(`^deck client "([^"]+)" creates ([a-z]+) session unnamed, labelled "([^"]+)", with permission profile "([^"]+)"$`, clientCreatesUnnamedAgentSession)
 	sc.Step(`^session "([^"]+)" types the line "([^"]*)" into its real pane$`, typeLineIntoRealPane)
 	sc.Step(`^the real Claude transcript of session "([^"]+)" holds an? "([a-z-]+)" record whose "([A-Za-z]+)" is a non-empty string$`, realClaudeRecordNonEmpty)
 	sc.Step(`^the real Claude transcript of session "([^"]+)" holds an? "([a-z-]+)" record whose "([A-Za-z]+)" is "([^"]+)"$`, realClaudeRecordIs)
@@ -298,4 +299,70 @@ func jsonlRecordOnce(path, typeKey, recordType, field string, accept func(string
 		}
 	}
 	return fmt.Errorf("name contract unsupported: no %q entry with a string %q in %s (entry types seen: %v)", recordType, field, path, seen)
+}
+
+// resolveSessionName maps a scenario's label for an unnamed session to the
+// row's CURRENT name (deck renames the row when it adopts the harness's
+// ai-title, so the alias is the row id, not the derived name); every other
+// name is returned unchanged.
+func (h *ScenarioHarness) resolveSessionName(name string) string {
+	id, ok := h.sessionNameAliases[name]
+	if !ok {
+		return name
+	}
+	db, err := openObservedDatabase(h)
+	if err != nil {
+		return name
+	}
+	defer func() { _ = db.Close() }()
+	var current string
+	if err := db.QueryRow(`SELECT name FROM sessions WHERE id = ?`, id).Scan(&current); err != nil {
+		return name
+	}
+	return current
+}
+
+// clientCreatesUnnamedAgentSession submits the create modal with the name left
+// blank, so the row is name_source=derived and the agent is launched without a
+// name flag (R254): only then may the harness generate its own title (Claude's
+// ai-title). The derived name is clock-dependent, so the step finds the new
+// row in the state database and registers label as an alias for its id.
+func clientCreatesUnnamedAgentSession(ctx context.Context, clientName, kind, label, profile string) error {
+	h, client, err := positionCreateModalOnProfileField(ctx, clientName, kind, "", profile)
+	if err != nil {
+		return err
+	}
+	if err := client.Send("\r"); err != nil {
+		return err
+	}
+	return pollUntil(realNamesTimeout, func() error {
+		db, err := openObservedDatabase(h)
+		if err != nil {
+			return err
+		}
+		defer func() { _ = db.Close() }()
+		rows, err := db.Query(`SELECT id FROM sessions WHERE name_source = 'derived' AND agent = ? ORDER BY created_at DESC`, kind)
+		if err != nil {
+			return err
+		}
+		defer func() { _ = rows.Close() }()
+		taken := map[string]bool{}
+		for _, id := range h.sessionNameAliases {
+			taken[id] = true
+		}
+		for rows.Next() {
+			var id string
+			if err := rows.Scan(&id); err != nil {
+				return err
+			}
+			if !taken[id] {
+				if h.sessionNameAliases == nil {
+					h.sessionNameAliases = map[string]string{}
+				}
+				h.sessionNameAliases[label] = id
+				return nil
+			}
+		}
+		return fmt.Errorf("no new derived-name %s session row appeared after the blank-name create", kind)
+	})
 }

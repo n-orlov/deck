@@ -5,7 +5,10 @@ Feature: Real harness session-name contracts (R265)
   exact shapes the readers rely on (SPEC §8, §13.5): Claude's `custom-title`,
   `agent-name` and `ai-title` transcript records, Codex's `state_5.sqlite`
   `threads.name`, Copilot's `workspace.yaml` `name` and `user_named`, and Pi's
-  `session_info` session entry. An incompatible upgrade is a visible failure
+  `session_info` session entry. Claude's `ai-title` is generated only for a
+  launch without `--name` (an explicit name suppresses it, R254), so it is
+  asserted on an unnamed launch; `custom-title` and `agent-name` on an explicit
+  one. An incompatible upgrade is a visible failure
   here; the default-tier tests (internal/service `TestBrokenContract*`) prove
   that deck, meanwhile, keeps the row's dummy name and raises no error status.
 
@@ -14,13 +17,20 @@ Feature: Real harness session-name contracts (R265)
   Each Given step skips its scenario with a stated reason when the CLI is not on
   PATH. Upstream fields are asserted without aliases or coercion.
 
-  Scenario: real claude writes the title records deck reads
+  Scenario: real claude generates the ai-title record deck adopts for an unnamed launch
+    Given the installed Claude CLI resolves on PATH, or this scenario is skipped with a stated reason
+    And deck client "A" is started
+    When deck client "A" creates claude session unnamed, labelled "real claude unnamed", with permission profile "safe"
+    And session "real claude unnamed" submits the prompt "Reply with OK only." to real Claude
+    Then the real Claude transcript of session "real claude unnamed" holds an "ai-title" record whose "aiTitle" is a non-empty string
+    When deck client "A" exits cleanly
+
+  Scenario: real claude writes the custom-title and agent-name records for an explicit name
     Given the installed Claude CLI resolves on PATH, or this scenario is skipped with a stated reason
     And deck client "A" is started
     When deck client "A" creates claude session "real claude names" with permission profile "safe"
     And session "real claude names" submits the prompt "Reply with OK only." to real Claude
-    Then the real Claude transcript of session "real claude names" holds an "ai-title" record whose "aiTitle" is a non-empty string
-    When session "real claude names" types the line "/rename pinned-claude-name" into its real pane
+    And session "real claude names" types the line "/rename pinned-claude-name" into its real pane
     Then the real Claude transcript of session "real claude names" holds a "custom-title" record whose "customTitle" is "pinned-claude-name"
     And the real Claude transcript of session "real claude names" holds an "agent-name" record whose "agentName" is "pinned-claude-name"
     When deck client "A" exits cleanly

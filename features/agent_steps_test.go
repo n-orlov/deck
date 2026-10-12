@@ -707,8 +707,10 @@ func positionCreateModalOnProfileField(ctx context.Context, clientName, kind, na
 	if err := ensureCreateModalAgent(ctx, client, kind); err != nil {
 		return nil, nil, fmt.Errorf("position create modal on agent %q: %w", kind, err)
 	}
-	if err := client.SendAwaitingVisible(ctx, name, name); err != nil {
-		return nil, nil, err
+	if name != "" { // a blank name is the unnamed launch (R248)
+		if err := client.SendAwaitingVisible(ctx, name, name); err != nil {
+			return nil, nil, err
+		}
 	}
 	if err := client.SendAwaitingVisible(ctx, "\x1b[B"+h.workingDir, h.workingDir); err != nil {
 		return nil, nil, err
@@ -1053,7 +1055,7 @@ func sessionIDByName(h *ScenarioHarness, name string) (string, error) {
 	}
 	defer db.Close()
 	var id string
-	if err := db.QueryRow(`SELECT id FROM sessions WHERE name = ?`, name).Scan(&id); err != nil {
+	if err := db.QueryRow(`SELECT id FROM sessions WHERE name = ?`, h.resolveSessionName(name)).Scan(&id); err != nil {
 		return "", fmt.Errorf("observe session %q id: %w", name, err)
 	}
 	return id, nil
@@ -1066,7 +1068,7 @@ func sessionConversationID(h *ScenarioHarness, name string) (string, error) {
 	}
 	defer db.Close()
 	var conversationID sql.NullString
-	if err := db.QueryRow(`SELECT conversation_id FROM sessions WHERE name = ?`, name).Scan(&conversationID); err != nil {
+	if err := db.QueryRow(`SELECT conversation_id FROM sessions WHERE name = ?`, h.resolveSessionName(name)).Scan(&conversationID); err != nil {
 		return "", fmt.Errorf("observe session %q conversation id: %w", name, err)
 	}
 	return conversationID.String, nil
@@ -1623,7 +1625,7 @@ func sessionSlugByName(h *ScenarioHarness, name string) (string, error) {
 	}
 	defer db.Close()
 	var slug string
-	if err := db.QueryRow(`SELECT slug FROM sessions WHERE name = ?`, name).Scan(&slug); err != nil {
+	if err := db.QueryRow(`SELECT slug FROM sessions WHERE name = ?`, h.resolveSessionName(name)).Scan(&slug); err != nil {
 		return "", fmt.Errorf("observe session %q slug: %w", name, err)
 	}
 	return slug, nil

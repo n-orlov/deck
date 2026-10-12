@@ -4155,7 +4155,11 @@ four upstream stores deck reads session names from (§8): Claude's `custom-title
 Codex's `state_5.sqlite` `threads.name`, Copilot's `workspace.yaml` `name` and `user_named`,
 and Pi's `session_info` session entry (`name`). Each Given step skips its scenario with a
 stated reason when the CLI is not on `PATH`, and the assertions name the record, key or
-column that moved. **Degrade rule:** a broken contract (a renamed record type or field, a
+column that moved. Claude's `ai-title` is generated only for a launch without `--name`
+(an explicit name suppresses it, R254), so its scenario creates the session unnamed (blank
+name, `name_source = derived`), while `custom-title` and `agent-name` are asserted on an
+explicit launch after `/rename`; a non-live test (`TestRealAgentNamesFeatureSetupMatchesExplicitNameSuppression`)
+checks the feature file against that rule. **Degrade rule:** a broken contract (a renamed record type or field, a
 missing column or table, a renamed yaml key, a Pi event without its name field) never
 renames the row, never changes its status and never raises an error: the row keeps its dummy
 name (`name_source` stays `derived`). CI never runs `@real-agents`, so that rule is proved in
