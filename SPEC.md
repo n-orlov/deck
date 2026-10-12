@@ -2887,18 +2887,22 @@ truncated-but-honest frame beats an unpredictable one.
   The row itself carries **glyph, name, status word and badges, and no reason text**; the full
   reason is also in the `i` detail dialog, which is where it belongs when it is long.
 - **Transient notes share one right-aligned slot on the footer line and add no row to the
-  frame.** The eleven finite note sources are the selection-copy and field-copy confirmations,
+  frame.** The twelve finite note sources are the selection-copy and field-copy confirmations,
   the attach/kill/archive failure message, the resume note, the single and batch kill-undo
   notes, the single and batch delete-undo notes, the archive-undo note, the archive-undone
-  note and the teardown-hook failure note. They render in the footer line in the list and in
+  note, the teardown-hook failure note and the rename push note (which shows only while the
+  row it describes is selected, and not in interactive mode). They render in the footer line in the list and in
   interactive mode alike (where the footer is the interactive one). The frame reserves no row
   for them, so a note appearing or clearing never moves the panels or the preview's first
   line. When several are set the newest is shown, and the older one's state, for example an
   open undo window, is untouched and is shown again once the newer note clears. A note set
   again is the newest even when its text is unchanged (a second kill of the same session, the
   same resume note again). A note is one
-  line (a multi-line message is collapsed to one) and keeps its text up to the full width; the
-  footer's own content gives up whole trailing entries to make room. The banners above the
+  line: a multi-line message is collapsed to one and, when it is longer than the line, elided
+  with an ellipsis and never wrapped. It keeps its text up to the full width; the footer's own
+  content gives up whole trailing entries to make room. The below-minimum notice keeps the
+  footer over any note. A failure message too long for the line stays whole in the `i` detail
+  dialog, which shows the attach error wrapped across lines. The banners above the
   frame, the pending-delete prompt and the filter status line are not notes and keep their
   own rows.
 

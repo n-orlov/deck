@@ -7,7 +7,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-// footerNoteSource names one of the eleven finite transient-note sources
+// footerNoteSource names one of the twelve finite transient-note sources
 // that share the footer's single right-aligned slot (R280). The slot adds no
 // row to the frame: computeLayout reserves nothing for any of them, so a
 // note appearing or clearing never moves the panels (R281).
@@ -28,6 +28,7 @@ const (
 	noteArchiveUndo
 	noteArchiveUndoneRebuild
 	noteTeardownHook
+	notePush
 	footerNoteSourceCount
 )
 
@@ -85,6 +86,14 @@ var footerNoteReaders = [footerNoteSourceCount]func(Model) string{
 		return "Back stopped \u2014 post_destroy already ran; the next r rebuilds what it released"
 	},
 	noteTeardownHook: func(m Model) string { return m.teardownHookNote },
+	// The rename push note belongs to the row it describes: it shows only
+	// while that row is the selected one, and never in interactive mode.
+	notePush: func(m Model) string {
+		if m.interactive || !m.pushNoteShown() {
+			return ""
+		}
+		return m.pushNote
+	},
 }
 
 // footerNoteRenewal reads each source's renewal token, indexed by
@@ -106,6 +115,7 @@ var footerNoteRenewal = [footerNoteSourceCount]func(Model) int{
 	noteArchiveUndo:          func(m Model) int { return m.archiveUndoGeneration },
 	noteArchiveUndoneRebuild: func(m Model) int { return m.archiveUndoneRebuildGeneration },
 	noteTeardownHook:         func(m Model) int { return m.teardownHookNoteGeneration },
+	notePush:                 func(m Model) int { return m.footerNoteSets[notePush] },
 }
 
 // setAttachError, setResumeNote, setSelectionCopyNote and setFieldCopyNote

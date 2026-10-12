@@ -4013,6 +4013,7 @@ func (m Model) onSessionRenamed(msg sessionRenamed) (tea.Model, tea.Cmd) {
 	m.pushNote, m.pushNoteID = "", ""
 	if msg.err == nil && msg.note != "" {
 		m.pushNote, m.pushNoteID = msg.note, msg.session.ID
+		m.footerNoteSets[notePush]++
 	}
 	// Mirrors profileSwitched/resumeModeChanged exactly: a successful
 	// rename closes the rename sub-dialog (m.detail, underneath it,
@@ -4853,10 +4854,6 @@ func (m Model) footerLine() string {
 func (m Model) footerLineContent() string {
 	if line := m.bookmarkNoteLine(); line != "" && !m.computeLayout().BelowMinimum && !m.interactive {
 		return line
-	}
-	if m.pushNoteShown() && !m.computeLayout().BelowMinimum && !m.interactive {
-		width, _ := m.frameSize()
-		return m.elideToWidth(m.pushNote, width)
 	}
 	if m.computeLayout().BelowMinimum {
 		width, _ := m.frameSize()
