@@ -1,4 +1,4 @@
-# Phase 4r — rename-push and name-reader hardening (#88, #89) and numbered session bookmarks (#87)
+# Phase 4r — rename-push and name-reader hardening (#88, #89), numbered session bookmarks (#87) and footer notes (#90)
 
 ## What the operator gets
 
@@ -9,12 +9,19 @@
    invisible text, and the smaller LOW items listed in #88 and #89 are closed (#88, #89).
 3. Numbered session bookmarks (#87): opt-in, off by default. `Alt+0`..`Alt+9` select the session bookmarked
    in that slot; a two-key chord sets a slot. Works in the list and while attached.
+4. Transient notes no longer move the screen. Copy confirmations, refusals and undo hints render
+   right-aligned on the footer line, never as an extra row, and clear themselves after ten seconds (#90).
 
 ## Issues in scope
 
-#87, #88 and #89, nothing else. Read each in full; this PRD wins where it differs. **Not in scope:** #73,
+#87, #88, #89 and #90, nothing else. Read each in full; this PRD wins where it differs. **Not in scope:** #73,
 #86, #81–#85 (their closure is already commented), the Ctrl+digit / Ctrl+Shift+digit forms of #87 (Bubble Tea
 v1.3.10 cannot report them; a v2 migration is a separate phase), and any change to how names are adopted.
+
+Code to follow for Part D: `internal/tui/tui.go` (`mainView`'s note rows, `computeLayout`'s `reserved` sum,
+`footerLine`, `footerLineContent`, `footerLegendWithin`, `interactiveFooterLine`, `pushNoteShown`, the
+`undoExpired` / `teardownHookNoteExpired` generation-guarded ticks), `internal/tui/interactive_select.go`
+(`selectionCopyConfirmation`), `internal/tui/field_copy.go`, `internal/config/schema.go`.
 
 Code to follow: `internal/service/push.go` (`pushRefusal`), `internal/agent/claude_push.go`,
 `internal/agent/claude.go`, `copilot.go`, `pi.go` (argv builders and `*ForbiddenExtraFlag`),
@@ -93,8 +100,42 @@ Symbols are as of `c7689cffbde`; drift is expected and is not a finding.
   above in present tense, in the commits that change the behaviour, and say that Ctrl+digit is deliberately not bound
   (it needs user tmux configuration and collides with legacy keys for 2..8).
 
+### Part D — #90 footer notes
+
+Read #90 in full, including the operator's decisions comment. The decisions are binding: all transient notes
+move; the note wins the footer and the legend yields; errors expire like every other note; one `[ui]` key.
+
+- **R280 (one slot on the footer).** The transient notes of these finite sources render in a single
+  right-aligned slot on the footer line and add no row to the frame: `selectionCopyNote`, `fieldCopyNote`,
+  `attachError`, `resumeNote`, the single and batch kill-undo note, the single and batch delete-undo note,
+  the archive-undo note, the archive-undone-rebuild note, `teardownHookNote`. `computeLayout` no longer
+  reserves rows for them. When several are set the newest is shown; the older one's state (for example an
+  undo window) is untouched. Banners above the frame, `pendingDeleteLines` and `filterStatusLine` keep
+  their rows. The slot shows in the list **and in interactive mode** (the drag-select case that prompted
+  #90 happens attached, where the footer is `interactiveFooterLine`).
+- **R281 (frame does not move).** One table test row per source above: the number of lines `mainView`
+  returns, and the first line of the preview pane content, are identical with the note set and cleared, at
+  80x24 and at a wide size, in the list and in interactive mode. Each row fails at the parent, which adds a
+  row.
+- **R282 (fit).** The note is one line: a multi-line message is collapsed to one and elided with an
+  ellipsis, never wrapped. When note and legend do not both fit, the legend drops whole trailing entries
+  (as `footerLegendWithin` does) and the note keeps its text up to the full width. The below-minimum notice
+  keeps precedence over a note. `pushNote` is moved onto this slot, behaviour otherwise unchanged. A long
+  `attachError`'s full text stays reachable (in the `i` detail, or the place the run names in SPEC §11).
+  Table test: wide, 80-column, and a note longer than the line.
+- **R283 (expiry).** A `[ui]` duration key (name and env override in the style of its siblings in
+  `schema.go`), default 10s, ends every note in R280 except the undo-style ones, which keep `Undo` /
+  `DeleteGrace` and the teardown note which keeps `Undo`. Expiry is a generation-guarded tick: a tick from
+  an older note never clears a newer one, and a note replaced before it expires does not leave a stale
+  tick that clears its successor. Existing clear-on-next-event behaviour stays. Tests: expiry clears the
+  slot; stale generation is ignored; the key is read from config and rejects a non-positive value with the
+  schema's usual error.
+- **R284 (spec).** SPEC.md §11 states the footer slot, the no-extra-row rule and the expiry in present
+  tense, in the commits that change the behaviour. Existing tests that assert a note as a separate row are
+  rewritten in the same commit, naming the covering test each becomes (see Non-negotiables).
+
 Pre-split into tasks at plan time: R267, R268, R269, R270+R271, R272, R273, R274, R275, R276, R277, R278,
-then the three sweep tasks. R279 is satisfied inside each task, not as a docs-only task.
+R280+R281, R282, R283, then the three sweep tasks. R279 is satisfied inside each task, not as a docs-only task.
 
 ## Materiality rubric
 
@@ -136,7 +177,7 @@ its taste; a stale sweep is never process.
   3. confirm the push run at that head is `success`, then dispatch `ci.yml` **once** and read its flaky
      record.
   Sweep tasks commit nothing. **Nothing is committed after the sweep.** If `origin/main` moved past the
-  swept sha, the sweep is stale and re-runs. A stale sweep is never process. Closing #87, #88 and #89 is a
+  swept sha, the sweep is stale and re-runs. A stale sweep is never process. Closing #87, #88, #89 and #90 is a
   comment naming the commit and the test node, made after the sweep.
 - **The CI dispatch recipe.** Use the Actions REST API with the operator's PAT from the git credentials:
   `POST /repos/n-orlov/deck/actions/workflows/ci.yml/dispatches` with `{"ref":"main"}`, then poll
