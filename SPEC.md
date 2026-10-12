@@ -1599,7 +1599,9 @@ non-empty `name` is Copilot's own generated title: adopted as `name_source = har
 `user_named: true` file whose name differs from deck's was chosen by a human (`-n`, `/rename`):
 adopted as a name a human chose, which freezes the row. No `name`, a blank one, an `id` that
 names another conversation, an unsafe conversation id, a missing or unparsable file are all "no
-name". So is a file whose `user_named` marker is absent, null or not a boolean: a present `false`
+name". So is a file whose `user_named` marker is absent, null or not a YAML boolean node: a
+string-typed value (`!!str yes`, a quoted `"true"`) or a YAML 1.1 word (`yes`, `off`) is not
+`true`/`false`, so a present `false`
 is told apart from a missing key, and a changed upstream contract (R265) leaves the row's dummy
 name and status alone. deck never writes the file.
 

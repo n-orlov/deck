@@ -141,11 +141,14 @@ func TestBrokenContractCopilotSessionYAMLKeyKeepsDummyName(t *testing.T) {
 }
 
 // Copilot, provenance half only: the name key is intact but the user_named
-// marker is renamed, absent or no boolean. A bare name without its provenance
+// marker is renamed, absent or no YAML boolean node (`!!str yes`, quoted
+// "true", YAML 1.1 no). A bare name without its provenance
 // must not be adopted as Copilot's own title (that would read as false).
 func TestBrokenContractCopilotProvenanceKeyOnlyKeepsDummyName(t *testing.T) {
 	for label, marker := range map[string]string{
 		"renamed": "named_by_user: false\n", "absent": "", "null": "user_named:\n", "string": "user_named: sometimes\n",
+		"str-tagged yes": "user_named: !!str yes\n", "str-tagged off": "user_named: !!str off\n",
+		"quoted true": "user_named: \"true\"\n", "yaml 1.1 no": "user_named: no\n",
 	} {
 		t.Run(label, func(t *testing.T) {
 			copilotHome := t.TempDir()

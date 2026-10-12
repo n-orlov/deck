@@ -132,7 +132,8 @@ func TestCopilotDialogFocused(t *testing.T) {
 
 // TestCopilotReadNameRequiresProvenanceMarker: a present boolean user_named is
 // read (true and false both), but a name whose marker is absent, null, renamed
-// or not a boolean is a changed upstream contract: no name, so the caller keeps
+// or not a YAML boolean node (string-typed `!!str yes`, quoted "true", YAML 1.1
+// yes/off) is a changed upstream contract: no name, so the caller keeps
 // the row's dummy name. An absent marker must not read as "false, harness title".
 func TestCopilotReadNameRequiresProvenanceMarker(t *testing.T) {
 	for _, tc := range []struct {
@@ -148,6 +149,18 @@ func TestCopilotReadNameRequiresProvenanceMarker(t *testing.T) {
 		{"string", "user_named: maybe\n", false, false},
 		{"number", "user_named: 3\n", false, false},
 		{"list", "user_named: [true]\n", false, false},
+		{"tagged bool true", "user_named: !!bool true\n", true, true},
+		{"capitalised False", "user_named: False\n", false, true},
+		{"str-tagged yes", "user_named: !!str yes\n", false, false},
+		{"str-tagged off", "user_named: !!str off\n", false, false},
+		{"str-tagged true", "user_named: !!str true\n", false, false},
+		{"quoted true", "user_named: \"true\"\n", false, false},
+		{"quoted false", "user_named: 'false'\n", false, false},
+		{"yaml 1.1 yes", "user_named: yes\n", false, false},
+		{"yaml 1.1 off", "user_named: off\n", false, false},
+		{"yaml 1.1 on", "user_named: on\n", false, false},
+		{"int-tagged", "user_named: !!int 1\n", false, false},
+		{"map", "user_named: {value: true}\n", false, false},
 	} {
 		t.Run(tc.label, func(t *testing.T) {
 			root := t.TempDir()
