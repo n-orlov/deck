@@ -129,3 +129,41 @@ func TestCopilotDialogFocused(t *testing.T) {
 		t.Error("Copilot is not asked about a focused dialog before a push")
 	}
 }
+
+// TestCopilotReadNameRequiresProvenanceMarker: a present boolean user_named is
+// read (true and false both), but a name whose marker is absent, null, renamed
+// or not a boolean is a changed upstream contract: no name, so the caller keeps
+// the row's dummy name. An absent marker must not read as "false, harness title".
+func TestCopilotReadNameRequiresProvenanceMarker(t *testing.T) {
+	for _, tc := range []struct {
+		label, marker string
+		explicit, ok  bool
+	}{
+		{"true", "user_named: true\n", true, true},
+		{"false", "user_named: false\n", false, true},
+		{"absent", "", false, false},
+		{"renamed key", "named_by_user: true\n", false, false},
+		{"renamed key false", "user_named_by: false\n", false, false},
+		{"null", "user_named:\n", false, false},
+		{"string", "user_named: maybe\n", false, false},
+		{"number", "user_named: 3\n", false, false},
+		{"list", "user_named: [true]\n", false, false},
+	} {
+		t.Run(tc.label, func(t *testing.T) {
+			root := t.TempDir()
+			dir := filepath.Join(root, "session-state", copilotNameFixtureID)
+			if err := os.MkdirAll(dir, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			data := "id: " + copilotNameFixtureID + "\nname: Fix the login bug\n" + tc.marker
+			if err := os.WriteFile(filepath.Join(dir, "workspace.yaml"), []byte(data), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			in := NameProbeInput{ConversationID: copilotNameFixtureID, Env: map[string]string{"COPILOT_HOME": root}}
+			name, explicit, ok := NewCopilot().ReadName(in)
+			if ok != tc.ok || explicit != tc.explicit || (ok && name != "Fix the login bug") || (!ok && name != "") {
+				t.Fatalf("ReadName = (%q, %v, %v), want explicit=%v ok=%v", name, explicit, ok, tc.explicit, tc.ok)
+			}
+		})
+	}
+}

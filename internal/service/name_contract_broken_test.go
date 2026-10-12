@@ -140,6 +140,32 @@ func TestBrokenContractCopilotSessionYAMLKeyKeepsDummyName(t *testing.T) {
 	requireDummyNameKept(t, db, row, renamed, err)
 }
 
+// Copilot, provenance half only: the name key is intact but the user_named
+// marker is renamed, absent or no boolean. A bare name without its provenance
+// must not be adopted as Copilot's own title (that would read as false).
+func TestBrokenContractCopilotProvenanceKeyOnlyKeepsDummyName(t *testing.T) {
+	for label, marker := range map[string]string{
+		"renamed": "named_by_user: false\n", "absent": "", "null": "user_named:\n", "string": "user_named: sometimes\n",
+	} {
+		t.Run(label, func(t *testing.T) {
+			copilotHome := t.TempDir()
+			svc, db, _, _ := newAgentTestService(t, map[string]string{"COPILOT_HOME": copilotHome}, "broken-copilot-prov-"+label)
+			svc.Agents.Register(agent.NewCopilot())
+			row := brokenContractRow(t, db, "copilot")
+			dir := filepath.Join(copilotHome, "session-state", brokenContractConversation)
+			if err := os.MkdirAll(dir, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			yaml := "id: " + brokenContractConversation + "\ncwd: /work/app\nname: Fix the login bug\n" + marker
+			if err := os.WriteFile(filepath.Join(dir, "workspace.yaml"), []byte(yaml), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			renamed, err := svc.AdoptName(context.Background(), row.ID)
+			requireDummyNameKept(t, db, row, renamed, err)
+		})
+	}
+}
+
 // Pi: the session_info_changed event arrives without its name field (renamed
 // to label), and SessionStart without session_name (renamed to sessionName).
 func TestBrokenContractPiSessionInfoEventFieldKeepsDummyName(t *testing.T) {

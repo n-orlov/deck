@@ -17,7 +17,7 @@ const copilotWorkspaceBytes = 64 * 1024
 type copilotWorkspace struct {
 	ID        string `yaml:"id"`
 	Name      string `yaml:"name"`
-	UserNamed bool   `yaml:"user_named"`
+	UserNamed *bool  `yaml:"user_named"`
 }
 
 // copilotRoot is the Copilot home to read: the resolved COPILOT_HOME, else
@@ -36,7 +36,9 @@ func copilotRoot(env map[string]string, home string) string {
 // The file is parsed with a real YAML parser, from a bounded read, so quoted
 // names holding `:`, `'` or Unicode round-trip. explicit is `user_named`: true
 // means a human chose the name (`-n` or /rename), false is Copilot's own
-// generated title. A missing or unreadable file, a file whose id is another
+// generated title. The marker must be present and a boolean: an absent, null
+// or non-boolean user_named is an upstream contract that changed, so there is
+// no name and the row keeps its dummy one (R265). A missing or unreadable file, a file whose id is another
 // conversation's, and a blank name are all no name.
 func (Copilot) ReadName(in NameProbeInput) (string, bool, bool) {
 	if !safeConversationID(in.ConversationID) {
@@ -50,8 +52,11 @@ func (Copilot) ReadName(in NameProbeInput) (string, bool, bool) {
 	if !ok || (ws.ID != "" && ws.ID != in.ConversationID) {
 		return "", false, false
 	}
+	if ws.UserNamed == nil {
+		return "", false, false
+	}
 	name := strings.TrimSpace(ws.Name)
-	return name, ws.UserNamed, name != ""
+	return name, *ws.UserNamed, name != ""
 }
 
 // readCopilotWorkspace reads and parses path, at most copilotWorkspaceBytes.
