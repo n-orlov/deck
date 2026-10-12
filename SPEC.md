@@ -222,7 +222,12 @@ profile's socket is `deck-<name>` (§3.4); everything below applies to it unchan
   another client is viewing returns that client to its TUI rather than silently hopping it
   into an unrelated session.
 - Session naming: `deck_<slug>`, slug `[a-z0-9_-]+` derived from the name, uniqueness
-  enforced in SQLite. Rename renames both. **`.` and `:` are excluded from slugs** —
+  enforced in SQLite. **The slug is fixed when the session is created.** A rename, whether
+  typed in the `i` dialog (§11.4) or adopted from the harness (§8), changes the display
+  name (`sessions.name`) alone: the stored slug and the live tmux session `deck_<slug>` keep
+  their names, so attach, capture and the `DECK_SESSION_SLUG` environment (§6) never move
+  under a running agent.
+  **`.` and `:` are excluded from slugs** —
   tmux rejects them in session names because they are target-syntax separators.
 - **A blank name in the create modal is filled in, not rejected.** deck defaults it to
   `<basename of cwd>-<MMDD-HHMM>` from local wall-clock time (`deck-0820-1443`), because the
