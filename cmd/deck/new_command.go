@@ -183,13 +183,24 @@ func createDetachedSession(settings config.Settings, registry *agent.Registry, i
 	if err == nil && sessions.NeedsLaunchNameApply(session) {
 		// After the close: the applier opens the same database.
 		if spawnErr := startNameApplier(session.ID); spawnErr != nil {
-			logLaunchApplierFailure(settings, session.ID, spawnErr)
+			recordLaunchApplierFailure(settings, registry, session.ID, spawnErr)
 		}
 	}
 	return session, err
 }
 
-func logLaunchApplierFailure(settings config.Settings, id string, err error) {
+// recordLaunchApplierFailure reports an applier that could not be started the
+// way every other launch-name failure is reported: a harness_rename_failed
+// event on the row (the created row and its deck name stay as they are), and
+// the audit line. The store is reopened because the applier's spawn happens
+// after the creating handle closed; no applier is running, so nothing contends.
+func recordLaunchApplierFailure(settings config.Settings, registry *agent.Registry, id string, err error) {
+	reason := "launch name not sent: the applier was not started: " + err.Error()
+	db, sessions, openErr := openDetachedService(settings, registry)
+	if openErr == nil {
+		defer func() { _ = db.Close() }()
+		_ = sessions.RecordLaunchNameFailure(context.Background(), id, reason)
+	}
 	if logger, logErr := audit.New(settings.Paths, settings.Clock); logErr == nil {
 		_ = logger.Event("launch name applier for " + id + " not started: " + err.Error())
 	}

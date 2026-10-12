@@ -1433,7 +1433,10 @@ with no other deck running; the create modal's session is served by the running 
 tick and the applier racing for one row type the name once, because the marker is claimed in a
 single statement (`store.ClaimSessionEvent`). A prompt that never becomes ready records
 `harness_rename_failed` (reason `launch name not sent: <why>`), the applier exits 1 with the
-reason on stderr and in the audit log, and deck's name stays as given.
+reason on stderr and in the audit log, and deck's name stays as given. An applier that cannot even be started (the re-exec fails) is the same failure at the
+launch boundary: `deck new` still succeeds with the row and its name, and records
+`harness_rename_failed` (reason `launch name not sent: the applier was not started: <why>`) as well
+as the audit line.
 
 **Reading Codex's name (R258, best effort).** Codex generates a title about a second after the
 first prompt and stores it in `<CODEX_HOME or ~/.codex>/state_5.sqlite`, table `threads`, column

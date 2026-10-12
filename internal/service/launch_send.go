@@ -97,6 +97,13 @@ func (s Service) ApplyLaunchNameWhenReady(ctx context.Context, sessionID string,
 	return fmt.Errorf("launch name not sent: %s", note)
 }
 
+// RecordLaunchNameFailure puts a launch name that could not be handed to its
+// harness on the row as harness_rename_failed (SPEC §8.2). It touches nothing
+// else: the row and deck's name are kept.
+func (s Service) RecordLaunchNameFailure(ctx context.Context, sessionID, reason string) error {
+	return s.Store.RecordSessionEvent(ctx, sessionID, EventHarnessRenameFailed, reason, s.Clock.Now().UnixMilli())
+}
+
 func launchAttemptError(a launchAttempt) error {
 	if a.sent || a.note == "" {
 		return nil
