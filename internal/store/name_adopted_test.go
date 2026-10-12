@@ -2,6 +2,8 @@ package store
 
 import (
 	"context"
+	"database/sql"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -84,6 +86,81 @@ func TestNameAdoptedFollowsTheNameOrigin(t *testing.T) {
 		}
 		if got.NameAdopted != tc.want || got.NameSource != tc.state {
 			t.Errorf("%s: adopted=%v source=%q, want %v %q", tc.name, got.NameAdopted, got.NameSource, tc.want, tc.state)
+		}
+	}
+}
+
+// buildSchemaV12AdoptionFixture is a schema 12 database whose four rows carry
+// the name histories schema 12 could record: an explicit harness title adopted
+// as 'user', a generated harness title, an explicit harness title frozen in
+// place after a generated adoption, and a harness title later replaced by a
+// name typed in deck. It returns the ids in that order.
+func buildSchemaV12AdoptionFixture(t *testing.T, home, path string) [4]string {
+	t.Helper()
+	ids := buildSchemaV11PopulatedFixture(t, home, path)
+	fixture, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer fixture.Close()
+	statements := append([]string{}, schemaV12...)
+	statements = append(statements, `UPDATE meta SET version = 12 WHERE key = 'schema_version'`)
+	rows := []struct{ name, source string }{
+		{"external-origin-claude $(printf EXTERNAL)", "user"},
+		{"Generated pi title", "harness"},
+		{"Chosen inside codex", "user"},
+		{"typed in deck", "user"},
+	}
+	for i, row := range rows {
+		statements = append(statements, fmt.Sprintf(`UPDATE sessions SET name = '%s', name_source = '%s' WHERE id = '%s'`,
+			strings.ReplaceAll(row.name, "'", "''"), row.source, ids[i]))
+	}
+	events := []struct {
+		id           int
+		reason, name string
+	}{
+		{0, "harness:claude", rows[0].name},
+		{1, "harness:pi", rows[1].name},
+		{2, "harness:codex", rows[2].name},
+		{3, "harness:claude", "Old harness title"},
+		{3, "user", rows[3].name},
+	}
+	for i, ev := range events {
+		statements = append(statements, fmt.Sprintf(`INSERT INTO events (session_id, at, kind, reason, payload) VALUES ('%s', %d, 'renamed', '%s', '%s')`,
+			ids[ev.id], 1000+i, ev.reason, strings.ReplaceAll(ev.name, "'", "''")))
+	}
+	for _, statement := range statements {
+		if _, err := fixture.Exec(statement); err != nil {
+			t.Fatalf("build schema 12 adoption fixture: %v (%s)", err, statement)
+		}
+	}
+	return ids
+}
+
+// TestNameAdoptedMigrationKeepsSchema12HarnessOrigin: upgrading a schema 12
+// database keeps every harness-adopted name marked adopted (explicit titles
+// adopted or frozen as 'user' included), so none of them reaches launch or
+// resume argv after the upgrade; a name typed in deck after an adoption stays
+// a typed name.
+func TestNameAdoptedMigrationKeepsSchema12HarnessOrigin(t *testing.T) {
+	home := t.TempDir()
+	path := filepath.Join(home, "state.db")
+	ids := buildSchemaV12AdoptionFixture(t, home, path)
+	st, err := OpenPath(home, path)
+	if err != nil {
+		t.Fatalf("open schema 12 fixture: %v", err)
+	}
+	defer st.Close()
+	for i, want := range []struct {
+		adopted bool
+		source  string
+	}{{true, "user"}, {true, "harness"}, {true, "user"}, {false, "user"}} {
+		got, err := st.GetSession(context.Background(), ids[i])
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.NameAdopted != want.adopted || got.NameSource != want.source {
+			t.Errorf("row %d (%q): adopted=%v source=%q, want %v %q", i, got.Name, got.NameAdopted, got.NameSource, want.adopted, want.source)
 		}
 	}
 }

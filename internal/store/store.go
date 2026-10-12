@@ -3120,9 +3120,17 @@ var schemaV12 = []string{
 // came from the harness, whether adopted as name_source 'harness' or frozen as
 // 'user' because a human chose it inside the harness. Launch and resume argv
 // carry only a name typed in deck, so an adopted name stays data (R253). It is
-// 0 for every existing row and cleared by any rename typed in deck.
+// cleared by any rename typed in deck. An existing row keeps the origin schema
+// 12 recorded: it is 1 when name_source is 'harness', or when the row's latest
+// renamed event came from a harness ('harness' or 'harness:<kind>') and named
+// the current name (an explicit harness name adopted or frozen as 'user'). Every
+// other existing row reads 0.
 var schemaV13 = []string{
 	`ALTER TABLE sessions ADD COLUMN name_adopted INTEGER NOT NULL DEFAULT 0 CHECK (name_adopted IN (0, 1))`,
+	`UPDATE sessions SET name_adopted = 1 WHERE name_source = 'harness' OR EXISTS (
+		SELECT 1 FROM events e WHERE e.seq = (
+			SELECT MAX(l.seq) FROM events l WHERE l.session_id = sessions.id AND l.kind = 'renamed')
+		AND (e.reason = 'harness' OR e.reason LIKE 'harness:%') AND e.payload = sessions.name)`,
 }
 
 // getUIState returns the persisted value for key, or def when no row exists

@@ -502,7 +502,10 @@ Invariants:
   every migrated row reads them `NULL`: nothing pending, and no per-session adoption override.
   The create modal and `deck new` write `derived` when the name was left blank and `user` when it
   was typed; a harness adoption writes `harness`.
-- Schema version 13 adds `name_adopted` to `sessions`, 0 for every migrated row. A harness
+- Schema version 13 adds `name_adopted` to `sessions`. A migrated row keeps the origin schema 12
+  recorded: it reads 1 when its `name_source` is `harness`, or when its latest `renamed` event
+  came from a harness (`reason` `harness` or `harness:<kind>`) and named its current name (an
+  explicit harness title adopted or frozen as `user`); every other migrated row reads 0. A harness
   adoption (including one frozen as `name_source = user`) sets it to 1, in the same transaction
   as the name; a rename typed in deck sets it back to 0.
   A rename writes `name_source` in the same transaction as `name` and the `renamed` event, whose
