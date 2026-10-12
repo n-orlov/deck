@@ -1475,6 +1475,9 @@ first prompt and stores it in `<CODEX_HOME or ~/.codex>/state_5.sqlite`, table `
 `ObserveName=[sqlite, pane_title]`; no Codex hook payload carries a name. `ReadName` opens the
 database with `mode=ro` and a 250 ms busy timeout, reads `name` for the row whose `id` is the
 bound conversation id, and never writes: the database file is byte-identical after a read.
+The query is capped, `SELECT substr(name, 1, 1024)`, so a value of any size is never copied whole
+into deck: the read takes at most 1024 characters, then `SanitiseHarnessName` cleans them and cuts
+the result to 200 runes (the bound of "Adopting a harness name"), and that is what `ReadName` returns.
 `name IS NULL`, and a thread with no row yet, mean "none yet" and change nothing. A missing
 database, a missing `threads` table and a `threads` table without the `id` or `name` column are
 three degrades of the same kind: the name is read from the pane title instead (`[spinner ]<name> |
@@ -2081,6 +2084,13 @@ argv[1]: the configured fixed arguments follow it (`script <event> <fixed>...`).
   (always exported, empty rather than absent), plus `DECK_EVENT_KIND`, `DECK_EVENT_REASON`
   (the `status_reason`, e.g. a notification type), `DECK_EVENT_MESSAGE` (the last assistant
   message or crash summary, truncated and redacted per §6.4) and `DECK_EVENT_AT` (RFC 3339).
+- **The name is untrusted.** `DECK_SESSION_NAME`, `session.name` and, for `renamed`, `DECK_EVENT_MESSAGE`
+  and `event.message` carry a name the harness reported (§8 "Adopting a harness name"). deck cleans
+  it (escapes, controls and invisible characters removed, at most 200 runes) but it is still
+  text an outside program chose, and may hold quotes, `$(...)`, backticks or `;`. A hook script
+  must not interpolate it into a shell string (`sh -c "... $DECK_SESSION_NAME"`, `eval`, an unquoted
+  expansion): read it as data, from a quoted variable or the JSON on stdin. The event message is
+  redacted per §6.4 like any other, so a secret-shaped `KEY=VALUE` in an adopted name is masked there.
 - **stdin:** the full payload as one JSON object, versioned:
   `{version, session: {id, name, cwd, agent, status, reason, permission_profile, group,
   important}, event: {kind, at, reason, message}, deck: {host, version}}`. A script that only

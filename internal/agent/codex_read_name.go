@@ -27,6 +27,12 @@ const codexReadTimeout = 500 * time.Millisecond
 // codexBusyTimeout is the busy_timeout of the read-only connection, in ms.
 const codexBusyTimeout = 250
 
+// codexNameReadRunes caps the `threads.name` text the read copies out of the
+// database (SPEC §8): the query takes at most this many characters, so a
+// huge or hostile value is never read whole. It is above MaxHarnessNameRunes
+// so that stripping escapes and controls still leaves a full-length name.
+const codexNameReadRunes = 1024
+
 // Why a read of state_5.sqlite degraded to the pane title (R258).
 const (
 	codexDegradeNoDB     = "state_5.sqlite is missing or unreadable"
@@ -140,9 +146,10 @@ func queryCodexThread(path, id string) (name string, found bool, reason string) 
 		return "", false, reason
 	}
 	var raw sql.NullString
-	switch err := db.QueryRowContext(ctx, `SELECT name FROM threads WHERE id = ?`, id).Scan(&raw); err {
+	switch err := db.QueryRowContext(ctx, `SELECT substr(name, 1, ?) FROM threads WHERE id = ?`, codexNameReadRunes, id).Scan(&raw); err {
 	case nil:
-		return strings.TrimSpace(raw.String), raw.Valid && strings.TrimSpace(raw.String) != "", ""
+		clean := SanitiseHarnessName(raw.String)
+		return clean, raw.Valid && clean != "", ""
 	case sql.ErrNoRows:
 		return "", false, ""
 	default:

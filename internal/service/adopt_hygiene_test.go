@@ -206,3 +206,37 @@ func TestAdoptNameFrozenRowUnfreezesOnlyByATypedRename(t *testing.T) {
 		t.Fatalf("after a typed rename adopted=%v source=%q launchName=%q", got.NameAdopted, got.NameSource, launchName(got))
 	}
 }
+
+// TestEventHookRenamedMessageRedactsTheAdoptedName: the adopted name rides the
+// `renamed` event as its message, and redaction runs over it before the script
+// sees DECK_EVENT_MESSAGE (SPEC §10.1, R273): a secret-shaped pair in the name
+// is masked there.
+func TestEventHookRenamedMessageRedactsTheAdoptedName(t *testing.T) {
+	const secret = "hunter2-adopted-secret"
+	svc, db, _, _ := newAgentTestService(t, nil, "hook-renamed-redact")
+	out := t.TempDir()
+	script := filepath.Join(out, "hook.sh")
+	body := "#!/bin/sh\nprintf '%s\\n' \"$DECK_EVENT_MESSAGE\" >> " + filepath.Join(out, "msgs") + "\n"
+	if err := os.WriteFile(script, []byte(body), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	svc.EventHook = func() EventHookDispatcher {
+		return EventHookDispatcher{
+			Policy:  notify.Policy{Command: []string{script}, Default: true, Events: []string{"renamed"}},
+			Timeout: 3 * time.Second, Deck: notify.Deck{Host: "box", Version: "test"}, BaseEnv: []string{"PATH=/usr/bin:/bin"},
+		}
+	}
+	asked := 0
+	svc.Agents.Register(adoptFakeAdapter{claims: true, name: "deploy API_TOKEN=" + secret, ok: true, asked: &asked})
+	row := adoptRow(t, db, "row-a", "swift-otter", "derived")
+	if renamed, err := svc.AdoptName(context.Background(), row.ID); err != nil || !renamed {
+		t.Fatalf("renamed=%v err=%v, want the name adopted", renamed, err)
+	}
+	raw, err := os.ReadFile(filepath.Join(out, "msgs"))
+	if err != nil {
+		t.Fatalf("the renamed hook never ran: %v", err)
+	}
+	if strings.Contains(string(raw), secret) || !strings.HasPrefix(string(raw), "deploy ") {
+		t.Fatalf("DECK_EVENT_MESSAGE = %q, want the adopted name with the secret value masked", raw)
+	}
+}

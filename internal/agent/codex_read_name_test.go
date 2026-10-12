@@ -195,3 +195,18 @@ func TestCodexReadNameUnsafeIDIsNoName(t *testing.T) {
 		t.Fatal("an unsafe conversation id read a name")
 	}
 }
+
+// TestCodexReadNameCapsAnOversizeThreadName: a threads.name far past the cap
+// is cut in the query (substr) and comes back sanitised and cut to
+// MaxHarnessNameRunes, with escapes and controls removed (SPEC §8, R273).
+func TestCodexReadNameCapsAnOversizeThreadName(t *testing.T) {
+	captureDegrades(t)
+	huge := "\x1b[31m  Fix\tthe\nparser " + strings.Repeat("é", 1<<17)
+	home, _ := codexFixture(t, codexThreadsDDL,
+		`INSERT INTO threads VALUES ('`+codexTestID+`', '`+huge+`', '/r.jsonl')`)
+	name, _, ok := NewCodex().ReadName(codexProbe(home, "never read"))
+	want := "Fix the parser " + strings.Repeat("é", MaxHarnessNameRunes-len([]rune("Fix the parser ")))
+	if !ok || name != want {
+		t.Fatalf("ReadName = (%d runes, ok=%v), want the %d-rune sanitised cut", len([]rune(name)), ok, MaxHarnessNameRunes)
+	}
+}
