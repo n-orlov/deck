@@ -106,3 +106,26 @@ func TestCopilotPushPlan(t *testing.T) {
 		t.Fatal("a blank name was pushed")
 	}
 }
+
+// TestCopilotDialogFocused: the folder-trust, permission and question dialogs
+// captured from copilot 1.0.93 are focused dialogs a typed rename would land
+// in; the idle, draft, working and error screens are not (R260 push gate).
+func TestCopilotDialogFocused(t *testing.T) {
+	cases := map[string]bool{
+		"trust.txt": true, "permission.txt": true, "question.txt": true,
+		"idle.txt": false, "idle-draft.txt": false, "working.txt": false,
+		"working-edit-prompt.txt": false, "error.txt": false, "warning.txt": false,
+	}
+	for file, want := range cases {
+		screen, err := os.ReadFile(filepath.Join(copilotFixtureDir, file))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := DialogFocused(NewCopilot(), string(screen)); got != want {
+			t.Errorf("%s: DialogFocused = %v, want %v", file, got, want)
+		}
+	}
+	if !IsDialogDetector(NewCopilot()) {
+		t.Error("Copilot is not asked about a focused dialog before a push")
+	}
+}

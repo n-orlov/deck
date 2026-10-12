@@ -86,3 +86,15 @@ func (Copilot) PushName(in NamePushInput) (keys []string, ok bool) {
 	}
 	return []string{"/rename " + name, "Enter"}, true
 }
+
+// copilotDialogReasons are the probe reasons that mean one of Copilot's modal
+// prompts has replaced the composer: typed keys would answer it, not rename.
+var copilotDialogReasons = map[string]bool{"folder trust": true, "permission prompt": true, "question": true}
+
+// DialogFocused reports whether the folder-trust prompt, a permission dialog
+// or a question dialog is on the screen, read with the same rules the pane
+// probe uses (copilotProbeRules), so a push is refused while one is up.
+func (Copilot) DialogFocused(screen string) bool {
+	status, reason := probe("copilot", screen)
+	return status == "waiting" && copilotDialogReasons[reason]
+}

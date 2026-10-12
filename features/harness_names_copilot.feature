@@ -78,17 +78,20 @@ Feature: Copilot session names travel between deck and the harness
     And the state database session "Inside Copilot" has no pending harness name
     When deck client "A" exits cleanly
 
-  Scenario: a rename is refused while a Copilot dialog is waiting for an answer
-    Given a long-running fake "copilot" binary is on PATH for future deck clients
+  Scenario: a rename is refused while a Copilot permission dialog is focused
+    Given a long-running fake "copilot" binary rendering its screen is on PATH for future deck clients
     And deck client "A" is started
     When deck client "A" creates copilot session "dialog guard" with permission profile "safe"
     And fake Copilot session "dialog guard" starts working on "first"
-    And fake Copilot session "dialog guard" raises a "permission_prompt" notification
-    Then the state database session "dialog guard" has hook status "waiting" with reason "permission_prompt"
+    Then the state database session "dialog guard" has hook status "running" with reason "new"
+    When fake Copilot session "dialog guard" opens a permission dialog for "sleep 90"
+    Then the fake Copilot pane of session "dialog guard" shows "Do you want to run this command?"
+    And the state database session "dialog guard" has hook status "running" with reason "new"
     When deck client "A" renames session "dialog guard" to "guard renamed" from its detail dialog
-    Then the state database session "guard renamed" has an event of kind "harness_rename_refused" with reason containing "waiting for an answer"
+    Then the state database session "guard renamed" has an event of kind "harness_rename_refused" with reason containing "a harness dialog is focused"
     And the state database session "guard renamed" has name source "user"
     And deck client "A" screen contains "rename not pushed to copilot"
+    And the fake Copilot pane of session "guard renamed" shows "Do you want to run this command?"
     And the fake Copilot workspace of session "guard renamed" is named "dialog guard" with user_named true
     And the state database session "guard renamed" has no pending harness name
     And session "guard renamed" has no "harness_rename_failed" event

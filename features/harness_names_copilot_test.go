@@ -23,6 +23,8 @@ func registerHarnessNameCopilotSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^the fake Copilot workspace of session "([^"]+)" is named "([^"]+)" with user_named (true|false)$`, fakeCopilotWorkspaceIsNamed)
 	sc.Step(`^the fake Copilot workspace of session "([^"]+)" has no name$`, fakeCopilotWorkspaceHasNoName)
 	sc.Step(`^the fake Copilot pane of session "([^"]+)" is titled "([^"]+)"$`, fakeCopilotPaneIsTitled)
+	sc.Step(`^fake Copilot session "([^"]+)" opens a permission dialog for "([^"]+)"$`, fakeCopilotOpensPermissionDialog)
+	sc.Step(`^the fake Copilot pane of session "([^"]+)" shows "([^"]+)"$`, fakeCopilotPaneShows)
 }
 
 func clientCreatesCopilotSessionWithBlankName(ctx context.Context, clientName, derived string) error {
@@ -152,6 +154,38 @@ func fakeCopilotPaneIsTitled(ctx context.Context, session, title string) error {
 		select {
 		case <-ctx.Done():
 			return fmt.Errorf("fake Copilot pane of session %q is titled %q, want %q", session, got, want)
+		case <-time.After(20 * time.Millisecond):
+		}
+	}
+}
+
+// fakeCopilotOpensPermissionDialog draws Copilot's permission dialog over the
+// composer with a pane command. It fires no hook: the dialog is only on the
+// screen, which is what a typed rename would land in.
+func fakeCopilotOpensPermissionDialog(ctx context.Context, session, command string) error {
+	return sendCopilotCommand(ctx, session, map[string]any{"command": "dialog", "kind": "permission", "message": command})
+}
+
+// fakeCopilotPaneShows polls the session's visible pane until text is on it.
+func fakeCopilotPaneShows(ctx context.Context, session, text string) error {
+	h, err := assertionHarness(ctx)
+	if err != nil {
+		return err
+	}
+	slug, err := sessionSlugByName(h, session)
+	if err != nil {
+		return err
+	}
+	ctx, cancel := withDefaultWaitDeadline(ctx)
+	defer cancel()
+	for {
+		out, _ := tmuxOutput(ctx, h, "capture-pane", "-p", "-t", "deck_"+slug)
+		if strings.Contains(string(out), text) {
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("fake Copilot pane of session %q never showed %q:\n%s", session, text, out)
 		case <-time.After(20 * time.Millisecond):
 		}
 	}

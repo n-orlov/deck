@@ -1545,7 +1545,10 @@ name". deck never writes the file.
 two send-keys calls: the text `/rename <name>`, then a lone `Enter`. The name is cleaned again
 for Copilot (`"` becomes `'`, control characters go, at most 100 runes) and a name with nothing
 left is declined. The push gate, dialog check, echo wait and failure events are those of §8
-"Pushing a rename". `fake-copilot` writes `name:` with `user_named: true` for an explicit `-n`,
+"Pushing a rename". Copilot implements `agent.DialogDetector`: the folder-trust prompt, a
+permission dialog and a question dialog on the visible screen, recognised by the same rules the
+pane probe uses, are a focused dialog, so a rename is refused while one is up even when the hook
+status still reads `running`. `fake-copilot` writes `name:` with `user_named: true` for an explicit `-n`,
 and gives a session without a name a generated `name:` (its first words) with `user_named: false`
 at the first prompt, never replacing a name and never retitling on a later prompt. A typed
 `/rename <name>` (or `/session rename <name>`) line, deck's push or a human's, writes the name with
