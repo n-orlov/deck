@@ -602,6 +602,7 @@ func (m Model) exitInteractive() (tea.Model, tea.Cmd) {
 // terminal would do with it).
 func (m Model) updateInteractive(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if msg.String() == "ctrl+q" {
+		m.setBookmarkNote("")
 		return m.exitInteractive()
 	}
 	if m.interactiveDispatcher == nil {

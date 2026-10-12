@@ -7,8 +7,9 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-// footerNoteSource names one of the twelve finite transient-note sources
-// that share the footer's single right-aligned slot (R280). The slot adds no
+// footerNoteSource names one of the finite transient-note sources that
+// share the footer's single right-aligned slot (R280): the twelve R280
+// names, plus the attached view's bookmark message (R276). The slot adds no
 // row to the frame: computeLayout reserves nothing for any of them, so a
 // note appearing or clearing never moves the panels (R281).
 //
@@ -29,6 +30,7 @@ const (
 	noteArchiveUndoneRebuild
 	noteTeardownHook
 	notePush
+	noteBookmarkAttached
 	footerNoteSourceCount
 )
 
@@ -94,6 +96,14 @@ var footerNoteReaders = [footerNoteSourceCount]func(Model) string{
 		}
 		return m.pushNote
 	},
+	// The bookmark message rides the slot only in interactive mode, where
+	// the list's whole-footer bookmark line is not drawn (R276).
+	noteBookmarkAttached: func(m Model) string {
+		if !m.interactive || !m.settings.Bookmarks {
+			return ""
+		}
+		return m.bookmarkNote
+	},
 }
 
 // footerNoteRenewal reads each source's renewal token, indexed by
@@ -116,6 +126,7 @@ var footerNoteRenewal = [footerNoteSourceCount]func(Model) int{
 	noteArchiveUndoneRebuild: func(m Model) int { return m.archiveUndoneRebuildGeneration },
 	noteTeardownHook:         func(m Model) int { return m.teardownHookNoteGeneration },
 	notePush:                 func(m Model) int { return m.footerNoteSets[notePush] },
+	noteBookmarkAttached:     func(m Model) int { return m.footerNoteSets[noteBookmarkAttached] },
 }
 
 // setAttachError, setResumeNote, setSelectionCopyNote and setFieldCopyNote
@@ -140,6 +151,15 @@ func (m *Model) setSelectionCopyNote(text string) {
 	m.selectionCopyNote = text
 	if text != "" {
 		m.footerNoteSets[noteSelectionCopy]++
+	}
+}
+
+// setBookmarkNote is the only writer of bookmarkNote in non-test code; the
+// count it keeps is the attached view's renewal token (noteBookmarkAttached).
+func (m *Model) setBookmarkNote(text string) {
+	m.bookmarkNote = text
+	if text != "" {
+		m.footerNoteSets[noteBookmarkAttached]++
 	}
 }
 

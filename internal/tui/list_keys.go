@@ -35,7 +35,7 @@ func (m Model) onKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// layer below gets to act on it (auto_enter.go).
 	m.cancelAutoEnter()
 	m.setFieldCopyNote("")
-	m.bookmarkNote = ""
+	m.setBookmarkNote("")
 	if msg.Type == tea.KeyRunes && len(msg.Runes) > 1 && !msg.Paste {
 		return m.replayCoalescedKeys(msg)
 	}

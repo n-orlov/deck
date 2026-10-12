@@ -58,7 +58,7 @@ func (m Model) handleBookmarkKey(msg tea.KeyMsg) (next Model, handled bool) {
 	}
 	if key == bookmarkSetChord {
 		m.bookmarkChord = true
-		m.bookmarkNote = "Bookmark: press a digit 0-9 to set the slot"
+		m.setBookmarkNote("Bookmark: press a digit 0-9 to set the slot")
 		return m, true
 	}
 	if slot, ok := bookmarkShiftedSlots[key]; ok {
@@ -81,18 +81,18 @@ func (m *Model) setBookmark(slot int) {
 // setBookmarkOn points slot at session; ok false means there is none.
 func (m *Model) setBookmarkOn(slot int, session store.Session, ok bool) {
 	if !ok {
-		m.bookmarkNote = fmt.Sprintf("Bookmark %d: select a session first", slot)
+		m.setBookmarkNote(fmt.Sprintf("Bookmark %d: select a session first", slot))
 		return
 	}
 	if m.store == nil {
-		m.bookmarkNote = "Bookmarks are unavailable"
+		m.setBookmarkNote("Bookmarks are unavailable")
 		return
 	}
 	if err := m.store.AssignBookmark(context.Background(), slot, session.ID); err != nil {
-		m.bookmarkNote = fmt.Sprintf("Bookmark %d: %v", slot, err)
+		m.setBookmarkNote(fmt.Sprintf("Bookmark %d: %v", slot, err))
 		return
 	}
-	m.bookmarkNote = fmt.Sprintf("Bookmark %d set to %s", slot, session.Name)
+	m.setBookmarkNote(fmt.Sprintf("Bookmark %d set to %s", slot, session.Name))
 }
 
 // jumpToBookmark moves the selection (never attaches) to the session held in
@@ -100,11 +100,11 @@ func (m *Model) setBookmarkOn(slot int, session store.Session, ok bool) {
 func (m *Model) jumpToBookmark(slot int) {
 	idx, note := m.bookmarkSlotIndex(slot)
 	if idx < 0 {
-		m.bookmarkNote = note
+		m.setBookmarkNote(note)
 		return
 	}
 	m.setSelection(rowCursor(idx))
-	m.bookmarkNote = fmt.Sprintf("Bookmark %d: %s", slot, m.sessions[idx].Name)
+	m.setBookmarkNote(fmt.Sprintf("Bookmark %d: %s", slot, m.sessions[idx].Name))
 }
 
 // bookmarkSlotIndex resolves slot to an index into m.sessions. A slot that
@@ -145,7 +145,11 @@ func (m Model) bookmarkNoteLine() string {
 // any other key (Esc included) is not handled here and is forwarded as usual.
 // A slot is set on the session interactive mode is bound to, and a jump
 // retargets interactive mode onto the slot's session without a list round trip.
+// Its one-line message shows in the footer's note slot until the next key.
 func (m Model) handleInteractiveBookmarkKey(msg tea.KeyMsg) (next Model, handled bool) {
+	// The message a bookmark key left in the footer lasts until the next
+	// key, as in the list.
+	m.setBookmarkNote("")
 	if !m.settings.Bookmarks {
 		m.bookmarkChord = false
 		return m, false
@@ -161,7 +165,7 @@ func (m Model) handleInteractiveBookmarkKey(msg tea.KeyMsg) (next Model, handled
 	}
 	if key == bookmarkSetChord {
 		m.bookmarkChord = true
-		m.bookmarkNote = "Bookmark: press a digit 0-9 to set the slot"
+		m.setBookmarkNote("Bookmark: press a digit 0-9 to set the slot")
 		return m, true
 	}
 	if slot, ok := bookmarkShiftedSlots[key]; ok {
@@ -177,17 +181,18 @@ func (m Model) handleInteractiveBookmarkKey(msg tea.KeyMsg) (next Model, handled
 
 // jumpInteractive switches the attached view to the session held in slot. An
 // empty slot, a session missing from the list or one that cannot be attached
-// leaves the current view as it is and shows a one-line message.
+// leaves the current view as it is and shows a one-line message in the
+// interactive footer's note slot (noteBookmarkAttached).
 func (m Model) jumpInteractive(slot int) Model {
 	idx, note := m.bookmarkSlotIndex(slot)
 	if idx < 0 {
-		m.bookmarkNote = note
+		m.setBookmarkNote(note)
 		return m
 	}
 	target := m.sessions[idx]
-	m.bookmarkNote = fmt.Sprintf("Bookmark %d: %s", slot, target.Name)
+	m.setBookmarkNote(fmt.Sprintf("Bookmark %d: %s", slot, target.Name))
 	if !canReachPane(target) {
-		m.bookmarkNote = fmt.Sprintf("Bookmark %d: %s is stopped", slot, target.Name)
+		m.setBookmarkNote(fmt.Sprintf("Bookmark %d: %s is stopped", slot, target.Name))
 		return m
 	}
 	if name, err := tmux.SessionName(target.Slug); err == nil && name == m.interactiveWindowTarget {
@@ -198,6 +203,6 @@ func (m Model) jumpInteractive(slot int) Model {
 	next.setSelection(rowCursor(idx))
 	entered, _ := next.enterInteractive()
 	next = entered.(Model)
-	next.bookmarkNote = fmt.Sprintf("Bookmark %d: %s", slot, target.Name)
+	next.setBookmarkNote(fmt.Sprintf("Bookmark %d: %s", slot, target.Name))
 	return next
 }

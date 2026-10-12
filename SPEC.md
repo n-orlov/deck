@@ -2660,7 +2660,9 @@ While a session is attached (interactive mode, §11.9) and the setting is on, th
 intercepted next to `Ctrl+Q` and never forwarded to the pane: `Alt+0`…`Alt+9`, `Alt+M`, and the ten
 `Alt+Shift+digit` keys. A jump switches the attached view to the slot's session and stays in interactive
 mode, without returning to the list; a jump to an empty slot or to a stopped session leaves the
-current view in place and shows a one-line message. A slot is set on the session the attached view
+current view in place and shows a one-line message. Every attached bookmark message (the `Alt+M`
+prompt, a slot set, a jump and its refusals) shows in the interactive footer's right-aligned note
+slot and clears on the next key. A slot is set on the session the attached view
 shows. A bare digit completes a pending `Alt+M` chord and is otherwise forwarded to the pane
 unchanged, as is every `Alt+<key>` outside the bound set (`Alt+A`, `Alt+X`, `Alt+.`). `Esc` or any other
 key after `Alt+M` cancels the chord and is then forwarded as usual. With the setting off every one of
@@ -2901,7 +2903,8 @@ truncated-but-honest frame beats an unpredictable one.
   the attach/kill/archive failure message, the resume note, the single and batch kill-undo
   notes, the single and batch delete-undo notes, the archive-undo note, the archive-undone
   note, the teardown-hook failure note and the rename push note (which shows only while the
-  row it describes is selected, and not in interactive mode). They render in the footer line in the list and in
+  row it describes is selected, and not in interactive mode). In interactive mode the
+  attached bookmark message (§11) shares the same slot. They render in the footer line in the list and in
   interactive mode alike (where the footer is the interactive one). The frame reserves no row
   for them, so a note appearing or clearing never moves the panels or the preview's first
   line. When several are set the newest is shown, and the older one's state, for example an

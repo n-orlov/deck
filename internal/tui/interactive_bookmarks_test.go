@@ -262,7 +262,8 @@ func TestInteractiveBookmarkKeysAreForwardedWhileTheSettingIsOff(t *testing.T) {
 
 // TestInteractiveBookmarkJumpThatCannotSwitchKeepsTheView: a jump to an empty
 // slot, to the session already shown or to a stopped session leaves the attached
-// view where it is, forwards nothing and shows a one-line message.
+// view where it is, forwards nothing and shows a one-line message in the
+// rendered interactive footer, which the next key clears and forwards.
 func TestInteractiveBookmarkJumpThatCannotSwitchKeepsTheView(t *testing.T) {
 	for _, tc := range []struct {
 		name  string
@@ -285,16 +286,53 @@ func TestInteractiveBookmarkJumpThatCannotSwitchKeepsTheView(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			r := newBookmarkRig(t, true)
 			tc.setup(r)
-			r.press(t, altRune('3'), key("Z"))
+			r.press(t, altRune('3'))
 			if !r.m.interactive || r.targetID(t) != r.a.ID {
 				t.Fatalf("the view left %q", r.a.ID)
 			}
-			if !strings.Contains(r.m.bookmarkNote, tc.want) {
-				t.Fatalf("note = %q, want it to contain %q", r.m.bookmarkNote, tc.want)
+			if footer := stripANSI(r.m.footerLine()); !strings.Contains(footer, tc.want) {
+				t.Fatalf("rendered footer = %q, want it to contain %q", footer, tc.want)
+			}
+			if view := stripANSI(r.m.View()); !strings.Contains(view, tc.want) {
+				t.Fatalf("rendered view lacks %q:\n%s", tc.want, view)
+			}
+			r.press(t, key("Z"))
+			if footer := stripANSI(r.m.footerLine()); strings.Contains(footer, tc.want) {
+				t.Fatalf("the next key left the message on the footer: %q", footer)
 			}
 			r.waitReceived(t, r.a.ID, "Z")
 			if got := r.received(r.b.ID); got != "" {
 				t.Fatalf("the other pane received %q", got)
+			}
+		})
+	}
+}
+
+// TestInteractiveBookmarkMessagesRenderInTheAttachedFooter: the chord prompt,
+// a slot set and a successful jump each show their one-line message in the
+// rendered interactive footer.
+func TestInteractiveBookmarkMessagesRenderInTheAttachedFooter(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		keys  []tea.KeyMsg
+		want  string
+		after string
+	}{
+		{"chord pending", []tea.KeyMsg{altRune('m')}, "Bookmark: press a digit 0-9 to set the slot", "id-bkalpha"},
+		{"slot set", []tea.KeyMsg{altRune('!')}, "Bookmark 1 set to bkalpha", "id-bkalpha"},
+		{"jump", []tea.KeyMsg{altRune('4')}, "Bookmark 4: bkbravo", "id-bkbravo"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := newBookmarkRig(t, true)
+			if err := r.db.AssignBookmark(context.Background(), 4, r.b.ID); err != nil {
+				t.Fatal(err)
+			}
+			r.press(t, tc.keys...)
+			if !r.m.interactive || r.targetID(t) != tc.after {
+				t.Fatalf("interactive=%v target=%q, want %q", r.m.interactive, r.targetID(t), tc.after)
+			}
+			if footer := stripANSI(r.m.footerLine()); !strings.Contains(footer, tc.want) {
+				t.Fatalf("rendered footer = %q, want it to contain %q", footer, tc.want)
 			}
 		})
 	}
