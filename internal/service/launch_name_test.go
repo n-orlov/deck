@@ -14,14 +14,17 @@ import (
 func TestDerivedNoNameLaunchNameFromRow(t *testing.T) {
 	for _, tc := range []struct {
 		name, source, row, want string
+		adopted                 bool
 	}{
-		{"user", "user", "my work", "my work"},
-		{"empty source is user", "", "my work", "my work"},
-		{"derived", "derived", "swift-otter", ""},
-		{"harness", "harness", "Fix the bug", ""},
-		{"blank user name", "user", "  ", ""},
+		{"user", "user", "my work", "my work", false},
+		{"empty source is user", "", "my work", "my work", false},
+		{"derived", "derived", "swift-otter", "", false},
+		{"harness", "harness", "Fix the bug", "", false},
+		{"blank user name", "user", "  ", "", false},
+		{"explicit harness name frozen as user", "user", "Chosen in harness", "", true},
+		{"explicit harness name with a shell payload", "user", "$(id)", "", true},
 	} {
-		got := launchName(store.Session{Name: tc.row, NameSource: tc.source})
+		got := launchName(store.Session{Name: tc.row, NameSource: tc.source, NameAdopted: tc.adopted})
 		if got != tc.want {
 			t.Errorf("%s: launchName = %q, want %q", tc.name, got, tc.want)
 		}

@@ -22,7 +22,7 @@ import (
 )
 
 // SchemaVersion is the newest schema understood by this binary.
-const SchemaVersion = 12
+const SchemaVersion = 13
 
 // SupportedSchemaVersion is the newest schema this binary opens: SchemaVersion
 // in every shipped build. A test build (-tags deckoldschema, see
@@ -333,6 +333,11 @@ type Session struct {
 	CreatedAt    int64
 	// NameSource is SPEC §4's sessions.name_source: "user", "derived" or "harness".
 	NameSource string
+	// NameAdopted is SPEC §4's sessions.name_adopted: true when Name came from
+	// the harness (adopted, including a name a human chose inside the harness
+	// and so frozen as name_source 'user'). Such a name is data only and never
+	// reaches a launch or resume argv; a rename typed in deck clears it.
+	NameAdopted bool
 	// PendingHarnessName is SPEC §4's sessions.pending_harness_name: the name
 	// deck pushed into the running harness and has not yet seen confirmed
 	// ("" when nothing is pending); PendingHarnessNameAt is the millisecond
@@ -803,15 +808,17 @@ func scanSession(row interface {
 	var paneExitStatus, eventHookEnabled sql.NullInt64
 	var eventHookEvents, pendingName sql.NullString
 	var pendingAt, nameAdopt sql.NullInt64
+	var nameAdopted int
 	if err := row.Scan(&session.ID, &session.Name, &session.Slug, &session.CWD,
 		&session.Agent, &session.CapturedPath, &session.Status, &session.StatusReason, &session.StatusSource,
 		&session.StatusAt, &session.CreatedAt, &killedByUser, &paneExitStatus, &crashTail,
 		&session.NotifyEpoch, &lastMessage, &acknowledged, &launchArgsJSON, &envJSON, &preLaunch, &postDestroy,
 		&loginShell, &session.PermissionProfile, &permissionProfileReason, &conversationID, &resumePin, &session.ResumeState,
 		&groupID, &groupName, &session.LastProbeAt, &envDirty, &session.DeletedAt, &session.ArchivedAt, &launchDirty,
-		&leaseOwner, &session.PinnedAt, &session.HookExecutable, &eventHookEnabled, &eventHookEvents, &session.NameSource, &pendingName, &pendingAt, &nameAdopt); err != nil {
+		&leaseOwner, &session.PinnedAt, &session.HookExecutable, &eventHookEnabled, &eventHookEvents, &session.NameSource, &pendingName, &pendingAt, &nameAdopt, &nameAdopted); err != nil {
 		return Session{}, err
 	}
+	session.NameAdopted = nameAdopted != 0
 	session.EventHookEnabled, session.EventHookEvents = decodeEventHook(eventHookEnabled, eventHookEvents)
 	session.PendingHarnessName, session.PendingHarnessNameAt = pendingName.String, pendingAt.Int64
 	session.HarnessNameAdopt, _ = decodeEventHook(nameAdopt, sql.NullString{})
@@ -860,7 +867,7 @@ const sessionColumns = `sessions.id, sessions.name, slug, cwd, agent, captured_p
 		launch_args, env, pre_launch, post_destroy, login_shell, permission_profile, permission_profile_reason, conversation_id, resume_pin, resume_state,
 		sessions.group_id, groups.name, last_probe_at, env_dirty, deleted_at, archived_at, launch_dirty,
 		COALESCE(launch_lease_owner, ''), pinned_at, COALESCE(hook_executable, ''),
-		event_hook_enabled, event_hook_events, name_source, pending_harness_name, pending_harness_name_at, harness_name_adopt`
+		event_hook_enabled, event_hook_events, name_source, pending_harness_name, pending_harness_name_at, harness_name_adopt, name_adopted`
 
 // sessionsFromClause is every sessionColumns-backed query's shared FROM:
 // a LEFT JOIN against groups so GroupName resolves (or reads back empty
@@ -1856,7 +1863,7 @@ func (s *Store) AdoptSessionName(ctx context.Context, sessionID, newName, source
 // nothing else (the name, the slug and the events stay as they are). It
 // reports whether the row changed; a row already 'user' is left alone.
 func (s *Store) FreezeSessionName(ctx context.Context, sessionID string) (bool, error) {
-	result, err := s.db.ExecContext(ctx, `UPDATE sessions SET name_source = 'user' WHERE id = ? AND name_source != 'user'`, sessionID)
+	result, err := s.db.ExecContext(ctx, `UPDATE sessions SET name_source = 'user', name_adopted = 1 WHERE id = ? AND name_source != 'user'`, sessionID)
 	if err != nil {
 		return false, fmt.Errorf("freeze session name: %w", err)
 	}
@@ -1887,7 +1894,7 @@ func (s *Store) renameSession(ctx context.Context, sessionID, newName, source, n
 			return false, err
 		}
 	}
-	if err := writeRenameTx(ctx, tx, sessionID, newName, slug, source, nameSource, at); err != nil {
+	if err := writeRenameTx(ctx, tx, sessionID, newName, slug, source, nameSource, adoptableOnly, at); err != nil {
 		return false, err
 	}
 	if err := tx.Commit(); err != nil {
@@ -1897,11 +1904,11 @@ func (s *Store) renameSession(ctx context.Context, sessionID, newName, source, n
 }
 
 // writeRenameTx claims the name, writes it and records the renamed event.
-func writeRenameTx(ctx context.Context, tx *sql.Tx, sessionID, newName, slug, source, nameSource string, at int64) error {
+func writeRenameTx(ctx context.Context, tx *sql.Tx, sessionID, newName, slug, source, nameSource string, adopted bool, at int64) error {
 	if err := claimRenameNameTx(ctx, tx, sessionID, newName, slug, at); err != nil {
 		return err
 	}
-	if err := writeSessionNameTx(ctx, tx, sessionID, newName, nameSource); err != nil {
+	if err := writeSessionNameTx(ctx, tx, sessionID, newName, nameSource, adopted); err != nil {
 		return err
 	}
 	if _, err := tx.ExecContext(ctx, `INSERT INTO events (session_id, at, kind, reason, payload)
@@ -1983,11 +1990,11 @@ func nameSourceFor(source string) string {
 
 // writeSessionNameTx writes only the name and name_source columns of one row (RenameSession
 // leaves slug alone) and reports a UNIQUE clash or a missing row.
-func writeSessionNameTx(ctx context.Context, tx *sql.Tx, sessionID, newName, nameSource string) error {
+func writeSessionNameTx(ctx context.Context, tx *sql.Tx, sessionID, newName, nameSource string, adopted bool) error {
 	// Note: only the `name` column is written here -- `slug` is deliberately
 	// left out of this UPDATE, which is the entire mechanism by which the
 	// live tmux session (named from the ORIGINAL slug) is left untouched.
-	result, err := tx.ExecContext(ctx, `UPDATE sessions SET name = ?, name_source = ? WHERE id = ?`, newName, nameSource, sessionID)
+	result, err := tx.ExecContext(ctx, `UPDATE sessions SET name = ?, name_source = ?, name_adopted = ? WHERE id = ?`, newName, nameSource, adopted, sessionID)
 	if err != nil {
 		if strings.Contains(err.Error(), "sessions.name") || strings.Contains(err.Error(), "UNIQUE constraint failed: sessions.name") {
 			return fmt.Errorf("session name %q already exists", newName)
@@ -2881,7 +2888,7 @@ func (s *Store) migrate(version int) error {
 // the schemaVN variables at call time (tests substitute them); a version
 // outside 0..SchemaVersion-1 has no migration path.
 func applySchemaLadder(tx *sql.Tx, version int) error {
-	rungs := [][]string{schemaV1, schemaV2, schemaV3, schemaV4, schemaV5, schemaV6, schemaV7, schemaV8, schemaV9, schemaV10, schemaV11, schemaV12}
+	rungs := [][]string{schemaV1, schemaV2, schemaV3, schemaV4, schemaV5, schemaV6, schemaV7, schemaV8, schemaV9, schemaV10, schemaV11, schemaV12, schemaV13}
 	if version < 0 || version >= len(rungs) {
 		return fmt.Errorf("no migration path from schema version %d", version)
 	}
@@ -3107,6 +3114,15 @@ var schemaV12 = []string{
 	`ALTER TABLE sessions ADD COLUMN pending_harness_name TEXT`,
 	`ALTER TABLE sessions ADD COLUMN pending_harness_name_at INTEGER`,
 	`ALTER TABLE sessions ADD COLUMN harness_name_adopt INTEGER CHECK (harness_name_adopt IS NULL OR harness_name_adopt IN (0, 1))`,
+}
+
+// schemaV13 is the origin of a session's name. name_adopted is 1 when the name
+// came from the harness, whether adopted as name_source 'harness' or frozen as
+// 'user' because a human chose it inside the harness. Launch and resume argv
+// carry only a name typed in deck, so an adopted name stays data (R253). It is
+// 0 for every existing row and cleared by any rename typed in deck.
+var schemaV13 = []string{
+	`ALTER TABLE sessions ADD COLUMN name_adopted INTEGER NOT NULL DEFAULT 0 CHECK (name_adopted IN (0, 1))`,
 }
 
 // getUIState returns the persisted value for key, or def when no row exists

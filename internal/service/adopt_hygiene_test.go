@@ -10,6 +10,7 @@ import (
 
 	"github.com/n-orlov/deck/internal/agent"
 	"github.com/n-orlov/deck/internal/notify"
+	"github.com/n-orlov/deck/internal/store"
 )
 
 // hostileTitle is a title an attacker controls: an escape, a glyph prefix and
@@ -112,5 +113,94 @@ func TestEventHookRenamedCarriesHarnessSource(t *testing.T) {
 	want := "renamed|harness:claude|Fix the parser\nrenamed|user|typed by hand\nrenamed|user|typed again\n"
 	if string(raw) != want {
 		t.Fatalf("hook runs:\n%s\nwant:\n%s", raw, want)
+	}
+}
+
+// TestAdoptNameNeverReachesArgvWhateverTheProvenance covers R253's boundary for
+// both kinds of adoption: a generated title (name_source=harness) and one a
+// human chose in the harness (explicit, frozen as name_source=user, with or
+// without collision suffixing). After each, the launch and resume argv carry no
+// part of the title; names typed in deck still do.
+func TestAdoptNameNeverReachesArgvWhateverTheProvenance(t *testing.T) {
+	const wantClean = "$(touch PWNED); `id` \"q\" 'q'"
+	for _, tc := range []struct {
+		name, rowSource, holder string
+		explicit                bool
+		wantSource              string
+	}{
+		{name: "generated over derived", rowSource: "derived", wantSource: "harness"},
+		{name: "generated over harness", rowSource: "harness", wantSource: "harness"},
+		{name: "explicit over derived", rowSource: "derived", explicit: true, wantSource: "user"},
+		{name: "explicit over harness", rowSource: "harness", explicit: true, wantSource: "user"},
+		{name: "explicit with a collision suffix", rowSource: "derived", holder: wantClean, explicit: true, wantSource: "user"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			svc, db, _, _ := newAgentTestService(t, nil, "adopt-hygiene-prov")
+			asked := 0
+			svc.Agents.Register(adoptFakeAdapter{claims: true, name: hostileTitle, explicit: tc.explicit, ok: true, asked: &asked})
+			if tc.holder != "" {
+				adoptRow(t, db, "other", tc.holder, "user")
+			}
+			row := adoptRow(t, db, "row-a", "swift-otter", tc.rowSource)
+			if _, err := svc.AdoptName(context.Background(), row.ID); err != nil {
+				t.Fatal(err)
+			}
+			got, err := db.GetSession(context.Background(), row.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got.NameSource != tc.wantSource || !got.NameAdopted {
+				t.Fatalf("name_source=%q adopted=%v, want %q adopted", got.NameSource, got.NameAdopted, tc.wantSource)
+			}
+			assertNoNameInArgv(t, got)
+		})
+	}
+}
+
+// assertNoNameInArgv builds the Claude launch and resume argv from the row the
+// way the service does and fails when either carries any piece of its name.
+func assertNoNameInArgv(t *testing.T, got store.Session) {
+	t.Helper()
+	if name := launchName(got); name != "" {
+		t.Fatalf("launchName = %q, want none for an adopted name", name)
+	}
+	launch, err := agent.Claude{}.Launch(agent.LaunchInput{CWD: got.CWD, ConversationID: got.ConversationID, Profile: "safe", Name: launchName(got)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	resume, err := agent.Claude{}.Resume(agent.ResumeInput{CWD: got.CWD, ConversationID: got.ConversationID, Profile: "safe", Name: launchName(got)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, argv := range [][]string{launch, resume} {
+		for _, arg := range argv {
+			if strings.Contains(arg, "touch") || strings.Contains(arg, got.Name) || arg == "--name" {
+				t.Fatalf("argv carries the adopted title: %q", argv)
+			}
+		}
+	}
+}
+
+// TestAdoptNameFrozenRowUnfreezesOnlyByATypedRename: a row frozen on an
+// explicit harness name launches without a name, and a name the operator then
+// types in deck is a user-entered name again, so it is passed as before.
+func TestAdoptNameFrozenRowUnfreezesOnlyByATypedRename(t *testing.T) {
+	svc, db, _, _ := newAgentTestService(t, nil, "adopt-hygiene-retype")
+	asked := 0
+	svc.Agents.Register(adoptFakeAdapter{claims: true, name: "Chosen in harness", explicit: true, ok: true, asked: &asked})
+	row := adoptRow(t, db, "row-a", "swift-otter", "derived")
+	if _, err := svc.AdoptName(context.Background(), row.ID); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := db.GetSession(context.Background(), row.ID)
+	if launchName(got) != "" {
+		t.Fatalf("frozen adopted row launchName = %q, want none", launchName(got))
+	}
+	if _, err := svc.Rename(context.Background(), row.ID, "typed in deck"); err != nil {
+		t.Fatal(err)
+	}
+	got, _ = db.GetSession(context.Background(), row.ID)
+	if got.NameAdopted || got.NameSource != "user" || launchName(got) != "typed in deck" {
+		t.Fatalf("after a typed rename adopted=%v source=%q launchName=%q", got.NameAdopted, got.NameSource, launchName(got))
 	}
 }

@@ -420,6 +420,7 @@ CREATE TABLE sessions (
   archived_at        INTEGER NOT NULL DEFAULT 0,
   pinned_at          INTEGER NOT NULL DEFAULT 0, -- sidebar pin (§11); 0 = not pinned, else when it was pinned
   name_source        TEXT NOT NULL DEFAULT 'user' CHECK (name_source IN ('user','derived','harness')), -- who last wrote `name`: user = typed in deck, derived = deck's default from the cwd or first prompt, harness = adopted from the agent's own session title
+  name_adopted       INTEGER NOT NULL DEFAULT 0 CHECK (name_adopted IN (0,1)), -- 1 = `name` came from the harness (adopted, or frozen as `user` because a human chose it inside the harness); such a name never reaches a launch or resume argv, and a rename typed in deck clears it
   pending_harness_name TEXT,                -- the name deck pushed into the running harness and has not yet seen confirmed (§8 Pushing a rename); NULL = nothing pending
   pending_harness_name_at INTEGER,          -- when it was seen (ms); NULL together with pending_harness_name
   harness_name_adopt INTEGER,               -- tri-state per-session adoption override: NULL = inherit the global setting, 1 = adopt, 0 = never adopt
@@ -501,6 +502,9 @@ Invariants:
   every migrated row reads them `NULL`: nothing pending, and no per-session adoption override.
   The create modal and `deck new` write `derived` when the name was left blank and `user` when it
   was typed; a harness adoption writes `harness`.
+- Schema version 13 adds `name_adopted` to `sessions`, 0 for every migrated row. A harness
+  adoption (including one frozen as `name_source = user`) sets it to 1, in the same transaction
+  as the name; a rename typed in deck sets it back to 0.
   A rename writes `name_source` in the same transaction as `name` and the `renamed` event, whose
   `reason` is the source of the rename; a source other than `derived` or `harness` is `user`.
 
@@ -1090,8 +1094,10 @@ returns "no answer" and the spy records zero calls.
 
 `LaunchInput.Name` and `ResumeInput.Name` carry the name an adapter passes to its agent; an
 empty string means pass no name. `internal/service` fills them from the row only when
-`name_source` is `user`, and never with a blank name. A `derived` or `harness` row therefore
-launches with no name flag, so the agent keeps generating its own title.
+`name_source` is `user` and `name_adopted` is 0, and never with a blank name. A `derived` or
+`harness` row therefore launches with no name flag, so the agent keeps generating its own title,
+and a name a human chose inside the harness (adopted as `explicit`, frozen as `user`) is not
+passed back either: only a name entered in deck reaches an argv.
 
 #### Adopting a harness name (R251)
 
@@ -1126,7 +1132,8 @@ characters, bidi and zero-width marks are removed; tabs and newlines become a sp
 whitespace collapse; a leading glyph prefix (the Claude `✳` and spinner frames, Pi's `π - `) is
 stripped; and the result is cut to 200 runes. A title that is empty after cleaning is no answer, so
 nothing is adopted. The adopted name is stored as data only: it is never put in a shell command or
-in a launch argv (a `derived` or `harness` row launches with no name, R250), and adoption sends no
+in a launch or resume argv (a `derived` or `harness` row launches with no name, R250, and neither
+does a row frozen on an explicit harness name, R253), and adoption sends no
 keystroke.
 
 Adoption writes the display name only. The tmux session name `deck_<slug>` is never changed. The
