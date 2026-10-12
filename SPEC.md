@@ -1177,6 +1177,13 @@ deck records exactly one `harness_rename_failed` event, clears the field, and ne
 keystrokes again. A plan that cannot be sent is the same failure at once: one `harness_rename_failed`
 event, one attempt. A row that stops while a name is pending drops it silently.
 
+Confirmation does not wait for a conversation id. A row with none yet (Codex mints its id at the
+first prompt, so a startup name is pending before any exists) is still observed: the adapter's
+`ReadName` refuses every source that needs a valid bound id (the thread database, a transcript) and
+answers only from the id-free ones, so Codex's own pane title `<name> | <cwd base>` confirms the
+pending name before the first prompt. The clear is the same (no failed event, no retry); an
+unconfirmed name still times out as above.
+
 | | Claude Code | Pi / oh-my-pi | Codex CLI | Copilot CLI | shell (bash/zsh/fish) |
 |---|---|---|---|---|---|
 | **conversation id** | **deck assigns**: `--session-id <uuid>` | **deck assigns**: `--session-id <id>` (created if missing), plus a display name | agent mints it; deck adopts it from the first hook (§8.2) | **deck assigns**: `--session-id <uuid>` (a UUID; any other id is refused by `Launch`) | none |

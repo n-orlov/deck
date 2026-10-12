@@ -272,9 +272,12 @@ func (s Service) observedPending(ctx context.Context, session store.Session, hin
 		return true
 	}
 	adapter, ok := s.Agents.Lookup(session.Agent)
-	if !ok || session.ConversationID == "" {
+	if !ok {
 		return false
 	}
+	// A row with no conversation id yet (Codex before its first prompt) is
+	// still read: the adapter itself refuses every source that needs a bound
+	// id, so only the id-free pane title can answer.
 	name, _, ok := agent.ReadName(adapter, s.nameProbe(ctx, adapter, session, hint))
 	return ok && agent.SanitiseHarnessName(name) == session.PendingHarnessName
 }
