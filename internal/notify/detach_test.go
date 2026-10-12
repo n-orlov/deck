@@ -25,15 +25,39 @@ func waitFile(t *testing.T, path string) string {
 	return ""
 }
 
-func TestStartRunsTheScriptDetachedWithTheSamePayloadAsSpawn(t *testing.T) {
-	path, dir := captureScript(t, "sleep 1\necho finished > \"$d/finished\"")
-	started := time.Now()
-	if err := Start(baseRequest(path, "--fixed")); err != nil {
+// holdUntilReleased is a script tail that finishes only once the test has
+// created $d/release, after Start returned. A script that waits on the test,
+// not on a clock, proves Start did not wait for it on any host: if Start
+// waited for the script it would never return (releaseAfterStart fails the
+// test after a generous deadline), and a stalled runner cannot fail it.
+const holdUntilReleased = "while [ ! -e \"$d/release\" ]; do sleep 0.02; done\necho finished > \"$d/finished\""
+
+// startDetached runs start, requires it to return while the script is still
+// held (no "finished" file yet), then releases the script. A Start that waited
+// for the script would block here until the deadline.
+func startDetached(t *testing.T, dir string, start func() error) {
+	t.Helper()
+	done := make(chan error, 1)
+	go func() { done <- start() }()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(30 * time.Second):
+		t.Fatal("Start did not return: it waited for the script")
+	}
+	if _, err := os.Stat(filepath.Join(dir, "finished")); err == nil {
+		t.Fatal("the script had already finished when Start returned")
+	}
+	if err := os.WriteFile(filepath.Join(dir, "release"), []byte("go"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if elapsed := time.Since(started); elapsed >= time.Second {
-		t.Fatalf("Start took %s: it waited for the script", elapsed)
-	}
+}
+
+func TestStartRunsTheScriptDetachedWithTheSamePayloadAsSpawn(t *testing.T) {
+	path, dir := captureScript(t, holdUntilReleased)
+	startDetached(t, dir, func() error { return Start(baseRequest(path, "--fixed")) })
 	var p struct {
 		Version int
 		Event   struct{ Kind string }
@@ -59,8 +83,8 @@ func TestStartReturnsWithinTheBoundWhateverTheScriptDoesAfterwards(t *testing.T)
 		body    string
 		timeout time.Duration
 	}{
-		"never reads stdin":        {"sleep 1\necho finished > \"$d/finished\"", 0},
-		"outlives the timeout":     {"sleep 1\necho finished > \"$d/finished\"", time.Millisecond},
+		"never reads stdin":        {holdUntilReleased, 0},
+		"outlives the timeout":     {holdUntilReleased, time.Millisecond},
 		"floods stdout and stderr": {"head -c 2000000 /dev/zero | tr '\\0' x\nhead -c 2000000 /dev/zero | tr '\\0' y >&2\necho finished > \"$d/finished\"", 0},
 	}
 	for name, tc := range cases {
@@ -71,15 +95,13 @@ func TestStartReturnsWithinTheBoundWhateverTheScriptDoesAfterwards(t *testing.T)
 			if tc.timeout > 0 {
 				req.Timeout = tc.timeout
 			}
-			started := time.Now()
-			if err := Start(req); err != nil {
-				t.Fatal(err)
-			}
-			if elapsed := time.Since(started); elapsed >= time.Second {
-				t.Fatalf("Start took %s: it waited for the script", elapsed)
-			}
-			if _, err := os.Stat(filepath.Join(dir, "finished")); err == nil && name != "floods stdout and stderr" {
-				t.Fatal("the script had already finished when Start returned")
+			if name == "floods stdout and stderr" {
+				// This script finishes on its own; Start still has to return.
+				if err := Start(req); err != nil {
+					t.Fatal(err)
+				}
+			} else {
+				startDetached(t, dir, func() error { return Start(req) })
 			}
 			waitFile(t, filepath.Join(dir, "finished"))
 		})
@@ -89,16 +111,15 @@ func TestStartReturnsWithinTheBoundWhateverTheScriptDoesAfterwards(t *testing.T)
 // Start does not outlive-wait a script that is still running when it
 // returns: repeated starts of a slow script each return inside the bound.
 func TestStartOfSeveralSlowScriptsNeverAccumulatesTheirWait(t *testing.T) {
-	path, dir := captureScript(t, "sleep 1\necho finished > \"$d/finished\"")
-	started := time.Now()
-	for i := 0; i < 4; i++ {
-		if err := Start(baseRequest(path)); err != nil {
-			t.Fatal(err)
+	path, dir := captureScript(t, holdUntilReleased)
+	startDetached(t, dir, func() error {
+		for i := 0; i < 4; i++ {
+			if err := Start(baseRequest(path)); err != nil {
+				return err
+			}
 		}
-	}
-	if elapsed := time.Since(started); elapsed >= time.Second {
-		t.Fatalf("four Starts took %s together: they waited for the scripts", elapsed)
-	}
+		return nil
+	})
 	waitFile(t, filepath.Join(dir, "finished"))
 }
 
@@ -134,23 +155,10 @@ func TestStartRemovesShortAndInheritedSessionEnvValues(t *testing.T) {
 func TestStartHandsOverAPayloadLargerThanAPipeWithoutWaiting(t *testing.T) {
 	tmp := t.TempDir()
 	t.Setenv("TMPDIR", tmp)
-	path, dir := captureScript(t, "sleep 1\necho finished > \"$d/finished\"")
+	path, dir := captureScript(t, holdUntilReleased)
 	req := baseRequest(path)
 	req.Session.Reason = strings.Repeat("r", 3<<20/2)
-	done := make(chan error, 1)
-	started := time.Now()
-	go func() { done <- Start(req) }()
-	select {
-	case err := <-done:
-		if err != nil {
-			t.Fatal(err)
-		}
-	case <-time.After(5 * time.Second):
-		t.Fatal("Start blocked handing over a payload larger than a pipe")
-	}
-	if elapsed := time.Since(started); elapsed >= time.Second {
-		t.Fatalf("Start took %s: it waited for the script", elapsed)
-	}
+	startDetached(t, dir, func() error { return Start(req) })
 	if entries, err := os.ReadDir(tmp); err != nil || len(entries) != 0 {
 		t.Errorf("TMPDIR after Start = %v, %v; want the payload file already unlinked", entries, err)
 	}
@@ -211,16 +219,10 @@ func TestPolicyFromSettingsSplitsTheCommandOnWhitespace(t *testing.T) {
 // for the free-text masking Start runs before handing the payload over; the
 // detach bound must hold for it too, and the secrets must still be masked.
 func TestStartHandsOverAReasonFullOfAssignmentsWithoutWaiting(t *testing.T) {
-	path, dir := captureScript(t, "sleep 1\necho finished > \"$d/finished\"")
+	path, dir := captureScript(t, holdUntilReleased)
 	req := baseRequest(path)
 	req.Session.Reason = strings.Repeat("a=b API_TOKEN=hunter2 :: = ", 3<<20/2/26)
-	started := time.Now()
-	if err := Start(req); err != nil {
-		t.Fatal(err)
-	}
-	if elapsed := time.Since(started); elapsed >= time.Second {
-		t.Fatalf("Start took %s: it waited for the script", elapsed)
-	}
+	startDetached(t, dir, func() error { return Start(req) })
 	waitFile(t, filepath.Join(dir, "finished"))
 	if raw := read(t, filepath.Join(dir, "stdin")); strings.Contains(raw, "hunter2") || !strings.Contains(raw, "API_TOKEN="+MaskedPlaceholder) {
 		t.Fatalf("payload did not mask the secret pairs (%d bytes)", len(raw))
@@ -240,16 +242,10 @@ func TestStartHandsOverAReasonFullOfEverySecretShapeWithoutWaiting(t *testing.T)
 	}
 	for name, shape := range shapes {
 		t.Run(name, func(t *testing.T) {
-			path, dir := captureScript(t, "sleep 1\necho finished > \"$d/finished\"")
+			path, dir := captureScript(t, holdUntilReleased)
 			req := baseRequest(path)
 			req.Session.Reason = strings.Repeat(shape.unit, (1<<20)/len(shape.unit))
-			started := time.Now()
-			if err := Start(req); err != nil {
-				t.Fatal(err)
-			}
-			if elapsed := time.Since(started); elapsed >= time.Second {
-				t.Fatalf("Start took %s: it waited for the script", elapsed)
-			}
+			startDetached(t, dir, func() error { return Start(req) })
 			waitFile(t, filepath.Join(dir, "finished"))
 			if raw := read(t, filepath.Join(dir, "stdin")); strings.Contains(raw, shape.secret) || !strings.Contains(raw, MaskedPlaceholder) {
 				t.Fatalf("payload did not mask the %s secrets (%d bytes)", name, len(raw))

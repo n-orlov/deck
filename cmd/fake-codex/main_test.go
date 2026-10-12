@@ -765,3 +765,34 @@ func TestCrashModeIsTheSameNonzeroExitCodeControlAsFakeClaude(t *testing.T) {
 		t.Fatalf("run = (%d, %v), want (1, nil) -- a crash-shaped nonzero exit", code, err)
 	}
 }
+
+// A hook that exits non-zero does not end the agent (real codex-cli reports
+// the failed hook and carries on): the pane keeps serving its next command.
+func TestFailingHookDoesNotEndThePane(t *testing.T) {
+	hook := filepath.Join(t.TempDir(), "failing-hook")
+	if err := os.WriteFile(hook, []byte("#!/bin/sh\ncat >/dev/null\nexit 3\n"), 0o755); err != nil {
+		t.Fatalf("write failing hook: %v", err)
+	}
+	override := fmt.Sprintf(`hooks.SessionStart=[{hooks=[{type="command",command="%s"}]}]`, strings.ReplaceAll(hook, `\`, `\\`))
+	input := `{"command":"hook","event":"SessionStart","payload":{"session_id":"abc"}}` + "\n" + `{"command":"hook","event":"SessionStart","payload":{"session_id":"abd"}}` + "\n"
+	getenv := func(key string) string {
+		if key == commandsEnvironment {
+			return "1"
+		}
+		return ""
+	}
+	var stdout, stderr bytes.Buffer
+	code, err := runWithIO([]string{"-c", override, dangerouslyBypassHookTrustFlag}, strings.NewReader(input), &stdout, &stderr, getenv)
+	if err != nil || code != 0 {
+		t.Fatalf("runWithIO = (%d, %v), want the pane to survive a failing hook", code, err)
+	}
+	if !strings.Contains(stdout.String(), "fake-codex hook failed: SessionStart") {
+		t.Fatalf("the failed hook was not reported on the pane: %q", stdout.String())
+	}
+	if got := strings.Count(stdout.String(), "fake-codex hook failed: SessionStart"); got != 2 {
+		t.Fatalf("the pane ran %d hook commands after the first failure, want both: %q", got, stdout.String())
+	}
+	if strings.Contains(stdout.String(), "hook fired") {
+		t.Fatalf("a failed hook was reported as fired: %q", stdout.String())
+	}
+}

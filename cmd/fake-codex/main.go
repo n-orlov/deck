@@ -325,7 +325,14 @@ func fireHook(stdout, stderr io.Writer, hooks map[string]string, trusted bool, e
 	process.Stdout = stdout
 	process.Stderr = stderr
 	if err := process.Run(); err != nil {
-		return fmt.Errorf("fire %s hook: %w", event, err)
+		// Real codex-cli treats a hook that exits non-zero as a failed
+		// hook, reported in its transcript, and carries on: the agent
+		// never dies because a hook did. Exiting here took the whole pane
+		// (and its tmux session) down with a slow or failing hook, which
+		// a scenario saw only as "no current target"; the pane stays up
+		// and says which hook failed and why instead.
+		sayf(stdout, "fake-codex hook failed: %s: %v\n", event, err)
+		return nil
 	}
 	sayf(stdout, "fake-codex hook fired: %s\n", event)
 	return nil
