@@ -109,10 +109,19 @@ func stripControl(s string) string {
 // U+00AD (soft hyphen), U+061C (Arabic letter mark), U+180E (Mongolian vowel
 // separator), U+FEFF and the tag block U+E0000-E007F.
 func isFormatOverride(r rune) bool {
-	return (r >= 0x200b && r <= 0x200f) || (r >= 0x202a && r <= 0x202e) ||
-		(r >= 0x2060 && r <= 0x2064) || (r >= 0x2066 && r <= 0x2069) ||
-		r == 0xfeff || r == 0x00ad || r == 0x061c || r == 0x180e ||
-		(r >= 0xe0000 && r <= 0xe007f)
+	for _, span := range formatOverrideRanges {
+		if r >= span[0] && r <= span[1] {
+			return true
+		}
+	}
+	return false
+}
+
+// formatOverrideRanges are the inclusive rune ranges isFormatOverride names.
+var formatOverrideRanges = [...][2]rune{
+	{0x200b, 0x200f}, {0x202a, 0x202e}, {0x2060, 0x2064}, {0x2066, 0x2069},
+	{0x00ad, 0x00ad}, {0x061c, 0x061c}, {0x180e, 0x180e}, {0xfeff, 0xfeff},
+	{0xe0000, 0xe007f},
 }
 
 // NameComparisonForm is a name as the collision check compares it: escapes,
