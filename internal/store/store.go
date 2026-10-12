@@ -21,6 +21,9 @@ import (
 	sqlite "modernc.org/sqlite"
 )
 
+// busyTimeoutMillis is the SQLite contention budget of every store connection.
+const busyTimeoutMillis = 5000
+
 // SchemaVersion is the newest schema understood by this binary.
 const SchemaVersion = 13
 
@@ -198,7 +201,7 @@ func (s *Store) configure(home string) error {
 	// fresh WAL's header is fsynced before the first frame -- the exact cost
 	// persistWAL above exists to avoid (SPEC section 3.1's 20ms hook write
 	// budget).
-	if _, err := s.db.Exec(`PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL; PRAGMA busy_timeout=5000; PRAGMA foreign_keys=ON; PRAGMA secure_delete=ON`); err != nil {
+	if _, err := s.db.Exec(`PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL; PRAGMA busy_timeout=` + strconv.Itoa(busyTimeoutMillis) + `; PRAGMA foreign_keys=ON; PRAGMA secure_delete=ON`); err != nil {
 		return fmt.Errorf("configure state database: %w", err)
 	}
 	if err := s.migrate(version); err != nil {
@@ -211,10 +214,17 @@ func (s *Store) configure(home string) error {
 // immediateTxDSN appends _txlock=immediate to the database path, whether or
 // not the path already carries a query string (see OpenPath for why).
 func immediateTxDSN(path string) string {
+	// busy_timeout rides the DSN as a connection pragma so it is in force
+	// before the very first statement: the schema-version read in configure
+	// runs ahead of the PRAGMA batch there, and without this a writer holding
+	// the lock at that instant failed the read immediately (a hook opening the
+	// store during detached Codex startup lost SessionStart). A read-only
+	// pragma writes nothing, so the newer-schema refusal stays no-write.
+	extra := "_txlock=immediate&_pragma=busy_timeout(" + strconv.Itoa(busyTimeoutMillis) + ")"
 	if strings.Contains(path, "?") {
-		return path + "&_txlock=immediate"
+		return path + "&" + extra
 	}
-	return path + "?_txlock=immediate"
+	return path + "?" + extra
 }
 
 // tightenUmask serializes against other OpenPath callers, sets the process

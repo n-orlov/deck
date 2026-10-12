@@ -87,7 +87,7 @@ idle reaping or any timer that stops a running session · **inbound remote contr
   and `send-keys` cannot emit it in either direction. It is therefore not bound anywhere; a
   future v2 migration (`charm.land/bubbletea/v2`, which needs no opt-in) could offer it as a
   configurable alias.
-- Store: `modernc.org/sqlite` (pure Go, no cgo) — `WAL`, `busy_timeout=5000`, `foreign_keys=ON`.
+- Store: `modernc.org/sqlite` (pure Go, no cgo) — `WAL`, `busy_timeout=5000` (in force from the very first read of every open — carried on the connection DSN, so a writer holding the lock while a hook opens the store does not fail the schema-version read), `foreign_keys=ON`.
 - tmux via the `tmux` CLI. No control mode in v1. **Minimum tmux 3.2**, required for
   `remain-on-exit failed` (§7) and the `window-size` option (§3.3).
   **Every recurring tmux read costs a constant number of `tmux` processes, whatever the number
