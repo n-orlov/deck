@@ -2654,7 +2654,17 @@ layout the ten `Alt+Shift+digit` keys (`alt+!`, `alt+@`, `alt+#`, `alt+$`, `alt+
 any other key after `Alt+M` cancels the chord and is then handled as it normally is. A jump to
 an empty slot changes nothing and shows a one-line status message in the footer. With the
 setting off none of these keys is bound in the list and every one reaches whatever it reached
-before. **`Ctrl+digit` is deliberately not bound:** a terminal only delivers it with user tmux
+before.
+
+While a session is attached (interactive mode, §11.9) and the setting is on, the same keys are
+intercepted next to `Ctrl+Q` and never forwarded to the pane: `Alt+0`…`Alt+9`, `Alt+M`, and the ten
+`Alt+Shift+digit` keys. A jump switches the attached view to the slot's session and stays in interactive
+mode, without returning to the list; a jump to an empty slot or to a stopped session leaves the
+current view in place and shows a one-line message. A slot is set on the session the attached view
+shows. A bare digit completes a pending `Alt+M` chord and is otherwise forwarded to the pane
+unchanged, as is every `Alt+<key>` outside the bound set (`Alt+A`, `Alt+X`, `Alt+.`). `Esc` or any other
+key after `Alt+M` cancels the chord and is then forwarded as usual. With the setting off every one of
+these keys is forwarded to the pane exactly as before. **`Ctrl+digit` is deliberately not bound:** a terminal only delivers it with user tmux
 configuration, and for `2`…`8` it collides with legacy control keys (`Ctrl+2` is NUL,
 `Ctrl+3`…`Ctrl+7` are ESC, FS, GS, RS, US and `Ctrl+8` is DEL).
 

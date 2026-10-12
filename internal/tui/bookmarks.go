@@ -5,6 +5,8 @@ import (
 	"fmt"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/n-orlov/deck/internal/store"
+	"github.com/n-orlov/deck/internal/tmux"
 )
 
 // bookmarkSetChord is the key that arms the slot-setting chord: Alt+M, then a
@@ -73,6 +75,11 @@ func (m Model) handleBookmarkKey(msg tea.KeyMsg) (next Model, handled bool) {
 // setBookmark points slot at the session under the cursor.
 func (m *Model) setBookmark(slot int) {
 	session, ok := m.selectedSession()
+	m.setBookmarkOn(slot, session, ok)
+}
+
+// setBookmarkOn points slot at session; ok false means there is none.
+func (m *Model) setBookmarkOn(slot int, session store.Session, ok bool) {
 	if !ok {
 		m.bookmarkNote = fmt.Sprintf("Bookmark %d: select a session first", slot)
 		return
@@ -91,27 +98,34 @@ func (m *Model) setBookmark(slot int) {
 // jumpToBookmark moves the selection (never attaches) to the session held in
 // slot. An empty slot is a no-op with a one-line status message.
 func (m *Model) jumpToBookmark(slot int) {
-	if m.store == nil {
-		m.bookmarkNote = "Bookmarks are unavailable"
-		return
-	}
-	slots, err := m.store.Bookmarks(context.Background())
-	if err != nil {
-		m.bookmarkNote = fmt.Sprintf("Bookmark %d: %v", slot, err)
-		return
-	}
-	id, ok := slots[slot]
-	if !ok {
-		m.bookmarkNote = fmt.Sprintf("Bookmark %d is empty", slot)
-		return
-	}
-	idx := indexOfSessionID(m.sessions, id)
+	idx, note := m.bookmarkSlotIndex(slot)
 	if idx < 0 {
-		m.bookmarkNote = fmt.Sprintf("Bookmark %d: the session is not in the list", slot)
+		m.bookmarkNote = note
 		return
 	}
 	m.setSelection(rowCursor(idx))
 	m.bookmarkNote = fmt.Sprintf("Bookmark %d: %s", slot, m.sessions[idx].Name)
+}
+
+// bookmarkSlotIndex resolves slot to an index into m.sessions. A slot that
+// names no listed session returns -1 and the one-line message to show.
+func (m Model) bookmarkSlotIndex(slot int) (int, string) {
+	if m.store == nil {
+		return -1, "Bookmarks are unavailable"
+	}
+	slots, err := m.store.Bookmarks(context.Background())
+	if err != nil {
+		return -1, fmt.Sprintf("Bookmark %d: %v", slot, err)
+	}
+	id, ok := slots[slot]
+	if !ok {
+		return -1, fmt.Sprintf("Bookmark %d is empty", slot)
+	}
+	idx := indexOfSessionID(m.sessions, id)
+	if idx < 0 {
+		return -1, fmt.Sprintf("Bookmark %d: the session is not in the list", slot)
+	}
+	return idx, ""
 }
 
 // bookmarkNoteLine is the footer's one-line bookmark status, empty when there
@@ -122,4 +136,68 @@ func (m Model) bookmarkNoteLine() string {
 	}
 	width, _ := m.frameSize()
 	return m.elideToWidth(m.bookmarkNote, width)
+}
+
+// handleInteractiveBookmarkKey is the attached-mode bookmark layer (R276).
+// It intercepts the same keys the list binds, next to Ctrl+Q, so none of them
+// reaches the pane, and binds nothing while the setting is off. A pending
+// Alt+M chord is cancelled by the next key; only a digit completes it, and
+// any other key (Esc included) is not handled here and is forwarded as usual.
+// A slot is set on the session interactive mode is bound to, and a jump
+// retargets interactive mode onto the slot's session without a list round trip.
+func (m Model) handleInteractiveBookmarkKey(msg tea.KeyMsg) (next Model, handled bool) {
+	if !m.settings.Bookmarks {
+		m.bookmarkChord = false
+		return m, false
+	}
+	key := msg.String()
+	if m.bookmarkChord {
+		m.bookmarkChord = false
+		if slot, ok := bookmarkChordSlot(key); ok {
+			target, found := m.interactiveTargetSession()
+			m.setBookmarkOn(slot, target, found)
+			return m, true
+		}
+	}
+	if key == bookmarkSetChord {
+		m.bookmarkChord = true
+		m.bookmarkNote = "Bookmark: press a digit 0-9 to set the slot"
+		return m, true
+	}
+	if slot, ok := bookmarkShiftedSlots[key]; ok {
+		target, found := m.interactiveTargetSession()
+		m.setBookmarkOn(slot, target, found)
+		return m, true
+	}
+	if slot, ok := bookmarkJumpSlot(key); ok {
+		return m.jumpInteractive(slot), true
+	}
+	return m, false
+}
+
+// jumpInteractive switches the attached view to the session held in slot. An
+// empty slot, a session missing from the list or one that cannot be attached
+// leaves the current view as it is and shows a one-line message.
+func (m Model) jumpInteractive(slot int) Model {
+	idx, note := m.bookmarkSlotIndex(slot)
+	if idx < 0 {
+		m.bookmarkNote = note
+		return m
+	}
+	target := m.sessions[idx]
+	m.bookmarkNote = fmt.Sprintf("Bookmark %d: %s", slot, target.Name)
+	if !canReachPane(target) {
+		m.bookmarkNote = fmt.Sprintf("Bookmark %d: %s is stopped", slot, target.Name)
+		return m
+	}
+	if name, err := tmux.SessionName(target.Slug); err == nil && name == m.interactiveWindowTarget {
+		return m
+	}
+	left, _ := m.exitInteractive()
+	next := left.(Model)
+	next.setSelection(rowCursor(idx))
+	entered, _ := next.enterInteractive()
+	next = entered.(Model)
+	next.bookmarkNote = fmt.Sprintf("Bookmark %d: %s", slot, target.Name)
+	return next
 }

@@ -607,6 +607,13 @@ func (m Model) updateInteractive(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if m.interactiveDispatcher == nil {
 		return m, nil
 	}
+	// The layer returns the model even for a key it does not consume: a
+	// pending Alt+M chord is cancelled by that key, which is then forwarded.
+	next, handled := m.handleInteractiveBookmarkKey(msg)
+	m = next
+	if handled {
+		return m, nil
+	}
 	ctx := context.Background()
 	if named, ok := interactiveNamedKey(msg); ok {
 		// Any keystroke forwarded to the target snaps the view back to
