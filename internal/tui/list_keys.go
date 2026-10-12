@@ -73,7 +73,12 @@ func (m Model) onKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if handled {
 		return next, nil
 	}
-	m = next
+	return next.dispatchListKey(msg)
+}
+
+// dispatchListKey is onKeyMsg's last layer: the shared session-scoped guard,
+// then the list-mode key table.
+func (m Model) dispatchListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// task 013/D.2: the one shared guard every session-scoped binding
 	// below now runs through (session_scoped_guard.go) instead of each
 	// one deciding for itself whether the cursor names a session.

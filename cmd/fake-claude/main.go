@@ -360,22 +360,28 @@ func parse(args []string) (options, error) {
 			message = append(message, argument)
 			continue
 		}
-		if flag, value, attached := strings.Cut(argument, "="); attached && flag == "--name" {
-			if err := result.apply(flag, value); err != nil { // the attached form (R268)
-				return result, err
-			}
-			continue
-		}
-		if index+1 == len(args) {
-			return result, fmt.Errorf("option %q requires a value", argument)
-		}
-		index++
-		if err := result.apply(argument, args[index]); err != nil {
+		next, err := result.applyAt(args, index)
+		if err != nil {
 			return result, err
 		}
+		index = next
 	}
 	result.message = strings.Join(message, " ")
 	return result, nil
+}
+
+// applyAt applies the option at args[index] -- the attached
+// "--name=value" form (R268) or a "--option value" pair -- and returns the
+// index of the last argument it consumed.
+func (o *options) applyAt(args []string, index int) (int, error) {
+	argument := args[index]
+	if flag, value, attached := strings.Cut(argument, "="); attached && flag == "--name" {
+		return index, o.apply(flag, value)
+	}
+	if index+1 == len(args) {
+		return index, fmt.Errorf("option %q requires a value", argument)
+	}
+	return index + 1, o.apply(argument, args[index+1])
 }
 
 // apply validates one "--option value" pair and records it.

@@ -551,6 +551,28 @@ func settingsLiveChanged[T comparable](overrides map[string]string, key string, 
 	return !overridden && edited != previous
 }
 
+// settingsApplyLiveAttach copies the attach and drag ScopeGlobal fields
+// whose saved value changed. ui.attach_on_new/ui.attach_on_resume (GH #52)
+// and ui.attach_on_click (GH #62, read by clickSidebarRow): the
+// shellCreated and sessionResumed/sessionRestarted success paths read these
+// members on every create, resume and restart, so the next one after a save
+// already follows them. Guarded by EnvOverrides like ui.preview_fit, whose
+// DECK_PREVIEW_FIT shape DECK_ATTACH_ON_NEW/DECK_ATTACH_ON_RESUME copy.
+func (m *Model) settingsApplyLiveAttach(overrides map[string]string, edited, previous config.FileConfig) {
+	if settingsLiveChanged(overrides, "ui.attach_on_new", edited.AttachOnNew, previous.AttachOnNew) {
+		m.settings.AttachOnNew = edited.AttachOnNew
+	}
+	if settingsLiveChanged(overrides, "ui.attach_on_click", edited.AttachOnClick, previous.AttachOnClick) {
+		m.settings.AttachOnClick = edited.AttachOnClick
+	}
+	if settingsLiveChanged(overrides, "ui.select_on_drag", edited.SelectOnDrag, previous.SelectOnDrag) {
+		m.settings.SelectOnDrag = edited.SelectOnDrag
+	}
+	if settingsLiveChanged(overrides, "ui.attach_on_resume", edited.AttachOnResume, previous.AttachOnResume) {
+		m.settings.AttachOnResume = edited.AttachOnResume
+	}
+}
+
 // settingsApplyLiveScalars copies the plain ScopeGlobal fields (no side
 // effect beyond the resolved member) whose saved value changed.
 func (m *Model) settingsApplyLiveScalars(edited, previous config.FileConfig) {
@@ -567,27 +589,9 @@ func (m *Model) settingsApplyLiveScalars(edited, previous config.FileConfig) {
 	if settingsLiveChanged(overrides, "ui.preview_fit", edited.PreviewFit, previous.PreviewFit) {
 		m.settings.PreviewFit = edited.PreviewFit
 	}
-	// ui.attach_on_new/ui.attach_on_resume (GH #52) and ui.attach_on_click
-	// (GH #62, read by clickSidebarRow): the shellCreated and
-	// sessionResumed/sessionRestarted success paths read these members on
-	// every create, resume and restart, so the next one after a save
-	// already follows them. Guarded by EnvOverrides like ui.preview_fit,
-	// whose DECK_PREVIEW_FIT shape DECK_ATTACH_ON_NEW/DECK_ATTACH_ON_RESUME
-	// copy.
-	if settingsLiveChanged(overrides, "ui.attach_on_new", edited.AttachOnNew, previous.AttachOnNew) {
-		m.settings.AttachOnNew = edited.AttachOnNew
-	}
-	if settingsLiveChanged(overrides, "ui.attach_on_click", edited.AttachOnClick, previous.AttachOnClick) {
-		m.settings.AttachOnClick = edited.AttachOnClick
-	}
-	if settingsLiveChanged(overrides, "ui.select_on_drag", edited.SelectOnDrag, previous.SelectOnDrag) {
-		m.settings.SelectOnDrag = edited.SelectOnDrag
-	}
+	m.settingsApplyLiveAttach(overrides, edited, previous)
 	if settingsLiveChanged(overrides, "bookmarks", edited.Bookmarks, previous.Bookmarks) {
 		m.settings.Bookmarks = edited.Bookmarks
-	}
-	if settingsLiveChanged(overrides, "ui.attach_on_resume", edited.AttachOnResume, previous.AttachOnResume) {
-		m.settings.AttachOnResume = edited.AttachOnResume
 	}
 	// ui.preview_paint: repaintForeignDefaults reads this member on every
 	// previewed row, so the next preview tick after a save already paints
