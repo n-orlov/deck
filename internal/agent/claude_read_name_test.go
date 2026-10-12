@@ -12,13 +12,30 @@ func claudeNameFixture(name string) string {
 	return filepath.Join("testdata", "names", "claude", name)
 }
 
-func absFixture(t *testing.T, name string) string {
+// rootedFixture copies a fixture into a fresh Claude projects root and returns
+// the probe input whose hook transcript path names the copy, with the root as
+// the session's CLAUDE_CONFIG_DIR: the hook's path is read only inside it.
+func rootedFixture(t *testing.T, name string) NameProbeInput {
 	t.Helper()
-	abs, err := filepath.Abs(claudeNameFixture(name))
+	src, err := os.ReadFile(claudeNameFixture(name))
 	if err != nil {
 		t.Fatal(err)
 	}
-	return abs
+	return rootedTranscript(t, src)
+}
+
+func rootedTranscript(t *testing.T, body []byte) NameProbeInput {
+	t.Helper()
+	root := t.TempDir()
+	dir := filepath.Join(root, "projects", "-work-proj")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, "t.jsonl")
+	if err := os.WriteFile(path, body, 0o600); err != nil { //nolint:gosec // G703: a fixture written under t.TempDir
+		t.Fatal(err)
+	}
+	return NameProbeInput{TranscriptPath: path, Env: map[string]string{claudeConfigDirKey: root}}
 }
 
 // TestClaudeReadNameTranscriptRecordShapes: each title record shape is
@@ -38,7 +55,7 @@ func TestClaudeReadNameTranscriptRecordShapes(t *testing.T) {
 		{"no-title.jsonl", "", false, false},
 	} {
 		t.Run(tc.fixture, func(t *testing.T) {
-			name, explicit, ok := NewClaude().ReadName(NameProbeInput{TranscriptPath: absFixture(t, tc.fixture)})
+			name, explicit, ok := NewClaude().ReadName(rootedFixture(t, tc.fixture))
 			if name != tc.name || explicit != tc.explicit || ok != tc.ok {
 				t.Fatalf("ReadName = (%q, %v, %v), want (%q, %v, %v)", name, explicit, ok, tc.name, tc.explicit, tc.ok)
 			}
@@ -50,14 +67,12 @@ func TestClaudeReadNameTranscriptRecordShapes(t *testing.T) {
 // tail bound is read from its end (the last record wins) and no more than the
 // bound is read.
 func TestClaudeReadNameReadsOnlyTheBoundedTail(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "big.jsonl")
 	filler := `{"type":"user","message":"` + strings.Repeat("x", 1000) + `"}` + "\n"
 	body := `{"type":"ai-title","aiTitle":"Ancient"}` + "\n" +
 		strings.Repeat(filler, 2*claudeTailBytes/len(filler)) +
 		`{"type":"ai-title","aiTitle":"Recent"}` + "\n"
-	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	in := rootedTranscript(t, []byte(body))
+	path := in.TranscriptPath
 	var read int64
 	restore := claudeOpen
 	t.Cleanup(func() { claudeOpen = restore })
@@ -65,7 +80,7 @@ func TestClaudeReadNameReadsOnlyTheBoundedTail(t *testing.T) {
 		f, size, err := restore(p)
 		return &countingReader{ReadSeekCloser: f, n: &read}, size, err
 	}
-	name, _, ok := NewClaude().ReadName(NameProbeInput{TranscriptPath: path})
+	name, _, ok := NewClaude().ReadName(in)
 	if !ok || name != "Recent" {
 		t.Fatalf("ReadName = (%q, %v), want Recent", name, ok)
 	}
@@ -76,7 +91,7 @@ func TestClaudeReadNameReadsOnlyTheBoundedTail(t *testing.T) {
 	if err := os.WriteFile(path, []byte(strings.TrimSuffix(body, `{"type":"ai-title","aiTitle":"Recent"}`+"\n")), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if name, _, ok := NewClaude().ReadName(NameProbeInput{TranscriptPath: path}); ok {
+	if name, _, ok := NewClaude().ReadName(in); ok {
 		t.Fatalf("ReadName found %q beyond the tail bound", name)
 	}
 }
@@ -124,10 +139,8 @@ func TestClaudeReadNamePaneTitleFallback(t *testing.T) {
 // TestClaudeReadNameTranscriptBeatsPaneTitle: a usable transcript title is
 // used and the pane title is never read.
 func TestClaudeReadNameTranscriptBeatsPaneTitle(t *testing.T) {
-	in := NameProbeInput{
-		TranscriptPath: absFixture(t, "ai-title.jsonl"),
-		PaneTitle:      func() string { t.Error("pane title read although the transcript answered"); return "x" },
-	}
+	in := rootedFixture(t, "ai-title.jsonl")
+	in.PaneTitle = func() string { t.Error("pane title read although the transcript answered"); return "x" }
 	if name, _, ok := NewClaude().ReadName(in); !ok || name != "Fix the parser" {
 		t.Fatalf("ReadName = (%q, %v)", name, ok)
 	}
@@ -192,7 +205,7 @@ func TestClaudeReadNameIsDispatchedThroughTheCaps(t *testing.T) {
 	if !caps.AutoTitle || !caps.ClaimsRead() {
 		t.Fatalf("Claude NameCaps = %#v", caps)
 	}
-	name, _, ok := ReadName(NewClaude(), NameProbeInput{TranscriptPath: absFixture(t, "ai-title.jsonl")})
+	name, _, ok := ReadName(NewClaude(), rootedFixture(t, "ai-title.jsonl"))
 	if !ok || name != "Fix the parser" {
 		t.Fatalf("agent.ReadName = (%q, %v)", name, ok)
 	}

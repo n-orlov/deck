@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 
 	"gopkg.in/yaml.v3"
 )
@@ -76,9 +77,13 @@ func (Copilot) ReadName(in NameProbeInput) (string, bool, bool) {
 	return name, explicit, name != ""
 }
 
-// readCopilotWorkspace reads and parses path, at most copilotWorkspaceBytes.
+// readCopilotWorkspace reads and parses path, at most copilotWorkspaceBytes. A
+// FIFO, socket, device or symlink at path is refused before it is read (R270).
 func readCopilotWorkspace(path string) (copilotWorkspace, bool) {
-	f, err := os.Open(path) //nolint:gosec // G304: read-only; the path is built from a validated conversation id under the Copilot home
+	if info, err := os.Lstat(path); err != nil || !info.Mode().IsRegular() {
+		return copilotWorkspace{}, false
+	}
+	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NONBLOCK|syscall.O_NOFOLLOW, 0) //nolint:gosec // G304: read-only; the path is built from a validated conversation id under the Copilot home, opened without following a link or blocking
 	if err != nil {
 		return copilotWorkspace{}, false
 	}

@@ -70,9 +70,10 @@ func requireDummyNameKept(t *testing.T, db *store.Store, before store.Session, r
 // -> custom-name, ai-title -> auto-title), so none of the three records the
 // adapter reads is present.
 func TestBrokenContractClaudeTranscriptRecordKeepsDummyName(t *testing.T) {
-	svc, db, _, _ := newAgentTestService(t, nil, "broken-claude")
+	claudeRoot := t.TempDir()
+	svc, db, _, _ := newAgentTestService(t, map[string]string{"CLAUDE_CONFIG_DIR": claudeRoot}, "broken-claude")
 	row := brokenContractRow(t, db, "claude")
-	transcript := filepath.Join(t.TempDir(), "t.jsonl")
+	transcript := claudeProjectTranscript(t, claudeRoot)
 	body := `{"type":"user","message":{"role":"user","content":"hi"}}` + "\n" +
 		`{"type":"custom-name","customTitle":"my review"}` + "\n" +
 		`{"type":"agent-label","agentName":"planner"}` + "\n" +
@@ -87,9 +88,10 @@ func TestBrokenContractClaudeTranscriptRecordKeepsDummyName(t *testing.T) {
 // Claude, second half of the contract: the title field inside a still-known
 // record type is renamed (customTitle -> title).
 func TestBrokenContractClaudeTitleFieldKeepsDummyName(t *testing.T) {
-	svc, db, _, _ := newAgentTestService(t, nil, "broken-claude-field")
+	claudeRoot := t.TempDir()
+	svc, db, _, _ := newAgentTestService(t, map[string]string{"CLAUDE_CONFIG_DIR": claudeRoot}, "broken-claude-field")
 	row := brokenContractRow(t, db, "claude")
-	transcript := filepath.Join(t.TempDir(), "t.jsonl")
+	transcript := claudeProjectTranscript(t, claudeRoot)
 	body := `{"type":"custom-title","title":"my review"}` + "\n" + `{"type":"ai-title","text":"Fix the parser"}` + "\n"
 	if err := os.WriteFile(transcript, []byte(body), 0o600); err != nil {
 		t.Fatal(err)
@@ -193,4 +195,15 @@ func TestBrokenContractPiSessionInfoEventFieldKeepsDummyName(t *testing.T) {
 			requireDummyNameKept(t, db, row, false, err)
 		})
 	}
+}
+
+// claudeProjectTranscript is a transcript path inside root's projects
+// directory, where the hook's transcript_path is read (R271).
+func claudeProjectTranscript(t *testing.T, root string) string {
+	t.Helper()
+	dir := filepath.Join(root, "projects", "-work-proj")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	return filepath.Join(dir, "t.jsonl")
 }

@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 )
 
 // claudeTailBytes bounds how much of a transcript's end ReadName reads. A
@@ -19,9 +20,18 @@ const claudeTailBytes = 512 * 1024
 const claudePlaceholderTitle = "Claude Code"
 
 // claudeOpen opens a file for ReadName. It is a seam so a test can record
-// every path ReadName touches.
+// every path ReadName touches. It refuses anything that is not a regular
+// file (a FIFO, a socket, a device, a symlink) before reading: it Lstats the
+// path, then opens it O_NONBLOCK|O_NOFOLLOW so a file swapped in after the
+// Lstat cannot block the open or redirect it, and checks the opened file again.
 var claudeOpen = func(path string) (io.ReadSeekCloser, int64, error) {
-	f, err := os.Open(path) //nolint:gosec // G304: read-only; path is a .jsonl the hook named, opened as a regular file and never executed
+	if info, err := os.Lstat(path); err != nil || !info.Mode().IsRegular() {
+		if err == nil {
+			err = os.ErrInvalid
+		}
+		return nil, 0, err
+	}
+	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NONBLOCK|syscall.O_NOFOLLOW, 0) //nolint:gosec // G304: read-only; path is a regular .jsonl, opened without following a link or blocking, and never executed
 	if err != nil {
 		return nil, 0, err
 	}
@@ -52,22 +62,65 @@ func (Claude) ReadName(in NameProbeInput) (string, bool, bool) {
 
 // claudeNamePath is the transcript file to read: the hook's path when it is
 // usable, else the path Claude derives from the cwd and the conversation id.
+// The hook's path is usable only when it is an absolute .jsonl inside the
+// Claude projects root (<claude config dir>/projects) that is not a link
+// pointing out of it and not a non-regular file (R271).
 func claudeNamePath(in NameProbeInput) string {
-	if filepath.IsAbs(in.TranscriptPath) && filepath.Ext(in.TranscriptPath) == ".jsonl" {
-		return filepath.Clean(in.TranscriptPath)
-	}
-	if !safeConversationID(in.ConversationID) || in.CWD == "" {
-		return ""
-	}
-	root := in.Env[claudeConfigDirKey]
-	if root == "" {
-		if in.Home == "" {
-			return ""
+	root := claudeConfigRoot(in)
+	if root != "" && filepath.IsAbs(in.TranscriptPath) && filepath.Ext(in.TranscriptPath) == ".jsonl" {
+		if path := filepath.Clean(in.TranscriptPath); claudeTranscriptConfined(path, filepath.Join(root, "projects")) {
+			return path
 		}
-		root = filepath.Join(in.Home, ".claude")
+	}
+	if !safeConversationID(in.ConversationID) || in.CWD == "" || root == "" {
+		return ""
 	}
 	project := strings.ReplaceAll(filepath.Clean(in.CWD), string(filepath.Separator), "-")
 	return filepath.Join(root, "projects", project, in.ConversationID+".jsonl")
+}
+
+// claudeConfigRoot is Claude's config directory: the session's
+// CLAUDE_CONFIG_DIR, else <Home>/.claude; empty when neither is known.
+func claudeConfigRoot(in NameProbeInput) string {
+	if root := in.Env[claudeConfigDirKey]; root != "" {
+		return root
+	}
+	if in.Home == "" {
+		return ""
+	}
+	return filepath.Join(in.Home, ".claude")
+}
+
+// claudeTranscriptConfined reports whether path (already cleaned) may be read
+// as a transcript: it lies lexically inside projects, its directory resolves
+// (through symlinks) inside the resolved projects root, and an existing path
+// is a regular file, so neither a link out of the root nor a FIFO, socket or
+// device is read.
+func claudeTranscriptConfined(path, projects string) bool {
+	projects = filepath.Clean(projects)
+	if !filepath.IsAbs(projects) || !pathWithin(projects, path) {
+		return false
+	}
+	realRoot, err := filepath.EvalSymlinks(projects)
+	if err != nil {
+		return false
+	}
+	realDir, err := filepath.EvalSymlinks(filepath.Dir(path))
+	if err != nil || !pathWithin(realRoot, realDir) {
+		return false
+	}
+	info, err := os.Lstat(path)
+	if os.IsNotExist(err) {
+		return true
+	}
+	return err == nil && info.Mode().IsRegular()
+}
+
+// pathWithin reports whether path is root or lies below it, comparing cleaned
+// paths lexically.
+func pathWithin(root, path string) bool {
+	rel, err := filepath.Rel(root, path)
+	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
 // claudePaneName cleans a pane title. Claude always puts an activity glyph

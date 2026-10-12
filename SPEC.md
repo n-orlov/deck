@@ -1266,7 +1266,13 @@ in this order, and the first source that answers wins:
    a `derived` or `harness` row takes it; a `user` row is never changed.
 2. The tail of the transcript: the hook's `transcript_path`, or, when the hook named none (the
    reconcile tick), the conversation's own file under `<claude config dir>/projects/<cwd>/<id>.jsonl`.
-   The reader opens the file read-only and reads from the end, at most 512 KiB; when it starts
+   The hook's path is used only when it is an absolute `.jsonl` inside `<claude config dir>/projects`
+   (the session's `CLAUDE_CONFIG_DIR`, else `~/.claude`): a path outside that root, a `..` escape, a
+   symlink (or a symlinked directory) that resolves outside it, and a path that is not a regular file
+   are all ignored, and the conversation's own derived file is read instead (R271). The reader
+   refuses a FIFO, socket, device or symlink before reading: it checks the path with `lstat`, opens
+   it `O_NONBLOCK|O_NOFOLLOW` and checks the opened file again, so a FIFO with no writer cannot
+   hang the read (R270). It opens the file read-only and reads from the end, at most 512 KiB; when it starts
    mid-file the cut first line is dropped, and a last line that is not a complete JSON object (a
    write in progress) is skipped. It understands three record shapes, `custom-title`
    (`customTitle`), `agent-name` (`agentName`) and `ai-title` (`aiTitle`), and the last such record
@@ -1642,7 +1648,9 @@ deck-side error that names the flag and no argv: deck owns the name.
 id>/workspace.yaml` (the home is the session's `COPILOT_HOME`, else `~/.copilot`), read when a
 trigger hook (`agentStop`, `session_info_changed`) or the reconcile tick asks. The reader parses
 it with a real YAML parser (`gopkg.in/yaml.v3`), so a name holding `:`, `'`, `#` or Unicode comes
-back exactly as Copilot wrote it, and reads at most 64 KiB. A `user_named: false` file with a
+back exactly as Copilot wrote it, and reads at most 64 KiB. A `workspace.yaml` that is a FIFO,
+socket, device or symlink is refused before it is read (`lstat`, then an `O_NONBLOCK|O_NOFOLLOW`
+open), so a FIFO with no writer is "no name" and never blocks the read (R270). A `user_named: false` file with a
 non-empty `name` is Copilot's own generated title: adopted as `name_source = harness`. A
 `user_named: true` file whose name differs from deck's was chosen by a human (`-n`, `/rename`):
 adopted as a name a human chose, which freezes the row. No `name`, a blank one, an `id` that
