@@ -65,7 +65,32 @@ func clientCreatesAgentSessionWithBlankName(ctx context.Context, clientName, age
 	if err := client.Send("\r"); err != nil {
 		return err
 	}
-	return waitForAgentCreateRecorded(ctx, h, client, derived, offsets)
+	if err := waitForAgentCreateRecorded(ctx, h, client, derived, offsets); err != nil {
+		return err
+	}
+	return aliasDerivedSession(h, derived)
+}
+
+// aliasDerivedSession registers the derived name as an alias for the new row's
+// id, right after the create is recorded. Deck adopts a harness-written title
+// on its own tick, so a later step that still names the row by its derived
+// name must follow the row to its current name instead of racing the tick
+// (resolveSessionName).
+func aliasDerivedSession(h *ScenarioHarness, derived string) error {
+	db, err := openObservedDatabase(h)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = db.Close() }()
+	var id string
+	if err := db.QueryRow(`SELECT id FROM sessions WHERE name = ?`, derived).Scan(&id); err != nil {
+		return fmt.Errorf("observe derived session %q id: %w", derived, err)
+	}
+	if h.sessionNameAliases == nil {
+		h.sessionNameAliases = map[string]string{}
+	}
+	h.sessionNameAliases[derived] = id
+	return nil
 }
 
 // claudeTranscriptFile is the path of the session's transcript in the fake
