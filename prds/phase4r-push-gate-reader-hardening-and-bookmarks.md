@@ -167,4 +167,4 @@ its taste; a stale sweep is never process.
 
 ## Budget
 
-500 iterations, 6 approaches, 24 h wall clock, 120-minute iteration cap.
+400 iterations, 6 approaches, 40 h wall clock, 120-minute iteration cap.
