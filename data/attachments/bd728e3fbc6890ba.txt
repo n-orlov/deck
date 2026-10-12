@@ -1,0 +1,30 @@
++ Categories -----------------+ Fields ------------------------------------------------------------+
+|   General                   |   Theme: (default)                                                 |
+| > UI                        |   Ascii: Off (file value; overridden by DECK_ASCII, running: On)   |
+|   Environment               |   Mouse: On                                                        |
+|   Notify                    |   Preview Fit: On                                                  |
+|   Groups                    |   Preview Paint: fit                                               |
+|                             |   Recent Cwd Limit: 5 entries (0-50)                               |
+|                             |   Sort Order: attention                                            |
+|                             |   Default Group First: Off                                         |
+|                             |   Attach On New: On (file value; overridden by DECK_ATTACH_ON_N... |
+|                             |   Attach On Click: On                                              |
+|                             |   Select On Drag: On                                               |
+|                             |   Attach On Resume: Off                                            |
+|                             | > Note Timeout: 10 seconds (min 1)                                 |
+|                             |     Kind: integer · Scope: global                                  |
+|                             |     How long a transient note in the footer's right-aligned slo... |
+|                             |     copy, attach, resume or teardown-hook message; SPEC §11) stays |
+|                             |     up before it clears on its own, 10 seconds by default. The ... |
+|                             |     notes (kill, delete, archive) keep the DECK_UNDO_MS window and |
+|                             |     the delete grace instead, and a note still clears on the next  |
+|                             |     event as before. DECK_NOTE_TIMEOUT overrides the file when set |
+|                             |     (whole seconds, at least 1). Applies immediately.              |
+|                             |   Clear Recent Cwds: press enter/space to clear now                |
+|                             |                                                                    |
+|                             |                                                                    |
+|                             |                                                                    |
+|                             |                                                                    |
+|                             |                                                                    |
++-----------------------------+--------------------------------------------------------------------+
+tab/left/right switch - up/down move - enter/+/- edit - / search - ctrl+s save - esc/, close
