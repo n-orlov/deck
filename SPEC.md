@@ -753,7 +753,7 @@ schema:
 
 | where | keys |
 |---|---|
-| top level | `allow_yolo` (default false, §5), `yolo_default` (default false, §5 — inert unless `allow_yolo`), `stale_after` (default 45 s, §7), `capture_min_interval` (§9.4), `tmux_mouse` (default true, §3.2 — `false` restores tmux's own default and with it the arrow-key behaviour), `event_retention_days` (default 30, §12), `pre_launch` (empty by default, §6.4 — the global launch hook), `agent` (empty by default, §3.4 — the kind `deck new` creates when `--agent` is absent; it is a string stored verbatim and checked against the registered kinds only when `deck new` uses it, so a kind deck does not know fails there with `unknown agent kind`; the create dialog ignores it), `post_destroy` (empty by default, §9.2 — the global teardown hook), `event_hook` (empty by default, §10.1 — the one event script; empty makes §10 inert), `event_hook_default` (default false, §10.2), `adopt_harness_names` (default true, §11.4), `event_hook_events` (default `["waiting","error","ended"]`, §10.2), `event_hook_timeout` (default 3 s, §10.3) |
+| top level | `allow_yolo` (default false, §5), `yolo_default` (default false, §5 — inert unless `allow_yolo`), `stale_after` (default 45 s, §7), `capture_min_interval` (§9.4), `tmux_mouse` (default true, §3.2 — `false` restores tmux's own default and with it the arrow-key behaviour), `event_retention_days` (default 30, §12), `pre_launch` (empty by default, §6.4 — the global launch hook), `agent` (empty by default, §3.4 — the kind `deck new` creates when `--agent` is absent; it is a string stored verbatim and checked against the registered kinds only when `deck new` uses it, so a kind deck does not know fails there with `unknown agent kind`; the create dialog ignores it), `post_destroy` (empty by default, §9.2 — the global teardown hook), `event_hook` (empty by default, §10.1 — the one event script; empty makes §10 inert), `event_hook_default` (default false, §10.2), `adopt_harness_names` (default true, §11.4), `bookmarks` (default false, `DECK_BOOKMARKS`, §11.5 — the numbered session bookmarks), `event_hook_events` (default `["waiting","error","ended"]`, §10.2), `event_hook_timeout` (default 3 s, §10.3) |
 | `[env]` | the middle PATH/env layer (§6.1) |
 | `[ui]` | `theme` (§11.6), `ascii` (§11), `mouse` (default true, §11.8), `preview_fit` (default true, §11), `preview_paint` (default `"fit"`, one of `fit`/`nofit`/`bg`/`off`, §11.3), `sort_order` (default `"attention"`, one of `attention`/`created`/`activity`/`name`, §11), `default_group_first` (default false, §11), `attach_on_new` (default true, §11), `attach_on_click` (default true, §11.8), `select_on_drag` (default true, §11.8), `attach_on_resume` (default false, §9.1), `recent_cwd_limit` (default 5, §11.7). **Not** `layout_mode`, `sidebar_width` or the recent-directory list itself — those are machine-local UI state/history and live in `state.db` (§11.2, §11.7), so a keypress never rewrites this file |
 
@@ -788,7 +788,7 @@ terminal's mouse reporting is switched on or off with it), `ui.preview_fit`, `ui
 `ui.sort_order` (the loaded sessions are re-sorted, the selection stays on its session),
 `ui.default_group_first`, `ui.attach_on_new`, `ui.attach_on_click`, `ui.select_on_drag`,
 `ui.attach_on_resume`, `event_hook`, `event_hook_default`, `adopt_harness_names` (the next adoption or
-push follows it), `event_hook_events` and
+push follows it), `bookmarks`, `event_hook_events` and
 `event_hook_timeout` (the dispatcher reads them from the running settings when an event fires,
 so the next event follows them). A key the file did not change is left as it is, and a key a `DECK_*`
 variable overrides stays pinned to the environment. A changed user theme file re-resolves the
@@ -3076,6 +3076,12 @@ the TUI must be the place it is edited.
   prompts included, rather than the close shortcut. `,` is ignored while the discard prompt or
   the group-delete confirm is up: it neither answers nor dismisses either. The footer names it
   beside `esc` (`esc/, close`).
+- **`bookmarks` is a toggle** in the General category, **off** by default, global scope, and
+  `DECK_BOOKMARKS` overrides the file value (the environment wins, like the other toggles). The
+  settings takeover is the menu that flips it: `enter` on the row stages it and `ctrl+s` saves it
+  to `config.toml`. A save applies to the running client at the next key, so it does not say
+  *restart-to-apply*. While it is off no bookmark key is bound, no slot digit is drawn, and no
+  footer or help line mentions bookmarks.
 - **`[ui] attach_on_click`** (default true, `DECK_ATTACH_ON_CLICK`) sits beside `attach_on_new`
   and `attach_on_resume` and governs whether a sidebar row click or double-click enters the
   interactive preview (§11.8). It is `ScopeGlobal`: a save applies to the running client at

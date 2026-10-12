@@ -238,6 +238,7 @@ var reloadEdits = map[string]string{
 	"event_hook":             "event_hook = \"/opt/hook\"\n",
 	"event_hook_default":     "event_hook_default = true\n",
 	"adopt_harness_names":    "adopt_harness_names = false\n",
+	"bookmarks":              "bookmarks = true\n",
 	"event_hook_events":      "event_hook_events = [\"idle\"]\n",
 	"event_hook_timeout":     "event_hook_timeout = 8\n",
 	"[env]":                  "[env]\nDECK_RELOAD_PROBE = \"1\"\n",

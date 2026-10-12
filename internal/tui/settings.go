@@ -583,6 +583,9 @@ func (m *Model) settingsApplyLiveScalars(edited, previous config.FileConfig) {
 	if settingsLiveChanged(overrides, "ui.select_on_drag", edited.SelectOnDrag, previous.SelectOnDrag) {
 		m.settings.SelectOnDrag = edited.SelectOnDrag
 	}
+	if settingsLiveChanged(overrides, "bookmarks", edited.Bookmarks, previous.Bookmarks) {
+		m.settings.Bookmarks = edited.Bookmarks
+	}
 	if settingsLiveChanged(overrides, "ui.attach_on_resume", edited.AttachOnResume, previous.AttachOnResume) {
 		m.settings.AttachOnResume = edited.AttachOnResume
 	}
@@ -1651,6 +1654,7 @@ func settingsEditsFromSettings(s config.Settings) config.FileConfig {
 		EventHook:            s.File.EventHook,
 		EventHookDefault:     s.File.EventHookDefault,
 		AdoptHarnessNames:    s.File.AdoptHarnessNames,
+		Bookmarks:            s.File.Bookmarks,
 		EventHookEvents:      slices.Clone(s.File.EventHookEvents),
 		EventHookTimeout:     s.File.EventHookTimeout,
 		Env:                  settingsCloneEnv(s.File.Env),
@@ -1716,6 +1720,10 @@ var settingsTableToggles = map[string]struct {
 	"adopt_harness_names": {
 		get: func(c config.FileConfig) bool { return c.AdoptHarnessNames },
 		set: func(c *config.FileConfig, v bool) { c.AdoptHarnessNames = v },
+	},
+	"bookmarks": {
+		get: func(c config.FileConfig) bool { return c.Bookmarks },
+		set: func(c *config.FileConfig, v bool) { c.Bookmarks = v },
 	},
 	"ui.attach_on_new": {
 		get: func(c config.FileConfig) bool { return c.AttachOnNew },
@@ -1925,6 +1933,7 @@ func settingsFieldRunningValueDisplay(f config.Field, s config.Settings, fallbac
 // environment (or a per-session default) can make differ from the file.
 func settingsRunningToggles(s config.Settings) map[string]bool {
 	return map[string]bool{
+		"bookmarks":           s.Bookmarks,
 		"ui.ascii":            s.ASCII,
 		"ui.mouse":            s.Mouse,
 		"ui.preview_fit":      s.PreviewFit,

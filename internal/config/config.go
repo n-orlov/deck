@@ -159,6 +159,12 @@ type Settings struct {
 	// adopts a harness's session name and pushes its own renames into a running
 	// harness, for a session whose own override is inherit. True by default.
 	AdoptHarnessNames bool
+	// Bookmarks mirrors config.toml's top-level bookmarks key (R274, SPEC
+	// §11.5): whether the numbered session bookmarks are on. False by
+	// default; while false no bookmark key is bound, no slot digit is drawn
+	// and no footer or help line mentions them. DECK_BOOKMARKS overrides the
+	// file when set, the same shape DECK_SELECT_ON_DRAG has.
+	Bookmarks bool
 	// EventHookEvents mirrors event_hook_events (SPEC §10.2): the offered
 	// kinds the hook fires for by default. Defaults to waiting, error, ended.
 	EventHookEvents []string
@@ -427,6 +433,7 @@ func applyFileConfig(settings *Settings, fileCfg FileConfig) {
 	settings.EventHook = fileCfg.EventHook
 	settings.EventHookDefault = fileCfg.EventHookDefault
 	settings.AdoptHarnessNames = fileCfg.AdoptHarnessNames
+	settings.Bookmarks = fileCfg.Bookmarks
 	settings.EventHookEvents = slices.Clone(fileCfg.EventHookEvents)
 	settings.EventHookTimeout = fileCfg.EventHookTimeout
 	settings.SortOrder = fileCfg.SortOrder
@@ -504,6 +511,7 @@ var envOverrideSteps = []envOverrideStep{
 	boolOverrideStep("DECK_ATTACH_ON_NEW", "ui.attach_on_new", func(s *Settings) *bool { return &s.AttachOnNew }),
 	boolOverrideStep("DECK_ATTACH_ON_CLICK", "ui.attach_on_click", func(s *Settings) *bool { return &s.AttachOnClick }),
 	boolOverrideStep("DECK_SELECT_ON_DRAG", "ui.select_on_drag", func(s *Settings) *bool { return &s.SelectOnDrag }),
+	boolOverrideStep("DECK_BOOKMARKS", "bookmarks", func(s *Settings) *bool { return &s.Bookmarks }),
 	boolOverrideStep("DECK_ATTACH_ON_RESUME", "ui.attach_on_resume", func(s *Settings) *bool { return &s.AttachOnResume }),
 	previewPaintOverride,
 	boolOverrideStep("DECK_TMUX_MOUSE", "tmux_mouse", func(s *Settings) *bool { return &s.TmuxMouse }),

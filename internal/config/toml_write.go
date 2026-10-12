@@ -293,6 +293,7 @@ var fieldRenderers = map[string]func(FileConfig) string{
 	"event_hook":             func(c FileConfig) string { return strconv.Quote(c.EventHook) },
 	"event_hook_default":     func(c FileConfig) string { return strconv.FormatBool(c.EventHookDefault) },
 	"adopt_harness_names":    func(c FileConfig) string { return strconv.FormatBool(c.AdoptHarnessNames) },
+	"bookmarks":              func(c FileConfig) string { return strconv.FormatBool(c.Bookmarks) },
 	"event_hook_events":      func(c FileConfig) string { return renderStringArray(c.EventHookEvents) },
 	"event_hook_timeout":     func(c FileConfig) string { return strconv.Itoa(int(c.EventHookTimeout.Seconds())) },
 }

@@ -60,6 +60,7 @@ type settingsResolvedSnapshot struct {
 	EventHook          string
 	EventHookDefault   bool
 	AdoptHarnessNames  bool
+	Bookmarks          bool
 	EventHookEvents    string
 	EventHookTimeout   string
 }
@@ -95,6 +96,7 @@ func snapshotResolvedSettings(s config.Settings) settingsResolvedSnapshot {
 		EventHook:          s.EventHook,
 		EventHookDefault:   s.EventHookDefault,
 		AdoptHarnessNames:  s.AdoptHarnessNames,
+		Bookmarks:          s.Bookmarks,
 		EventHookEvents:    strings.Join(s.EventHookEvents, ","),
 		EventHookTimeout:   s.EventHookTimeout.String(),
 	}

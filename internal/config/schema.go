@@ -771,6 +771,18 @@ var Schema = []Field{
 		Scope: ScopeGlobal,
 	},
 	{
+		Section: "",
+		Key:     "bookmarks",
+		Kind:    KindToggle,
+		Default: false,
+		Description: "Numbered session bookmarks (SPEC \u00a711.5). When true, Alt+0 to " +
+			"Alt+9 jump to the session bookmarked in that slot and Alt+M then a digit " +
+			"sets a slot. Off by default: no bookmark key is bound, no slot digit is " +
+			"drawn, and every key reaches the agent as before. DECK_BOOKMARKS " +
+			"overrides the file when set. Applies immediately.",
+		Scope: ScopeGlobal,
+	},
+	{
 		Section:       "",
 		Key:           "event_hook_events",
 		Kind:          KindListOfStrings,
