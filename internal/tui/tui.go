@@ -474,6 +474,11 @@ type Model struct {
 	// the key, so it lives exactly until the next keypress; dialogs, the main
 	// view and the settings footer each draw it.
 	fieldCopyNote string
+	// bookmarkChord is true for exactly one key after Alt+M (R275, only with
+	// the bookmarks setting on); bookmarkNote is the one-line footer status
+	// of the last bookmark key, cleared by the next key.
+	bookmarkChord bool
+	bookmarkNote  string
 	// undoSessionID/undoSessionName track the session killed by the most
 	// recent x, so u can undo it (requirement 22) within DECK_UNDO_MS
 	// without depending on it still being the current selection -- "undo"
@@ -4983,6 +4988,9 @@ func (m Model) footerLine() string {
 // footerLineContent is footerLine's own composition, before the canvas
 // paint wrapping above.
 func (m Model) footerLineContent() string {
+	if line := m.bookmarkNoteLine(); line != "" && !m.computeLayout().BelowMinimum && !m.interactive {
+		return line
+	}
 	if m.pushNoteShown() && !m.computeLayout().BelowMinimum && !m.interactive {
 		width, _ := m.frameSize()
 		return m.elideToWidth(m.pushNote, width)

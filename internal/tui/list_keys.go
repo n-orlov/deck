@@ -35,6 +35,7 @@ func (m Model) onKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// layer below gets to act on it (auto_enter.go).
 	m.cancelAutoEnter()
 	m.fieldCopyNote = ""
+	m.bookmarkNote = ""
 	if msg.Type == tea.KeyRunes && len(msg.Runes) > 1 && !msg.Paste {
 		return m.replayCoalescedKeys(msg)
 	}
@@ -67,6 +68,12 @@ func (m Model) onKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if m.pendingDelete {
 		return m.handlePendingDeleteKey(msg)
 	}
+	// R275: the bookmark keys, bound only while the bookmarks setting is on.
+	next, handled := m.handleBookmarkKey(msg)
+	if handled {
+		return next, nil
+	}
+	m = next
 	// task 013/D.2: the one shared guard every session-scoped binding
 	// below now runs through (session_scoped_guard.go) instead of each
 	// one deciding for itself whether the cursor names a session.

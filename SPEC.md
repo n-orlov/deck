@@ -2645,6 +2645,19 @@ group under the cursor, `←`/`→` fold/unfold explicitly (§11) · `,` setting
 (§11.5) · `t` theme picker (§11.6) · `|` cycle layout mode, `<`/`>` sidebar width (§11.2) ·
 `?` help · `q` quit.
 
+**Bookmarks (R275).** With the `bookmarks` setting on (§11.5), the list binds ten numbered
+session slots. `Alt+0`…`Alt+9` jump to the session held in that slot: the jump moves the
+selection only, and attaching stays a separate action. A slot is set to the session under the
+cursor by the chord `Alt+M` then a digit `0`…`9`, which is layout-independent, and on a US
+layout the ten `Alt+Shift+digit` keys (`alt+!`, `alt+@`, `alt+#`, `alt+$`, `alt+%`, `alt+^`,
+`alt+&`, `alt+*`, `alt+(`, `alt+)` for slots 1…9 and 0) set a slot as a convenience. `Esc` or
+any other key after `Alt+M` cancels the chord and is then handled as it normally is. A jump to
+an empty slot changes nothing and shows a one-line status message in the footer. With the
+setting off none of these keys is bound in the list and every one reaches whatever it reached
+before. **`Ctrl+digit` is deliberately not bound:** a terminal only delivers it with user tmux
+configuration, and for `2`…`8` it collides with legacy control keys (`Ctrl+2` is NUL,
+`Ctrl+3`…`Ctrl+7` are ESC, FS, GS, RS, US and `Ctrl+8` is DEL).
+
 **Every capability in this section has a key or a documented entry point here, and every
 key here has a scenario (§13.5).** A capability listed above with nowhere to reach it is an
 R7 defect, and a key listed here with no binding is a §11.3 defect — the two lists are
