@@ -1,1 +1,1 @@
-{"reportName":"deck CI","testRuns":[],"statistic":{"failed":0,"broken":0,"skipped":2,"passed":6373,"unknown":0,"total":6375},"time":{"start":1791796001868,"stop":1791796370446,"duration":368578,"minDuration":0,"maxDuration":12070,"sumDuration":1103854}}
+{"reportName":"deck CI","testRuns":[],"statistic":{"failed":0,"broken":0,"skipped":2,"passed":6376,"unknown":0,"total":6378},"time":{"start":1791797876700,"stop":1791798245078,"duration":368378,"minDuration":0,"maxDuration":15450,"sumDuration":1226795}}
