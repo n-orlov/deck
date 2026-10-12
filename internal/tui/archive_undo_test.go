@@ -90,11 +90,10 @@ func TestSuccessfulArchiveStartsAnUndoWindowSayingWhatHappened(t *testing.T) {
 			if cmd == nil {
 				t.Fatal("a successful archive issued no command, so neither the reload nor the DECK_UNDO_MS expiry tick was scheduled")
 			}
-			lines := model.archiveUndoNoteLines(100)
-			if len(lines) == 0 {
-				t.Fatal("archiveUndoNoteLines is empty with the archive undo window open")
+			toast := model.footerNoteText(noteArchiveUndo)
+			if toast == "" {
+				t.Fatal("the archive-undo footer note is empty with the archive undo window open")
 			}
-			toast := strings.Join(lines, " ")
 			if !strings.Contains(toast, tc.want) {
 				t.Fatalf("archive toast = %q, want it to contain %q", toast, tc.want)
 			}
@@ -106,7 +105,7 @@ func TestSuccessfulArchiveStartsAnUndoWindowSayingWhatHappened(t *testing.T) {
 			}
 			// The toast must not name the row: `A` hides it from the default
 			// list and the submit scenario asserts the name is gone from the
-			// whole screen (see archiveUndoNoteLines' doc comment).
+			// whole screen (see footerNoteText's archive case).
 			if strings.Contains(toast, "live-agent") {
 				t.Fatalf("archive toast names the archived session (%q), which the submit scenario's whole-screen assertion forbids", toast)
 			}
@@ -149,8 +148,8 @@ func TestArchiveUndoPressingUUnarchivesTheRowAndClearsTheToast(t *testing.T) {
 	if model.archiveUndoSessionID != "" || model.archiveUndoSessionName != "" || model.archiveUndoKilled {
 		t.Fatalf("u left the archive undo trio populated: id=%q name=%q killed=%v", model.archiveUndoSessionID, model.archiveUndoSessionName, model.archiveUndoKilled)
 	}
-	if lines := model.archiveUndoNoteLines(100); lines != nil {
-		t.Fatalf("the archive toast survived its own undo: %q", lines)
+	if note := model.footerNoteText(noteArchiveUndo); note != "" {
+		t.Fatalf("the archive toast survived its own undo: %q", note)
 	}
 
 	got, cmd = model.Update(key("u"))
@@ -199,8 +198,8 @@ func TestArchiveUndoWindowExpiresLikeItsSiblings(t *testing.T) {
 	if model.archiveUndoSessionID != "" || model.archiveUndoSessionName != "" || model.archiveUndoKilled {
 		t.Fatalf("the archive undo window survived its own expiry: id=%q name=%q killed=%v", model.archiveUndoSessionID, model.archiveUndoSessionName, model.archiveUndoKilled)
 	}
-	if lines := model.archiveUndoNoteLines(100); lines != nil {
-		t.Fatalf("the archive toast survived its own expiry: %q", lines)
+	if note := model.footerNoteText(noteArchiveUndo); note != "" {
+		t.Fatalf("the archive toast survived its own expiry: %q", note)
 	}
 
 	got, cmd = model.Update(key("u"))

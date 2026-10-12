@@ -317,6 +317,11 @@ type Model struct {
 	// so it offers no key -- see teardownHookNoteLines.
 	teardownHookNote           string
 	teardownHookNoteGeneration int
+	// footerNoteStamp/footerNoteClock order the footer slot's sources by
+	// when each was last set (footer_note.go), so the newest wins when
+	// several are set. Update stamps them; nothing else writes them.
+	footerNoteStamp [footerNoteSourceCount]uint64
+	footerNoteClock uint64
 	// pendingDelete is true for exactly one keypress after a lone `d`
 	// (SPEC's dd chord): a second `d` opens deleteConfirming; ANY other
 	// key (including Esc) clears pendingDelete without performing any
@@ -2694,9 +2699,11 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	// with a real emulator is installed, so this never snaps an offset
 	// that has nothing real to clamp against.
 	m = m.healInteractiveScrollOffsetFromRender()
+	prev := m
 	next, cmd := m.dispatchMessage(message)
 	next, cmd = m.releaseHeldReload(next, cmd)
-	return releaseHeldRefit(next, cmd)
+	next, cmd = releaseHeldRefit(next, cmd)
+	return stampFooterNotes(prev, next), cmd
 }
 
 // releaseHeldRefit applies a host resize that was held back because a modal
@@ -4668,144 +4675,6 @@ func (m Model) sortOrderBanner(width int) []string {
 	return lines
 }
 
-// attachErrorLines is requirement 37's wrapped attachError line set, shared
-// between computeLayout's reservation and mainView's actual render so the
-// two never disagree about how many rows the message costs. It returns no
-// lines at all when there is no error, so it costs nothing in the common
-// case — computeLayout must not unconditionally shrink the panels by this
-// message's worst case when none is present.
-func (m Model) attachErrorLines(width int) []string {
-	if m.attachError == "" {
-		return nil
-	}
-	return m.canvasWrapText(m.attachError, width)
-}
-
-// resumeNoteLines is requirement 37's wrapped resumeNote line set, the
-// resumeNote counterpart to attachErrorLines above.
-func (m Model) resumeNoteLines(width int) []string {
-	if m.resumeNote == "" {
-		return nil
-	}
-	return m.canvasWrapText(m.resumeNote, width)
-}
-
-// selectionCopyNoteLines is task 207's wrapped selectionCopyNote line set,
-// the drag-to-copy success counterpart to attachErrorLines above --
-// reserved and rendered exactly the same way, so a successful copy's
-// confirmation never pushes the frame off screen any more than a failed
-// one's error does.
-func (m Model) selectionCopyNoteLines(width int) []string {
-	var lines []string
-	if m.selectionCopyNote != "" {
-		lines = append(lines, m.canvasWrapText(m.selectionCopyNote, width)...)
-	}
-	if m.fieldCopyNote != "" {
-		lines = append(lines, m.canvasWrapText(m.fieldCopyNote, width)...)
-	}
-	return lines
-}
-
-// undoNoteLines is requirement 22's transient toast: visible for exactly
-// DECK_UNDO_MS after a successful x, naming the killed session and stating
-// that u undoes it, then gone once undoSessionID is cleared (by u itself or
-// by the undoExpired tick). Wrapped/reserved the same way attachErrorLines
-// and resumeNoteLines are, so it never pushes the frame off-screen. Task
-// 112's batch-kill window is checked first: a marked-set x can never be
-// active AT THE SAME TIME as a single-row undoSessionID (x clears
-// m.marked and sets exactly one of the two tracker pairs, never both), but
-// checking the batch one first keeps this in the same priority order the
-// `u` key itself uses.
-func (m Model) undoNoteLines(width int) []string {
-	if len(m.batchUndoSessionIDs) > 0 {
-		return m.canvasWrapText(fmt.Sprintf("Killed %d sessions \u2014 press u to undo", len(m.batchUndoSessionIDs)), width)
-	}
-	if m.undoSessionID == "" {
-		return nil
-	}
-	return m.canvasWrapText(fmt.Sprintf("Killed %q \u2014 press u to undo", m.undoSessionName), width)
-}
-
-// deleteUndoNoteLines mirrors undoNoteLines's SHAPE (task 106, requirement
-// 23): visible for DECK_DELETE_GRACE_MS after a successful dd delete,
-// stating that u restores it, then gone once deleteUndoSessionID is
-// cleared (by u itself or by the deleteGraceExpired tick, at which point
-// the row is also reaped). Deliberately never names the deleted session
-// the way undoNoteLines names a killed one: the confirm dialog's own
-// submit scenario asserts the deleted session's name is gone from the
-// WHOLE screen immediately (dd hides the row, unlike x's "stopped" row
-// that stays visible), and a toast quoting that same name back would
-// violate that the instant it renders. Task 112's batch-delete window
-// (checked first, mirroring undoNoteLines above) never names a session
-// either, for the same reason plus its own: it would have to name N.
-func (m Model) deleteUndoNoteLines(width int) []string {
-	if len(m.batchDeleteUndoSessionIDs) > 0 {
-		return m.canvasWrapText(fmt.Sprintf("Deleted %d sessions \u2014 press u to undo", len(m.batchDeleteUndoSessionIDs)), width)
-	}
-	if m.deleteUndoSessionID == "" {
-		return nil
-	}
-	return m.canvasWrapText("Deleted \u2014 press u to undo", width)
-}
-
-// archiveUndoNoteLines is R72's success toast (issue #10, SPEC.md:752 "On
-// success a toast says what happened, with `u` to undo"): visible for
-// DECK_UNDO_MS after a successful `A` submit, then gone once
-// archiveUndoSessionID is cleared (by u itself or by the archiveUndoExpired
-// tick). Wrapped and reserved exactly like undoNoteLines and
-// deleteUndoNoteLines above, so it never pushes the frame off-screen.
-//
-// Two deliberate wording decisions:
-//   - It never names the archived session, for deleteUndoNoteLines' own
-//     reason: `A` hides the row from the default list, and
-//     features/kill_delete_undo.feature's archive-submit scenario asserts the
-//     name is gone from the WHOLE screen, which a toast quoting it back would
-//     violate the instant it rendered.
-//   - It states the kill when there was one (archiveUndoKilled, i.e. the row
-//     was not already stopped), mirroring archiveConfirmBody's own two
-//     wordings, and then says `u` unarchives rather than "undoes": the
-//     reversal is UnarchiveSession alone, so the agent stays stopped and a
-//     bare "press u to undo" would promise the live agent back.
-func (m Model) archiveUndoNoteLines(width int) []string {
-	if m.archiveUndoSessionID == "" {
-		return nil
-	}
-	if m.archiveUndoKilled {
-		return m.canvasWrapText("Killed and archived \u2014 press u to unarchive (agent stays stopped)", width)
-	}
-	return m.canvasWrapText("Archived \u2014 press u to unarchive", width)
-}
-
-// archiveUndoneRebuildNoteLines is the teardown half of that undo (SPEC
-// §9.2, SPEC.md:508, help's own Hooks section): undoing an archive whose
-// post_destroy already ran un-hides the row but rebuilds nothing, so the
-// row comes back stopped and the next `r` is what rebuilds whatever the
-// hook released. Rendered and reserved exactly like its three sibling undo
-// toasts, visible for DECK_UNDO_MS after the undo, and shown only when a
-// hook actually ran (archiveUndoHookRan) so a hookless archive's undo stays
-// silent. It names no session and offers no key: nothing here is reversible.
-func (m Model) archiveUndoneRebuildNoteLines(width int) []string {
-	if !m.archiveUndoneRebuildNote {
-		return nil
-	}
-	return m.canvasWrapText("Back stopped \u2014 post_destroy already ran; the next r rebuilds what it released", width)
-}
-
-// teardownHookNoteLines is task 042's visible half of a teardown hook
-// failure (findings §1, SPEC §9.2): runPostDestroy's own hook-failure
-// message, surfaced through m.teardownHookNote by a successful A/dd submit
-// whose reporter (see WithTeardownHookReporters) reported one, rendered
-// and reserved exactly like archiveUndoneRebuildNoteLines above and
-// cleared by its own DECK_UNDO_MS tick (teardownHookNoteExpired). A submit
-// whose reporter is nil, or whose hook ran cleanly (empty message), never
-// sets it, so an ordinary A/dd stays exactly as silent as before task 042.
-func (m Model) teardownHookNoteLines(width int) []string {
-	if m.teardownHookNote == "" {
-		return nil
-	}
-	return m.canvasWrapText(m.teardownHookNote, width)
-}
-
 // pendingDeleteLines is task 105's first-`d` visible indicator: gone the
 // instant any key resolves it (the second `d`, opening the confirm dialog,
 // or anything else, clearing it with no destructive action), so it is
@@ -4831,21 +4700,18 @@ func (m Model) pendingDeleteLines(width int) []string {
 
 // computeLayout is the one place mainView and the page-size math below call
 // ComputeLayout, reserving exactly one row for the footer (SPEC §11.3: "the
-// footer is one line, outside both panels") plus the startup banner's own
-// rows, if any, plus attachError's and resumeNote's own wrapped row counts,
-// if either is set (requirement 37), before handing the rest to the §11.2
-// geometry function, which knows about none of them. Skipping any of these
-// reservations would let that message's lines push the whole frame past the
-// terminal's actual row count, which does not shrink the frame to fit — it
-// scrolls, carrying the banner (and the sidebar's own top border) off the
-// top of the visible screen (features/tmux_contract.feature's "old tmux is
-// actionable" scenario would never see either again). attachError and
-// resumeNote are mutually exclusive in practice (tui.go's Update clears one
-// whenever it sets the other) but both are budgeted here regardless, so a
-// future caller that sets both together still gets a frame that fits.
+// footer is one line, outside both panels") plus the rows of the banners
+// above the frame, the theme picker, pendingDeleteLines and filterStatusLine,
+// before handing the rest to the §11.2 geometry function, which knows about
+// none of them. Skipping one of these reservations would let that line push
+// the whole frame past the terminal's actual row count, which does not shrink
+// the frame to fit -- it scrolls, carrying the banner (and the sidebar's own
+// top border) off the top of the visible screen. The transient notes
+// (footer_note.go) reserve nothing: they render in the footer line's
+// right-aligned slot, so one appearing or clearing never moves the frame.
 func (m Model) computeLayout() LayoutResult {
 	width, height := m.frameSize()
-	reserved := 1 + len(m.startupBanner(width)) + len(m.sessionsReloadBanner(width)) + len(m.themeBanner(width)) + len(m.sortOrderBanner(width)) + len(m.themePickerLines(width)) + len(m.attachErrorLines(width)) + len(m.resumeNoteLines(width)) + len(m.selectionCopyNoteLines(width)) + len(m.undoNoteLines(width)) + len(m.deleteUndoNoteLines(width)) + len(m.archiveUndoNoteLines(width)) + len(m.archiveUndoneRebuildNoteLines(width)) + len(m.teardownHookNoteLines(width)) + len(m.pendingDeleteLines(width)) + len(m.filterStatusLine(width))
+	reserved := 1 + len(m.startupBanner(width)) + len(m.sessionsReloadBanner(width)) + len(m.themeBanner(width)) + len(m.sortOrderBanner(width)) + len(m.themePickerLines(width)) + len(m.pendingDeleteLines(width)) + len(m.filterStatusLine(width))
 	result := ComputeLayout(width, height-reserved, m.layoutMode, m.sidebarWidth)
 	// ComputeLayout's own BelowMinimum reads its rows argument as the full
 	// terminal height (its doc comment says so, and its direct unit tests
@@ -4922,14 +4788,6 @@ func (m Model) mainView() string {
 	// happened since a resize or a visible-only reseed shortened the real
 	// scrollback (cure-01-01-2).
 	m.setInteractiveScrollOffset(scrollOffset)
-	lines = append(lines, m.attachErrorLines(width)...)
-	lines = append(lines, m.resumeNoteLines(width)...)
-	lines = append(lines, m.selectionCopyNoteLines(width)...)
-	lines = append(lines, m.undoNoteLines(width)...)
-	lines = append(lines, m.deleteUndoNoteLines(width)...)
-	lines = append(lines, m.archiveUndoNoteLines(width)...)
-	lines = append(lines, m.archiveUndoneRebuildNoteLines(width)...)
-	lines = append(lines, m.teardownHookNoteLines(width)...)
 	lines = append(lines, m.pendingDeleteLines(width)...)
 	lines = append(lines, m.filterStatusLine(width)...)
 	lines = append(lines, m.footerLine())
@@ -4999,6 +4857,9 @@ func (m Model) footerLineContent() string {
 		width, _ := m.frameSize()
 		return truncateToWidth(belowMinimumNotice, width)
 	}
+	if note := m.footerNote(); note != "" {
+		return m.footerWithNote(note)
+	}
 	if m.interactive {
 		return m.interactiveFooterLine()
 	}
@@ -5010,6 +4871,12 @@ func (m Model) footerLineContent() string {
 // legend alone when there is nothing to say.
 func (m Model) footerReasonLine() string {
 	width, _ := m.frameSize()
+	return m.footerReasonLineWithin(width)
+}
+
+// footerReasonLineWithin is footerReasonLine fitted to width columns, which
+// is narrower than the terminal when the note slot takes the right side.
+func (m Model) footerReasonLineWithin(width int) string {
 	reason := m.selectedRowReason()
 	if reason == "" {
 		reason = m.headerCursorFooterCue()
@@ -5106,6 +4973,14 @@ func footerSegmentsKept(segments []footerSegment, budget, sepWidth int) int {
 // live bottom as well as scrolled back. With the mouse off the line is
 // unchanged from R134, the no-"scroll" live-bottom line included.
 func (m Model) interactiveFooterLine() string {
+	width, _ := m.frameSize()
+	return m.interactiveFooterLineWithin(width)
+}
+
+// interactiveFooterLineWithin is interactiveFooterLine fitted to width
+// columns, which is narrower than the terminal when the note slot takes the
+// right side. Ctrl+Q is never dropped.
+func (m Model) interactiveFooterLineWithin(width int) string {
 	forwardNote := m.colorToken(theme.Hint, "keystrokes forward to the live pane")
 	sep := m.glyph(" · ", " - ")
 	key := m.colorToken(theme.Key, m.glyph("Ctrl+Q", "Ctrl+Q"))
@@ -5119,7 +4994,6 @@ func (m Model) interactiveFooterLine() string {
 	// only when the mouse is on (m.settings.Mouse gates updateInteractive's
 	// wheel handling itself), so it never advertises a gesture that does
 	// nothing. It is the least essential segment and drops first.
-	width, _ := m.frameSize()
 	sepWidth := stringWidth(sep)
 	quitWidth := stringWidth("Ctrl+Q leave interactive mode")
 	wheelPlain := interactiveSidebarWheelKey + " " + interactiveSidebarWheelHint
@@ -5127,6 +5001,12 @@ func (m Model) interactiveFooterLine() string {
 
 	cue := m.interactiveScrollCue()
 	if cue == "" {
+		if stringWidth("keystrokes forward to the live pane")+sepWidth+quitWidth > width {
+			if quitWidth > width {
+				return key
+			}
+			return quit
+		}
 		line := forwardNote + sep + quit
 		if m.settings.Mouse && stringWidth("keystrokes forward to the live pane")+sepWidth+stringWidth(wheelPlain)+sepWidth+quitWidth <= width {
 			line = forwardNote + sep + wheelNote + sep + quit

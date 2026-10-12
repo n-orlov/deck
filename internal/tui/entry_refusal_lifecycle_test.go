@@ -343,8 +343,8 @@ func TestNonRefusalNotesStillRenderAsFooterLinesWithBannerUp(t *testing.T) {
 	m.setEntryRefusal("sess-note-1", entryRefusalOther, "no live pane")
 	m.attachError = "Cannot kill: exit status 1"
 
-	if lines := m.attachErrorLines(80); len(lines) == 0 || !strings.Contains(lines[0], "Cannot kill") {
-		t.Fatalf("attachErrorLines(80) = %v, want a footer line naming the kill failure", lines)
+	if note := m.footerNote(); !strings.Contains(note, "Cannot kill") {
+		t.Fatalf("footerNote() = %q, want the footer slot naming the kill failure", note)
 	}
 
 	cw, ch := m.previewContentSize()

@@ -99,8 +99,8 @@ func TestDeleteUndoNoteStaysWithinFrameBudgetAtEveryLayoutMode(t *testing.T) {
 					model.deleteUndoSessionName = "killed-session"
 				}
 
-				if model.deleteUndoNoteLines(width) == nil {
-					t.Fatalf("test setup: deleteUndoNoteLines returned nil")
+				if model.footerNote() == "" {
+					t.Fatalf("test setup: no delete-undo footer note is set")
 				}
 
 				view := model.View()
@@ -153,8 +153,8 @@ func TestArchivePurgeAndRefusalMessagesStayWithinFrameBudgetAtEveryLayoutMode(t 
 				model.layoutMode = mode
 				model.attachError = msg
 
-				if model.attachErrorLines(width) == nil {
-					t.Fatalf("test setup: attachErrorLines returned nil with attachError set")
+				if model.footerNoteText(noteAttachError) == "" {
+					t.Fatalf("test setup: the attachError footer note is empty with attachError set")
 				}
 
 				view := model.View()

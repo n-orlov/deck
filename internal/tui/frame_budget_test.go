@@ -30,12 +30,12 @@ func TestUndoToastStaysWithinFrameBudgetAtEveryLayoutMode(t *testing.T) {
 			model.width, model.height = width, height
 			model.layoutMode = mode
 			// Put the undo toast on screen exactly as x does: name the
-			// killed session so undoNoteLines returns non-nil.
+			// killed session so the kill-undo footer note is set.
 			model.undoSessionID = "killed-1"
 			model.undoSessionName = "killed-session"
 
-			if model.undoNoteLines(width) == nil {
-				t.Fatalf("test setup: undoNoteLines returned nil with undoSessionID set")
+			if model.footerNoteText(noteKillUndo) == "" {
+				t.Fatalf("test setup: the kill-undo footer note is empty with undoSessionID set")
 			}
 
 			view := model.View()

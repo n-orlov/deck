@@ -2886,6 +2886,19 @@ truncated-but-honest frame beats an unpredictable one.
   reason is only ever wanted for the row the user is on, so this is where it costs nothing.
   The row itself carries **glyph, name, status word and badges, and no reason text**; the full
   reason is also in the `i` detail dialog, which is where it belongs when it is long.
+- **Transient notes share one right-aligned slot on the footer line and add no row to the
+  frame.** The eleven finite note sources are the selection-copy and field-copy confirmations,
+  the attach/kill/archive failure message, the resume note, the single and batch kill-undo
+  notes, the single and batch delete-undo notes, the archive-undo note, the archive-undone
+  note and the teardown-hook failure note. They render in the footer line in the list and in
+  interactive mode alike (where the footer is the interactive one). The frame reserves no row
+  for them, so a note appearing or clearing never moves the panels or the preview's first
+  line. When several are set the newest is shown, and the older one's state, for example an
+  open undo window, is untouched and is shown again once the newer note clears. A note is one
+  line (a multi-line message is collapsed to one) and keeps its text up to the full width; the
+  footer's own content gives up whole trailing entries to make room. The banners above the
+  frame, the pending-delete prompt and the filter status line are not notes and keep their
+  own rows.
 
 ### 11.4 Dialogs
 

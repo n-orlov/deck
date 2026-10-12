@@ -57,9 +57,8 @@ func TestTeardownHookFailureRendersAsANoteForArchive(t *testing.T) {
 	if model.teardownHookNote != hookMsg {
 		t.Fatalf("teardownHookNote = %q, want %q", model.teardownHookNote, hookMsg)
 	}
-	lines := model.teardownHookNoteLines(100)
-	if len(lines) == 0 {
-		t.Fatal("teardownHookNoteLines is empty with a hook-failure message set")
+	if model.footerNoteText(noteTeardownHook) == "" {
+		t.Fatal("the teardown footer note is empty with a hook-failure message set")
 	}
 	if view := model.View(); !strings.Contains(view, hookMsg) {
 		t.Fatalf("View() does not render the archive path's teardown hook failure message:\n%s", view)
@@ -102,9 +101,8 @@ func TestTeardownHookFailureRendersAsANoteForDelete(t *testing.T) {
 	if model.teardownHookNote != hookMsg {
 		t.Fatalf("teardownHookNote = %q, want %q", model.teardownHookNote, hookMsg)
 	}
-	lines := model.teardownHookNoteLines(100)
-	if len(lines) == 0 {
-		t.Fatal("teardownHookNoteLines is empty with a hook-failure message set")
+	if model.footerNoteText(noteTeardownHook) == "" {
+		t.Fatal("the teardown footer note is empty with a hook-failure message set")
 	}
 	if view := model.View(); !strings.Contains(view, hookMsg) {
 		t.Fatalf("View() does not render the delete path's teardown hook failure message:\n%s", view)
@@ -190,8 +188,8 @@ func TestTeardownHookFailureRendersAsANoteForBulkDelete(t *testing.T) {
 			t.Fatalf("teardownHookNote = %q, want it to contain %q", model.teardownHookNote, want)
 		}
 	}
-	if len(model.teardownHookNoteLines(200)) == 0 {
-		t.Fatal("teardownHookNoteLines is empty with a bulk hook-failure message set")
+	if model.footerNoteText(noteTeardownHook) == "" {
+		t.Fatal("the teardown footer note is empty with a bulk hook-failure message set")
 	}
 	view := model.View()
 	for _, want := range []string{alphaMsg, betaMsg} {
@@ -238,7 +236,7 @@ func TestBulkDeleteWithoutHookFailuresRaisesNoNote(t *testing.T) {
 	if model.teardownHookNote != "" {
 		t.Fatalf("teardownHookNote = %q, want empty when no row reported a hook failure", model.teardownHookNote)
 	}
-	if lines := model.teardownHookNoteLines(100); len(lines) != 0 {
-		t.Fatalf("teardownHookNoteLines = %#v, want none when no row reported a hook failure", lines)
+	if note := model.footerNoteText(noteTeardownHook); note != "" {
+		t.Fatalf("teardown footer note = %q, want none when no row reported a hook failure", note)
 	}
 }
