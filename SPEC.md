@@ -3979,6 +3979,7 @@ features/
   health.feature                §9.5 — no tmux, old tmux, missing agent, PATH unresolvable
   real_agent_smoke.feature      @real-agents — the thin conformance subset (§13.5)
   real_agent_copilot.feature    @real-agents — the installed Copilot CLI (§8.4, §13.5)
+  real_agent_names.feature      @real-agents — the upstream session-name contracts (§13.5)
   fake_agent_drift_copilot.feature  untagged — fake-copilot's footer/dialog/error strings hold the key
                                 substrings of the recorded probe fixtures and its hook payloads carry the
                                 keys #72 recorded, so a changed fake string or key fails normal CI
@@ -4098,6 +4099,20 @@ idle); a unit test keeps those substrings inside the recorded fixtures. Its firs
 the scenario with a stated reason when `copilot` is not on `PATH` or cannot answer one
 non-interactive prompt (not logged in), and no reason or log line ever carries a token. A
 unit test proves the skip fires for a missing binary, so the default run cannot fail for it.
+
+**Name contracts (R265).** `real_agent_names.feature` pins, against the installed CLIs, the
+four upstream stores deck reads session names from (§8): Claude's `custom-title`
+(`customTitle`), `agent-name` (`agentName`) and `ai-title` (`aiTitle`) transcript records,
+Codex's `state_5.sqlite` `threads.name`, Copilot's `workspace.yaml` `name` and `user_named`,
+and Pi's `session_info` session entry (`name`). Each Given step skips its scenario with a
+stated reason when the CLI is not on `PATH`, and the assertions name the record, key or
+column that moved. **Degrade rule:** a broken contract (a renamed record type or field, a
+missing column or table, a renamed yaml key, a Pi event without its name field) never
+renames the row, never changes its status and never raises an error: the row keeps its dummy
+name (`name_source` stays `derived`). CI never runs `@real-agents`, so that rule is proved in
+the default tier by `TestBrokenContract*` in `internal/service`, one per harness, driven
+through the real adoption path and without `DECK_GODOG_TAGS`; the default tag filter is
+unchanged.
 
 **Fixture corpus.** Probe heuristics (§7) are driven by captured pane text per agent per
 state, stored as fixtures and asserted through the UI badge, so a spinner or prompt
