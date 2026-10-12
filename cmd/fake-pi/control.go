@@ -110,7 +110,7 @@ func (c *controlFile) apply(line []byte) {
 		return
 	}
 	sayf(c.out, "fake-pi name: %s\n", name)
-	if err := c.hooks.renamed(c.out, name); err != nil {
+	if err := c.hooks.setName(c.out, name); err != nil {
 		fmt.Fprintln(os.Stderr, "fake-pi:", err)
 	}
 }
@@ -122,5 +122,5 @@ func (c *controlFile) close() {
 	}
 	close(c.stop)
 	<-c.stopped
-	_ = os.Remove(c.path) //nolint:gosec // G703: path is PiControlFile of the fixture's own session id
+	_ = os.Remove(c.path) // #nosec G703 -- path is PiControlFile of the fixture's own session id
 }

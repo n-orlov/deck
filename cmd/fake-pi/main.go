@@ -85,16 +85,13 @@ func isHelpRequest(args []string) bool {
 	return len(args) == 1 && (args[0] == "--help" || args[0] == "-h")
 }
 
-// serveCommands runs the pane-command loop with the extension hooks and, when
-// the extension would open one, its control file.
-func serveCommands(opts options, stdin io.Reader, stdout io.Writer, getenv func(string) string) error {
-	hooks := newExtensionHooks(opts, getenv)
+// serveCommands runs the pane-command loop with the extension hooks. The
+// control file opens at the "start" command (session_start) and goes at the
+// end (session_shutdown).
+func serveCommands(opts options, stdin io.Reader, stdout io.Writer, getenv func(string) string, getwd func() (string, error)) error {
 	out := &lockedWriter{w: stdout}
-	control, err := openControlFile(hooks, getenv, out)
-	if err != nil {
-		return err
-	}
-	defer control.close()
+	hooks := newExtensionHooks(opts, getenv).withSession(opts, getenv, getwd)
+	defer hooks.close()
 	return runCommands(stdin, out, getenv(fixtureDirectoryEnvironment), hooks)
 }
 
@@ -128,10 +125,12 @@ func runWithIO(args []string, stdin io.Reader, stdout io.Writer, getenv func(str
 		return 0, fmt.Errorf("encode argv: %w", err)
 	}
 
+	recordLaunchName(opts, getenv, getwd)
+
 	announceLaunch(stdout, opts, encoded)
 
 	if getenv(commandsEnvironment) == "1" {
-		if err := serveCommands(opts, stdin, stdout, getenv); err != nil {
+		if err := serveCommands(opts, stdin, stdout, getenv, getwd); err != nil {
 			return 0, err
 		}
 	}
@@ -397,7 +396,9 @@ func runCommand(request fixtureCommand, output io.Writer, fixtureDirectory strin
 	case "hook":
 		return hooks.fire(output, request.Event, request.Payload)
 	case "name":
-		return hooks.renamed(output, request.Name)
+		return hooks.setName(output, request.Name)
+	case "start":
+		return hooks.start(output)
 	default:
 		return fmt.Errorf("unknown command %q", request.Command)
 	}
@@ -407,7 +408,9 @@ func runCommands(input io.Reader, output io.Writer, fixtureDirectory string, hoo
 	scanner := bufio.NewScanner(input)
 	for scanner.Scan() {
 		var request fixtureCommand
-		if err := json.Unmarshal(scanner.Bytes(), &request); err != nil {
+		if name, typed := typedName(scanner.Bytes()); typed {
+			request = fixtureCommand{Command: "name", Name: name}
+		} else if err := json.Unmarshal(scanner.Bytes(), &request); err != nil {
 			return fmt.Errorf("decode command: %w", err)
 		}
 		if err := runCommand(request, output, fixtureDirectory, hooks); err != nil {
@@ -781,9 +784,14 @@ after a SIGWINCH; never: not at all) until stdin reaches EOF.
 Set FAKE_PI_COMMANDS=1 to read newline-delimited commands from the pane. A fixture
 command has the form {"command":"fixture","name":"pi/waiting.txt"} and copies that
 file from FAKE_AGENT_FIXTURE_DIR to the pane without changing its bytes.
-A name command, {"command":"name","name":"x"}, plays Pi's own name change (the built-in /name):
-it fires the extension's session_info_changed hook with {"name":"x","cleared":false}, or with
-{"name":"","cleared":true} when the name is empty.
+A name command, {"command":"name","name":"x"}, plays Pi's own name change (the built-in /name,
+which a typed "/name x" line is too): it appends a session_info entry to the session file
+(~/.pi/agent/sessions/--<cwd>--/<timestamp>_<id>.jsonl) and fires the extension's
+session_info_changed hook with {"name":"x","cleared":false}, or with {"name":"","cleared":true}
+when the name is empty. --name appends a session_info entry at launch and fires no hook.
+A start command, {"command":"start"}, plays session_start: the extension opens its control file
+(when DECK_PI_CONTROL_DIR names one) and fires SessionStart with session_name set to the name
+the session file holds, if any. Until then deck's rename push finds no control file.
 A hook command has the form {"command":"hook","event":"SessionStart","payload":{...}}. It
 plays the loaded extension: the event must be one the extension file subscribes, and its
 DECK_PI_HOOK_EXECUTABLE then runs with the single argument "_hook" and no shell, with the

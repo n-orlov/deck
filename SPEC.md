@@ -1479,7 +1479,16 @@ a launch without a data root) the push is the keystroke plan `Ctrl-U`, `/name <n
 under the §8 gate, and only then. `setSessionName` fires Pi's `session_info_changed`, so the
 extension reports the pushed name back; the receiver recognises it as the pending push and clears
 it (R252 echo suppression), and it is never adopted as a name a human chose in Pi. `cmd/fake-pi`
-plays the extension's file handling when it runs with the extension and `DECK_PI_CONTROL_DIR`.
+plays the extension's file handling when it runs with the extension and `DECK_PI_CONTROL_DIR`:
+it opens the control file at its `start` pane command (session_start), not at launch, so a Pi row
+that has not started has no file and a rename push to it takes the gated keystroke path.
+`cmd/fake-pi` persists a name the way Pi does, as `{"type":"session_info","id":"<8 hex>",
+"parentId":<previous entry id or null>,"timestamp":"<ISO-8601>","name":"<name>"}` lines in the
+session file (`~/.pi/agent/sessions/--<cwd>--/<timestamp>_<id>.jsonl`): `--name` appends one at
+launch and fires no hook, and the `name` pane command, a typed `/name <name>` line and a control-file
+line each append one and fire `session_info_changed`. The fixture never writes a name on its own,
+as Pi never titles a session. `features/harness_names_pi.feature` (`@harness-names`) covers the
+explicit, deck-rename-pushed, harness-side-rename-adopted and refused cases through those records.
 
 Pi has no event for a permission prompt or a failed turn, so a Pi row never reports `waiting` or
 `error` from a hook; those verdicts still come from the probe (§7) and from reconcile.

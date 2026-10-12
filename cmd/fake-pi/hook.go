@@ -23,6 +23,12 @@ type extensionHooks struct {
 	extension  string
 	sessionID  string
 	executable string
+	// transcript resolves the session file names are kept in (names.go); nil
+	// when the fixture keeps none.
+	transcript func() (string, error)
+	// session is the extension's state between pane commands; nil outside the
+	// pane-command loop.
+	session *sessionState
 }
 
 func newExtensionHooks(opts options, getenv func(string) string) extensionHooks {

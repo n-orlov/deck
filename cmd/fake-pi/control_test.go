@@ -42,7 +42,7 @@ func waitFor(t *testing.T, what string, ok func() bool) {
 	t.Fatalf("timed out waiting for %s", what)
 }
 
-// TestPiControlFileRoundTrip: a name written through the deck push path
+// TestPiControlFileRoundTrip: a name written through the deck push path (once the fake played session_start)
 // (agent.Pi.PushControl) reaches the fake Pi that opened the control file as
 // the extension's session_start does, is delivered as Pi's own setSessionName
 // (the pane shows it and the session_info_changed hook fires with it), and the
@@ -63,6 +63,12 @@ func TestPiControlFileRoundTrip(t *testing.T) {
 		done <- err
 	}()
 	file, _ := agent.PiControlFile(home, "conv-1")
+	if _, err := os.Stat(file); err == nil {
+		t.Fatalf("control file exists before session_start: %s", file)
+	}
+	if _, err := io.WriteString(closeStdin, `{"command":"start"}`+"\n"); err != nil {
+		t.Fatal(err)
+	}
 	waitFor(t, "the control file", func() bool { _, err := os.Stat(file); return err == nil })
 
 	delivered, err := agent.Pi{}.PushControl(agent.ControlPushInput{DeckHome: home, ConversationID: "conv-1", Name: "pushed from deck"})
