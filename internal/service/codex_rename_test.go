@@ -133,11 +133,12 @@ func TestCodexRenameNoSendWhileModalUp(t *testing.T) {
 			svc, db, pane := newCodexRig(t, screen)
 			session := codexRow(t, db, "m-"+name, "starting", "user")
 			svc.applyLaunchName(context.Background(), session)
-			result := svc.pushRename(context.Background(), session)
+			idle := codexRow(t, db, "mi-"+name, "idle", "user")
+			result := svc.pushRename(context.Background(), idle)
 			if len(pane.log) != 0 || result.Sent {
 				t.Fatalf("sent into a modal: log %v, result %+v", pane.log, result)
 			}
-			if got := eventReasons(t, db, session.ID, EventHarnessRenameRefused); len(got) != 1 || !strings.Contains(got[0], "dialog") {
+			if got := eventReasons(t, db, idle.ID, EventHarnessRenameRefused); len(got) != 1 || !strings.Contains(got[0], "dialog") {
 				t.Errorf("refusals = %v", got)
 			}
 		})
@@ -213,5 +214,50 @@ func TestCodexRenameLaunchTickInsideTheGapDoesNotRetype(t *testing.T) {
 	svc.applyLaunchName(context.Background(), session)
 	if !reflect.DeepEqual(pane.log, codexWant("c5")) {
 		t.Fatalf("log = %v, want the name typed once: %v", pane.log, codexWant("c5"))
+	}
+}
+
+// TestCodexRenamePushGateRefusesNonLiveStatuses is R252 for Codex: an ordinary
+// rename push is sent only for idle or running rows. Starting, waiting and
+// error are refused with an event and a visible reason, even when the screen
+// would pass the readiness probe; only the startup naming path (R257) takes a
+// starting row.
+func TestCodexRenamePushGateRefusesNonLiveStatuses(t *testing.T) {
+	for _, status := range []string{"starting", "waiting", "error"} {
+		for _, screen := range []string{"starting", "idle"} {
+			t.Run(status+"/"+screen, func(t *testing.T) {
+				svc, db, pane := newCodexRig(t, codexFixture(t, screen))
+				session := codexRow(t, db, "g-"+status+screen, status, "user")
+				result := svc.pushRename(context.Background(), session)
+				if result.Sent || len(pane.log) != 0 {
+					t.Fatalf("pushed into a %s row: %+v %v", status, result, pane.log)
+				}
+				if !strings.Contains(result.Note, "status is "+status) {
+					t.Errorf("note %q does not name the status", result.Note)
+				}
+				got := eventReasons(t, db, session.ID, EventHarnessRenameRefused)
+				if len(got) != 1 || !strings.Contains(got[0], "status is "+status) {
+					t.Errorf("refusals = %v", got)
+				}
+			})
+		}
+	}
+}
+
+// TestCodexRenameStartupNamingStillTakesStartingRow keeps the two paths
+// apart: the same starting row that an ordinary push refuses is typed into by
+// the readiness-gated startup naming, and a RenameAndPush of a starting row
+// types nothing.
+func TestCodexRenameStartupNamingStillTakesStartingRow(t *testing.T) {
+	svc, db, pane := newCodexRig(t, codexFixture(t, "starting"))
+	session := codexRow(t, db, "s1", "starting", "user")
+	if _, result, err := svc.RenameAndPush(context.Background(), session.ID, "renamed"); err != nil || result.Sent || len(pane.log) != 0 {
+		t.Fatalf("ordinary rename push into a starting row: %+v %v err=%v", result, pane.log, err)
+	}
+	renamed, _ := db.GetSession(context.Background(), session.ID)
+	svc.applyLaunchName(context.Background(), renamed)
+	want := []string{"send:/rename renamed", "pause:700ms", "send:Enter"}
+	if !reflect.DeepEqual(pane.log, want) {
+		t.Fatalf("startup naming log = %v, want %v", pane.log, want)
 	}
 }

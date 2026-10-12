@@ -48,7 +48,7 @@ func (s Service) tryLaunchName(ctx context.Context, session store.Session) launc
 	if sent, found, err := s.Store.LastSessionEventReason(ctx, session.ID, EventHarnessNameSent); err != nil || (found && sent == name) {
 		return launchAttempt{done: true}
 	}
-	if refusal := s.pushRefusal(ctx, adapter, session); refusal != "" {
+	if refusal := s.pushRefusal(ctx, adapter, session, true); refusal != "" {
 		return launchAttempt{note: refusal}
 	}
 	pushed, ok := agent.SanitisePushName(session.Agent, name)

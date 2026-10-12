@@ -1163,6 +1163,9 @@ selected, until the next list key.
 | a harness dialog is focused | refused: the dialog would swallow the keystrokes |
 | `stopped` | nothing is sent and nothing is logged; the name goes in at the next launch |
 
+The table holds for every sendkeys adapter, Codex included. The one exception is not a push: the
+readiness-gated startup naming of a fresh Codex row (§8.2) types into a `starting` row once its prompt is ready.
+
 The rename itself always stands; a refused or failed push never fails it.
 
 After a send, an adapter that claims an observation source has the pushed name held in
@@ -1379,8 +1382,13 @@ reconcile tick applies a `user` row's name to a row still `starting`, retrying o
 until the screen is ready, and records `harness_name_sent` (reason: the name) before the
 keystrokes go out, so a tick inside the gap never types the name twice, and so a name is
 typed once per value and never repeated by a relaunch. A later rename of a live row takes the
-same plan through the push gate of §8 "Pushing a rename", which here also accepts a
-`starting` row because a never-prompted Codex stays `starting`. A send that fails records
+same plan through the push gate of §8 "Pushing a rename", which is the same gate as for every
+other sendkeys adapter: only an `idle` or `running` row with no focused dialog is typed into,
+and on top of that Codex's prompt must be ready. A `starting`, `waiting` or `error` row is
+refused with a `harness_rename_refused` event and a footer note. Only the startup naming above
+accepts a `starting` row, because a never-prompted Codex stays `starting`; the two paths are
+separate, so an ordinary rename of a still-starting Codex row is not pushed and its name is
+typed by the startup naming instead. A send that fails records
 `harness_rename_failed`, is not retried, and leaves deck's name in place. The mechanism is
 best effort: it depends on Codex's composer timing and on screen text, and a Codex release
 that changes either leaves the name unapplied rather than broken.

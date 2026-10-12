@@ -99,7 +99,7 @@ func (s Service) pushRename(ctx context.Context, session store.Session) PushResu
 	if result, done := s.pushThroughControl(ctx, adapter, session, pushed); done {
 		return result
 	}
-	if reason := s.pushRefusal(ctx, adapter, session); reason != "" {
+	if reason := s.pushRefusal(ctx, adapter, session, false); reason != "" {
 		return s.refusePush(ctx, session, reason)
 	}
 	return s.sendRename(ctx, adapter, session, pushed)
@@ -180,12 +180,14 @@ func (s Service) pushAdapter(session store.Session) (agent.Adapter, bool) {
 }
 
 // pushRefusal is the reason a push must not be sent now, or "" when it may be:
-// status idle or running (an adapter that gates on its prompt also takes
-// starting, which is how a fresh Codex looks until its first prompt), no
-// harness dialog focused and, for a prompt-gated adapter, the prompt ready.
-func (s Service) pushRefusal(ctx context.Context, adapter agent.Adapter, session store.Session) string {
+// status idle or running, no harness dialog focused and, for a prompt-gated
+// adapter, the prompt ready. Only the readiness-gated startup naming of a
+// fresh row (startup=true, SPEC §8.2) also takes status starting, which is how
+// a fresh Codex looks until its first prompt; an ordinary rename push never
+// does, for any adapter.
+func (s Service) pushRefusal(ctx context.Context, adapter agent.Adapter, session store.Session, startup bool) string {
 	gated := agent.IsPromptGate(adapter)
-	if reason := pushStatusRefusal(session.Status, gated); reason != "" {
+	if reason := pushStatusRefusal(session.Status, startup && gated); reason != "" {
 		return reason
 	}
 	if !gated && !agent.IsDialogDetector(adapter) {
@@ -204,8 +206,8 @@ func (s Service) pushRefusal(ctx context.Context, adapter agent.Adapter, session
 	return ""
 }
 
-func pushStatusRefusal(status string, promptGated bool) string {
-	if status == "idle" || status == "running" || (status == "starting" && promptGated) {
+func pushStatusRefusal(status string, startupNaming bool) string {
+	if status == "idle" || status == "running" || (status == "starting" && startupNaming) {
 		return ""
 	}
 	if reason, known := pushStatusRefusals[status]; known {
