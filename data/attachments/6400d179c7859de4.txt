@@ -1,0 +1,29 @@
+                                                                                   created by github
+.com/charmbracelet/bubbletea.(*Program).eventLoop in goroutine 1
+                                                                        /go-cache/mod/github.com/cha
+rmbracelet/bubbletea@v1.3.10/tea.go:474 +0x3f2
+
+                                              rax    0xfffffffffffffffc
+                                                                       rbx    0x9
+                                                                                 rcx    0x40b26e
+                                                                                                rdx
+   0x1
+      rdi    0x9
+                rsi    0x330c6b510d6c
+                                     rbp    0x330c6b510c18
+                                                          rsp    0x330c6b510bd8
+                                                                               r8     0x0
+                                                                                         r9     0x0
+                                                                                                   r
+10    0xffffffffffffffff
+                        r11    0x202
+                                    r12    0x7ffcaf214c70
+                                                         r13    0x330c6b3412d0
+                                                                              r14    0x330c6b3cd4a0
+                                                                                                   r
+15    0x330c6b1d2301
+                    rip    0x40b26e
+                                   rflags 0x202
+                                               cs     0x33
+                                                          fs     0x0
+                                                                    gs     0x0
