@@ -6,9 +6,12 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"testing"
 	"time"
+
+	"golang.org/x/sys/unix"
 )
 
 // lockedRollbackDB builds a rollback-journal database whose meta table holds
@@ -125,15 +128,51 @@ func TestOpenPathStillFailsWhenContentionOutlastsTheBudget(t *testing.T) {
 	}
 	home, path, release := lockedRollbackDB(t, SchemaVersion)
 	defer release()
-	start := time.Now()
-	s, err := OpenPath(home, path)
+	s, elapsed, err := openPathWithoutPreemptionSignals(t, home, path)
 	if err == nil {
 		_ = s.Close()
 		t.Fatal("OpenPath succeeded while the database stayed exclusively locked")
 	}
-	if elapsed := time.Since(start); elapsed < time.Duration(busyTimeoutMillis)*time.Millisecond-500*time.Millisecond || elapsed > 15*time.Second {
+	if elapsed < time.Duration(busyTimeoutMillis)*time.Millisecond-500*time.Millisecond || elapsed > 15*time.Second {
 		t.Fatalf("gave up after %v; want about the %d ms budget", elapsed, busyTimeoutMillis)
 	}
+}
+
+// openPathWithoutPreemptionSignals times OpenPath on a goroutine pinned to its
+// own OS thread with SIGURG blocked there. SQLite's busy handler counts each
+// sleep at its requested length, and the Go runtime's asynchronous preemption
+// signal (SIGURG, sent with tgkill) interrupts a nanosleep without SQLite
+// noticing, so a wait that catches such a signal ends early by up to one
+// 100 ms sleep per signal (a whole-tier run measured 4.456 s for the 5000 ms
+// budget). Blocking the signal on the measuring thread lets the open wait out
+// the configured budget in wall time, which is what the bounds below assert.
+// The thread stays locked, so the runtime discards it when the goroutine ends.
+func openPathWithoutPreemptionSignals(t *testing.T, home, path string) (*Store, time.Duration, error) {
+	t.Helper()
+	type result struct {
+		s       *Store
+		err     error
+		elapsed time.Duration
+		maskErr error
+	}
+	done := make(chan result, 1)
+	go func() {
+		runtime.LockOSThread()
+		var urg unix.Sigset_t
+		urg.Val[(unix.SIGURG-1)/64] |= 1 << ((uint(unix.SIGURG) - 1) % 64)
+		if err := unix.PthreadSigmask(unix.SIG_BLOCK, &urg, nil); err != nil {
+			done <- result{maskErr: err}
+			return
+		}
+		start := time.Now()
+		s, err := OpenPath(home, path)
+		done <- result{s: s, err: err, elapsed: time.Since(start)}
+	}()
+	r := <-done
+	if r.maskErr != nil {
+		t.Fatalf("block SIGURG on the measuring thread: %v", r.maskErr)
+	}
+	return r.s, r.elapsed, r.err
 }
 
 func TestImmediateTxDSNCarriesBusyTimeoutWithAndWithoutAQuery(t *testing.T) {
