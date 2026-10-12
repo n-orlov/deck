@@ -1,0 +1,19 @@
+Fake Codex
+fake-codex argv: ["-a","on-request","-s","workspace-write","-c","hooks.SessionStart=[{hooks=[{type=\"command\",command=\"'/tmp/deck-godog-38471-535' _hook\"}]}]","-c","hooks.UserPromptSubmit=[{hooks=[{type=\"command\",command=\"'/tmp/deck-godog-38471-535' _hook\"}]}]","-c","hooks.PermissionRequest=[{hooks=[{type=\"command\",command=\"'/tmp/deck-godog-38471-535' _hook\"}]}]","-c","hooks.Stop=[{hooks=[{type=\"command\",command=\"'/tmp/deck-godog-38471-535' _hook\"}]}]","-c","hooks.SessionEnd=[{hooks=[{type=\"command\",command=\"'/tmp/deck-godog-38471-535' _hook\"}]}]","--dangerously-bypass-hook-trust"]
+fake-codex ask-for-approval: on-request
+fake-codex sandbox: workspace-write
+› Ask Codex to do anything
+{"command":"prompt","text":"hello from codex-purge-keep"}
+/rename codex-purge-keepfake-codex session-id: 6e2108c6-3f42-4268-a82d-3b3d324383ed
+fake-codex transcript-path: /tmp/deck-scenario-196441409/agent-fixture-home/.codex/sessions/2026/10/12/rollout-2026-10-12T00-22-37-6e2108c6-3f42-4268-a82d-3b3d324383ed.jsonl
+fake-codex hook fired: SessionStart
+fake-codex hook fired: UserPromptSubmit
+• Working (5s • esc to interrupt)
+› Ask Codex to do anything
+
+
+
+
+
+
+surviving deck client: hung deck client killed after 1s
