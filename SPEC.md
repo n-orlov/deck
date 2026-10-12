@@ -2894,7 +2894,9 @@ truncated-but-honest frame beats an unpredictable one.
   interactive mode alike (where the footer is the interactive one). The frame reserves no row
   for them, so a note appearing or clearing never moves the panels or the preview's first
   line. When several are set the newest is shown, and the older one's state, for example an
-  open undo window, is untouched and is shown again once the newer note clears. A note is one
+  open undo window, is untouched and is shown again once the newer note clears. A note set
+  again is the newest even when its text is unchanged (a second kill of the same session, the
+  same resume note again). A note is one
   line (a multi-line message is collapsed to one) and keeps its text up to the full width; the
   footer's own content gives up whole trailing entries to make room. The banners above the
   frame, the pending-delete prompt and the filter status line are not notes and keep their

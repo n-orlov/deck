@@ -270,7 +270,7 @@ func (m Model) commitInteractiveSelection(shift bool) Model {
 	m.interactiveSelectDragged = false
 
 	if !dragged || grid == nil {
-		m.selectionCopyNote = ""
+		m.setSelectionCopyNote("")
 		if !dragged && grid != nil {
 			// A click: nothing is marked or copied, and a program that
 			// tracks the mouse gets a press and release at the press cell
@@ -286,13 +286,13 @@ func (m Model) commitInteractiveSelection(shift bool) Model {
 
 	ctx := context.Background()
 	if err := client.SetSelectionBuffer(ctx, text); err != nil {
-		m.attachError = "Cannot copy selection: " + err.Error()
-		m.selectionCopyNote = ""
+		m.setAttachError("Cannot copy selection: " + err.Error())
+		m.setSelectionCopyNote("")
 		return m
 	}
 	writeOSCClipboardBestEffort(text)
-	m.attachError = ""
-	m.selectionCopyNote = selectionCopyConfirmation(text)
+	m.setAttachError("")
+	m.setSelectionCopyNote(selectionCopyConfirmation(text))
 	return m
 }
 

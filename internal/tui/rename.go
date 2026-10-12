@@ -213,7 +213,7 @@ func (m *Model) detailOpenProfileSwitch() {
 		return
 	}
 	if !m.canSwitchProfile(session) {
-		m.attachError = "Cannot change permission profile: " + session.Agent + " has no permission profile"
+		m.setAttachError("Cannot change permission profile: " + session.Agent + " has no permission profile")
 		// cure-01-01-2 (R161): the refusal must be visible in THIS same
 		// frame even when the detail dialog was already scrolled away
 		// from wherever detailBody appends m.attachError (just above the
@@ -253,7 +253,7 @@ func (m *Model) detailOpenPinChooser() {
 		return
 	}
 	if !m.canPinResume(session) {
-		m.attachError = "Cannot change resume mode: " + session.Agent + " has no conversation id to lock or restart fresh"
+		m.setAttachError("Cannot change resume mode: " + session.Agent + " has no conversation id to lock or restart fresh")
 		// cure-01-01-2 (R161): same reasoning as canSwitchProfile's
 		// refusal above -- jump to the body's own last page so the
 		// refusal (appended just above the footer legend) is visible

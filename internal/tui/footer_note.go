@@ -87,6 +87,59 @@ var footerNoteReaders = [footerNoteSourceCount]func(Model) string{
 	noteTeardownHook: func(m Model) string { return m.teardownHookNote },
 }
 
+// footerNoteRenewal reads each source's renewal token, indexed by
+// footerNoteSource: a value that changes every time the source is set, even
+// to the same text it already showed. The undo and expiring sources use the
+// generation their own expiry tick already carries; the four plain-text
+// sources use the count their setters keep. A note renewed with identical
+// text (a second kill of the same session, the same copy again) is therefore
+// the newest note, exactly as a note with new text is.
+var footerNoteRenewal = [footerNoteSourceCount]func(Model) int{
+	noteAttachError:          func(m Model) int { return m.footerNoteSets[noteAttachError] },
+	noteResume:               func(m Model) int { return m.footerNoteSets[noteResume] },
+	noteSelectionCopy:        func(m Model) int { return m.footerNoteSets[noteSelectionCopy] },
+	noteFieldCopy:            func(m Model) int { return m.footerNoteSets[noteFieldCopy] },
+	noteKillUndo:             func(m Model) int { return m.undoGeneration },
+	noteKillBatchUndo:        func(m Model) int { return m.batchUndoGeneration },
+	noteDeleteUndo:           func(m Model) int { return m.deleteUndoGeneration },
+	noteDeleteBatchUndo:      func(m Model) int { return m.batchDeleteUndoGeneration },
+	noteArchiveUndo:          func(m Model) int { return m.archiveUndoGeneration },
+	noteArchiveUndoneRebuild: func(m Model) int { return m.archiveUndoneRebuildGeneration },
+	noteTeardownHook:         func(m Model) int { return m.teardownHookNoteGeneration },
+}
+
+// setAttachError, setResumeNote, setSelectionCopyNote and setFieldCopyNote
+// are the only writers of the four plain-text sources: each also counts a
+// non-empty assignment, so stampFooterNotes sees a renewal with unchanged
+// text. Clearing a note is not a renewal and leaves the count alone.
+func (m *Model) setAttachError(text string) {
+	m.attachError = text
+	if text != "" {
+		m.footerNoteSets[noteAttachError]++
+	}
+}
+
+func (m *Model) setResumeNote(text string) {
+	m.resumeNote = text
+	if text != "" {
+		m.footerNoteSets[noteResume]++
+	}
+}
+
+func (m *Model) setSelectionCopyNote(text string) {
+	m.selectionCopyNote = text
+	if text != "" {
+		m.footerNoteSets[noteSelectionCopy]++
+	}
+}
+
+func (m *Model) setFieldCopyNote(text string) {
+	m.fieldCopyNote = text
+	if text != "" {
+		m.footerNoteSets[noteFieldCopy]++
+	}
+}
+
 // footerNoteText is the text one source currently wants shown, or "" when it
 // is not set.
 func (m Model) footerNoteText(src footerNoteSource) string {
@@ -112,9 +165,9 @@ func (m Model) footerNote() string {
 }
 
 // stampFooterNotes records, on the model Update is about to return, which
-// sources were newly set or changed by this message, so footerNote can tell
-// the newest from an older one without every call site that assigns a note
-// having to say so. A source that is no longer set loses its stamp.
+// sources this message set, changed or renewed (footerNoteRenewal moved,
+// even with the text unchanged), so footerNote can tell the newest from an
+// older one. A source that is no longer set loses its stamp.
 func stampFooterNotes(prev Model, next tea.Model) tea.Model {
 	model, ok := next.(Model)
 	if !ok {
@@ -125,7 +178,7 @@ func stampFooterNotes(prev Model, next tea.Model) tea.Model {
 		switch {
 		case text == "":
 			model.footerNoteStamp[src] = 0
-		case text != prev.footerNoteText(src):
+		case text != prev.footerNoteText(src), footerNoteRenewal[src](model) != footerNoteRenewal[src](prev):
 			model.footerNoteClock++
 			model.footerNoteStamp[src] = model.footerNoteClock
 		}

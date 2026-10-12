@@ -322,6 +322,11 @@ type Model struct {
 	// several are set. Update stamps them; nothing else writes them.
 	footerNoteStamp [footerNoteSourceCount]uint64
 	footerNoteClock uint64
+	// footerNoteSets counts every non-empty assignment to the four plain-text
+	// sources (attachError, resumeNote, selectionCopyNote, fieldCopyNote)
+	// through their setters, so a note set again with the same text still
+	// counts as renewed and becomes the newest (footerNoteRenewal).
+	footerNoteSets [footerNoteSourceCount]int
 	// pendingDelete is true for exactly one keypress after a lone `d`
 	// (SPEC's dd chord): a second `d` opens deleteConfirming; ANY other
 	// key (including Esc) clears pendingDelete without performing any
@@ -3336,7 +3341,7 @@ func (m Model) onShellCreated(msg shellCreated) (tea.Model, tea.Cmd) {
 
 func (m Model) onAttachFinished(msg attachFinished) (tea.Model, tea.Cmd) {
 	if msg.err != nil {
-		m.attachError = "Cannot attach: " + msg.err.Error()
+		m.setAttachError("Cannot attach: " + msg.err.Error())
 	}
 	// The attach just resized this window to the departing client's own
 	// terminal (that is the whole point of releaseForeignPreviewPin),
@@ -3368,10 +3373,10 @@ func (m Model) onAttachFinished(msg attachFinished) (tea.Model, tea.Cmd) {
 
 func (m Model) onSessionKilled(msg sessionKilled) (tea.Model, tea.Cmd) {
 	if msg.err != nil {
-		m.attachError = "Cannot kill: " + msg.err.Error()
+		m.setAttachError("Cannot kill: " + msg.err.Error())
 		return m, nil
 	}
-	m.attachError = ""
+	m.setAttachError("")
 	m.undoSessionID = msg.session.ID
 	m.undoSessionName = msg.session.Name
 	m.undoGeneration++
@@ -3394,19 +3399,19 @@ func (m Model) onSessionsPinned(msg sessionsPinned) (tea.Model, tea.Cmd) {
 	// an undo toast (SPEC names none for it, unlike x/A/dd) -- pressing
 	// p again is its own undo.
 	if msg.err != nil {
-		m.attachError = "Cannot update pin: " + msg.err.Error()
+		m.setAttachError("Cannot update pin: " + msg.err.Error())
 		return m, nil
 	}
-	m.attachError = ""
+	m.setAttachError("")
 	return m, m.loadSessions
 }
 
 func (m Model) onSessionAcknowledged(msg sessionAcknowledged) (tea.Model, tea.Cmd) {
 	if msg.err != nil {
-		m.attachError = "Cannot acknowledge: " + msg.err.Error()
+		m.setAttachError("Cannot acknowledge: " + msg.err.Error())
 		return m, nil
 	}
-	m.attachError = ""
+	m.setAttachError("")
 	return m, m.loadSessions
 }
 
@@ -3417,12 +3422,12 @@ func (m Model) onSessionArchived(msg sessionArchived) (tea.Model, tea.Cmd) {
 		// dialog on failure would leave the operator with a vanished dialog
 		// and an unarchived row.
 		m.archiveNote = "Cannot archive: " + msg.err.Error()
-		m.attachError = "Cannot archive: " + msg.err.Error()
+		m.setAttachError("Cannot archive: " + msg.err.Error())
 		return m, nil
 	}
 	m.archiveConfirming = false
 	m.archiveNote = ""
-	m.attachError = ""
+	m.setAttachError("")
 	// R72 (SPEC.md:752): a successful archive says what happened and offers
 	// `u`, on its own DECK_UNDO_MS window. msg.session is the row the dialog
 	// named, captured before the archive's kill step, so its status here is
@@ -3493,9 +3498,9 @@ func (m Model) onSessionDeleted(msg sessionDeleted) (tea.Model, tea.Cmd) {
 	m.deletePurgePath = ""
 	m.deletePurgeOK = false
 	if msg.purgeErr != nil {
-		m.attachError = "Deleted, but purge failed: " + msg.purgeErr.Error()
+		m.setAttachError("Deleted, but purge failed: " + msg.purgeErr.Error())
 	} else {
-		m.attachError = ""
+		m.setAttachError("")
 	}
 	m.deleteUndoSessionID = msg.session.ID
 	m.deleteUndoSessionName = msg.session.Name
@@ -3582,19 +3587,19 @@ func (m Model) onDeleteGraceExpired(msg deleteGraceExpired) (tea.Model, tea.Cmd)
 
 func (m Model) onSessionRestored(msg sessionRestored) (tea.Model, tea.Cmd) {
 	if msg.err != nil {
-		m.attachError = "Cannot restore: " + msg.err.Error()
+		m.setAttachError("Cannot restore: " + msg.err.Error())
 		return m, nil
 	}
-	m.attachError = ""
+	m.setAttachError("")
 	return m, m.loadSessions
 }
 
 func (m Model) onSessionUnarchived(msg sessionUnarchived) (tea.Model, tea.Cmd) {
 	if msg.err != nil {
-		m.attachError = "Cannot unarchive: " + msg.err.Error()
+		m.setAttachError("Cannot unarchive: " + msg.err.Error())
 		return m, nil
 	}
-	m.attachError = ""
+	m.setAttachError("")
 	if msg.teardownHookRan {
 		// SPEC.md:508 / help's Hooks section: a post_destroy that ran is not
 		// undone by u -- the row comes back stopped and the next r rebuilds
@@ -3617,7 +3622,7 @@ func (m Model) onSessionUnarchived(msg sessionUnarchived) (tea.Model, tea.Cmd) {
 
 func (m Model) onSessionReaped(msg sessionReaped) (tea.Model, tea.Cmd) {
 	if msg.err != nil {
-		m.attachError = "Cannot reap: " + msg.err.Error()
+		m.setAttachError("Cannot reap: " + msg.err.Error())
 	}
 	return m, nil
 }
@@ -3635,9 +3640,9 @@ func (m Model) onSessionsBulkKilled(msg sessionsBulkKilled) (tea.Model, tea.Cmd)
 		succeeded = append(succeeded, s.ID)
 	}
 	if firstErr != nil {
-		m.attachError = "Cannot kill: " + firstErr.Error()
+		m.setAttachError("Cannot kill: " + firstErr.Error())
 	} else {
-		m.attachError = ""
+		m.setAttachError("")
 	}
 	if len(succeeded) == 0 {
 		return m, m.loadSessions
@@ -3672,10 +3677,10 @@ func (m Model) onSessionsBulkResumed(msg sessionsBulkResumed) (tea.Model, tea.Cm
 			break
 		}
 	}
-	m.attachError = ""
+	m.setAttachError("")
 	for _, err := range msg.errs {
 		if err != nil {
-			m.attachError = "Cannot resume: " + err.Error()
+			m.setAttachError("Cannot resume: " + err.Error())
 			break
 		}
 	}
@@ -3686,7 +3691,7 @@ func (m Model) onSessionsBulkDeleted(msg sessionsBulkDeleted) (tea.Model, tea.Cm
 	sum := summariseBulkDelete(msg)
 	m.deleteConfirming = false
 	m.deleteNote = ""
-	m.attachError = bulkDeleteAttachError(sum.firstErr, sum.firstPurgeErr)
+	m.setAttachError(bulkDeleteAttachError(sum.firstErr, sum.firstPurgeErr))
 	cmds := []tea.Cmd{m.loadSessions}
 	if len(sum.hookNotes) > 0 {
 		// Same DECK_UNDO_MS window and same generation counter as the
@@ -3789,7 +3794,7 @@ func (m *Model) deleteBulkGroup(firstErr error) {
 	m.bulkDeleteGroupName = ""
 	if firstErr == nil && m.store != nil {
 		if err := m.store.DeleteGroup(context.Background(), groupID); err != nil {
-			m.attachError = "Cannot delete group " + groupName + ": " + err.Error()
+			m.setAttachError("Cannot delete group " + groupName + ": " + err.Error())
 		} else if m.settingsOpen {
 			// Only meaningful if something reopened settings in the
 			// meantime; `,` recomputes this snapshot on open anyway.
@@ -3820,7 +3825,7 @@ func (m Model) onBatchDeleteGraceExpired(msg batchDeleteGraceExpired) (tea.Model
 func (m Model) onSessionsBulkReaped(msg sessionsBulkReaped) (tea.Model, tea.Cmd) {
 	for _, err := range msg.errs {
 		if err != nil {
-			m.attachError = "Cannot reap: " + err.Error()
+			m.setAttachError("Cannot reap: " + err.Error())
 			return m, nil
 		}
 	}
@@ -3830,11 +3835,11 @@ func (m Model) onSessionsBulkReaped(msg sessionsBulkReaped) (tea.Model, tea.Cmd)
 func (m Model) onSessionsBulkRestored(msg sessionsBulkRestored) (tea.Model, tea.Cmd) {
 	for _, err := range msg.errs {
 		if err != nil {
-			m.attachError = "Cannot restore: " + err.Error()
+			m.setAttachError("Cannot restore: " + err.Error())
 			return m, m.loadSessions
 		}
 	}
-	m.attachError = ""
+	m.setAttachError("")
 	return m, m.loadSessions
 }
 
@@ -3843,7 +3848,7 @@ func (m Model) onUIStatePersisted(msg uiStatePersisted) (tea.Model, tea.Cmd) {
 	// pin/width already changed in memory and keeps rendering; only the
 	// error note surfaces so a persistent failure is still visible.
 	if msg.err != nil {
-		m.attachError = "Cannot persist layout: " + msg.err.Error()
+		m.setAttachError("Cannot persist layout: " + msg.err.Error())
 	}
 	return m, nil
 }
@@ -3861,24 +3866,24 @@ func (m *Model) replaceListedSession(session store.Session) {
 
 func (m Model) onSessionResumed(msg sessionResumed) (tea.Model, tea.Cmd) {
 	if msg.err != nil {
-		m.attachError = "Cannot resume: " + msg.err.Error()
-		m.resumeNote = ""
+		m.setAttachError("Cannot resume: " + msg.err.Error())
+		m.setResumeNote("")
 		return m, nil
 	}
-	m.attachError = ""
+	m.setAttachError("")
 	if msg.outcome == service.ResumeStartingElsewhere {
-		m.resumeNote = "starting elsewhere"
+		m.setResumeNote("starting elsewhere")
 		return m, nil
 	}
 	if msg.outcome == service.ResumeAlreadyRunning {
 		// Requirement 46: deck already owns this pane. Adopting it as an
 		// honest no-op means refreshing the row from whatever the service
 		// returned (untouched) rather than pretending a launch happened.
-		m.resumeNote = "already running"
+		m.setResumeNote("already running")
 		m.replaceListedSession(msg.session)
 		return m, nil
 	}
-	m.resumeNote = ""
+	m.setResumeNote("")
 	if msg.outcome == service.ResumeNotLeasable {
 		// The resume command was dispatched from a stale stopped frame.
 		// Render the durable status/reason returned by the service rather
@@ -3915,12 +3920,12 @@ func (m Model) onSessionResumed(msg sessionResumed) (tea.Model, tea.Cmd) {
 
 func (m Model) onSessionRestarted(msg sessionRestarted) (tea.Model, tea.Cmd) {
 	if msg.err != nil {
-		m.attachError = "Cannot restart: " + msg.err.Error()
+		m.setAttachError("Cannot restart: " + msg.err.Error())
 		return m, nil
 	}
-	m.attachError = ""
+	m.setAttachError("")
 	if msg.outcome == service.ResumeStartingElsewhere {
-		m.attachError = "Cannot restart: a launch for this session is already starting elsewhere"
+		m.setAttachError("Cannot restart: a launch for this session is already starting elsewhere")
 		return m, nil
 	}
 	if msg.outcome == service.ResumeAlreadyRunning {
@@ -4247,12 +4252,12 @@ func (m Model) attachSelected() (tea.Model, tea.Cmd) {
 	// ever reaching here -- so selectedSession is guaranteed ok below.
 	session, _ := m.selectedSession()
 	if !canReachPane(session) {
-		m.attachError = "Cannot attach: " + stoppedSessionRefusalTail
+		m.setAttachError("Cannot attach: " + stoppedSessionRefusalTail)
 		return m, nil
 	}
 	command, err := m.attach(context.Background(), session.Slug)
 	if err != nil {
-		m.attachError = "Cannot attach: " + err.Error()
+		m.setAttachError("Cannot attach: " + err.Error())
 		return m, nil
 	}
 	// Consult the durable row on every attachment. The list frame may lag a
@@ -4260,11 +4265,11 @@ func (m Model) attachSelected() (tea.Model, tea.Cmd) {
 	// only that row's current status and leaves raced resolutions untouched.
 	if m.prepareAttach != nil {
 		if err := m.prepareAttach(context.Background(), session.ID); err != nil {
-			m.attachError = "Cannot attach: " + err.Error()
+			m.setAttachError("Cannot attach: " + err.Error())
 			return m, nil
 		}
 	}
-	m.attachError = ""
+	m.setAttachError("")
 	// SPEC §11.9 (task 008/R143, GH #38): `a` is one of the three entry
 	// paths (↵, F, a) whose SUCCESS clears an active refusal banner --
 	// enterInteractiveBody already does this on its own success path via

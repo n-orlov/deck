@@ -76,7 +76,7 @@ type entryRefusalState struct {
 func (m *Model) setEntryRefusal(sessionID string, kind entryRefusalKind, reason string) {
 	m.entryRefusalGeneration++
 	m.entryRefusal = entryRefusalState{active: true, sessionID: sessionID, kind: kind, reason: reason, generation: m.entryRefusalGeneration}
-	m.attachError = ""
+	m.setAttachError("")
 }
 
 // clearEntryRefusal drops the refusal outright. Task 007 itself only ever

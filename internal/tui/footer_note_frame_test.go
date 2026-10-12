@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/n-orlov/deck/internal/config"
+	"github.com/n-orlov/deck/internal/service"
 	"github.com/n-orlov/deck/internal/store"
 )
 
@@ -144,5 +145,36 @@ func TestNewerFooterNoteLeavesOlderUndoWindowIntact(t *testing.T) {
 	m.attachError = ""
 	if note := m.footerNote(); !strings.Contains(note, "press u to undo") {
 		t.Fatalf("footerNote() = %q after the newer note cleared, want the undo note back", note)
+	}
+}
+
+// TestFooterNoteRenewedWithSameTextIsNewest pins that a note set again with
+// the text it already showed is the newest note, for an undo source (renewed
+// through its generation) and for a plain-text source (renewed through its
+// setter): kill, a newer resume note, then the same kill again shows the
+// kill note, and the same resume note again shows the resume note.
+func TestFooterNoteRenewedWithSameTextIsNewest(t *testing.T) {
+	m := footerNoteFrameModel(120, 30, false)
+	kill := sessionKilled{session: store.Session{ID: "s1", Name: "alpha"}}
+	elsewhere := sessionResumed{session: store.Session{ID: "s2", Name: "beta"}, outcome: service.ResumeStartingElsewhere}
+	steps := []struct {
+		name string
+		msg  any
+		want string
+	}{
+		{"kill", kill, "Killed \"alpha\""},
+		{"resume elsewhere", elsewhere, "starting elsewhere"},
+		{"same kill again", kill, "Killed \"alpha\""},
+		{"same resume note again", elsewhere, "starting elsewhere"},
+	}
+	for _, step := range steps {
+		got, _ := m.Update(step.msg)
+		m = got.(Model)
+		if note := m.footerNote(); !strings.Contains(note, step.want) {
+			t.Fatalf("after %s: footerNote() = %q, want the renewed note %q", step.name, note, step.want)
+		}
+	}
+	if m.undoSessionID != "s1" || m.resumeNote != "starting elsewhere" {
+		t.Fatalf("both notes should still be set: undoSessionID=%q resumeNote=%q", m.undoSessionID, m.resumeNote)
 	}
 }

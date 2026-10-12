@@ -34,7 +34,7 @@ func (m Model) onKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// GH #52: any key at all cancels a pending auto-enter, before any
 	// layer below gets to act on it (auto_enter.go).
 	m.cancelAutoEnter()
-	m.fieldCopyNote = ""
+	m.setFieldCopyNote("")
 	m.bookmarkNote = ""
 	if msg.Type == tea.KeyRunes && len(msg.Runes) > 1 && !msg.Paste {
 		return m.replayCoalescedKeys(msg)
@@ -640,7 +640,7 @@ func (m Model) keyArchive(_ tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// stops `A` -- one Shift away from `a`, attach -- from killing a live
 	// agent on a single keystroke.
 	if m.archiveSvc == nil {
-		m.attachError = "Archiving is unavailable"
+		m.setAttachError("Archiving is unavailable")
 		return m, nil
 	}
 	// canArchive is review finding 2/R80's single A eligibility
@@ -657,7 +657,7 @@ func (m Model) keyArchive(_ tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// guaranteed ok here.
 	session, _ := m.selectedSession()
 	if !canArchive(session) {
-		m.attachError = "Cannot archive: session is already archived; press U to unarchive"
+		m.setAttachError("Cannot archive: session is already archived; press U to unarchive")
 		return m, nil
 	}
 	m.archiveConfirming = true
@@ -679,7 +679,7 @@ func (m Model) keyUnarchive(_ tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// the store, so `U` can never record an "unarchived" event for a
 	// row that was never archived.
 	if m.unarchiveSvc == nil {
-		m.attachError = "Unarchiving is unavailable"
+		m.setAttachError("Unarchiving is unavailable")
 		return m, nil
 	}
 	// task 013/D.2: the guard above already refused this keypress
@@ -687,7 +687,7 @@ func (m Model) keyUnarchive(_ tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// guaranteed ok here.
 	session, _ := m.selectedSession()
 	if !canUnarchive(session) {
-		m.attachError = "Cannot unarchive: session is not archived"
+		m.setAttachError("Cannot unarchive: session is not archived")
 		return m, nil
 	}
 	return m, func() tea.Msg {
@@ -869,11 +869,11 @@ func (m Model) keyResume(_ tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// when the cursor has no selected session.
 	session, _ := m.selectedSession()
 	if !canResume(session) {
-		m.attachError = "Cannot resume: session is not stopped"
+		m.setAttachError("Cannot resume: session is not stopped")
 		return m, nil
 	}
 	if m.resumableWithNoConversationIDYet(session) {
-		m.attachError = "Cannot resume: " + session.Agent + " has not started a conversation yet (no id to resume)"
+		m.setAttachError("Cannot resume: " + session.Agent + " has not started a conversation yet (no id to resume)")
 		return m, nil
 	}
 	sessionID := session.ID
@@ -892,11 +892,11 @@ func (m Model) keyRestart(_ tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// when the cursor has no selected session.
 	session, _ := m.selectedSession()
 	if !canRestart(session) {
-		m.attachError = "Cannot restart: session is not running (use r to resume it)"
+		m.setAttachError("Cannot restart: session is not running (use r to resume it)")
 		return m, nil
 	}
 	if m.resumableWithNoConversationIDYet(session) {
-		m.attachError = "Cannot restart: " + session.Agent + " has not started a conversation yet (no id to resume)"
+		m.setAttachError("Cannot restart: " + session.Agent + " has not started a conversation yet (no id to resume)")
 		return m, nil
 	}
 	if session.Agent == "shell" {

@@ -28,18 +28,18 @@ func isFieldCopyKey(msg interface{ String() string }) bool {
 func (m Model) copyFieldText(text string, masked bool) Model {
 	switch {
 	case masked:
-		m.fieldCopyNote = "Nothing copied: the value is masked (reveal it first to copy it)"
+		m.setFieldCopyNote("Nothing copied: the value is masked (reveal it first to copy it)")
 		return m
 	case text == "":
-		m.fieldCopyNote = "Nothing copied: the field is empty"
+		m.setFieldCopyNote("Nothing copied: the field is empty")
 		return m
 	}
 	if err := m.tmuxClient.SetSelectionBuffer(context.Background(), text); err != nil {
-		m.fieldCopyNote = fmt.Sprintf("Cannot copy field: %v", err)
+		m.setFieldCopyNote(fmt.Sprintf("Cannot copy field: %v", err))
 		return m
 	}
 	writeOSCClipboardBestEffort(text)
-	m.fieldCopyNote = selectionCopyConfirmation(text)
+	m.setFieldCopyNote(selectionCopyConfirmation(text))
 	return m
 }
 
