@@ -52,10 +52,10 @@ func newerDatabaseFixture(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	// One past internal/store.SchemaVersion (13 as of schemaV13) -- must always
+	// One past internal/store.SchemaVersion (14 as of schemaV14) -- must always
 	// stay strictly newer than the binary understands, so a later
 	// SchemaVersion bump has to bump this literal too.
-	if err := writeDatabaseFixture(h, 14); err != nil {
+	if err := writeDatabaseFixture(h, 15); err != nil {
 		return err
 	}
 	h.databaseFixture, err = os.ReadFile(filepath.Join(h.Home, "state.db"))

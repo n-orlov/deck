@@ -25,7 +25,7 @@ import (
 const busyTimeoutMillis = 5000
 
 // SchemaVersion is the newest schema understood by this binary.
-const SchemaVersion = 13
+const SchemaVersion = 14
 
 // SupportedSchemaVersion is the newest schema this binary opens: SchemaVersion
 // in every shipped build. A test build (-tags deckoldschema, see
@@ -2898,7 +2898,7 @@ func (s *Store) migrate(version int) error {
 // the schemaVN variables at call time (tests substitute them); a version
 // outside 0..SchemaVersion-1 has no migration path.
 func applySchemaLadder(tx *sql.Tx, version int) error {
-	rungs := [][]string{schemaV1, schemaV2, schemaV3, schemaV4, schemaV5, schemaV6, schemaV7, schemaV8, schemaV9, schemaV10, schemaV11, schemaV12, schemaV13}
+	rungs := [][]string{schemaV1, schemaV2, schemaV3, schemaV4, schemaV5, schemaV6, schemaV7, schemaV8, schemaV9, schemaV10, schemaV11, schemaV12, schemaV13, schemaV14}
 	if version < 0 || version >= len(rungs) {
 		return fmt.Errorf("no migration path from schema version %d", version)
 	}
@@ -3141,6 +3141,23 @@ var schemaV13 = []string{
 		SELECT 1 FROM events e WHERE e.seq = (
 			SELECT MAX(l.seq) FROM events l WHERE l.session_id = sessions.id AND l.kind = 'renamed')
 		AND (e.reason = 'harness' OR e.reason LIKE 'harness:%') AND e.payload = sessions.name)`,
+}
+
+// schemaV14 adds bookmarks (R277): slot 0-9 mapped to a session id. The slot
+// is the primary key, so one session holds a slot at most once over and a slot
+// names one session; a session may hold several slots. Deleting a session
+// removes its slots: the foreign key cascades when the row is reaped, and the
+// trigger clears them when the row is tombstoned (deleted_at set), so a
+// tombstoned session is never a jump target. Neither statement touches the
+// sessions table's rows, so an upgrade from v13 recreates no session.
+var schemaV14 = []string{
+	`CREATE TABLE IF NOT EXISTS bookmarks (
+		slot INTEGER PRIMARY KEY CHECK (slot BETWEEN 0 AND 9),
+		session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE
+	)`,
+	`CREATE INDEX IF NOT EXISTS bookmarks_session ON bookmarks(session_id)`,
+	`CREATE TRIGGER IF NOT EXISTS bookmarks_clear_on_tombstone AFTER UPDATE OF deleted_at ON sessions
+		WHEN NEW.deleted_at != 0 BEGIN DELETE FROM bookmarks WHERE session_id = NEW.id; END`,
 }
 
 // getUIState returns the persisted value for key, or def when no row exists

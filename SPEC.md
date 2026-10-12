@@ -471,6 +471,11 @@ CREATE TABLE recent_cwds (          -- the create modal's directory history (§1
   path       TEXT PRIMARY KEY,      -- resolved absolute path, deduplicated
   used_seq   INTEGER NOT NULL       -- monotonic, NOT a timestamp: order stays assertable
 );                                  -- under a frozen DECK_CLOCK (§13.1)
+
+CREATE TABLE bookmarks (            -- the `bookmarks` setting's slots (§6.5, §11); machine-local
+  slot       INTEGER PRIMARY KEY CHECK (slot BETWEEN 0 AND 9), -- one session per slot
+  session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE -- a session may hold several slots
+);
 ```
 
 Invariants:
@@ -517,6 +522,13 @@ Invariants:
   as the name; a rename typed in deck sets it back to 0.
   A rename writes `name_source` in the same transaction as `name` and the `renamed` event, whose
   `reason` is the source of the rename; a source other than `derived` or `harness` is `user`.
+- Schema version 14 adds `bookmarks`: slot 0-9 mapped to a session id. The slot is the primary
+  key, so a slot names one session and assigning a taken slot moves it rather than duplicating it,
+  while a session may hold several slots. Deleting a session removes its slots: tombstoning it
+  (`deleted_at` set) clears them in the same write, and reaping the row cascades. A bookmark of a
+  deleted session is therefore never restored by `u`. The table is machine-local, survives a restart,
+  and is not load-bearing: a missing slot is an empty slot, and a jump to an empty slot is a no-op
+  with a one-line status message. A migrated database starts with no slot assigned.
 
 ---
 
