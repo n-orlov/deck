@@ -187,27 +187,18 @@ func (s Service) resolveProbeKey(ctx context.Context, key string) string {
 // differs from the stored one freezes the row even when suffix resolution
 // leaves the displayed name unchanged (provenance only: no rename, no event).
 func (s Service) applyAdoption(ctx context.Context, session store.Session, name string, explicit bool) (bool, error) {
-	nameSource := "harness"
-	if explicit {
-		nameSource = "user"
-	}
 	unique, err := s.uniqueAdoptedName(ctx, session.ID, name)
 	if err != nil {
 		return false, err
 	}
 	if unique == session.Name {
-		// The collision suffix resolved back to the stored name: nothing to
-		// rename, but a name a human chose in the harness still freezes the row.
-		if explicit {
-			_, err = s.Store.FreezeSessionName(ctx, session.ID)
-		}
-		return false, err
+		return false, s.freezeUnchangedName(ctx, session.ID, explicit)
 	}
 	holders, err := s.tombstonedNameHolders(ctx, unique)
 	if err != nil {
 		return false, err
 	}
-	adopted, err := s.Store.AdoptSessionName(ctx, session.ID, unique, "harness:"+session.Agent, nameSource, s.Clock.Now().UnixMilli())
+	adopted, err := s.Store.AdoptSessionName(ctx, session.ID, unique, "harness:"+session.Agent, adoptedNameSource(explicit), s.Clock.Now().UnixMilli())
 	if err != nil || !adopted {
 		return false, err
 	}
@@ -216,6 +207,25 @@ func (s Service) applyAdoption(ctx context.Context, session store.Session, name 
 		return true, fmt.Errorf("clean up the session reaped by adopting name %q: %w", unique, err)
 	}
 	return true, nil
+}
+
+// adoptedNameSource is the name_source an adopted name is recorded with.
+func adoptedNameSource(explicit bool) string {
+	if explicit {
+		return "user"
+	}
+	return "harness"
+}
+
+// freezeUnchangedName handles a collision suffix that resolved back to the
+// stored name: nothing to rename, but a name a human chose in the harness
+// still freezes the row.
+func (s Service) freezeUnchangedName(ctx context.Context, sessionID string, explicit bool) error {
+	if !explicit {
+		return nil
+	}
+	_, err := s.Store.FreezeSessionName(ctx, sessionID)
+	return err
 }
 
 // uniqueAdoptedName returns name, or name-2, name-3, ... for the first one no
