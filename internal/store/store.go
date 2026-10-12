@@ -1867,28 +1867,42 @@ func (s *Store) renameSession(ctx context.Context, sessionID, newName, source, n
 	}
 	defer rollbackTx(tx)
 	if adoptableOnly {
-		var current string
-		if err := tx.QueryRowContext(ctx, `SELECT name_source FROM sessions WHERE id = ?`, sessionID).Scan(&current); err != nil {
-			return false, fmt.Errorf("read name source: %w", err)
-		}
-		if current == "user" {
-			return false, nil
+		if frozen, err := nameFrozenTx(ctx, tx, sessionID); frozen || err != nil {
+			return false, err
 		}
 	}
-	if err := claimRenameNameTx(ctx, tx, sessionID, newName, slug, at); err != nil {
+	if err := writeRenameTx(ctx, tx, sessionID, newName, slug, source, nameSource, at); err != nil {
 		return false, err
-	}
-	if err := writeSessionNameTx(ctx, tx, sessionID, newName, nameSource); err != nil {
-		return false, err
-	}
-	if _, err := tx.ExecContext(ctx, `INSERT INTO events (session_id, at, kind, reason, payload)
-		VALUES (?, ?, ?, ?, ?)`, sessionID, at, "renamed", source, newName); err != nil {
-		return false, fmt.Errorf("record rename session event: %w", err)
 	}
 	if err := tx.Commit(); err != nil {
 		return false, fmt.Errorf("commit rename session: %w", err)
 	}
 	return true, nil
+}
+
+// writeRenameTx claims the name, writes it and records the renamed event.
+func writeRenameTx(ctx context.Context, tx *sql.Tx, sessionID, newName, slug, source, nameSource string, at int64) error {
+	if err := claimRenameNameTx(ctx, tx, sessionID, newName, slug, at); err != nil {
+		return err
+	}
+	if err := writeSessionNameTx(ctx, tx, sessionID, newName, nameSource); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO events (session_id, at, kind, reason, payload)
+		VALUES (?, ?, ?, ?, ?)`, sessionID, at, "renamed", source, newName); err != nil {
+		return fmt.Errorf("record rename session event: %w", err)
+	}
+	return nil
+}
+
+// nameFrozenTx reports whether the row's name is the user's (name_source
+// 'user'), which a harness-chosen name never replaces.
+func nameFrozenTx(ctx context.Context, tx *sql.Tx, sessionID string) (bool, error) {
+	var current string
+	if err := tx.QueryRowContext(ctx, `SELECT name_source FROM sessions WHERE id = ?`, sessionID).Scan(&current); err != nil {
+		return false, fmt.Errorf("read name source: %w", err)
+	}
+	return current == "user", nil
 }
 
 // renameSlug validates RenameSession's arguments and returns the slug the

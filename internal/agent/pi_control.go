@@ -81,13 +81,29 @@ func (Pi) PushControl(in ControlPushInput) (bool, error) {
 	if !ok {
 		return false, nil
 	}
+	usable, err := controlFileUsable(path)
+	if !usable || err != nil {
+		return false, err
+	}
+	return appendControlLine(path, EncodePiControlName(name))
+}
+
+// controlFileUsable reports whether path is an existing regular file; a file
+// that is missing or of another kind is unavailable, not an error.
+func controlFileUsable(path string) (bool, error) {
 	info, err := os.Lstat(path)
-	if errors.Is(err, os.ErrNotExist) || (err == nil && !info.Mode().IsRegular()) {
+	if errors.Is(err, os.ErrNotExist) {
 		return false, nil
 	}
 	if err != nil {
 		return false, fmt.Errorf("pi control file: %w", err)
 	}
+	return info.Mode().IsRegular(), nil
+}
+
+// appendControlLine appends one line to an existing control file; a file that
+// vanished between the check and the open is unavailable.
+func appendControlLine(path string, line []byte) (bool, error) {
 	file, err := os.OpenFile(path, os.O_WRONLY|os.O_APPEND, 0) //nolint:gosec // G304: path is PiControlFile of a validated conversation id under the profile's deck home
 	if errors.Is(err, os.ErrNotExist) {
 		return false, nil
@@ -95,7 +111,7 @@ func (Pi) PushControl(in ControlPushInput) (bool, error) {
 	if err != nil {
 		return false, fmt.Errorf("open pi control file: %w", err)
 	}
-	if _, err := file.Write(EncodePiControlName(name)); err != nil {
+	if _, err := file.Write(line); err != nil {
 		_ = file.Close()
 		return false, fmt.Errorf("write pi control file: %w", err)
 	}

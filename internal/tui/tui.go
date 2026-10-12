@@ -4994,6 +4994,13 @@ func (m Model) footerLineContent() string {
 	if m.interactive {
 		return m.interactiveFooterLine()
 	}
+	return m.footerReasonLine()
+}
+
+// footerReasonLine is the list footer: the selected row's reason (or the
+// header cursor's cue) before the key legend, each elided to fit, or the
+// legend alone when there is nothing to say.
+func (m Model) footerReasonLine() string {
 	width, _ := m.frameSize()
 	reason := m.selectedRowReason()
 	if reason == "" {

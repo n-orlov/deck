@@ -151,21 +151,8 @@ func runWithIO(args []string, stdin io.Reader, stdout, stderr io.Writer, getenv 
 
 	announceLaunch(stdout, options, encoded)
 
-	sessionNames := newNames(options, getenv, getwd, stdout)
-	if err := sessionNames.launch(options.name); err != nil {
-		fmt.Fprintln(os.Stderr, "fake-claude: name unavailable:", err)
-	}
-
-	if getenv(commandsEnvironment) == "1" {
-		if err := runCommandsNamed(stdin, stdout, stderr, options.settings, getenv(fixtureDirectoryEnvironment), sessionNames); err != nil {
-			return 0, err
-		}
-	}
-
-	if options.message != "" {
-		if err := sessionNames.flush(); err != nil {
-			fmt.Fprintln(os.Stderr, "fake-claude: name unavailable:", err)
-		}
+	if err := runNamedSession(options, stdin, stdout, stderr, getenv, getwd); err != nil {
+		return 0, err
 	}
 
 	if err := replayAndRecord(options, getenv, getwd, stdout); err != nil {
@@ -178,6 +165,26 @@ func runWithIO(args []string, stdin io.Reader, stdout, stderr io.Writer, getenv 
 	}
 
 	return configuredExitCode(getenv(exitCodeEnvironment))
+}
+
+// runNamedSession applies the launch name, serves the pane commands when they
+// are enabled, and writes a still-held launch name when a message was given.
+func runNamedSession(options options, stdin io.Reader, stdout, stderr io.Writer, getenv func(string) string, getwd func() (string, error)) error {
+	sessionNames := newNames(options, getenv, getwd, stdout)
+	if err := sessionNames.launch(options.name); err != nil {
+		fmt.Fprintln(os.Stderr, "fake-claude: name unavailable:", err)
+	}
+	if getenv(commandsEnvironment) == "1" {
+		if err := runCommandsNamed(stdin, stdout, stderr, options.settings, getenv(fixtureDirectoryEnvironment), sessionNames); err != nil {
+			return err
+		}
+	}
+	if options.message != "" {
+		if err := sessionNames.flush(); err != nil {
+			fmt.Fprintln(os.Stderr, "fake-claude: name unavailable:", err)
+		}
+	}
+	return nil
 }
 
 // announceLaunch prints the fixture's startup banner: deliberately small and
@@ -365,15 +372,9 @@ func parse(args []string) (options, error) {
 func (o *options) apply(argument, value string) error {
 	switch argument {
 	case "--session-id":
-		if err := validUUID("--session-id", value); err != nil {
-			return err
-		}
-		o.sessionID = value
+		return setUUIDOption(&o.sessionID, argument, value)
 	case "--resume":
-		if err := validUUID("--resume", value); err != nil {
-			return err
-		}
-		o.resume = value
+		return setUUIDOption(&o.resume, argument, value)
 	case "--permission-mode":
 		if !permissionModes[value] {
 			return fmt.Errorf("invalid value for --permission-mode: %q", value)
@@ -392,6 +393,15 @@ func (o *options) apply(argument, value string) error {
 	default:
 		return fmt.Errorf("unknown option %q", argument)
 	}
+	return nil
+}
+
+// setUUIDOption records a UUID-valued option.
+func setUUIDOption(target *string, argument, value string) error {
+	if err := validUUID(argument, value); err != nil {
+		return err
+	}
+	*target = value
 	return nil
 }
 

@@ -350,21 +350,30 @@ func (m *Model) submitLaunchInputs() tea.Cmd {
 		return nil
 	}
 	session, _ := m.selectedSession()
+	if note := m.planLaunchInputsWrite(&w, session); note != "" {
+		m.launchInputsNote = note
+		return nil
+	}
+	return w.cmd(session.ID, launchInputsSetters{launch: m.launchInputsSetter, hook: m.eventHookSetter, adopt: m.adoptSetter})
+}
+
+// planLaunchInputsWrite decides which of the writes a submit needs and sets
+// them on w. The result is the note to show when a needed setter is not wired,
+// "" when the submit can go ahead.
+func (m *Model) planLaunchInputsWrite(w *launchInputsWrite, session store.Session) string {
 	w.hook = !sameEventHook(session, w.enabled, w.events)
 	if w.hook && m.eventHookSetter == nil {
-		m.launchInputsNote = "editing the event hook is unavailable"
-		return nil
+		return "editing the event hook is unavailable"
 	}
 	w.adopt = eventHookModeOf(session.HarnessNameAdopt) != m.launchInputsAdopt
 	if w.adopt && m.adoptSetter == nil {
-		m.launchInputsNote = "editing harness name adoption is unavailable"
-		return nil
+		return "editing harness name adoption is unavailable"
 	}
 	// The four launch inputs are written (and launch_dirty set) as before,
 	// except when only the event-hook controls changed: those apply
 	// immediately and must not flag a restart that has nothing to carry.
 	w.launch = (!w.hook && !w.adopt) || w.launchInputsDiffer(session)
-	return w.cmd(session.ID, launchInputsSetters{launch: m.launchInputsSetter, hook: m.eventHookSetter, adopt: m.adoptSetter})
+	return ""
 }
 
 // launchInputsSetters are the three writes a submit may need.

@@ -81,19 +81,24 @@ func (n *names) load() {
 	defer func() { _ = file.Close() }() // read-only handle
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
-		var rec titleRecord
-		if json.Unmarshal(scanner.Bytes(), &rec) != nil {
-			continue
-		}
-		switch {
-		case rec.Type == recordCustomTitle && rec.CustomTitle != "":
-			n.explicit, n.title = rec.CustomTitle, rec.CustomTitle
-		case rec.Type == recordAITitle && rec.AITitle != "" && n.explicit == "":
-			n.title = rec.AITitle
-		}
+		n.absorb(scanner.Bytes())
 	}
 	if n.title != "" {
 		n.setPaneTitle()
+	}
+}
+
+// absorb takes the title a transcript line carries, if it is a title record.
+func (n *names) absorb(line []byte) {
+	var rec titleRecord
+	if json.Unmarshal(line, &rec) != nil {
+		return
+	}
+	switch {
+	case rec.Type == recordCustomTitle && rec.CustomTitle != "":
+		n.explicit, n.title = rec.CustomTitle, rec.CustomTitle
+	case rec.Type == recordAITitle && rec.AITitle != "" && n.explicit == "":
+		n.title = rec.AITitle
 	}
 }
 

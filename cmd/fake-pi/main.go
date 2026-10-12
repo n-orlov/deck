@@ -85,6 +85,19 @@ func isHelpRequest(args []string) bool {
 	return len(args) == 1 && (args[0] == "--help" || args[0] == "-h")
 }
 
+// serveCommands runs the pane-command loop with the extension hooks and, when
+// the extension would open one, its control file.
+func serveCommands(opts options, stdin io.Reader, stdout io.Writer, getenv func(string) string) error {
+	hooks := newExtensionHooks(opts, getenv)
+	out := &lockedWriter{w: stdout}
+	control, err := openControlFile(hooks, getenv, out)
+	if err != nil {
+		return err
+	}
+	defer control.close()
+	return runCommands(stdin, out, getenv(fixtureDirectoryEnvironment), hooks)
+}
+
 func runWithIO(args []string, stdin io.Reader, stdout io.Writer, getenv func(string) string, getwd func() (string, error)) (int, error) {
 	if isHelpRequest(args) {
 		say(stdout, helpText)
@@ -118,14 +131,7 @@ func runWithIO(args []string, stdin io.Reader, stdout io.Writer, getenv func(str
 	announceLaunch(stdout, opts, encoded)
 
 	if getenv(commandsEnvironment) == "1" {
-		hooks := newExtensionHooks(opts, getenv)
-		out := &lockedWriter{w: stdout}
-		control, err := openControlFile(hooks, getenv, out)
-		if err != nil {
-			return 0, err
-		}
-		defer control.close()
-		if err := runCommands(stdin, out, getenv(fixtureDirectoryEnvironment), hooks); err != nil {
+		if err := serveCommands(opts, stdin, stdout, getenv); err != nil {
 			return 0, err
 		}
 	}
@@ -383,6 +389,20 @@ type fixtureCommand struct {
 	Payload map[string]any `json:"payload"`
 }
 
+// runCommand plays one pane command.
+func runCommand(request fixtureCommand, output io.Writer, fixtureDirectory string, hooks extensionHooks) error {
+	switch request.Command {
+	case "fixture":
+		return renderFixture(output, fixtureDirectory, request.Name)
+	case "hook":
+		return hooks.fire(output, request.Event, request.Payload)
+	case "name":
+		return hooks.renamed(output, request.Name)
+	default:
+		return fmt.Errorf("unknown command %q", request.Command)
+	}
+}
+
 func runCommands(input io.Reader, output io.Writer, fixtureDirectory string, hooks extensionHooks) error {
 	scanner := bufio.NewScanner(input)
 	for scanner.Scan() {
@@ -390,21 +410,8 @@ func runCommands(input io.Reader, output io.Writer, fixtureDirectory string, hoo
 		if err := json.Unmarshal(scanner.Bytes(), &request); err != nil {
 			return fmt.Errorf("decode command: %w", err)
 		}
-		switch request.Command {
-		case "fixture":
-			if err := renderFixture(output, fixtureDirectory, request.Name); err != nil {
-				return err
-			}
-		case "hook":
-			if err := hooks.fire(output, request.Event, request.Payload); err != nil {
-				return err
-			}
-		case "name":
-			if err := hooks.renamed(output, request.Name); err != nil {
-				return err
-			}
-		default:
-			return fmt.Errorf("unknown command %q", request.Command)
+		if err := runCommand(request, output, fixtureDirectory, hooks); err != nil {
+			return err
 		}
 	}
 	if err := scanner.Err(); err != nil {
@@ -568,48 +575,54 @@ func flagValue(args []string, index int) (string, error) {
 	return args[index+1], nil
 }
 
+// valueOptions are the options that take a value, and where it goes.
+var valueOptions = map[string]func(*options, string){
+	"--session-id": func(o *options, v string) { o.sessionID = v },
+	"-n":           func(o *options, v string) { o.name = v },
+	"--name":       func(o *options, v string) { o.name = v },
+	"-e":           func(o *options, v string) { o.extension = v },
+	"--extension":  func(o *options, v string) { o.extension = v },
+}
+
+// parseOption consumes the option at args[index] if it is one the fixture
+// knows. consumed is how many arguments it used (0 for a positional argument).
+func parseOption(result *options, args []string, index int) (consumed int, err error) {
+	argument := args[index]
+	if set, takesValue := valueOptions[argument]; takesValue {
+		value, err := flagValue(args, index)
+		if err != nil {
+			return 0, err
+		}
+		set(result, value)
+		return 2, nil
+	}
+	if argument == "--approve" {
+		result.approve = true
+		return 1, nil
+	}
+	if len(argument) > 1 && argument[0] == '-' {
+		return 0, fmt.Errorf("unknown option %q", argument)
+	}
+	return 0, nil
+}
+
 func parse(args []string) (options, error) {
 	var result options
 	var message []string
-	for index := 0; index < len(args); index++ {
-		argument := args[index]
-		if argument == "--" {
+	for index := 0; index < len(args); {
+		if args[index] == "--" {
 			message = append(message, args[index+1:]...) // Remaining positional prompt text is accepted by pi.
 			break
 		}
-		switch argument {
-		case "--session-id":
-			value, err := flagValue(args, index)
-			if err != nil {
-				return result, err
-			}
-			index++
-			result.sessionID = value
-			continue
-		case "--approve":
-			result.approve = true
-			continue
-		case "-n", "--name":
-			value, err := flagValue(args, index)
-			if err != nil {
-				return result, err
-			}
-			index++
-			result.name = value
-			continue
-		case "-e", "--extension":
-			value, err := flagValue(args, index)
-			if err != nil {
-				return result, err
-			}
-			index++
-			result.extension = value
-			continue
+		consumed, err := parseOption(&result, args, index)
+		if err != nil {
+			return result, err
 		}
-		if len(argument) > 1 && argument[0] == '-' {
-			return result, fmt.Errorf("unknown option %q", argument)
+		if consumed == 0 {
+			message = append(message, args[index])
+			consumed = 1
 		}
-		message = append(message, argument)
+		index += consumed
 	}
 	result.message = strings.Join(message, " ")
 	return result, nil

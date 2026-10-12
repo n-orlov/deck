@@ -48,6 +48,11 @@ func (a *app) dispatch(line string) (bool, error) {
 	if err := json.Unmarshal([]byte(line), &request); err != nil {
 		return false, fmt.Errorf("decode command: %w", err)
 	}
+	return a.run(request)
+}
+
+// run plays one decoded pane command. The first result reports a quit.
+func (a *app) run(request command) (bool, error) {
 	switch request.Command {
 	case "prompt":
 		return false, a.prompt(request.Text, request.Hold)

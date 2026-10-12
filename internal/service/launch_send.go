@@ -47,7 +47,7 @@ func (s Service) applyLaunchName(ctx context.Context, session store.Session) {
 // launchSendTarget is the adapter and name a launch-time keystroke rename
 // applies to, or ok=false for any row it does not.
 func (s Service) launchSendTarget(session store.Session) (agent.Adapter, string, bool) {
-	if s.Store == nil || s.Clock == nil || s.Agents == nil || session.Agent == "shell" || session.Status != "starting" || rowIsTerminal(session) {
+	if !s.launchSendEligible(session) {
 		return nil, "", false
 	}
 	name := launchName(session)
@@ -60,4 +60,13 @@ func (s Service) launchSendTarget(session store.Session) (agent.Adapter, string,
 		return nil, "", false
 	}
 	return adapter, name, true
+}
+
+// launchSendEligible is the row-level part: an agent row still starting, with
+// the service wired to look at it.
+func (s Service) launchSendEligible(session store.Session) bool {
+	if s.Store == nil || s.Clock == nil || s.Agents == nil {
+		return false
+	}
+	return session.Agent != "shell" && session.Status == "starting" && !rowIsTerminal(session)
 }
