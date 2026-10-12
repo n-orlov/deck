@@ -150,7 +150,10 @@ func (n *threadNames) withDB(apply func(*sql.DB) error) (err error) {
 	if err := os.MkdirAll(n.home, 0o750); err != nil {
 		return fmt.Errorf("create codex home: %w", err)
 	}
-	db, err := sql.Open("sqlite", filepath.Join(n.home, stateFile))
+	// busy_timeout: deck and the scenario read this file while the fake writes
+	// it; without a busy handler a write that overlaps a reader fails at once
+	// with "database is locked", the fake exits and the pane dies.
+	db, err := sql.Open("sqlite", "file:"+filepath.Join(n.home, stateFile)+"?_pragma=busy_timeout(5000)")
 	if err != nil {
 		return fmt.Errorf("open %s: %w", stateFile, err)
 	}

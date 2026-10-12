@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/n-orlov/deck/internal/agent"
 )
@@ -172,5 +173,42 @@ func TestStopRepaintsTheScreenWithoutTheWorkingIndicator(t *testing.T) {
 	}
 	if after := output[index:]; strings.Contains(after, "esc to interrupt") || !strings.Contains(after, "• done") {
 		t.Fatalf("screen after the stop = %q", after)
+	}
+}
+
+// TestThreadNamesWriteWaitsForAReaderInsteadOfFailing: deck and a scenario read
+// state_5.sqlite while the fake writes it. A write that overlaps a reader must
+// wait for it, not fail with "database is locked" and take the pane down.
+func TestThreadNamesWriteWaitsForAReaderInsteadOfFailing(t *testing.T) {
+	home := t.TempDir()
+	names := newThreadNames(home, &bytes.Buffer{})
+	if err := names.start("thread-1", "/tmp/rollout.jsonl"); err != nil {
+		t.Fatal(err)
+	}
+	reader, err := sql.Open("sqlite", "file:"+filepath.Join(home, stateFile)+"?mode=ro")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = reader.Close() }()
+	tx, err := reader.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var count int
+	if err := tx.QueryRow(`SELECT count(*) FROM threads`).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	released := make(chan struct{})
+	go func() {
+		time.Sleep(300 * time.Millisecond)
+		_ = tx.Rollback()
+		close(released)
+	}()
+	if err := names.rename("Inside Codex"); err != nil {
+		t.Fatalf("rename while a reader held the database: %v", err)
+	}
+	<-released
+	if _, name := threadName(t, home); name.String != "Inside Codex" {
+		t.Fatalf("threads.name = %q, want the renamed thread", name.String)
 	}
 }
