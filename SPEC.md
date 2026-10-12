@@ -1141,6 +1141,12 @@ the slug: `Enter` goes as a tmux key name and every other element, a control byt
 literal text. A shell, an adapter that does not claim `sendkeys` and a name the adapter declines
 send nothing.
 
+A rename destined for a harness (a non-shell row whose adapter claims a push, adoption on, running or
+stopped) resolves a name or slug another row holds the way an adopted title does: the first free
+`-2`, `-3`, ... suffix instead of a refusal. The resolved name is what is stored and pushed; the slug,
+and so the tmux session, is unchanged. A shell row, or a row with adoption off, keeps the plain
+"already exists" refusal.
+
 The name in the plan is the row's name cleaned per harness by `agent.SanitisePushName`: control
 characters and escape sequences are removed first; then Copilot takes 1-100 runes and no `"` (a
 `"` becomes `'`, and the name is cut to 100 runes), Claude is cut to 200 runes, and any other kind

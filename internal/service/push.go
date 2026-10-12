@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/n-orlov/deck/internal/agent"
@@ -64,6 +65,7 @@ type PushResult struct {
 // always stands; a refused or failed push is reported in the result and never
 // as an error.
 func (s Service) RenameAndPush(ctx context.Context, sessionID, newName string) (store.Session, PushResult, error) {
+	newName = s.harnessRenameName(ctx, sessionID, newName)
 	session, err := s.Rename(ctx, sessionID, newName)
 	if err != nil {
 		return session, PushResult{}, err
@@ -74,6 +76,32 @@ func (s Service) RenameAndPush(ctx context.Context, sessionID, newName string) (
 		return session, result, nil
 	}
 	return updated, result, nil
+}
+
+// harnessRenameName resolves a deck rename that is destined for a harness (a
+// non-shell row whose adapter takes a pushed name, with adoption on, running or
+// not: a stopped row takes it at its next launch) the way an adopted title is
+// resolved: a name or slug another row holds gets the first free -2, -3, ...
+// suffix instead of a refusal (SPEC §8). The slug, and so the tmux identity,
+// is never touched. Any other row keeps Rename's own refusal, and a blank or
+// unknown row is left for Rename to refuse.
+func (s Service) harnessRenameName(ctx context.Context, sessionID, newName string) string {
+	trimmed := strings.TrimSpace(newName)
+	if s.Store == nil || trimmed == "" || sessionID == "" {
+		return newName
+	}
+	session, err := s.Store.GetSession(ctx, sessionID)
+	if err != nil {
+		return newName
+	}
+	if _, ok := s.pushAdapter(session); !ok || !s.adoptionOn(session) {
+		return newName
+	}
+	unique, err := s.uniqueAdoptedName(ctx, sessionID, trimmed)
+	if err != nil {
+		return newName
+	}
+	return unique
 }
 
 // pushStatusRefusals names why a status other than idle or running cannot
