@@ -55,6 +55,29 @@ func (s *Store) RecordSessionEvent(ctx context.Context, sessionID, kind, reason 
 	return nil
 }
 
+// ClaimSessionEvent records an event of kind with reason unless the row's most
+// recent event of that kind already carries that reason, and reports whether
+// it recorded one. The check and the insert are one statement, so two
+// processes (a running TUI's tick and a detached `deck new` applier) racing for
+// the same marker cannot both win.
+func (s *Store) ClaimSessionEvent(ctx context.Context, sessionID, kind, reason string, at int64) (bool, error) {
+	if sessionID == "" || kind == "" || at == 0 {
+		return false, errors.New("session id, event kind and timestamp are required")
+	}
+	res, err := s.db.ExecContext(ctx, `INSERT INTO events (session_id, at, kind, reason, payload)
+		SELECT ?, ?, ?, ?, ''
+		WHERE (SELECT reason FROM events WHERE session_id = ? AND kind = ? ORDER BY seq DESC LIMIT 1) IS NOT ?`,
+		sessionID, at, kind, reason, sessionID, kind, reason)
+	if err != nil {
+		return false, fmt.Errorf("claim session event %q: %w", kind, err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("claim session event %q: %w", kind, err)
+	}
+	return n > 0, nil
+}
+
 // LastSessionEventReason returns the reason of a row's most recent event of
 // kind, and whether there is one.
 func (s *Store) LastSessionEventReason(ctx context.Context, sessionID, kind string) (string, bool, error) {

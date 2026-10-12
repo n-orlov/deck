@@ -1385,6 +1385,17 @@ same plan through the push gate of §8 "Pushing a rename", which here also accep
 best effort: it depends on Codex's composer timing and on screen text, and a Codex release
 that changes either leaves the name unapplied rather than broken.
 
+**No TUI is needed to apply it.** The same attempt (the readiness gate, the paced text and
+`Enter`, the `harness_name_sent` marker) is `Service.ApplyLaunchNameWhenReady`: it repeats the
+tick's attempt every 250 ms for a `user` row until the name is typed, the row is past `starting`
+or gone, or two minutes pass. A detached `deck new --agent codex --name N` starts it as the
+hidden verb `deck _apply_name <id>` in its own session with no terminal, so the name reaches Codex
+with no other deck running; the create modal's session is served by the running TUI's tick. A
+tick and the applier racing for one row type the name once, because the marker is claimed in a
+single statement (`store.ClaimSessionEvent`). A prompt that never becomes ready records
+`harness_rename_failed` (reason `launch name not sent: <why>`), the applier exits 1 with the
+reason on stderr and in the audit log, and deck's name stays as given.
+
 **Reading Codex's name (R258, best effort).** Codex generates a title about a second after the
 first prompt and stores it in `<CODEX_HOME or ~/.codex>/state_5.sqlite`, table `threads`, column
 `name` (`NULL` until the thread has one). It declares `NameCaps.AutoTitle=true` and

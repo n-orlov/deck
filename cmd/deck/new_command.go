@@ -161,24 +161,49 @@ func runNewCommand(args []string, stdin io.Reader, stdout, stderr io.Writer) int
 }
 
 // createDetachedSession opens the profile's store and creates input's session
-// through the same service the TUI's create dialog uses.
+// through the same service the TUI's create dialog uses. A session whose
+// harness takes its name only through the keyboard once ready (Codex) gets a
+// detached applier, because no TUI is ticking to type it (SPEC §8.2).
 func createDetachedSession(settings config.Settings, registry *agent.Registry, input service.AgentCreateInput) (store.Session, error) {
-	db, err := store.Open(settings.Paths)
+	db, sessions, err := openDetachedService(settings, registry)
 	if err != nil {
 		return store.Session{}, err
 	}
-	defer func() { _ = db.Close() }()
+	session, err := sessions.CreateAgent(context.Background(), input)
+	_ = db.Close()
+	if err == nil && sessions.NeedsLaunchNameApply(session) {
+		// After the close: the applier opens the same database.
+		if spawnErr := startNameApplier(session.ID); spawnErr != nil {
+			logLaunchApplierFailure(settings, session.ID, spawnErr)
+		}
+	}
+	return session, err
+}
+
+func logLaunchApplierFailure(settings config.Settings, id string, err error) {
+	if logger, logErr := audit.New(settings.Paths, settings.Clock); logErr == nil {
+		_ = logger.Event("launch name applier for " + id + " not started: " + err.Error())
+	}
+}
+
+// openDetachedService is the store and service a command without a TUI uses.
+func openDetachedService(settings config.Settings, registry *agent.Registry) (*store.Store, service.Service, error) {
+	db, err := store.Open(settings.Paths)
+	if err != nil {
+		return nil, service.Service{}, err
+	}
 	logger, err := audit.New(settings.Paths, settings.Clock)
 	if err != nil {
-		return store.Session{}, err
+		_ = db.Close()
+		return nil, service.Service{}, err
 	}
 	executable, err := absoluteExecutable()
 	if err != nil {
-		return store.Session{}, err
+		_ = db.Close()
+		return nil, service.Service{}, err
 	}
 	client := tmux.Client{Socket: settings.Socket, Mouse: settings.TmuxMouse}
-	sessions := newSessionService(db, settings, logger, client, registry, executable)
-	return sessions.CreateAgent(context.Background(), input)
+	return db, newSessionService(db, settings, logger, client, registry, executable), nil
 }
 
 // newSessionService wires the service both the TUI and `deck new` use.

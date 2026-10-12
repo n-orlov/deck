@@ -42,8 +42,8 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	if isProfilesRequest(args) {
 		return runProfilesListing(os.Getenv, os.UserHomeDir, stdout)
 	}
-	if isNewCreateRequest(args) {
-		return runNewCommand(args, stdin, stdout, stderr)
+	if code, handled := runDetachedVerb(args, stdin, stdout, stderr); handled {
+		return code
 	}
 	isHook := len(args) == 2 && args[1] == "_hook"
 	positional, code, proceed := resolveStartupProfile(args, isHook, stdin, stderr)
@@ -63,6 +63,18 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	}
 
 	return runTUI(settings, stderr)
+}
+
+// runDetachedVerb runs the verbs that act on the profile's store with no TUI:
+// `deck new --agent ...` and the hidden `_apply_name` it starts.
+func runDetachedVerb(args []string, stdin io.Reader, stdout, stderr io.Writer) (int, bool) {
+	switch {
+	case isNewCreateRequest(args):
+		return runNewCommand(args, stdin, stdout, stderr), true
+	case isApplyNameRequest(args):
+		return runApplyNameCommand(args, stdin, stderr), true
+	}
+	return 0, false
 }
 
 // runHookCommand runs the hidden `_hook` verb and returns its exit code: 0 on

@@ -100,3 +100,13 @@ Feature: Codex session names travel between deck and the harness
     And the state database session "guard renamed" has no pending harness name
     And session "guard renamed" has no "harness_rename_failed" event
     When deck client "A" exits cleanly
+
+  Scenario: an explicit name given to a detached deck new reaches Codex with no deck running
+    Given a long-running fake "codex" binary is on PATH for future deck clients
+    When deck new creates codex session "detached audit" with no deck client running
+    Then the state database session "detached audit" has an event of kind "harness_name_sent" with reason containing "detached audit"
+    And the fake Codex pane of session "detached audit" is titled "detached audit"
+    When fake Codex session "detached audit" is prompted with "first"
+    Then the fake Codex thread of session "detached audit" is named "detached audit"
+    And the fake Codex session index of session "detached audit" ends with the name "detached audit"
+    And the state database session "detached audit" has name source "user"

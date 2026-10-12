@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -23,6 +24,7 @@ import (
 // screen, polling each with a deadline and never pausing for a fixed time.
 func registerHarnessNameCodexSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^deck client "([^"]+)" creates codex session with a blank name expecting the derived name "([^"]+)"$`, clientCreatesCodexSessionWithBlankName)
+	sc.Step(`^deck new creates codex session "([^"]+)" with no deck client running$`, deckNewCreatesCodexSessionDetached)
 	sc.Step(`^fake Codex session "([^"]+)" finishes its turn with "([^"]*)"$`, fakeCodexFinishesTurn)
 	sc.Step(`^fake Codex session "([^"]+)" generates the title "([^"]+)"$`, fakeCodexGeneratesTitle)
 	sc.Step(`^fake Codex session "([^"]+)" is asked to generate the title "([^"]+)"$`, fakeCodexIsAskedToGenerateTitle)
@@ -370,4 +372,32 @@ func latestCodexIndexName(path, id string) string {
 		}
 	}
 	return latest
+}
+
+// deckNewCreatesCodexSessionDetached runs the released binary's `deck new` as
+// a script would: no TUI, no client, only the fake agents on PATH. Whatever
+// types the name afterwards is deck's own detached applier.
+func deckNewCreatesCodexSessionDetached(ctx context.Context, name string) error {
+	h, err := scenarioHarness(ctx)
+	if err != nil {
+		return err
+	}
+	if h.agentPATHDir == "" || h.agentHOMEDir == "" {
+		return fmt.Errorf("a fake agent binary must be put on PATH before deck new runs")
+	}
+	cwd := filepath.Join(h.Home, "detached-cwd")
+	if err := os.MkdirAll(cwd, 0o700); err != nil {
+		return err
+	}
+	cmd := exec.CommandContext(ctx, h.Binary, "new", "--agent", "codex", "--name", name, "--cwd", cwd)
+	cmd.Env = append(os.Environ(), h.Environment(
+		"PATH="+h.agentPATHDir+string(os.PathListSeparator)+os.Getenv("PATH"), "HOME="+h.agentHOMEDir)...)
+	out, err := cmd.Output()
+	if err != nil {
+		return fmt.Errorf("deck new: %w", err)
+	}
+	if got := strings.TrimSpace(string(out)); got != name {
+		return fmt.Errorf("deck new printed %q, want %q", got, name)
+	}
+	return nil
 }
