@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 )
 
 // PiControlDirEnv names the environment variable that carries the directory
@@ -71,7 +72,10 @@ type ControlPusher interface {
 
 // PushControl appends the name to the session's control file, which the deck
 // extension created in session_start and removes in session_shutdown. A file
-// that does not exist, or is not a regular file, is "unavailable".
+// that does not exist, is not a regular file, or whose owner cannot be shown
+// to be running (see controlFileLive) is "unavailable"; a file whose owner is
+// shown dead is removed, so the push falls back to the keystroke plan instead
+// of reporting a write nobody will read as sent.
 func (Pi) PushControl(in ControlPushInput) (bool, error) {
 	path, ok := PiControlFile(in.DeckHome, in.ConversationID)
 	if !ok {
@@ -81,16 +85,42 @@ func (Pi) PushControl(in ControlPushInput) (bool, error) {
 	if !ok {
 		return false, nil
 	}
-	usable, err := controlFileUsable(path)
-	if !usable || err != nil {
+	live, err := controlFileLive(path)
+	if !live || err != nil {
 		return false, err
 	}
 	return appendControlLine(path, EncodePiControlName(name))
 }
 
-// controlFileUsable reports whether path is an existing regular file; a file
-// that is missing or of another kind is unavailable, not an error.
-func controlFileUsable(path string) (bool, error) {
+// piControlPidLine is the first line of a control file: the extension writes
+// {"pid":<Pi's process id>} when it creates the file (SPEC §8.3, R269). The
+// extension ignores it as it ignores any line without a name.
+type piControlPidLine struct {
+	Pid int `json:"pid"`
+}
+
+// EncodePiControlPid is the pid line the extension writes first.
+func EncodePiControlPid(pid int) []byte {
+	encoded, _ := json.Marshal(piControlPidLine{Pid: pid})
+	return append(encoded, '\n')
+}
+
+// decodePiControlPid reads the pid out of a control file's first line.
+func decodePiControlPid(first []byte) (int, bool) {
+	var parsed piControlPidLine
+	if err := json.Unmarshal(first, &parsed); err != nil || parsed.Pid <= 1 {
+		return 0, false
+	}
+	return parsed.Pid, true
+}
+
+// controlFileLive reports whether path is a regular file whose owning Pi is
+// shown running: its first line carries a pid and a signal-0 probe of that pid
+// succeeds. A missing file, another kind of file, a file with no pid line yet
+// (the extension is between creating it and writing the line) or a pid the
+// probe cannot reach are all "not live" and change nothing, except a pid the
+// probe reports gone: that file was left by a dead Pi and is removed.
+func controlFileLive(path string) (bool, error) {
 	info, err := os.Lstat(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return false, nil
@@ -98,13 +128,51 @@ func controlFileUsable(path string) (bool, error) {
 	if err != nil {
 		return false, fmt.Errorf("pi control file: %w", err)
 	}
-	return info.Mode().IsRegular(), nil
+	if !info.Mode().IsRegular() {
+		return false, nil
+	}
+	pid, ok := readControlPid(path)
+	if !ok {
+		return false, nil
+	}
+	if processRunning(pid) {
+		return true, nil
+	}
+	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return false, fmt.Errorf("remove stale pi control file: %w", err)
+	}
+	return false, nil
+}
+
+// readControlPid reads the first line of the control file without following a
+// symlink or blocking on a non-regular file.
+func readControlPid(path string) (int, bool) {
+	file, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0) //nolint:gosec // G304: path is PiControlFile of a validated conversation id under the profile's deck home
+	if err != nil {
+		return 0, false
+	}
+	defer func() { _ = file.Close() }()
+	buf := make([]byte, 128)
+	n, _ := file.Read(buf)
+	end := strings.IndexByte(string(buf[:n]), '\n')
+	if end < 0 {
+		return 0, false
+	}
+	return decodePiControlPid(buf[:end])
+}
+
+// processRunning is the signal-0 probe: a process that exists (even one this
+// user may not signal) is running, one that does not is gone.
+func processRunning(pid int) bool {
+	err := syscall.Kill(pid, 0)
+	return err == nil || errors.Is(err, syscall.EPERM)
 }
 
 // appendControlLine appends one line to an existing control file; a file that
-// vanished between the check and the open is unavailable.
+// vanished between the check and the open is unavailable. It never follows a
+// symlink at path.
 func appendControlLine(path string, line []byte) (bool, error) {
-	file, err := os.OpenFile(path, os.O_WRONLY|os.O_APPEND, 0) //nolint:gosec // G304: path is PiControlFile of a validated conversation id under the profile's deck home
+	file, err := os.OpenFile(path, os.O_WRONLY|os.O_APPEND|syscall.O_NOFOLLOW, 0) //nolint:gosec // G304: path is PiControlFile of a validated conversation id under the profile's deck home
 	if errors.Is(err, os.ErrNotExist) {
 		return false, nil
 	}

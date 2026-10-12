@@ -1544,14 +1544,22 @@ file the extension owns. The launch puts `DECK_PI_CONTROL_DIR` in the pane envir
 directory `<deck home>/pi/control` of the launching profile's own data root (so a second profile
 has its own directory and never reaches another profile's Pi). In `session_start` the extension
 creates, truncated, `<DECK_PI_CONTROL_DIR>/<Pi session id>.jsonl` (the id deck assigned with
-`--session-id`; an id that is not a single safe path component opens nothing), and watches it.
+`--session-id`; an id that is not a single safe path component opens nothing), writes as its
+first line `{"pid":<Pi's process id>}`, and watches it.
 Each line deck appends is one JSON object, `{"name":"<sanitised name>"}`; a complete line whose
 name is a non-blank string is handed to `pi.setSessionName()`, any other line is ignored, and a
 partial line waits for its newline. `session_shutdown` stops the watch, closes the file and removes
 it, so a `session_start` that replaces the session inside the same process opens the new session's
-file. A rename push (§8 "Pushing a rename") to a Pi row first tries the file: when it exists and is
-a regular file deck appends the line, sends no keystroke, and holds the sanitised name as pending
-for its echo. That path does not need the idle/running gate or the dialog check, since nothing is
+file. A rename push (§8 "Pushing a rename") to a Pi row first tries the file: when it exists, is
+a regular file and its owner is shown running, deck appends the line, sends no keystroke, and holds
+the sanitised name as pending for its echo. The liveness check is finite: the file's first line
+must be a JSON object whose `pid` is greater than 1, and a signal-0 probe of that pid must find a
+process (one this user may not signal still counts as running). A pid the probe finds gone means a
+dead Pi left the file behind, so deck removes it and the push takes the keystroke plan below, never
+reporting a send through the file. A file with no readable pid line (empty, no newline yet, or any
+other first line) is not live either and is left in place, since the extension may be between
+creating it and writing the line. The append opens with `O_NOFOLLOW`, so a control path that is a
+symlink is never written through. Pushing through the file does not need the idle/running gate or the dialog check, since nothing is
 typed. When the file is unavailable (no extension running, no hook executable in the environment,
 a launch without a data root) the push is the keystroke plan `Ctrl-U`, `/name <name>`, `Enter`
 under the §8 gate, and only then. Part of that gate is Pi's dialog check: the adapter is a
@@ -1562,8 +1570,8 @@ with the default keybindings `↑↓ navigate  enter select  escape/ctrl+c cance
 dialog is focused", because the typed line would answer the dialog instead of renaming. `setSessionName` fires Pi's `session_info_changed`, so the
 extension reports the pushed name back; the receiver recognises it as the pending push and clears
 it (R252 echo suppression), and it is never adopted as a name a human chose in Pi. `cmd/fake-pi`
-plays the extension's file handling when it runs with the extension and `DECK_PI_CONTROL_DIR`:
-it opens the control file at its `start` pane command (session_start), not at launch, so a Pi row
+plays the extension's file handling when it runs with the extension and `DECK_PI_CONTROL_DIR`
+(its own pid on the first line): it opens the control file at its `start` pane command (session_start), not at launch, so a Pi row
 that has not started has no file and a rename push to it takes the gated keystroke path. Its
 `dialog` pane command draws a `ui.confirm` selector with that hint line, and the next typed line that
 is not a JSON command answers the dialog and never reaches the editor.

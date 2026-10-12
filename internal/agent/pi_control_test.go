@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"bytes"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -54,7 +55,7 @@ func TestPiControlFilePushAppendsOneLinePerName(t *testing.T) {
 	if err := os.MkdirAll(filepath.Dir(file), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(file, nil, 0o600); err != nil {
+	if err := os.WriteFile(file, EncodePiControlPid(os.Getpid()), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	for _, name := range []string{"first", "se\ncond \"q\""} {
@@ -64,8 +65,11 @@ func TestPiControlFilePushAppendsOneLinePerName(t *testing.T) {
 	}
 	data, _ := os.ReadFile(file)
 	lines := strings.Split(strings.TrimSuffix(string(data), "\n"), "\n")
+	if lines[0] != strings.TrimSuffix(string(EncodePiControlPid(os.Getpid())), "\n") {
+		t.Fatalf("the owner's pid line was disturbed: %q", lines[0])
+	}
 	var got []string
-	for _, line := range lines {
+	for _, line := range lines[1:] {
 		name, ok := DecodePiControlLine([]byte(line))
 		if !ok {
 			t.Fatalf("unreadable line %q", line)
@@ -148,6 +152,7 @@ const ctx = { sessionManager: { getSessionId: () => "conv-1" } };
 handlers.session_start({ reason: "startup" }, ctx);
 const file = process.argv[3];
 if (!fs.existsSync(file)) throw new Error("control file not created");
+if (fs.readFileSync(file, "utf8") !== JSON.stringify({ pid: process.pid }) + "\n") throw new Error("control file lacks its pid line: " + fs.readFileSync(file, "utf8"));
 fs.appendFileSync(file, '{"name":"from deck"}\n{"name":"two"}\nnot json\n{"name":"par');
 await new Promise((r) => setTimeout(r, 600));
 fs.appendFileSync(file, 'tial"}\n');
@@ -169,5 +174,134 @@ console.log(JSON.stringify(names));
 	}
 	if got := strings.TrimSpace(string(out)); got != `["from deck","two","partial"]` {
 		t.Fatalf("setSessionName calls = %s", got)
+	}
+}
+
+// deadPid is the pid of a process that has started and been reaped.
+func deadPid(t *testing.T) int {
+	t.Helper()
+	cmd := exec.Command("true")
+	if err := cmd.Run(); err != nil {
+		t.Fatal(err)
+	}
+	return cmd.ProcessState.Pid()
+}
+
+func writeControlFile(t *testing.T, home string, content []byte) string {
+	t.Helper()
+	file, _ := PiControlFile(home, "conv-1")
+	if err := os.MkdirAll(filepath.Dir(file), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(file, content, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return file
+}
+
+// TestPiControlFileStaleOwnerIsRemovedAndNotReportedSent (R269): a control
+// file whose first line names a Pi that is gone was left behind by a dead Pi.
+// The push is not reported as delivered (the caller then takes the keystroke
+// fallback), the file is removed, and nothing is appended to it.
+func TestPiControlFileStaleOwnerIsRemovedAndNotReportedSent(t *testing.T) {
+	home := t.TempDir()
+	file := writeControlFile(t, home, EncodePiControlPid(deadPid(t)))
+	delivered, err := Pi{}.PushControl(ControlPushInput{DeckHome: home, ConversationID: "conv-1", Name: "late"})
+	if delivered || err != nil {
+		t.Fatalf("push to a dead Pi's control file = %v, %v; want unavailable", delivered, err)
+	}
+	if _, err := os.Lstat(file); !os.IsNotExist(err) {
+		t.Fatalf("the stale control file was not removed: %v", err)
+	}
+}
+
+// TestPiControlFileLiveOwnerReceivesTheLine (R269): a control file whose
+// owner passes the pid check receives the appended line and stays in place.
+func TestPiControlFileLiveOwnerReceivesTheLine(t *testing.T) {
+	home := t.TempDir()
+	file := writeControlFile(t, home, EncodePiControlPid(os.Getpid()))
+	delivered, err := Pi{}.PushControl(ControlPushInput{DeckHome: home, ConversationID: "conv-1", Name: "now"})
+	if !delivered || err != nil {
+		t.Fatalf("push to a live Pi's control file = %v, %v", delivered, err)
+	}
+	data, _ := os.ReadFile(file)
+	if want := string(EncodePiControlPid(os.Getpid())) + string(EncodePiControlName("now")); string(data) != want {
+		t.Fatalf("control file = %q, want %q", data, want)
+	}
+}
+
+// TestPiControlFileWithoutAPidLineIsNotLive (R269): a file with no readable
+// owner cannot be shown live, so no line is appended; it is left in place
+// because its extension may be between creating it and writing the pid.
+func TestPiControlFileWithoutAPidLineIsNotLive(t *testing.T) {
+	for name, content := range map[string]string{
+		"empty":         "",
+		"no newline":    `{"pid":` + "1234}",
+		"a name line":   `{"name":"x"}` + "\n",
+		"pid zero":      `{"pid":0}` + "\n",
+		"pid one":       `{"pid":1}` + "\n",
+		"not json":      "hello\n",
+		"negative pid":  `{"pid":-5}` + "\n",
+		"string pid":    `{"pid":"7"}` + "\n",
+		"empty object":  "{}\n",
+		"array":         "[1]\n",
+		"huge pid":      `{"pid":99999999999999999999}` + "\n",
+		"float pid":     `{"pid":1.5}` + "\n",
+		"null pid":      `{"pid":null}` + "\n",
+		"boolean pid":   `{"pid":true}` + "\n",
+		"nested object": `{"pid":{}}` + "\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			home := t.TempDir()
+			file := writeControlFile(t, home, []byte(content))
+			delivered, err := Pi{}.PushControl(ControlPushInput{DeckHome: home, ConversationID: "conv-1", Name: "x"})
+			if delivered || err != nil {
+				t.Fatalf("push = %v, %v; want unavailable", delivered, err)
+			}
+			if data, _ := os.ReadFile(file); string(data) != content {
+				t.Fatalf("control file changed: %q", data)
+			}
+		})
+	}
+}
+
+// TestPiControlFileSymlinkIsNeverWritten (R269): with the control path a
+// symlink to a live-looking file, the target is not written and the push is
+// unavailable. appendControlLine itself refuses the link too (O_NOFOLLOW),
+// which a check-then-open race could otherwise slip past.
+func TestPiControlFileSymlinkIsNeverWritten(t *testing.T) {
+	home := t.TempDir()
+	target := filepath.Join(t.TempDir(), "target.jsonl")
+	body := EncodePiControlPid(os.Getpid())
+	if err := os.WriteFile(target, body, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	file, _ := PiControlFile(home, "conv-1")
+	if err := os.MkdirAll(filepath.Dir(file), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, file); err != nil {
+		t.Fatal(err)
+	}
+	delivered, err := Pi{}.PushControl(ControlPushInput{DeckHome: home, ConversationID: "conv-1", Name: "x"})
+	if delivered || err != nil {
+		t.Fatalf("push through a symlink = %v, %v; want unavailable", delivered, err)
+	}
+	if delivered, err := appendControlLine(file, EncodePiControlName("direct")); delivered || err == nil {
+		t.Fatalf("appendControlLine followed a symlink: %v, %v", delivered, err)
+	}
+	if data, _ := os.ReadFile(target); string(data) != string(body) {
+		t.Fatalf("the symlink target was written: %q", data)
+	}
+}
+
+// TestPiControlFileExtensionWritesItsPid pins the extension text: the pid line
+// follows the open, and deck's reader accepts what it writes.
+func TestPiControlFileExtensionWritesItsPid(t *testing.T) {
+	if !strings.Contains(PiExtensionSource, `JSON.stringify({ pid: process.pid })`) {
+		t.Error("the extension does not write its pid as the first control-file line")
+	}
+	if pid, ok := decodePiControlPid(bytes.TrimSuffix(EncodePiControlPid(4242), []byte("\n"))); !ok || pid != 4242 {
+		t.Errorf("pid line round trip = %d, %v", pid, ok)
 	}
 }

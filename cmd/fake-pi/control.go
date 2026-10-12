@@ -57,7 +57,7 @@ func openControlFile(hooks extensionHooks, getenv func(string) string, out io.Wr
 	if !ok || agent.PiControlDir(parentOf(dir)) != dir {
 		return nil, fmt.Errorf("control directory %q is not <deck home>/pi/control", dir)
 	}
-	if err := os.WriteFile(path, nil, 0o600); err != nil {
+	if err := os.WriteFile(path, agent.EncodePiControlPid(os.Getpid()), 0o600); err != nil {
 		return nil, fmt.Errorf("create control file: %w", err)
 	}
 	c := &controlFile{path: path, hooks: hooks, out: out, stop: make(chan struct{}), stopped: make(chan struct{})}
@@ -72,7 +72,7 @@ func parentOf(dir string) string {
 
 func (c *controlFile) watch() {
 	defer close(c.stopped)
-	var offset int64
+	offset := int64(len(agent.EncodePiControlPid(os.Getpid())))
 	var pending []byte
 	ticker := time.NewTicker(controlPoll)
 	defer ticker.Stop()

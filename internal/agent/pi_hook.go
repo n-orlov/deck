@@ -119,6 +119,10 @@ export default function (pi) {
       fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
       const file = path.join(dir, id + ".jsonl");
       const open = { file, fd: fs.openSync(file, "w+", 0o600), offset: 0, pending: "" };
+      // The first line names the owning Pi, so deck can tell a live file from one a dead Pi left.
+      const pidLine = JSON.stringify({ pid: process.pid }) + "\n";
+      fs.writeSync(open.fd, pidLine, 0);
+      open.offset = Buffer.byteLength(pidLine);
       control = open;
       fs.watchFile(file, { interval: 100, persistent: false }, () => drainControl(open));
     } catch (_) {

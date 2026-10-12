@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
 	"testing"
@@ -28,7 +29,7 @@ func piControlRig(t *testing.T, home string, open bool) (Service, *sendRecorder,
 		if err := os.MkdirAll(filepath.Dir(file), 0o700); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(file, nil, 0o600); err != nil {
+		if err := os.WriteFile(file, agent.EncodePiControlPid(os.Getpid()), 0o600); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -46,7 +47,7 @@ func TestPiControlFilePushWritesTheNameAndTypesNothing(t *testing.T) {
 		t.Fatal(err)
 	}
 	written, _ := os.ReadFile(file)
-	if want := string(agent.EncodePiControlName("pushed name")); string(written) != want {
+	if want := string(agent.EncodePiControlPid(os.Getpid())) + string(agent.EncodePiControlName("pushed name")); string(written) != want {
 		t.Fatalf("control file = %q, want %q", written, want)
 	}
 	if len(rec.plans) != 0 || !result.Sent {
@@ -75,6 +76,34 @@ func TestPiControlFileUnavailableFallsBackToSendKeys(t *testing.T) {
 	}
 }
 
+// TestPiControlFileLeftByADeadPiFallsBackToSendKeys (R269): a control file a
+// dead Pi left behind is removed and the rename is sent by the keystroke plan,
+// never reported as sent through the file.
+func TestPiControlFileLeftByADeadPiFallsBackToSendKeys(t *testing.T) {
+	svc, rec, id, file := piControlRig(t, t.TempDir(), false)
+	dead := exec.Command("true")
+	if err := dead.Run(); err != nil {
+		t.Fatal(err)
+	}
+	stale := agent.EncodePiControlPid(dead.ProcessState.Pid())
+	if err := os.MkdirAll(filepath.Dir(file), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(file, stale, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := svc.RenameAndPush(context.Background(), id, "after death"); err != nil {
+		t.Fatal(err)
+	}
+	want := [][]string{{"\x15", "/name after death", "Enter"}}
+	if !reflect.DeepEqual(rec.plans, want) {
+		t.Fatalf("plans = %q, want the keystroke fallback %q", rec.plans, want)
+	}
+	if _, err := os.Lstat(file); !os.IsNotExist(err) {
+		t.Fatalf("the stale control file was not removed: %v", err)
+	}
+}
+
 // TestPiControlFileIsPerProfile: a control file under another profile's deck
 // home is never written; this profile falls back to keystrokes.
 func TestPiControlFileIsPerProfile(t *testing.T) {
@@ -84,7 +113,8 @@ func TestPiControlFileIsPerProfile(t *testing.T) {
 	if err := os.MkdirAll(filepath.Dir(otherFile), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(otherFile, nil, 0o600); err != nil {
+	ownerLine := agent.EncodePiControlPid(os.Getpid())
+	if err := os.WriteFile(otherFile, ownerLine, 0o600); err != nil {
 		t.Fatal(err)
 	}
 	mine := t.TempDir()
@@ -92,7 +122,7 @@ func TestPiControlFileIsPerProfile(t *testing.T) {
 	if _, _, err := svc.RenameAndPush(context.Background(), id, "mine"); err != nil {
 		t.Fatal(err)
 	}
-	if data, _ := os.ReadFile(otherFile); len(data) != 0 {
+	if data, _ := os.ReadFile(otherFile); string(data) != string(ownerLine) {
 		t.Fatalf("another profile's control file was written: %q", data)
 	}
 	if len(rec.plans) != 1 || filepath.Dir(file) != filepath.Join(mine, "pi", "control") {
