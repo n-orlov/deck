@@ -121,7 +121,7 @@ func TestResumeLaunchesAdapterResumeArgvUnderLease(t *testing.T) {
 	if launches != 2 {
 		t.Fatalf("launch records = %d, want 2 (create + resume)", launches)
 	}
-	wantPrefix := []string{"claude", "--resume", created.ConversationID, "--permission-mode", "acceptEdits", "--name", "Claude: resume"}
+	wantPrefix := []string{"claude", "--resume", created.ConversationID, "--permission-mode", "acceptEdits", "--name=Claude: resume"}
 	if len(argv) != len(wantPrefix)+2 || strings.Join(argv[:len(wantPrefix)], "\x00") != strings.Join(wantPrefix, "\x00") || argv[len(wantPrefix)] != "--settings" {
 		t.Fatalf("resume argv = %#v, want base argv followed by deck --settings", argv)
 	}

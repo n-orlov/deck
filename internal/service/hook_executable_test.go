@@ -105,7 +105,7 @@ func TestPiLaunchInstallsTheHookCommandOfTheLaunchingBinary(t *testing.T) {
 		}
 	}
 	// A user row passes its name with --name (R261).
-	wantArgv := []string{"pi", "--session-id", created.ConversationID, "--name", "Pi: launch", "-e", wantExtension}
+	wantArgv := []string{"pi", "--session-id", created.ConversationID, "--name=Pi: launch", "-e", wantExtension}
 	if strings.Join(argv, "\x00") != strings.Join(wantArgv, "\x00") {
 		t.Fatalf("pi launch argv = %#v, want %#v", argv, wantArgv)
 	}

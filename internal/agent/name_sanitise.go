@@ -168,3 +168,16 @@ func SanitisePushName(kind, name string) (string, bool) {
 	}
 	return clean, clean != ""
 }
+
+// nameFlagSpelled returns `-n` or `--name` when arg spells the launch-name
+// flag in any form a CLI parser reads as one: bare, `--name=<x>`, `-n=<x>` or
+// the attached short form `-nFOO`. It returns "" for every other argument.
+func nameFlagSpelled(arg string) string {
+	if arg == "--name" || strings.HasPrefix(arg, "--name=") {
+		return "--name"
+	}
+	if strings.HasPrefix(arg, "-n") {
+		return "-n"
+	}
+	return ""
+}

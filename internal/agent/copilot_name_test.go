@@ -16,13 +16,13 @@ func copilotNameArgv(t *testing.T, name string) []string {
 }
 
 // TestCopilotNameFirstLaunchCarriesDashN (R259): a first launch with a name
-// passes `-n <name>` exactly once, before --no-auto-update and the launch args.
+// passes `--name=<name>` exactly once, before --no-auto-update and the launch args.
 func TestCopilotNameFirstLaunchCarriesDashN(t *testing.T) {
 	argv, err := NewCopilot().Launch(LaunchInput{ConversationID: copilotTestID, Profile: "edits", Name: "my work", ExtraArgs: []string{"--model", "gpt-5"}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"copilot", "--session-id", copilotTestID, "--allow-tool=write", "-n", "my work", "--no-auto-update", "--model", "gpt-5"}
+	want := []string{"copilot", "--session-id", copilotTestID, "--allow-tool=write", "--name=my work", "--no-auto-update", "--model", "gpt-5"}
 	if !reflect.DeepEqual(argv, want) {
 		t.Fatalf("argv = %q, want %q", argv, want)
 	}
@@ -59,8 +59,8 @@ func TestCopilotNameSanitiser(t *testing.T) {
 		{"clamp does not leave trailing space", strings.Repeat("a", 99) + " b", strings.Repeat("a", 99)},
 	} {
 		argv := copilotNameArgv(t, tc.in)
-		if i := indexOf(argv, "-n"); i < 0 || argv[i+1] != tc.want {
-			t.Errorf("%s: argv = %q, want -n %q", tc.name, argv, tc.want)
+		if i := indexOf(argv, "--name="+tc.want); i < 0 {
+			t.Errorf("%s: argv = %q, want --name=%q", tc.name, argv, tc.want)
 		}
 	}
 	if got := len([]rune(copilotLaunchName(r100 + r100))); got != 100 {

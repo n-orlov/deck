@@ -601,6 +601,10 @@ var valueOptions = map[string]func(*options, string){
 // knows. consumed is how many arguments it used (0 for a positional argument).
 func parseOption(result *options, args []string, index int) (consumed int, err error) {
 	argument := args[index]
+	if flag, value, attached := strings.Cut(argument, "="); attached && flag == "--name" {
+		valueOptions[flag](result, value) // the attached form (R268)
+		return 1, nil
+	}
 	if set, takesValue := valueOptions[argument]; takesValue {
 		value, err := flagValue(args, index)
 		if err != nil {

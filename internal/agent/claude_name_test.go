@@ -7,8 +7,8 @@ import (
 
 func countNameFlag(argv []string) int {
 	n := 0
-	for i, a := range argv {
-		if a == "--name" && i+1 < len(argv) {
+	for _, a := range argv {
+		if strings.HasPrefix(a, "--name=") {
 			n++
 		}
 	}
@@ -16,16 +16,16 @@ func countNameFlag(argv []string) int {
 }
 
 func nameValue(argv []string) string {
-	for i, a := range argv {
-		if a == "--name" && i+1 < len(argv) {
-			return argv[i+1]
+	for _, a := range argv {
+		if v, ok := strings.CutPrefix(a, "--name="); ok {
+			return v
 		}
 	}
 	return ""
 }
 
 // TestClaudeNameArgvPerRowKind asserts the --name argv for each row kind: a
-// user row carries `--name <n>` exactly once on launch, on resume and on the
+// user row carries `--name=<n>` exactly once on launch, on resume and on the
 // fresh `--session-id` relaunch of R207; derived and harness rows carry none.
 func TestClaudeNameArgvPerRowKind(t *testing.T) {
 	c := NewClaude()

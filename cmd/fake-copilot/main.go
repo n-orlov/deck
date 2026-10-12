@@ -265,11 +265,11 @@ func parse(args []string) (options, string) {
 }
 
 var knownFlags = map[string]bool{
-	"--session-id": true, "--plugin-dir": true, "--allow-tool": true, "--allow-all": true, "--no-auto-update": true, "-n": true,
+	"--session-id": true, "--plugin-dir": true, "--allow-tool": true, "--allow-all": true, "--no-auto-update": true, "-n": true, "--name": true,
 }
 
 func flagTakesValue(name string) bool {
-	return name == "--session-id" || name == "--plugin-dir" || name == "--allow-tool" || name == "-n"
+	return name == "--session-id" || name == "--plugin-dir" || name == "--allow-tool" || name == "-n" || name == "--name"
 }
 
 func assign(result *options, name, value string) {
@@ -280,7 +280,7 @@ func assign(result *options, name, value string) {
 		result.pluginDir = value
 	case "--allow-tool":
 		result.allowTools = append(result.allowTools, value)
-	case "-n":
+	case "-n", "--name":
 		result.name = value
 	case "--allow-all":
 		result.allowAll = true

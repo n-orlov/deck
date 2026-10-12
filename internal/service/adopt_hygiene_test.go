@@ -176,7 +176,7 @@ func assertNoNameInArgv(t *testing.T, got store.Session) {
 	}
 	for _, argv := range [][]string{launch, resume} {
 		for _, arg := range argv {
-			if strings.Contains(arg, "touch") || strings.Contains(arg, got.Name) || arg == "--name" {
+			if strings.Contains(arg, "touch") || strings.Contains(arg, got.Name) || arg == "--name" || strings.HasPrefix(arg, "--name=") {
 				t.Fatalf("argv carries the adopted title: %q", argv)
 			}
 		}

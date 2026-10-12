@@ -1243,13 +1243,18 @@ sessions too, and on the session-end path they share the same budget `_hook` is 
 which is one more reason that path never waits for the event hook (§10.3).
 
 **Launch name (R254).** Claude declares `NameCaps.LaunchName=flag`. A row whose `name_source`
-is `user` and whose name is not blank launches with `--name <name>`: on the first launch
+is `user` and whose name is not blank launches with `--name=<name>`: on the first launch
 (`--session-id`), on `--resume`, and on the fresh `--session-id` relaunch of a conversation
 that has no transcript yet (R207). Each carries the flag exactly once, after the permission
-flags and before the row's `launch_args`. A `derived` or `harness` row passes no name flag, so
-Claude keeps its own auto-title. `Launch` and `Resume` refuse, with a deck-side error that
-names the flag and no argv, a `launch_args` entry that is `-n`, `--name` or `--name=<x>`: deck
-owns the name Claude is given.
+flags and before the row's `launch_args`. The name is one attached argv element (R268), so a
+name that begins with `-` (`-rm`) is never a flag of its own, and it passes through the same
+sanitiser as Pi's and Copilot's (control characters and escape sequences go, whitespace
+collapses, it is trimmed and cut to 200 runes); a name with nothing left passes no flag. A
+`derived` or `harness` row passes no name flag, so Claude keeps its own auto-title. `Launch`
+and `Resume` refuse, with a deck-side error that names the flag and no argv, a `launch_args`
+entry that is `-n`, `--name`, `--name=<x>`, `-n=<x>` or the attached short form `-nFOO`: deck
+owns the name Claude is given. Every other extra argument (`-p foo`, `--x`, one that holds a
+newline) is appended unchanged, each as the one argv element it was.
 
 **Reading Claude's name (R255).** Claude declares `NameCaps.AutoTitle=true` and
 `ObserveName=[hook, transcript, pane_title]`. A trigger hook (`Stop`, `UserPromptSubmit`) is read
@@ -1576,13 +1581,16 @@ Pi has no event for a permission prompt or a failed turn, so a Pi row never repo
 
 **Launch name (R261).** Pi declares `NameCaps.LaunchName=flag` and `AutoTitle=false`: Pi never
 titles a session itself, so deck's name is the only name it has. A row whose `name_source` is
-`user` and whose name is not blank launches and resumes with `--name <name>`, once, after the
+`user` and whose name is not blank launches and resumes with `--name=<name>` (one attached
+argv element, R268, so a name that begins with `-` is never a flag of its own), once, after the
 profile's flag (`--approve`) and before the row's `launch_args`; the flag rides every launch
 and every resume, so the name survives a restart. A `derived` or `harness` row passes no
 `--name`, and a blank name never passes one. The name is sanitised first (control characters
-go, whitespace collapses, it is trimmed and cut to the shared harness limit). `-n`, `--name`
-and `--name=<x>` in `launch_args` are refused by `Launch` and `Resume` with an error naming
-the flag, because deck owns the name. `cmd/fake-pi` accepts `-n`/`--name <value>` and echoes it.
+go, whitespace collapses, it is trimmed and cut to the shared harness limit). `-n`, `--name`,
+`--name=<x>`, `-n=<x>` and the attached short form `-nFOO` in `launch_args` are refused by
+`Launch` and `Resume` with an error naming the flag, because deck owns the name; every other
+extra argument (`-p foo`, `--x`, one that holds a newline) is appended unchanged.
+`cmd/fake-pi` accepts `-n`/`--name <value>` and `--name=<value>` and echoes it.
 
 ### 8.4 Copilot CLI
 
@@ -1593,8 +1601,9 @@ Copilot exits 1 on it and the failure is then deck's, not a dead pane's.
 **Argv.** `copilot --session-id <conversation-id>`, then the profile's flags (§5), then
 `--no-auto-update`, then the row's `launch_args` verbatim. `Launch` and `Resume` refuse, with a
 deck-side error and no argv, a `launch_args` entry that is `--continue`, `--resume`, `--connect`,
-`--remote`, `--acp`, `--yolo`, `-n` or `--name`, bare or in `--flag=value` form, for every profile; any other
-extra argument (for example `--model gpt-5`) is appended unchanged:
+`--remote`, `--acp`, `--yolo`, `-n` or `--name`, bare or in `--flag=value` form (the name flag also in the
+attached short form `-nFOO`), for every profile; any other extra argument (for example `--model gpt-5`,
+`-p foo`, `--x`, or one that holds a newline) is appended unchanged:
 
 | profile | flags |
 |---|---|
@@ -1611,12 +1620,13 @@ contains `--continue`, `--resume`, `--connect`, `--remote`, `--acp` or `--yolo`.
 
 **Launch name (R259).** Copilot declares `NameCaps.LaunchName=flag_new_session_only`. A row
 whose `name_source` is `user` and whose name is not blank launches a *new* conversation with
-`-n <name>`, once, after the profile's flags and before `--no-auto-update`: the first launch
+`--name=<name>` (one attached argv element, R268, so a name that begins with `-` is never a
+flag of its own), once, after the profile's flags and before `--no-auto-update`: the first launch
 and the fresh-once launch, which mints a new conversation id. `Resume` (a relaunch of an
 existing conversation id) never carries `-n`, so Copilot keeps the name it already holds, and
 a `derived` or `harness` row never passes one. The name is sanitised first: `"` becomes `'`,
 control characters go, it is trimmed and cut to 100 runes. A blank name passes no flag. `-n`,
-`--name`, `-n=<x>` and `--name=<x>` in `launch_args` are refused by `Launch` and `Resume` with a
+`--name`, `-n=<x>`, `--name=<x>` and `-nFOO` in `launch_args` are refused by `Launch` and `Resume` with a
 deck-side error that names the flag and no argv: deck owns the name.
 
 **Reading Copilot's name (R260).** Copilot declares `NameCaps.AutoTitle=true` and

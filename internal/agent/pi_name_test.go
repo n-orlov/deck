@@ -9,16 +9,16 @@ const piNameTestID = "9b2d1c64-3e5f-4a6b-8c7d-0e1f2a3b4c5d"
 
 func piNameFlagValues(argv []string) []string {
 	var out []string
-	for i, a := range argv {
-		if a == "--name" && i+1 < len(argv) {
-			out = append(out, argv[i+1])
+	for _, a := range argv {
+		if v, ok := strings.CutPrefix(a, "--name="); ok {
+			out = append(out, v)
 		}
 	}
 	return out
 }
 
 // TestPiNameArgvPerRowKind (R261): a `user` row (Name set by the service) carries
-// `--name <n>` once on launch and on resume; a `derived`/`harness` row (Name
+// `--name=<n>` once on launch and on resume; a `derived`/`harness` row (Name
 // blank) carries none, so Pi keeps its own dummy name.
 func TestPiNameArgvPerRowKind(t *testing.T) {
 	p := NewPi()

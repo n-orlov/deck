@@ -360,6 +360,12 @@ func parse(args []string) (options, error) {
 			message = append(message, argument)
 			continue
 		}
+		if flag, value, attached := strings.Cut(argument, "="); attached && flag == "--name" {
+			if err := result.apply(flag, value); err != nil { // the attached form (R268)
+				return result, err
+			}
+			continue
+		}
 		if index+1 == len(args) {
 			return result, fmt.Errorf("option %q requires a value", argument)
 		}

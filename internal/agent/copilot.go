@@ -74,7 +74,7 @@ func (Copilot) Resume(in ResumeInput) ([]string, error) {
 	return copilotArgv(in.ConversationID, in.Profile, "", in.ExtraArgs)
 }
 
-// copilotLaunchName is the value `-n` carries: the name with `"` replaced by
+// copilotLaunchName is the value `--name=` carries: the name with `"` replaced by
 // `'`, trimmed and cut to 100 runes (Copilot's own limit). "" passes no flag.
 func copilotLaunchName(name string) string {
 	clean, _ := SanitisePushName("copilot", name)
@@ -90,8 +90,12 @@ func copilotLaunchName(name string) string {
 var copilotForbiddenExtra = []string{"--continue", "--resume", "--connect", "--remote", "--acp", "--yolo", "-n", "--name"}
 
 // copilotForbiddenExtraFlag returns the forbidden flag arg spells, bare or in
-// --flag=value form, and "" when arg is allowed.
+// --flag=value form (the name flag also in the attached short form `-nFOO`),
+// and "" when arg is allowed.
 func copilotForbiddenExtraFlag(arg string) string {
+	if flag := nameFlagSpelled(arg); flag != "" {
+		return flag
+	}
 	name, _, _ := strings.Cut(arg, "=")
 	for _, bad := range copilotForbiddenExtra {
 		if name == bad {
@@ -117,7 +121,7 @@ func copilotArgv(conversationID, profile, name string, extra []string) ([]string
 	argv := []string{"copilot", "--session-id", conversationID}
 	argv = append(argv, flags...)
 	if name != "" {
-		argv = append(argv, "-n", name)
+		argv = append(argv, "--name="+name)
 	}
 	argv = append(argv, "--no-auto-update")
 	return append(argv, extra...), nil

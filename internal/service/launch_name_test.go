@@ -115,11 +115,11 @@ func TestCopilotNameServiceArgv(t *testing.T) {
 			t.Fatalf("%s: %v", tc.name, err)
 		}
 		has := false
-		for i, a := range argv {
-			has = has || (a == "-n" && i+1 < len(argv) && argv[i+1] == "typed")
+		for _, a := range argv {
+			has = has || a == "--name=typed"
 		}
 		if has != tc.want {
-			t.Errorf("%s: argv %q has -n = %v, want %v", tc.name, argv, has, tc.want)
+			t.Errorf("%s: argv %q has --name=typed = %v, want %v", tc.name, argv, has, tc.want)
 		}
 	}
 }
@@ -148,8 +148,8 @@ func TestPiNameServiceArgv(t *testing.T) {
 			t.Fatalf("%s: %v", tc.name, err)
 		}
 		has := false
-		for i, a := range argv {
-			has = has || (a == "--name" && i+1 < len(argv) && argv[i+1] == tc.row)
+		for _, a := range argv {
+			has = has || a == "--name="+tc.row
 		}
 		if has != tc.want {
 			t.Errorf("%s: argv %q has --name = %v, want %v", tc.name, argv, has, tc.want)

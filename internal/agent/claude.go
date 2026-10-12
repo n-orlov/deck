@@ -183,8 +183,10 @@ func (c Claude) Resume(in ResumeInput) ([]string, error) {
 }
 
 // claudeArgv assembles head, the permission flags, the name flag and extra.
-// A non-blank name rides as `--name <name>` (R254): Claude shows it in its
-// own session list and resume picker. A blank name passes no flag at all, so
+// A non-blank name rides as the single attached element `--name=<name>`
+// (R254, R268), sanitised like Pi's and Copilot's, so a name that begins with
+// `-` is never a flag of its own: Claude shows it in its own session list and
+// resume picker. A blank name passes no flag at all, so
 // a derived or harness row keeps Claude's own auto-title. Extra arguments
 // that spell the name flag are refused: deck owns the name.
 func claudeArgv(head, permArgs []string, name string, extra []string) ([]string, error) {
@@ -194,21 +196,16 @@ func claudeArgv(head, permArgs []string, name string, extra []string) ([]string,
 		}
 	}
 	argv := append(append([]string{}, head...), permArgs...)
-	if name = strings.TrimSpace(name); name != "" {
-		argv = append(argv, "--name", name)
+	if clean, ok := SanitisePushName("claude", name); ok {
+		argv = append(argv, "--name="+clean)
 	}
 	return append(argv, extra...), nil
 }
 
-// claudeForbiddenExtraFlag returns the name flag arg spells (`-n`, `--name`
-// or `--name=<x>`), and "" when arg is allowed.
-func claudeForbiddenExtraFlag(arg string) string {
-	name, _, _ := strings.Cut(arg, "=")
-	if name == "-n" || name == "--name" {
-		return name
-	}
-	return ""
-}
+// claudeForbiddenExtraFlag returns the name flag arg spells (`-n`, `--name`,
+// `--name=<x>`, `-n=<x>` or the attached short form `-nFOO`), and "" when arg
+// is allowed.
+func claudeForbiddenExtraFlag(arg string) string { return nameFlagSpelled(arg) }
 
 var claudeHookEvents = []string{
 	"SessionStart",

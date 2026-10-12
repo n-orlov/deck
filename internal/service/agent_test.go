@@ -106,7 +106,7 @@ func TestCreateAgentAssignsConversationIDAndLaunchesClaudeArgv(t *testing.T) {
 		t.Fatalf("no launch audit record among %#v", records)
 	}
 	argv := jsonStrings(launch["argv"])
-	wantPrefix := []string{"claude", "--session-id", session.ConversationID, "--permission-mode", "acceptEdits", "--name", "Claude: session"}
+	wantPrefix := []string{"claude", "--session-id", session.ConversationID, "--permission-mode", "acceptEdits", "--name=Claude: session"}
 	if len(argv) != len(wantPrefix)+2 || strings.Join(argv[:len(wantPrefix)], "\x00") != strings.Join(wantPrefix, "\x00") || argv[len(wantPrefix)] != "--settings" {
 		t.Fatalf("launch argv = %#v, want base argv followed by deck --settings", argv)
 	}

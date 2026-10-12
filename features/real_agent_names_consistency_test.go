@@ -130,7 +130,7 @@ func TestClaudeArgvNameFlagFollowsLaunchKind(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, a := range argv {
-		if a == "--name" || a == "-n" {
+		if a == "--name" || a == "-n" || strings.HasPrefix(a, "--name=") {
 			t.Fatalf("unnamed launch argv carries a name flag: %v", argv)
 		}
 	}
@@ -139,7 +139,7 @@ func TestClaudeArgvNameFlagFollowsLaunchKind(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(strings.Join(argv, " "), "--name pinned") {
+	if !strings.Contains(strings.Join(argv, " "), "--name=pinned") {
 		t.Fatalf("explicit launch argv lacks --name: %v", argv)
 	}
 }

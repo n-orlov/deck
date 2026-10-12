@@ -79,20 +79,15 @@ func piArgv(conversationID, profile, name string, extra []string) ([]string, err
 		return nil, fmt.Errorf("pi: unsupported permission profile %q", profile)
 	}
 	if clean, ok := SanitisePushName("pi", name); ok {
-		argv = append(argv, "--name", clean)
+		argv = append(argv, "--name="+clean)
 	}
 	return append(argv, extra...), nil
 }
 
-// piForbiddenExtraFlag returns the name flag arg spells (`-n`, `--name` or
-// `--name=<x>`), and "" when arg is allowed.
-func piForbiddenExtraFlag(arg string) string {
-	flag, _, _ := strings.Cut(arg, "=")
-	if flag == "-n" || flag == "--name" {
-		return flag
-	}
-	return ""
-}
+// piForbiddenExtraFlag returns the name flag arg spells (`-n`, `--name`,
+// `--name=<x>`, `-n=<x>` or the attached short form `-nFOO`), and "" when arg
+// is allowed.
+func piForbiddenExtraFlag(arg string) string { return nameFlagSpelled(arg) }
 
 // Instrument installs deck's Pi extension (PiExtensionSource) with `-e` and
 // hands it the launching deck binary's absolute path, verbatim, through
