@@ -123,7 +123,7 @@ func TestBrokenContractCodexThreadsColumnKeepsDummyName(t *testing.T) {
 
 // Copilot: workspace.yaml's name key is renamed upstream (name -> title,
 // user_named -> named_by_user).
-func TestBrokenContractCopilotWorkspaceYAMLKeyKeepsDummyName(t *testing.T) {
+func TestBrokenContractCopilotSessionYAMLKeyKeepsDummyName(t *testing.T) {
 	copilotHome := t.TempDir()
 	svc, db, _, _ := newAgentTestService(t, map[string]string{"COPILOT_HOME": copilotHome}, "broken-copilot")
 	svc.Agents.Register(agent.NewCopilot())
