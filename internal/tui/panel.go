@@ -1417,7 +1417,7 @@ func (m Model) confirmOrSettingsOverlayOpen() bool {
 func (m Model) scrollWheelOverlay(dir int) (Model, bool) {
 	switch m.wheelScrollableOverlay() {
 	case overlayScrollHelp:
-		m.helpScroll = m.dialogScrollByLines(m.helpScroll, helpText(m.settings.ASCII), dir)
+		m.helpScroll = m.dialogScrollByLines(m.helpScroll, m.helpBody(), dir)
 	case overlayScrollDetail:
 		m.detailScroll = m.dialogScrollByLines(m.detailScroll, m.detailBody(), dir)
 	case overlayScrollEventLog:

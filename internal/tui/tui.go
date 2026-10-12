@@ -489,6 +489,10 @@ type Model struct {
 	// of the last bookmark key, cleared by the next key.
 	bookmarkChord bool
 	bookmarkNote  string
+	// bookmarkSlots is the slot table of one frame's sidebar render
+	// (session id -> slots held), loaded by sidebarEntries on its own copy of
+	// the model and never kept; nil while the bookmarks setting is off.
+	bookmarkSlots map[string][]int
 	// undoSessionID/undoSessionName track the session killed by the most
 	// recent x, so u can undo it (requirement 22) within DECK_UNDO_MS
 	// without depending on it still being the current selection -- "undo"
@@ -5256,6 +5260,10 @@ func (m Model) footerLegendSegments() (segments []string, widths []int) {
 		segments = append(segments, seg)
 		widths = append(widths, stringWidth(plain))
 	}
+	for _, e := range m.bookmarkFooterHints() {
+		segments = append(segments, m.colorToken(theme.Key, e.unicodeKey)+" "+m.colorToken(theme.Hint, e.hint))
+		widths = append(widths, stringWidth(e.unicodeKey+" "+e.hint))
+	}
 	return segments, widths
 }
 
@@ -5647,6 +5655,7 @@ type sidebarEntry struct {
 // the same content in sync by hand.
 func (m Model) sidebarEntries(contentWidth int) []sidebarEntry {
 	var entries []sidebarEntry
+	m.bookmarkSlots = m.loadBookmarkSlots()
 	if m.settings.Socket != "" {
 		entries = append(entries, wrappedSidebarEntries(m.sidebarSocketHeaderText(contentWidth), contentWidth)...)
 	}
@@ -6270,6 +6279,9 @@ func (m Model) sidebarRowLines(index int, session store.Session, stripe bool) ([
 	segs = append(segs, settingsRowSegment{Text: m.sidebarStatusGlyph(session.Status) + " ", Tok: statusTok})
 	if session.PinnedAt != 0 {
 		segs = append(segs, settingsRowSegment{Text: m.glyph("\u2726", "*") + " ", Tok: theme.Accent})
+	}
+	if seg, ok := m.bookmarkRowSegment(session.ID); ok {
+		segs = append(segs, seg)
 	}
 	segs = append(segs, settingsRowSegment{Text: session.Name + " ", Tok: nameTok})
 	parts := m.sidebarBadgeParts(session, statusTok)
@@ -9628,20 +9640,39 @@ func (m Model) updateHelpView(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "?":
 		m.help = false
 	case "pgup":
-		m.helpScroll = m.dialogScrollByPage(m.helpScroll, helpText(m.settings.ASCII), -1)
+		m.helpScroll = m.dialogScrollByPage(m.helpScroll, m.helpBody(), -1)
 	case "pgdown":
-		m.helpScroll = m.dialogScrollByPage(m.helpScroll, helpText(m.settings.ASCII), 1)
+		m.helpScroll = m.dialogScrollByPage(m.helpScroll, m.helpBody(), 1)
 	case "up", "k":
 		// R73 (issue #7): the arrows and their sidebar aliases scroll by
 		// ONE line, never a second PgUp/PgDn.
-		m.helpScroll = m.dialogScrollByLines(m.helpScroll, helpText(m.settings.ASCII), -1)
+		m.helpScroll = m.dialogScrollByLines(m.helpScroll, m.helpBody(), -1)
 	case "down", "j":
-		m.helpScroll = m.dialogScrollByLines(m.helpScroll, helpText(m.settings.ASCII), 1)
+		m.helpScroll = m.dialogScrollByLines(m.helpScroll, m.helpBody(), 1)
 	}
 	return m, nil
 }
 
 func helpText(ascii bool) string {
+	return helpTextFor(ascii, false)
+}
+
+// helpBody is the `?` overlay's text for this model: helpText plus, with the
+// bookmarks setting on, the bookmark keys (R277); nothing about bookmarks
+// appears while it is off.
+func (m Model) helpBody() string {
+	return helpTextFor(m.settings.ASCII, m.settings.Bookmarks)
+}
+
+func helpTextFor(ascii, bookmarks bool) string {
+	text := helpTextBase(ascii)
+	if !bookmarks {
+		return text
+	}
+	return strings.Replace(text, bookmarkHelpAnchor, bookmarkHelpLines+bookmarkHelpAnchor, 1)
+}
+
+func helpTextBase(ascii bool) string {
 	text := `deck help
 
 Keys

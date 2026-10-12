@@ -3,10 +3,13 @@ package tui
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/n-orlov/deck/internal/store"
+	"github.com/n-orlov/deck/internal/theme"
 	"github.com/n-orlov/deck/internal/tmux"
+	"github.com/n-orlov/deck/internal/tui/lineedit"
 )
 
 // bookmarkSetChord is the key that arms the slot-setting chord: Alt+M, then a
@@ -107,9 +110,12 @@ func (m *Model) jumpToBookmark(slot int) {
 	m.setBookmarkNote(fmt.Sprintf("Bookmark %d: %s", slot, m.sessions[idx].Name))
 }
 
-// bookmarkSlotIndex resolves slot to an index into m.sessions. A slot that
-// names no listed session returns -1 and the one-line message to show.
-func (m Model) bookmarkSlotIndex(slot int) (int, string) {
+// bookmarkSlotIndex resolves slot to an index into m.sessions, first
+// revealing a target the list hides (R278): an active filter that hides it is
+// cleared and a collapsed group holding it is expanded, so the jump always
+// lands on a visible row. A slot that names no session returns -1 and the
+// one-line message to show.
+func (m *Model) bookmarkSlotIndex(slot int) (int, string) {
 	if m.store == nil {
 		return -1, "Bookmarks are unavailable"
 	}
@@ -122,10 +128,55 @@ func (m Model) bookmarkSlotIndex(slot int) (int, string) {
 		return -1, fmt.Sprintf("Bookmark %d is empty", slot)
 	}
 	idx := indexOfSessionID(m.sessions, id)
+	if idx < 0 && m.filterQuery != "" && indexOfSessionID(m.baseSessions, id) >= 0 {
+		m.filtering = false
+		m.filterQuery = ""
+		m.filterEdit = lineedit.Editor{}
+		m.sessions = m.filteredSessions()
+		idx = indexOfSessionID(m.sessions, id)
+	}
 	if idx < 0 {
 		return -1, fmt.Sprintf("Bookmark %d: the session is not in the list", slot)
 	}
+	if gid := sessionGroupID(m.sessions[idx]); m.isGroupCollapsed(gid) {
+		m.setGroupCollapsed(gid, false)
+	}
 	return idx, ""
+}
+
+// loadBookmarkSlots reads the slot table once and returns, per session id,
+// the slots it holds ascending. It is nil while the setting is off or the
+// store is unavailable, so nothing downstream draws or lists a slot.
+func (m Model) loadBookmarkSlots() map[string][]int {
+	if !m.settings.Bookmarks || m.store == nil {
+		return nil
+	}
+	all, err := m.store.Bookmarks(context.Background())
+	if err != nil || len(all) == 0 {
+		return nil
+	}
+	out := map[string][]int{}
+	for slot := 0; slot <= 9; slot++ {
+		if id, ok := all[slot]; ok {
+			out[id] = append(out[id], slot)
+		}
+	}
+	return out
+}
+
+// bookmarkRowSegment is the slot marker a bookmarked row draws before its
+// name, `[3]` or `[1,5]` for a session holding several slots; empty when the
+// session holds none or the setting is off.
+func (m Model) bookmarkRowSegment(sessionID string) (settingsRowSegment, bool) {
+	slots := m.bookmarkSlots[sessionID]
+	if len(slots) == 0 || !m.settings.Bookmarks {
+		return settingsRowSegment{}, false
+	}
+	digits := make([]string, len(slots))
+	for i, slot := range slots {
+		digits[i] = fmt.Sprint(slot)
+	}
+	return settingsRowSegment{Text: "[" + strings.Join(digits, ",") + "] ", Tok: theme.Badge}, true
 }
 
 // bookmarkNoteLine is the footer's one-line bookmark status, empty when there
@@ -206,3 +257,26 @@ func (m Model) jumpInteractive(slot int) Model {
 	next.setBookmarkNote(fmt.Sprintf("Bookmark %d: %s", slot, target.Name))
 	return next
 }
+
+// bookmarkFooterHints are the footer legend's bookmark entries: none while the
+// setting is off, so no footer text mentions bookmarks then. They trail the
+// fixed set, so a narrow footer drops them before any other key.
+func (m Model) bookmarkFooterHints() []footerKeyHint {
+	if !m.settings.Bookmarks {
+		return nil
+	}
+	return []footerKeyHint{
+		{"alt+0-9/m", "alt+0-9/m", "bookmarks", nil},
+	}
+}
+
+// bookmarkHelpAnchor is the helpText line the bookmark keys are listed before,
+// and bookmarkHelpLines the lines themselves (R277).
+const bookmarkHelpAnchor = "  , open/close settings"
+
+const bookmarkHelpLines = `  alt+0 … alt+9 jump to the session bookmarked in that slot: the selection
+    moves, nothing attaches; a hidden target is revealed (the filter clears,
+    a folded group unfolds). alt+m then a digit 0-9 bookmarks the selected
+    session in that slot (alt+Shift+digit does the same on a US layout);
+    shown only while the bookmarks setting is on
+`

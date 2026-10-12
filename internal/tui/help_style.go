@@ -139,7 +139,7 @@ func endOfNthToken(line string, n int) int {
 // This is a deliberate, documented scope choice (docs/reports/phase3.md's
 // Steer 005 item 2 subsection), not an oversight.
 func (m Model) styledHelpText() string {
-	lines := strings.Split(helpText(m.settings.ASCII), "\n")
+	lines := strings.Split(m.helpBody(), "\n")
 
 	inKeys := false
 	out := make([]string, 0, len(lines))

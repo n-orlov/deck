@@ -2656,6 +2656,16 @@ an empty slot changes nothing and shows a one-line status message in the footer.
 setting off none of these keys is bound in the list and every one reaches whatever it reached
 before.
 
+**Bookmark display and reveal (R277, R278).** With the setting on, a bookmarked row draws the
+slot digit(s) it holds before its name, `[3]` for one slot and `[1,7]` for two, in the `badge`
+token, and the footer and the `?` overlay list the bookmark keys (`alt+0-9/m bookmarks` in the
+footer; the jump, the `Alt+M` chord and the `Alt+Shift+digit` keys in the overlay). With the
+setting off no slot digit is drawn and no footer or help line mentions bookmarks. A jump always
+leaves its target selected and visible: when an active filter hides the target the filter is
+cleared, when the target sits in a collapsed group that group is expanded, and a target in the
+pin section or already visible is simply selected. A target that is not in the list at all
+(archived and unmatched, or deleted) changes nothing and shows the one-line message.
+
 While a session is attached (interactive mode, §11.9) and the setting is on, the same keys are
 intercepted next to `Ctrl+Q` and never forwarded to the pane: `Alt+0`…`Alt+9`, `Alt+M`, and the ten
 `Alt+Shift+digit` keys. A jump switches the attached view to the slot's session and stays in interactive
@@ -2890,7 +2900,9 @@ truncated-but-honest frame beats an unpredictable one.
   `,`. `U` in particular has to be there when it applies, because it is the reversal of an
   action that otherwise looks one-way, and `,` because settings has no other visible entry
   point in the default frame. Absence from the footer is never absence from the keymap, and
-  §11's keymap plus the `?` overlay remain the complete list.
+  §11's keymap plus the `?` overlay remain the complete list. With the `bookmarks` setting on,
+  one more entry, `alt+0-9/m bookmarks`, trails the fixed set and is the first to be elided on a
+  narrow frame; with the setting off the footer never mentions bookmarks.
 - **The footer also carries the selected row's status reason**, on its left, separated from
   the keys. §7's reasons are prose — `awaiting signal`, `resumable`, `pane failed after the
   stale frame` — and a sidebar with 31 content columns cannot hold a name and a reason on the
