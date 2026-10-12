@@ -103,11 +103,23 @@ func stripControl(s string) string {
 	return out.String()
 }
 
-// isFormatOverride is a bidi control or zero-width character, which can
-// disguise a name in a list the user reads.
+// isFormatOverride is a bidi control, zero-width or other invisible format
+// character, which can disguise a name in a list the user reads: U+200B-200F,
+// U+202A-202E, U+2060-2064 (word joiner and invisible operators), U+2066-2069,
+// U+00AD (soft hyphen), U+061C (Arabic letter mark), U+180E (Mongolian vowel
+// separator), U+FEFF and the tag block U+E0000-E007F.
 func isFormatOverride(r rune) bool {
 	return (r >= 0x200b && r <= 0x200f) || (r >= 0x202a && r <= 0x202e) ||
-		(r >= 0x2066 && r <= 0x2069) || r == 0xfeff
+		(r >= 0x2060 && r <= 0x2064) || (r >= 0x2066 && r <= 0x2069) ||
+		r == 0xfeff || r == 0x00ad || r == 0x061c || r == 0x180e ||
+		(r >= 0xe0000 && r <= 0xe007f)
+}
+
+// NameComparisonForm is a name as the collision check compares it: escapes,
+// controls and invisible format characters removed and whitespace collapsed,
+// but neither prefix-stripped nor truncated, so a "-2" suffix always changes it.
+func NameComparisonForm(name string) string {
+	return collapseSpace(stripControl(stripEscapes(name)))
 }
 
 func collapseSpace(s string) string { return strings.Join(strings.Fields(s), " ") }

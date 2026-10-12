@@ -90,3 +90,19 @@ func TestSanitisePushName(t *testing.T) {
 		}
 	}
 }
+
+// TestSanitiseHarnessNameStripsInvisibleFormatRanges has one row per invisible
+// format range beyond the bidi and zero-width marks (SPEC §8, R272).
+func TestSanitiseHarnessNameStripsInvisibleFormatRanges(t *testing.T) {
+	for _, tc := range []struct{ name, in, want string }{
+		{"word joiner and invisible operators U+2060-U+2064", "Fix\u2060 the\u2061 par\u2062s\u2063e\u2064r", "Fix the parser"},
+		{"soft hyphen U+00AD", "Fix the par\u00adser", "Fix the parser"},
+		{"arabic letter mark U+061C", "Fix the\u061c parser", "Fix the parser"},
+		{"mongolian vowel separator U+180E", "Fix the\u180e parser", "Fix the parser"},
+		{"tag characters U+E0000-U+E007F", "Fix the \U000e0000par\U000e0041ser\U000e007f", "Fix the parser"},
+	} {
+		if got := SanitiseHarnessName(tc.in); got != tc.want {
+			t.Errorf("%s: SanitiseHarnessName(%q) = %q, want %q", tc.name, tc.in, got, tc.want)
+		}
+	}
+}

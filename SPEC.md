@@ -1138,13 +1138,20 @@ row is frozen: adoption never changes it. For an eligible row the outcome is one
 
 A harness title is untrusted input, so `agent.SanitiseHarnessName` cleans it before any of the
 checks above: terminal escape sequences (CSI, OSC and their string forms), C0 and C1 control
-characters, bidi and zero-width marks are removed; tabs and newlines become a space and runs of
+characters, and invisible format characters (bidi and zero-width marks U+200B-U+200F,
+U+202A-U+202E, U+2066-U+2069 and U+FEFF; the word joiner and invisible operators U+2060-U+2064; the
+soft hyphen U+00AD; the Arabic letter mark U+061C; the Mongolian vowel separator U+180E; the tag
+characters U+E0000-U+E007F) are removed; tabs and newlines become a space and runs of
 whitespace collapse; a leading glyph prefix (the Claude `✳` and spinner frames, Pi's `π - `) is
 stripped; and the result is cut to 200 runes. A title that is empty after cleaning is no answer, so
 nothing is adopted. The adopted name is stored as data only: it is never put in a shell command or
 in a launch or resume argv (a `derived` or `harness` row launches with no name, R250, and neither
 does a row frozen on an explicit harness name, R253), and adoption sends no
 keystroke.
+
+A name is taken when another row holds the same name or slug, or the same name after that cleaning
+(escapes, controls and the format characters above removed, whitespace collapsed), so two names
+differing only by an invisible character get a `-2` suffix.
 
 Adoption writes the display name only. The tmux session name `deck_<slug>` is never changed. The
 `name_source` check and the write share one store transaction, so a user rename that lands

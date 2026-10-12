@@ -230,3 +230,25 @@ func TestAdoptExplicitHookTitleFreezesWithoutRename(t *testing.T) {
 		t.Fatalf("row = %q/%q/%q", got.Name, got.NameSource, got.Slug)
 	}
 }
+
+// TestAdoptNameComparesSanitisedForm: a name another row holds that differs
+// from the adopted one only by an invisible format character still collides,
+// so the adopter takes the "-2" suffix (SPEC §8, R272).
+func TestAdoptNameComparesSanitisedForm(t *testing.T) {
+	svc, db, _, _ := newAgentTestService(t, nil, "adopt-sanitised")
+	asked := 0
+	svc.Agents.Register(adoptFakeAdapter{claims: true, name: "Fix the parser", ok: true, asked: &asked})
+	adoptRow(t, db, "other", "Fix the par\u00adser", "user")
+	row := adoptRow(t, db, "row-a", "swift-otter", "derived")
+
+	if renamed, err := svc.AdoptName(context.Background(), row.ID); err != nil || !renamed {
+		t.Fatalf("renamed=%v err=%v", renamed, err)
+	}
+	got, err := db.GetSession(context.Background(), row.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Name != "Fix the parser-2" {
+		t.Fatalf("name = %q, want %q", got.Name, "Fix the parser-2")
+	}
+}

@@ -229,7 +229,7 @@ func (s Service) freezeUnchangedName(ctx context.Context, sessionID string, expl
 }
 
 // uniqueAdoptedName returns name, or name-2, name-3, ... for the first one no
-// other row holds (by name or by slug). Names are not unique across harnesses,
+// other row holds (by name, by slug, or by sanitised name form). Names are not unique across harnesses,
 // so a clash is resolved here and never refused.
 func (s Service) uniqueAdoptedName(ctx context.Context, sessionID, name string) (string, error) {
 	rows, err := s.Store.ListSessionsIncludingArchived(ctx)
@@ -249,8 +249,9 @@ func (s Service) uniqueAdoptedName(ctx context.Context, sessionID, name string) 
 
 func nameTaken(rows []store.Session, sessionID, candidate string) bool {
 	slug := store.Slug(candidate)
+	form := agent.NameComparisonForm(candidate)
 	for _, row := range rows {
-		if row.ID != sessionID && (row.Name == candidate || row.Slug == slug) {
+		if row.ID != sessionID && (row.Name == candidate || row.Slug == slug || agent.NameComparisonForm(row.Name) == form) {
 			return true
 		}
 	}
