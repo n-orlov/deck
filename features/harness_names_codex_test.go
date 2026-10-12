@@ -132,10 +132,30 @@ func fakeCodexPaneShows(ctx context.Context, name, text string) error {
 }
 
 func fakeCodexGeneratesTitle(ctx context.Context, name, title string) error {
-	if err := sendFakeCodexCommand(ctx, name, map[string]any{"command": "ai-title", "name": title}); err != nil {
+	return fakeCodexSendsThenThreadIsNamed(ctx, name, title, func() error {
+		return sendFakeCodexCommand(ctx, name, map[string]any{"command": "ai-title", "name": title})
+	})
+}
+
+// fakeCodexSendsThenThreadIsNamed runs send and waits for the thread to carry
+// title. Deck's own tick adopts that title and renames the row, after which a
+// lookup by the row's old name finds nothing, so the thread is identified by
+// its conversation id, read before send, whenever the id is already bound.
+func fakeCodexSendsThenThreadIsNamed(ctx context.Context, name, title string, send func() error) error {
+	h, err := assertionHarness(ctx)
+	if err != nil {
 		return err
 	}
-	return fakeCodexThreadIsNamed(ctx, name, title)
+	id, idErr := codexConversation(h, name)
+	if err := send(); err != nil {
+		return err
+	}
+	if idErr != nil {
+		return fakeCodexThreadIsNamed(ctx, name, title)
+	}
+	return pollCodexThreadByID(ctx, h, id, fmt.Sprintf("threads.name %q", title), func(got sql.NullString) bool {
+		return got.Valid && got.String == title
+	})
 }
 
 // fakeCodexIsAskedToGenerateTitle sends the auto-title command without waiting
@@ -146,10 +166,9 @@ func fakeCodexIsAskedToGenerateTitle(ctx context.Context, name, title string) er
 }
 
 func fakeCodexIsRenamedInside(ctx context.Context, name, title string) error {
-	if err := sendFakeCodexPaneLine(ctx, name, "/rename "+title); err != nil {
-		return err
-	}
-	return fakeCodexThreadIsNamed(ctx, name, title)
+	return fakeCodexSendsThenThreadIsNamed(ctx, name, title, func() error {
+		return sendFakeCodexPaneLine(ctx, name, "/rename "+title)
+	})
 }
 
 // fakeCodexPaneIsTitled polls tmux's pane title, which the fake sets with
@@ -216,6 +235,28 @@ func codexThreadRow(h *ScenarioHarness, id string) (name sql.NullString, found b
 		return name, false, nil
 	default:
 		return name, false, err
+	}
+}
+
+// pollCodexThreadByID polls the thread row of a conversation until ok holds.
+func pollCodexThreadByID(ctx context.Context, h *ScenarioHarness, id, what string, ok func(sql.NullString) bool) error {
+	ctx, cancel := withDefaultWaitDeadline(ctx)
+	defer cancel()
+	var last sql.NullString
+	for {
+		name, found, rowErr := codexThreadRow(h, id)
+		if rowErr == nil && found && ok(name) {
+			return nil
+		}
+		last = name
+		select {
+		case <-ctx.Done():
+			if rowErr == nil {
+				rowErr = errors.New("none")
+			}
+			return fmt.Errorf("fake Codex thread %q never showed %s (last name %v, row found %v, row error: %w)", id, what, last, found, rowErr)
+		case <-time.After(20 * time.Millisecond):
+		}
 	}
 }
 

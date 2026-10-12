@@ -126,18 +126,33 @@ func transcriptTitles(path string) ([][2]string, error) {
 }
 
 // pollTranscript polls the session's transcript until ok(titles) holds or the
-// deadline passes.
+// deadline passes. The file is resolved through the session's name on every
+// pass, so it suits a check on a row nothing is about to rename.
 func pollTranscript(ctx context.Context, name, what string, ok func([][2]string) bool) error {
 	h, err := assertionHarness(ctx)
 	if err != nil {
 		return err
 	}
+	return pollTranscriptVia(ctx, name, what, ok, func() (string, error) { return claudeTranscriptFile(h, name) })
+}
+
+// pollTranscriptAt polls a transcript whose path was resolved before the step
+// acted. A step that makes Claude write a title record can race deck's own
+// tick adopting that title: the row is renamed, and a lookup by its old name
+// then finds no row for the rest of the deadline, although the record is
+// there. The path does not change with the name, so it is resolved first.
+func pollTranscriptAt(ctx context.Context, name, path, what string, ok func([][2]string) bool) error {
+	return pollTranscriptVia(ctx, name, what, ok, func() (string, error) { return path, nil })
+}
+
+func pollTranscriptVia(ctx context.Context, name, what string, ok func([][2]string) bool, resolve func() (string, error)) error {
 	ctx, cancel := withDefaultWaitDeadline(ctx)
 	defer cancel()
 	for {
-		path, pathErr := claudeTranscriptFile(h, name)
+		path, pathErr := resolve()
 		var titles [][2]string
 		if pathErr == nil {
+			var err error
 			if titles, err = transcriptTitles(path); err != nil {
 				return err
 			}
@@ -240,10 +255,28 @@ func sendFakeClaudeNameCommand(ctx context.Context, name string, command map[str
 }
 
 func fakeClaudeGeneratesTitle(ctx context.Context, name, title string) error {
-	if err := sendFakeClaudeNameCommand(ctx, name, map[string]any{"command": "ai-title", "name": title}); err != nil {
+	return fakeClaudeWritesTitleRecord(ctx, name, "ai-title", "ai-title", title)
+}
+
+// fakeClaudeWritesTitleRecord sends the fake the command that appends a kind
+// record and waits for it in the transcript. The transcript path is resolved
+// before sending (see pollTranscriptAt): deck may adopt the title and rename
+// the row before the wait begins.
+func fakeClaudeWritesTitleRecord(ctx context.Context, name, command, kind, title string) error {
+	h, err := assertionHarness(ctx)
+	if err != nil {
 		return err
 	}
-	return fakeClaudeTranscriptHasRecord(ctx, name, "ai-title", title)
+	path, pathErr := claudeTranscriptFile(h, name)
+	if err := sendFakeClaudeNameCommand(ctx, name, map[string]any{"command": command, "name": title}); err != nil {
+		return err
+	}
+	what := fmt.Sprintf("a %s record titled %q", kind, title)
+	has := func(titles [][2]string) bool { return hasTitleRecord(titles, kind, title) }
+	if pathErr != nil {
+		return pollTranscript(ctx, name, what, has)
+	}
+	return pollTranscriptAt(ctx, name, path, what, has)
 }
 
 // fakeClaudeIsAskedToGenerateTitle sends the auto-title command without
@@ -279,10 +312,7 @@ func clientStartedWithFakeAgentsInFreshDirectory(ctx context.Context, name, labe
 }
 
 func fakeClaudeIsRenamedInside(ctx context.Context, name, title string) error {
-	if err := sendFakeClaudeNameCommand(ctx, name, map[string]any{"command": "rename", "name": title}); err != nil {
-		return err
-	}
-	return fakeClaudeTranscriptHasRecord(ctx, name, "custom-title", title)
+	return fakeClaudeWritesTitleRecord(ctx, name, "rename", "custom-title", title)
 }
 
 // clientRenamesSessionFromDetail is the user's own rename: the `i` detail
