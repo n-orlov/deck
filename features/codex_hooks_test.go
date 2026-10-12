@@ -111,12 +111,18 @@ type codexPaneAnnouncement struct {
 // resolution degrades to "nowhere writable"), so TranscriptPath may be ""
 // even when ok is true.
 func codexPaneAnnouncementFromCapture(capture string) (announcement codexPaneAnnouncement, ok bool) {
+	// A banner is found anywhere on its line, not only at its start: the pane's
+	// tty echoes text typed into it (deck's own "/rename <name>" entry, sent
+	// without a newline) and the fixture's next output lands right after that
+	// echo on the same row, so a banner can follow another command's text.
 	for _, line := range strings.Split(capture, "\n") {
-		if id, found := strings.CutPrefix(line, "fake-codex session-id: "); found {
-			announcement.SessionID = id
+		if _, id, found := strings.Cut(line, "fake-codex session-id: "); found {
+			if fields := strings.Fields(id); len(fields) > 0 {
+				announcement.SessionID = fields[0]
+			}
 		}
-		if path, found := strings.CutPrefix(line, "fake-codex transcript-path: "); found {
-			announcement.TranscriptPath = path
+		if _, path, found := strings.Cut(line, "fake-codex transcript-path: "); found {
+			announcement.TranscriptPath = strings.TrimSpace(path)
 		}
 	}
 	return announcement, announcement.SessionID != ""
