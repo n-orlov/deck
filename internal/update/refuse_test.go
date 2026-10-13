@@ -219,3 +219,16 @@ func TestRefusalNeverEscalates(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// TestPreflightNamesTheRefusalsWithoutTheNetwork: the TUI indicator's
+// preflight returns the same Refusals Run does, for a dev build and a managed
+// binary, and nil for a writable one.
+func TestPreflightNamesTheRefusalsWithoutTheNetwork(t *testing.T) {
+	root, exe := rootedExe(t, "/usr/bin/deck")
+	_ = requireRefusal(t, Preflight(Options{Current: "dev", Exe: exe, root: root}), RefusedDev)
+	_ = requireRefusal(t, Preflight(Options{Current: "v1.0.0", Exe: exe, root: root}), RefusedManaged)
+	_, writable := rootedExe(t, "/usr/local/bin/deck")
+	if err := Preflight(Options{Current: "v1.0.0", Exe: writable}); err != nil {
+		t.Fatalf("writable binary: Preflight = %v, want nil", err)
+	}
+}

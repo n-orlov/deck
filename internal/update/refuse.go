@@ -118,3 +118,26 @@ func (o Options) checkTarget() (string, error) {
 	}
 	return target, nil
 }
+
+// Preflight reports, without touching the network or the binary, whether an
+// update of the running build would be refused: it returns the Refusal for a
+// dev build, a package-managed binary or an unwritable install directory, and
+// nil when the update may go ahead. The TUI's update indicator asks it before
+// offering ctrl+u, so the indicator can name the reason instead.
+func Preflight(o Options) error {
+	o = o.withDefaults()
+	if err := refuseDev(o.Current); err != nil {
+		return err
+	}
+	_, err := o.checkTarget()
+	return err
+}
+
+// AsRefusal returns err's Refusal, if it is or wraps one.
+func AsRefusal(err error) (*Refusal, bool) {
+	var r *Refusal
+	if errors.As(err, &r) {
+		return r, true
+	}
+	return nil, false
+}

@@ -2987,6 +2987,29 @@ truncated-but-honest frame beats an unpredictable one.
   dialog, which shows the attach error wrapped across lines. The banners above the
   frame, the pending-delete prompt and the filter status line are not notes and keep their
   own rows.
+- **The update indicator rests in the same slot** (R298, §6.5, §13.1) and adds no row: the frame
+  has the same number of lines with it shown and hidden, at 80 columns and wide, in the list and
+  in interactive mode. It is the slot's lowest-priority text: any other note shows over it, and it
+  is back once that note clears. It has these states, by what the once-a-day check and the
+  install preflight found:
+  - **Available** (the check found a newer stable release, this install can be updated and
+    `auto_update` is off): `update available: vX.Y.Z — press ctrl+u to install`.
+  - **Installed** (after an auto or manual update): `update installed: vX.Y.Z — restart deck to
+    apply`. It replaces the Available text and stays until deck restarts: no later check result,
+    failure or setting change takes it back.
+  - **Failed** (an update attempt failed): `update failed — see deck update`, followed by the
+    cause in parentheses.
+  - **Refused** (a newer release exists but this install cannot take it): `update available:
+    vX.Y.Z — ` and the reason instead of `ctrl+u`: `install directory is not writable, see deck
+    update`, or `installed by a package manager, update it there`.
+  - **Hidden** when `update_check` and `auto_update` are both off, when the check is offline or
+    failed (silently), when the build is current, and for a `dev` build. Installed is the one
+    state the settings do not hide.
+
+  The indicator is fitted like any other note: it is one line, elided with an ellipsis when it is
+  longer than the line, and the footer's own content gives up whole trailing entries to make room
+  (at 80x24 with Available shown the list legend keeps the entries that fit whole and drops the
+  rest; none is cut mid-entry).
 - **A note expires.** The selection-copy, field-copy, attach-failure, resume and archive-undone
   notes clear on their own `[ui] note_timeout` after they were set (10 s by default; whole
   seconds, at least 1; `DECK_NOTE_TIMEOUT` overrides the file; a save applies it to the next

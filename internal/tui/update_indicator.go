@@ -1,0 +1,170 @@
+package tui
+
+import (
+	"context"
+	"fmt"
+	"strings"
+
+	tea "github.com/charmbracelet/bubbletea"
+
+	upd "github.com/n-orlov/deck/internal/update"
+)
+
+// updateIndicatorState is what the update indicator in the footer's note slot
+// reads (SPEC §11, "The update indicator").
+type updateIndicatorState int
+
+const (
+	// updateHidden shows nothing: the check is disabled, offline or failed
+	// silently, the build is current, or it is a dev build.
+	updateHidden updateIndicatorState = iota
+	// updateAvailable offers ctrl+u: a newer release exists and this install
+	// can be updated.
+	updateAvailable
+	// updateRefused names why a newer release cannot be installed from here
+	// (an unwritable install directory, a package-managed binary).
+	updateRefused
+	// updateInstalled says the new release is on disk and a restart applies
+	// it. It persists until deck restarts.
+	updateInstalled
+	// updateFailed says an update was attempted and failed, naming the cause.
+	updateFailed
+)
+
+// updateIndicator is the model's whole update-indicator state.
+type updateIndicator struct {
+	state  updateIndicatorState
+	tag    string // the release the state talks about
+	reason string // the refusal reason (updateRefused) or the cause (updateFailed)
+}
+
+// updateSource is how the model learns about releases: the throttled daily
+// check, and the preflight that says whether this install can be updated.
+// Both run off the UI goroutine, in the command that carries them.
+type updateSource struct {
+	check     func(context.Context) upd.Status
+	preflight func() error
+}
+
+// updateChecked is the daily check's answer. refusal is the preflight's
+// error for a newer release (nil when the install can be updated).
+type updateChecked struct {
+	status  upd.Status
+	refusal error
+}
+
+// updateInstalledMsg and updateFailedMsg report an update attempt's end. The
+// ctrl+u flow and the auto-install send them.
+type updateInstalledMsg struct{ tag string }
+type updateFailedMsg struct{ cause string }
+
+// WithUpdateSource wires the daily update check into the model: check is the
+// throttled check (update.Checker.Check) and preflight says whether this
+// install may be updated (update.Preflight). A model without a source never
+// shows an indicator.
+func (m Model) WithUpdateSource(check func(context.Context) upd.Status, preflight func() error) Model {
+	m.updateSrc = updateSource{check: check, preflight: preflight}
+	return m
+}
+
+// updateCheckCmd runs the daily check and, for a newer release, the
+// preflight, on the command goroutine. It returns nil without a source.
+func (m Model) updateCheckCmd() tea.Cmd {
+	src := m.updateSrc
+	if src.check == nil {
+		return nil
+	}
+	return func() tea.Msg {
+		st := src.check(context.Background())
+		out := updateChecked{status: st}
+		if st.Newer && src.preflight != nil {
+			out.refusal = src.preflight()
+		}
+		return out
+	}
+}
+
+func (m Model) onUpdateChecked(msg updateChecked) (tea.Model, tea.Cmd) {
+	m.applyUpdateCheck(msg.status, msg.refusal)
+	return m, nil
+}
+
+func (m Model) onUpdateInstalled(msg updateInstalledMsg) (tea.Model, tea.Cmd) {
+	m.updateInd = updateIndicator{state: updateInstalled, tag: msg.tag}
+	m.footerNoteSets[noteUpdate]++
+	return m, nil
+}
+
+func (m Model) onUpdateFailed(msg updateFailedMsg) (tea.Model, tea.Cmd) {
+	if m.updateInd.state == updateInstalled {
+		return m, nil
+	}
+	m.updateInd = updateIndicator{state: updateFailed, tag: m.updateInd.tag, reason: msg.cause}
+	m.footerNoteSets[noteUpdate]++
+	return m, nil
+}
+
+// applyUpdateCheck records a check result. Installed stays for the life of
+// the process: a later check never replaces it. A refusal that is not a
+// Refusal (the binary cannot be located) hides the indicator.
+func (m *Model) applyUpdateCheck(st upd.Status, refusal error) {
+	if m.updateInd.state == updateInstalled {
+		return
+	}
+	next := updateIndicator{state: updateHidden}
+	switch {
+	case !st.Newer || st.Latest == "":
+	case refusal == nil:
+		next = updateIndicator{state: updateAvailable, tag: st.Latest}
+	case upd.IsRefusal(refusal):
+		next = updateIndicator{state: updateRefused, tag: st.Latest, reason: refusalPhrase(refusal)}
+	}
+	if next != m.updateInd {
+		m.footerNoteSets[noteUpdate]++
+	}
+	m.updateInd = next
+}
+
+// refusalPhrase is the short reason the indicator names for a refusal.
+func refusalPhrase(err error) string {
+	r, ok := upd.AsRefusal(err)
+	if !ok {
+		return ""
+	}
+	switch r.Reason {
+	case upd.RefusedManaged:
+		return "installed by a package manager, update it there"
+	case upd.RefusedUnwritable:
+		return "install directory is not writable, see deck update"
+	}
+	return "cannot be updated here, see deck update"
+}
+
+// updateIndicatorText is the indicator's note, or "" when it is hidden. The
+// check being off hides every state but Installed (the binary on disk is new
+// whatever the setting now says). An Available offer is also hidden while
+// auto_update is on: deck installs it without asking.
+func (m Model) updateIndicatorText() string {
+	ind := m.updateInd
+	if ind.state != updateInstalled && !m.settings.UpdateCheckEnabled() {
+		return ""
+	}
+	switch ind.state {
+	case updateAvailable:
+		if m.settings.AutoUpdate {
+			return ""
+		}
+		return fmt.Sprintf("update available: %s — press ctrl+u to install", ind.tag)
+	case updateRefused:
+		return fmt.Sprintf("update available: %s — %s", ind.tag, ind.reason)
+	case updateInstalled:
+		return fmt.Sprintf("update installed: %s — restart deck to apply", ind.tag)
+	case updateFailed:
+		text := "update failed — see deck update"
+		if cause := strings.Join(strings.Fields(ind.reason), " "); cause != "" {
+			text += " (" + cause + ")"
+		}
+		return text
+	}
+	return ""
+}

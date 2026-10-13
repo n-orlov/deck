@@ -32,6 +32,9 @@ const (
 	noteTeardownHook
 	notePush
 	noteBookmarkAttached
+	// noteUpdate is the update indicator (R298). It is the slot's resting
+	// text: any other note shows over it, and it returns when they clear.
+	noteUpdate
 	footerNoteSourceCount
 )
 
@@ -105,6 +108,7 @@ var footerNoteReaders = [footerNoteSourceCount]func(Model) string{
 		}
 		return m.bookmarkNote
 	},
+	noteUpdate: Model.updateIndicatorText,
 }
 
 // footerNoteRenewal reads each source's renewal token, indexed by
@@ -128,6 +132,7 @@ var footerNoteRenewal = [footerNoteSourceCount]func(Model) int{
 	noteTeardownHook:         func(m Model) int { return m.teardownHookNoteGeneration },
 	notePush:                 func(m Model) int { return m.footerNoteSets[notePush] },
 	noteBookmarkAttached:     func(m Model) int { return m.footerNoteSets[noteBookmarkAttached] },
+	noteUpdate:               func(m Model) int { return m.footerNoteSets[noteUpdate] },
 }
 
 // setAttachError, setResumeNote, setSelectionCopyNote and setFieldCopyNote
@@ -182,7 +187,7 @@ func (m Model) footerNoteText(src footerNoteSource) string {
 func (m Model) footerNote() string {
 	best, bestStamp := footerNoteSource(-1), uint64(0)
 	for src := footerNoteSource(0); src < footerNoteSourceCount; src++ {
-		if m.footerNoteText(src) == "" {
+		if src == noteUpdate || m.footerNoteText(src) == "" {
 			continue
 		}
 		if stamp := m.footerNoteStamp[src]; best < 0 || stamp > bestStamp {
@@ -190,7 +195,8 @@ func (m Model) footerNote() string {
 		}
 	}
 	if best < 0 {
-		return ""
+		// Nothing transient is showing: the update indicator rests here.
+		best = noteUpdate
 	}
 	return strings.Join(strings.Fields(m.footerNoteText(best)), " ")
 }

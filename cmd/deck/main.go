@@ -187,7 +187,7 @@ func runTUI(settings config.Settings, stderr io.Writer) int {
 	// restart-to-apply: a save changes config.toml immediately, but this already
 	// running client keeps enforcing the OLD window until deck restarts.
 	tuiReconcile := newTUIReconcile(db, sessions, settings)
-	model := newDeckModel(db, settings, sessions, client, registry, tuiReconcile).WithEventHookLive(eventHook)
+	model := newDeckModel(db, settings, sessions, client, registry, tuiReconcile).WithEventHookLive(eventHook).WithUpdateSource(updateIndicatorSource(settings))
 	// wrapForInteractiveShutdownOnPanic is deliberately the OUTERMOST wrap
 	// (applied last, around everything else): its own recover must see a
 	// panic thrown by any of the layers below it too, not only one from

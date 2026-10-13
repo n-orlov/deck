@@ -327,6 +327,11 @@ type Model struct {
 	// through their setters, so a note set again with the same text still
 	// counts as renewed and becomes the newest (footerNoteRenewal).
 	footerNoteSets [footerNoteSourceCount]int
+
+	// updateSrc and updateInd are the update indicator's wiring and state
+	// (update_indicator.go, R298).
+	updateSrc updateSource
+	updateInd updateIndicator
 	// pendingDelete is true for exactly one keypress after a lone `d`
 	// (SPEC's dd chord): a second `d` opens deleteConfirming; ANY other
 	// key (including Esc) clears pendingDelete without performing any
@@ -2269,6 +2274,9 @@ func (m Model) Init() tea.Cmd {
 		tea.Tick(m.settings.Reconcile, func(t time.Time) tea.Msg { return reconcileTick(t) }),
 		tea.Tick(m.settings.Preview, func(t time.Time) tea.Msg { return previewTick(t) }),
 	}
+	if cmd := m.updateCheckCmd(); cmd != nil {
+		commands = append(commands, cmd)
+	}
 	if m.configReloader != nil {
 		commands = append(commands, m.configPollTickCmd())
 	}
@@ -2767,6 +2775,9 @@ func init() {
 		reflect.TypeFor[sessionArchived]():                handlerFor(Model.onSessionArchived),
 		reflect.TypeFor[archiveUndoExpired]():             handlerFor(Model.onArchiveUndoExpired),
 		reflect.TypeFor[footerNoteExpired]():              handlerFor(Model.onFooterNoteExpired),
+		reflect.TypeFor[updateChecked]():                  handlerFor(Model.onUpdateChecked),
+		reflect.TypeFor[updateInstalledMsg]():             handlerFor(Model.onUpdateInstalled),
+		reflect.TypeFor[updateFailedMsg]():                handlerFor(Model.onUpdateFailed),
 		reflect.TypeFor[teardownHookNoteExpired]():        handlerFor(Model.onTeardownHookNoteExpired),
 		reflect.TypeFor[sessionDeleted]():                 handlerFor(Model.onSessionDeleted),
 		reflect.TypeFor[deleteGraceExpired]():             handlerFor(Model.onDeleteGraceExpired),
