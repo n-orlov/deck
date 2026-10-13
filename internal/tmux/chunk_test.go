@@ -35,6 +35,8 @@ package tmux
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -160,14 +162,11 @@ func TestDispatcherSendLiteralStreamsOversizedPayloadViaLoadBufferAndArrivesInta
 	}
 
 	payload := orderSensitivePayload(20000)
+	sink := startRawSink(t, socket)
 	if err := dispatcher.SendLiteral(ctx, payload); err != nil {
 		t.Fatalf("SendLiteral(<20000-byte payload>): %v", err)
 	}
-
-	capture := waitForJoinedCaptureContaining(t, socket, payload)
-	if !strings.Contains(capture, payload) {
-		t.Fatalf("joined capture does not contain the 20000-byte payload intact")
-	}
+	waitForSinkEquals(t, sink, payload)
 }
 
 // TestDispatcherSendLiteralAtExactlyTheChunkBoundaryStillUsesASingleCall
@@ -193,13 +192,11 @@ func TestDispatcherSendLiteralAtExactlyTheChunkBoundaryStillUsesASingleCall(t *t
 	}
 
 	payload := orderSensitivePayload(8192)
+	sink := startRawSink(t, socket)
 	if err := dispatcher.SendLiteral(ctx, payload); err != nil {
 		t.Fatalf("SendLiteral(<8192-byte payload>): %v", err)
 	}
-	capture := waitForJoinedCaptureContaining(t, socket, payload)
-	if !strings.Contains(capture, payload) {
-		t.Fatalf("joined capture does not contain the 8192-byte payload intact")
-	}
+	waitForSinkEquals(t, sink, payload)
 }
 
 // TestDispatcherSendLiteralChunksAnOversizedHexRunAndArrivesIntact proves
@@ -223,13 +220,75 @@ func TestDispatcherSendLiteralChunksAnOversizedHexRunAndArrivesIntact(t *testing
 	}
 
 	payload := strings.Repeat(";", 6000)
+	sink := startRawSink(t, socket)
 	if err := dispatcher.SendLiteral(ctx, payload); err != nil {
 		t.Fatalf("SendLiteral(<6000 trailing semicolons>): %v", err)
 	}
-	capture := waitForJoinedCaptureContaining(t, socket, payload)
-	if !strings.Contains(capture, payload) {
-		t.Fatalf("joined capture does not contain all 6000 semicolons intact")
+	waitForSinkEquals(t, sink, payload)
+}
+
+// startRawSink turns pane s0 into a byte sink: it puts the pane's tty in raw
+// mode with echo off and execs cat onto a file, then returns that file's
+// path once the pane confirms the sink is in place. The tests that push a
+// multi-KiB payload through the Dispatcher compare what arrives against
+// that file, byte for byte. They deliberately do not read the payload back
+// off the screen: a shell's line editor redraws a line far taller than the
+// pane (here 6000-20000 bytes in an 80x10 pane) in read-sized batches, so a
+// screen capture of it depends on how the bytes happened to be batched, not
+// on whether tmux delivered them. A raw tty has no canonical line limit and
+// nothing redraws, so the file holds exactly the bytes tmux wrote to the pty.
+func startRawSink(t *testing.T, socket string) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "sink")
+	cmd := "stty raw -echo; echo rdy$((1+1)) >&2; exec cat > '" + path + "'"
+	runTmux(t, socket, "send-keys", "-l", "-t", "s0", "--", cmd)
+	runTmux(t, socket, "send-keys", "-t", "s0", "Enter")
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		capture := runTmux(t, socket, "capture-pane", "-p", "-t", "s0")
+		for _, line := range strings.Split(capture, "\n") {
+			if strings.TrimSpace(line) == "rdy2" {
+				return path
+			}
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("pane %q never confirmed the raw sink (last capture: %q)", "s0", capture)
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
+}
+
+// waitForSinkEquals polls the file startRawSink returned until it holds as
+// many bytes as want, then requires it to equal want exactly.
+func waitForSinkEquals(t *testing.T, path, want string) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		got, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("read sink %s: %v", path, err)
+		}
+		if len(got) >= len(want) {
+			if string(got) != want {
+				t.Fatalf("sink holds %d bytes, want %d intact (first difference at byte %d)", len(got), len(want), firstDifference(string(got), want))
+			}
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("sink holds %d of %d bytes within the deadline (first difference at byte %d)", len(got), len(want), firstDifference(string(got), want))
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}
+
+func firstDifference(a, b string) int {
+	n := min(len(a), len(b))
+	for i := 0; i < n; i++ {
+		if a[i] != b[i] {
+			return i
+		}
+	}
+	return n
 }
 
 // orderSensitivePayload builds a deterministic, non-repeating-in-any-
