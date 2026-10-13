@@ -211,15 +211,19 @@ func TestUpdateIndicatorYieldsToTransientNotes(t *testing.T) {
 	}
 }
 
-// TestUpdateIndicatorAutoUpdateOnHidesTheOffer: with auto_update on the
-// Available offer is not drawn (deck installs without asking); a refusal
-// still is, because nothing will install.
-func TestUpdateIndicatorAutoUpdateOnHidesTheOffer(t *testing.T) {
+// TestUpdateIndicatorAutoUpdateOnReplacesTheOffer: with auto_update on the
+// Available offer is never drawn (deck installs without asking, so the
+// indicator goes straight to the progress state and a command is returned);
+// a refusal still is, because nothing will install. The install itself is
+// covered end to end by TestAutoUpdate (this replaces the earlier pin that
+// the note was empty while the check result was handled).
+func TestUpdateIndicatorAutoUpdateOnReplacesTheOffer(t *testing.T) {
 	m := footerNoteFrameModel(160, 24, false)
 	m.settings = config.Settings{AutoUpdate: true}
-	offer := sendUpdateMsg(t, m, updateChecked{status: upd.Status{Latest: indicatorTag, Newer: true}})
-	if got := offer.footerNote(); got != "" {
-		t.Fatalf("auto_update on: note = %q, want none", got)
+	next, cmd := m.Update(updateChecked{status: upd.Status{Latest: indicatorTag, Newer: true}})
+	offer := next.(Model)
+	if got := offer.footerNote(); strings.Contains(got, "ctrl+u") || !strings.HasPrefix(got, "updating to "+indicatorTag) || cmd == nil {
+		t.Fatalf("auto_update on: note = %q (cmd %v), want the progress state and no offer", got, cmd != nil)
 	}
 	refused := sendUpdateMsg(t, m, updateChecked{status: upd.Status{Latest: indicatorTag, Newer: true}, refusal: indicatorRefusal(upd.RefusedUnwritable)})
 	if got := refused.footerNote(); !strings.Contains(got, "not writable") {

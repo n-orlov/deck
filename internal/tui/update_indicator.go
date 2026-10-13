@@ -87,8 +87,16 @@ func (m Model) updateCheckCmd() tea.Cmd {
 	}
 }
 
+// onUpdateChecked records the daily check's answer. With auto_update on and
+// an Available result (a newer release this install may take) it installs the
+// release through the same verified update ctrl+u runs, with no prompt. A
+// refusal (unwritable directory, managed prefix, dev build) or a check that
+// found nothing newer starts no download.
 func (m Model) onUpdateChecked(msg updateChecked) (tea.Model, tea.Cmd) {
 	m.applyUpdateCheck(msg.status, msg.refusal)
+	if m.settings.AutoUpdate && m.updateInd.state == updateAvailable {
+		return m, m.startUpdate()
+	}
 	return m, nil
 }
 

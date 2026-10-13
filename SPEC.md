@@ -903,6 +903,19 @@ at all. `auto_update` implies the check, so the check runs when either key is on
 read when a check is due, so a settings save or a reload applies at the next one without a restart.
 The explicit `deck update` verb (§3.4, §13.1) is the one other request and runs only when asked.
 
+**Auto-update (R300).** With `auto_update = true` (or `DECK_AUTO_UPDATE=1`), a check that finds a
+newer stable release installs it at once, with no prompt, through the same verified update `deck
+update` and `ctrl+u` run (§13.1: checksum, then build attestation, then an atomic replace): the
+indicator reads `updating to vX.Y.Z…` while it runs and Installed (§11) when it ends. deck never
+restarts itself and never touches sessions; the new binary runs at the next start. A failed
+install leaves the binary byte-for-byte as it was, never a partial file, and the indicator reads
+Failed with the cause. It is attempted once per check, so a failure is not retried inside the
+24-hour window. Where the update would be refused (an install directory deck cannot write, a
+package-managed prefix, a `dev` build) deck downloads no archive: the unwritable and managed
+cases show their reason in the indicator, and a `dev` build, which is never outdated, shows
+nothing. With `auto_update` off, deck downloads no archive on its own: a newer release is only
+offered (Available, `ctrl+u`).
+
 Two rules that hold for every key, present and future:
 
 - **The schema is the single source of truth** for parsing the file *and* for generating the
@@ -2993,7 +3006,8 @@ truncated-but-honest frame beats an unpredictable one.
   is back once that note clears. It has these states, by what the once-a-day check and the
   install preflight found:
   - **Available** (the check found a newer stable release, this install can be updated and
-    `auto_update` is off): `update available: vX.Y.Z — press ctrl+u to install`.
+    `auto_update` is off; with `auto_update` on the release is installed at once, §6.5, and the
+    indicator goes straight to the progress text): `update available: vX.Y.Z — press ctrl+u to install`.
   - **Installed** (after an auto or manual update): `update installed: vX.Y.Z — restart deck to
     apply`. It replaces the Available text and stays until deck restarts: no later check result,
     failure or setting change takes it back.
