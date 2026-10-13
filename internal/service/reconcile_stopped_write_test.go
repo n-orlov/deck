@@ -17,16 +17,31 @@ import (
 	"github.com/n-orlov/deck/internal/store"
 )
 
-// stoppedMarkSQLFunc is the SQL function the stopped-transition triggers call
-// inside the writing transaction. It only marks the session as pending on the
-// database's recorder. The transition counts as written when the transaction
-// that holds the mark commits, which the commit hook below records.
-const stoppedMarkSQLFunc = "deck_test_mark_stopped"
+// The SQL functions the stopped-transition triggers call inside the writing
+// transaction. stoppedMarkSQLFunc fires when a statement sets the status to
+// "stopped"; stoppedUnmarkSQLFunc fires when a statement moves the status away
+// from "stopped". They only mark the session on the database's recorder. The
+// session counts as committed stopped when the transaction holding the final
+// mark commits, which the commit hook below records. An event row alone, or a
+// stopped assignment that the same or a later transaction undoes, never leaves
+// a mark standing, so it can never stand in for the stopped status.
+const (
+	stoppedMarkSQLFunc   = "deck_test_mark_stopped"
+	stoppedUnmarkSQLFunc = "deck_test_unmark_stopped"
+)
 
 // stoppedRecorders maps a state.db path to its *stoppedCommits recorder.
 var stoppedRecorders sync.Map
 
 func init() {
+	sqlite.MustRegisterScalarFunction(stoppedUnmarkSQLFunc, 2, func(_ *sqlite.FunctionContext, args []driver.Value) (driver.Value, error) {
+		path, _ := args[0].(string)
+		id, _ := args[1].(string)
+		if rec, ok := stoppedRecorders.Load(path); ok {
+			rec.(*stoppedCommits).unmark(id)
+		}
+		return nil, nil
+	})
 	sqlite.MustRegisterScalarFunction(stoppedMarkSQLFunc, 2, func(_ *sqlite.FunctionContext, args []driver.Value) (driver.Value, error) {
 		path, _ := args[0].(string)
 		id, _ := args[1].(string)
@@ -62,12 +77,19 @@ func init() {
 	})
 }
 
-// stoppedCommits records, per session, when the transaction that wrote its
-// stopped transition committed.
+// stoppedCommits records, per session, when the transaction that left its
+// status "stopped" committed. A later commit that moves the status away from
+// "stopped" erases the record, so it always describes the commit behind the
+// status a reader sees now.
 type stoppedCommits struct {
 	mu        sync.Mutex
-	pending   map[string]bool
+	pending   map[string]bool // set to stopped in the open write transaction
+	cleared   map[string]bool // moved away from stopped in the open write transaction
 	committed map[string]time.Time
+}
+
+func newStoppedCommits() *stoppedCommits {
+	return &stoppedCommits{pending: map[string]bool{}, cleared: map[string]bool{}, committed: map[string]time.Time{}}
 }
 
 func (r *stoppedCommits) mark(id string) {
@@ -76,21 +98,31 @@ func (r *stoppedCommits) mark(id string) {
 	r.pending[id] = true
 }
 
+func (r *stoppedCommits) unmark(id string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	delete(r.pending, id)
+	r.cleared[id] = true
+}
+
 func (r *stoppedCommits) commit(at time.Time) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	for id := range r.cleared {
+		delete(r.committed, id)
+	}
 	for id := range r.pending {
 		if _, done := r.committed[id]; !done {
 			r.committed[id] = at
 		}
 	}
-	r.pending = map[string]bool{}
+	r.pending, r.cleared = map[string]bool{}, map[string]bool{}
 }
 
 func (r *stoppedCommits) rollback() {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.pending = map[string]bool{}
+	r.pending, r.cleared = map[string]bool{}, map[string]bool{}
 }
 
 func (r *stoppedCommits) committedAt(id string) (time.Time, bool) {
@@ -108,12 +140,12 @@ type stoppedTransition struct {
 	status  func(id string) (string, error)
 }
 
-// recordStoppedWrites installs triggers that mark every write of the stopped
-// transition (the status update to "stopped" and its tmux.session_gone event
-// row) and opens an independent reader on the same database file.
+// recordStoppedWrites installs triggers that mark a status write to "stopped"
+// and one that moves the status away from it, and opens an independent reader
+// on the same database file.
 func recordStoppedWrites(t *testing.T, db *store.Store, path string) stoppedTransition {
 	t.Helper()
-	rec := &stoppedCommits{pending: map[string]bool{}, committed: map[string]time.Time{}}
+	rec := newStoppedCommits()
 	if _, loaded := stoppedRecorders.LoadOrStore(path, rec); loaded {
 		t.Fatalf("a stopped-write recorder already watches %s", path)
 	}
@@ -123,9 +155,9 @@ func recordStoppedWrites(t *testing.T, db *store.Store, path string) stoppedTran
 		`CREATE TRIGGER test_stopped_status AFTER UPDATE OF status ON sessions
 			WHEN NEW.status = 'stopped' AND OLD.status IS NOT 'stopped'
 			BEGIN SELECT ` + stoppedMarkSQLFunc + `(` + quoted + `, NEW.id); END`,
-		`CREATE TRIGGER test_stopped_event AFTER INSERT ON events
-			WHEN NEW.kind = 'tmux.session_gone'
-			BEGIN SELECT ` + stoppedMarkSQLFunc + `(` + quoted + `, NEW.session_id); END`,
+		`CREATE TRIGGER test_stopped_left AFTER UPDATE OF status ON sessions
+			WHEN OLD.status = 'stopped' AND NEW.status IS NOT 'stopped'
+			BEGIN SELECT ` + stoppedUnmarkSQLFunc + `(` + quoted + `, NEW.id); END`,
 	} {
 		if _, err := db.DB().Exec(stmt); err != nil {
 			t.Fatalf("install stopped-write recorder: %v", err)
@@ -209,7 +241,25 @@ func TestStoppedTransitionIsJudgedOnCommitNotObservation(t *testing.T) {
 		{"rolled back", []step{rolledBackWrite}, 0, 200 * time.Millisecond, "never committed stopped"},
 		// A committed stopped status overwritten before the bound is not
 		// visible at the bound.
-		{"stopped, then overwritten", []step{storeWrite("stopped"), sleep(5 * time.Millisecond), rawStatus("running")}, 0, time.Second, "independent reader still saw"},
+		{"stopped, then overwritten, late observer", []step{storeWrite("stopped"), sleep(5 * time.Millisecond), rawStatus("running")}, 100 * time.Millisecond, 200 * time.Millisecond, "never committed stopped"},
+		// The same, overwritten while the observer is already waiting for the bound.
+		{"stopped, then overwritten, prompt observer", []step{storeWrite("stopped"), sleep(30 * time.Millisecond), rawStatus("running")}, 0, time.Second, "independent reader still saw"},
+		// Precursor marks that are not the stopped status: an event row alone,
+		// or a stopped assignment undone inside its own transaction, commit at
+		// once. The actual stopped status lands after the bound, so the
+		// precursor's early commit must not stand in for it.
+		{"event only, then late stopped", []step{eventOnly, sleep(140 * time.Millisecond), storeWrite("stopped")}, 0, time.Second, "after its bound"},
+		{"event only, then late stopped, late observer", []step{eventOnly, sleep(140 * time.Millisecond), storeWrite("stopped")}, 300 * time.Millisecond, time.Second, "after its bound"},
+		{"overwritten inside transaction, then late stopped", []step{overwrittenInTx, sleep(140 * time.Millisecond), storeWrite("stopped")}, 0, time.Second, "after its bound"},
+		{"overwritten inside transaction, then late stopped, late observer", []step{overwrittenInTx, sleep(140 * time.Millisecond), storeWrite("stopped")}, 300 * time.Millisecond, time.Second, "after its bound"},
+		// Stopped committed on time, reverted, and stopped again only after the bound.
+		{"stopped, reverted, late stopped again", []step{storeWrite("stopped"), rawStatus("running"), sleep(140 * time.Millisecond), storeWrite("stopped")}, 300 * time.Millisecond, time.Second, "after its bound"},
+		// A precursor alone never counts.
+		{"event only", []step{eventOnly}, 0, 200 * time.Millisecond, "never committed stopped"},
+		{"overwritten inside transaction", []step{overwrittenInTx}, 0, 200 * time.Millisecond, "never committed stopped"},
+		// Precursors followed by the actual stopped status in time pass.
+		{"event only, then on-time stopped", []step{eventOnly, sleep(5 * time.Millisecond), storeWrite("stopped")}, 300 * time.Millisecond, time.Second, ""},
+		{"overwritten inside transaction, then on-time stopped", []step{overwrittenInTx, sleep(5 * time.Millisecond), storeWrite("stopped")}, 0, time.Second, ""},
 		// An on-time write is not failed by an observer that first looks after the bound.
 		{"on-time write, late observer", []step{sleep(5 * time.Millisecond), storeWrite("stopped")}, 300 * time.Millisecond, time.Second, ""},
 		// An on-time write seen promptly passes.
@@ -269,6 +319,32 @@ func heldWrite(hold time.Duration) func(*testing.T, *store.Store, string) {
 		if err := tx.Commit(); err != nil {
 			t.Errorf("commit: %v", err)
 		}
+	}
+}
+
+// eventOnly commits the transition's event row without the stopped status.
+func eventOnly(t *testing.T, db *store.Store, id string) {
+	if _, err := db.DB().Exec(`INSERT INTO events (session_id, kind, at) VALUES (?, 'tmux.session_gone', 2)`, id); err != nil {
+		t.Errorf("insert event: %v", err)
+	}
+}
+
+// overwrittenInTx assigns the stopped status and puts the old status back
+// before the same transaction commits.
+func overwrittenInTx(t *testing.T, db *store.Store, id string) {
+	tx, err := db.DB().Begin()
+	if err != nil {
+		t.Errorf("begin: %v", err)
+		return
+	}
+	if _, err := tx.Exec(`UPDATE sessions SET status = 'stopped' WHERE id = ?`, id); err != nil {
+		t.Errorf("update status: %v", err)
+	}
+	if _, err := tx.Exec(`UPDATE sessions SET status = 'running' WHERE id = ?`, id); err != nil {
+		t.Errorf("restore status: %v", err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Errorf("commit: %v", err)
 	}
 }
 
