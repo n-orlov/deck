@@ -222,6 +222,9 @@ func (p *exprParser) parsePrimary() (exprVal, error) {
 		return exprVal{kind: "str", str: t[1 : len(t)-1]}, nil
 	case t == "success()" || t == "always()":
 		return fromTri(triTrue), nil
+	case t == "cancelled()":
+		// The probe models a run that was not cancelled.
+		return fromTri(triFalse), nil
 	case t == "true" || t == "false":
 		return exprVal{kind: "bool", b: t == "true"}, nil
 	}
@@ -460,6 +463,9 @@ func TestBadgeConditionEvaluator(t *testing.T) {
 		{cond, "pull_request", "refs/heads/main", triFalse},
 		{cond, "push", "refs/heads/x", triFalse},
 		{"", "pull_request", "refs/pull/1/merge", triTrue},
+		{"${{ !cancelled() && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main' }}", "push", "refs/heads/main", triTrue},
+		{"${{ !cancelled() && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main' }}", "pull_request", "refs/pull/1/merge", triFalse},
+		{"cancelled()", "push", "refs/heads/main", triFalse},
 		{"steps.a.outcome == 'failure'", "push", "refs/heads/main", triUnknown},
 		{"always() && needs.suite.result != 'skipped'", "push", "refs/heads/main", triUnknown},
 		{"github.event_name != 'pull_request'", "pull_request", "refs/pull/1/merge", triFalse},

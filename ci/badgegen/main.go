@@ -22,6 +22,13 @@
 // coverageGreenMin (85, the product total_floor in ci/quality.json), yellow
 // at or above coverageYellowMin (70) and red below that.
 //
+// The lint badge also takes the result of the ci.yml lint job (-lint-result
+// success|failure|...): CI skips the suite when lint fails, so no
+// quality-report.txt exists on that run, yet lint is the one gate whose
+// outcome is known. A failed lint job renders red whatever the report says;
+// a passing one renders green unless the report says golangci failed; any
+// other value (cancelled, skipped, empty) defers to the report alone.
+//
 // The generator exits 0 once it has written all five files, whatever they
 // say, so a red or unknown badge never hides the files of the others; it
 // exits 2 only when it cannot write them.
@@ -232,20 +239,46 @@ func parseBlock(line string) (file string, stmts int, hit, ok bool) {
 // render reads one gate's input under in and returns its badge. A file that
 // cannot be read is as unknown as one that cannot be parsed.
 func (g gate) render(in string) badge {
+	return g.renderWith(in, "")
+}
+
+// renderWith is render plus the lint job's result, which only the lint gate
+// reads.
+func (g gate) renderWith(in, lintResult string) badge {
 	v := unknown
 	if data, err := os.ReadFile(filepath.Join(in, filepath.FromSlash(g.input))); err == nil { //nolint:gosec // G304: in is the tool's own command-line argument
 		v = g.eval(data)
 	}
+	if g.name == "lint" {
+		v = withLintJob(v, lintResult)
+	}
 	return badge{SchemaVersion: 1, Label: g.label, Message: v.message, Color: v.color}
 }
 
-// generate writes badges/<name>.json for every gate.
-func generate(in, out string) error {
+// withLintJob folds the lint job's result into the lint gate's verdict from
+// the quality report: a failed job is red, a passed one is green unless the
+// report already says red, anything else leaves the report's verdict alone.
+func withLintJob(fromReport verdict, jobResult string) verdict {
+	switch jobResult {
+	case "failure":
+		return passFail(stateFailed)
+	case "success":
+		if fromReport.color == colorRed {
+			return fromReport
+		}
+		return passFail(statePassed)
+	}
+	return fromReport
+}
+
+// generate writes badges/<name>.json for every gate. lintResult is the lint
+// job's result ("" when unknown).
+func generate(in, out, lintResult string) error {
 	if err := os.MkdirAll(out, 0o755); err != nil { //nolint:gosec // badges are published, not secret
 		return err
 	}
 	for _, g := range gates {
-		body, err := json.MarshalIndent(g.render(in), "", "  ")
+		body, err := json.MarshalIndent(g.renderWith(in, lintResult), "", "  ")
 		if err != nil {
 			return err
 		}
@@ -260,8 +293,9 @@ func generate(in, out string) error {
 func main() {
 	in := flag.String("in", "ci-results", "directory ci/suite.sh and ci/quality.sh wrote their results to")
 	out := flag.String("out", "badges", "directory to write the badge JSON files to")
+	lint := flag.String("lint-result", "", "result of the ci.yml lint job (success, failure, cancelled, skipped); empty reads the quality report alone")
 	flag.Parse()
-	if err := generate(*in, *out); err != nil {
+	if err := generate(*in, *out, *lint); err != nil {
 		fmt.Fprintln(os.Stderr, "badgegen:", err)
 		os.Exit(2)
 	}

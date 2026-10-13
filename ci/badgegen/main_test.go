@@ -223,7 +223,7 @@ func TestGenerateWritesExactlyFourKeysPerGate(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if err := generate(in, out); err != nil {
+	if err := generate(in, out, ""); err != nil {
 		t.Fatal(err)
 	}
 	want := []string{"color", "label", "message", "schemaVersion"}
@@ -255,7 +255,7 @@ func TestGenerateReportsAnUnwritableOutputDir(t *testing.T) {
 	if err := os.WriteFile(file, nil, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := generate(t.TempDir(), filepath.Join(file, "badges")); err == nil {
+	if err := generate(t.TempDir(), filepath.Join(file, "badges"), ""); err == nil {
 		t.Fatal("generate into a path below a regular file succeeded")
 	}
 }
@@ -265,5 +265,111 @@ func TestParseBlockRejectsMalformedLines(t *testing.T) {
 		if _, _, _, ok := parseBlock(line); ok {
 			t.Errorf("parseBlock(%q) accepted", line)
 		}
+	}
+}
+
+// readBadges generates into a fresh directory and returns name -> badge.
+func readBadges(t *testing.T, in, lintResult string) map[string]badge {
+	t.Helper()
+	out := filepath.Join(t.TempDir(), "badges")
+	if err := generate(in, out, lintResult); err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]badge{}
+	for _, g := range gates {
+		data, err := os.ReadFile(filepath.Join(out, g.name+".json"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var b badge
+		if err := json.Unmarshal(data, &b); err != nil {
+			t.Fatal(err)
+		}
+		got[g.name] = b
+	}
+	return got
+}
+
+func writeResult(t *testing.T, in, rel, content string) {
+	t.Helper()
+	p := filepath.Join(in, filepath.FromSlash(rel))
+	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(p, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestBadgeFailedLintSkippedSuite: lint failed, so ci.yml skipped the suite
+// and there is no result file at all. The lint badge is red (the one gate
+// whose outcome is known), every other gate is grey unknown, and nothing is
+// green -- for an absent results directory and for an empty one.
+func TestBadgeFailedLintSkippedSuite(t *testing.T) {
+	for name, in := range map[string]string{
+		"results dir absent": filepath.Join(t.TempDir(), "ci-results"),
+		"results dir empty":  t.TempDir(),
+	} {
+		got := readBadges(t, in, "failure")
+		if got["lint"].Color != colorRed || got["lint"].Message != "failing" {
+			t.Errorf("%s: lint badge = %+v, want red failing", name, got["lint"])
+		}
+		for _, g := range gates {
+			if g.name == "lint" {
+				continue
+			}
+			if got[g.name].Color != colorGrey || got[g.name].Message != unknownLabel {
+				t.Errorf("%s: %s badge = %+v, want grey unknown", name, g.name, got[g.name])
+			}
+		}
+	}
+}
+
+// TestBadgeLintJobResult: the lint job result folds into the lint badge
+// without ever turning a red report green or a missing one into a lie.
+func TestBadgeLintJobResult(t *testing.T) {
+	green, red := verdict{"passing", colorGreen}, verdict{"failing", colorRed}
+	rows := []struct {
+		name, job string
+		report    verdict
+		want      verdict
+	}{
+		{"job failed, report green", "failure", green, red},
+		{"job failed, report unknown", "failure", unknown, red},
+		{"job passed, report missing", "success", unknown, green},
+		{"job passed, report red", "success", red, red},
+		{"job cancelled, report unknown", "cancelled", unknown, unknown},
+		{"job skipped, report unknown", "skipped", unknown, unknown},
+		{"job result empty, report red", "", red, red},
+		{"job result empty, report green", "", green, green},
+	}
+	for _, r := range rows {
+		if got := withLintJob(r.report, r.job); got != r.want {
+			t.Errorf("%s: withLintJob = %+v, want %+v", r.name, got, r.want)
+		}
+	}
+}
+
+// TestBadgeSuiteFailedKeepsRealResults: lint passed but the suite failed
+// part-way. The gates with real results show them (a red unit-test gate is
+// red, a green feature gate stays green); the ones with no file are grey.
+func TestBadgeSuiteFailedKeepsRealResults(t *testing.T) {
+	in := t.TempDir()
+	writeResult(t, in, "junit-merged/junit-go.xml", junit(10, 2, 0))
+	writeResult(t, in, "junit-merged/junit-features.xml", junit(4, 0, 0))
+	got := readBadges(t, in, "success")
+	if got["unit-tests"].Color != colorRed {
+		t.Errorf("unit-tests = %+v, want red", got["unit-tests"])
+	}
+	if got["features"].Color != colorGreen {
+		t.Errorf("features = %+v, want green", got["features"])
+	}
+	for _, n := range []string{"coverage", "vulnerabilities"} {
+		if got[n].Color != colorGrey || got[n].Message != unknownLabel {
+			t.Errorf("%s = %+v, want grey unknown", n, got[n])
+		}
+	}
+	if got["lint"].Color != colorGreen {
+		t.Errorf("lint = %+v, want green (job passed)", got["lint"])
 	}
 }

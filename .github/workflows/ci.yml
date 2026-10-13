@@ -220,8 +220,10 @@ jobs:
     if: >-
       always()
       && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
-      && needs.suite.result != 'skipped'
       && !(github.event_name == 'push' && (needs.lint.result == 'cancelled' || needs.suite.result == 'cancelled'))
+      && (needs.suite.result != 'skipped'
+          || ((github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+              && github.ref == 'refs/heads/main' && needs.lint.result == 'failure'))
     timeout-minutes: 20
     permissions:
       contents: write
@@ -236,7 +238,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
+      # A push or dispatch on main whose lint failed never ran `suite`, so
+      # there is no raw-results artifact: this job still runs (the `if:`
+      # above) to refresh the status badges, and every step that needs the
+      # results is gated on this download having succeeded.
       - name: Download this run's raw results
+        id: results
+        continue-on-error: true
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: ci-results-${{ github.run_id }}
@@ -307,9 +315,11 @@ jobs:
       # their own; the fixture needs Go, so it runs in the CI image like the
       # suite does.
       - name: Build/refresh the CI image (for the Allure smoke fixture)
+        if: steps.results.outcome == 'success'
         run: docker build -t deck-ci:local -f ci/Dockerfile ci
 
       - name: Allure smoke -- write the formatter fixture results
+        if: steps.results.outcome == 'success'
         run: |
           set -eu
           rm -rf allure-smoke
@@ -320,6 +330,7 @@ jobs:
             ci/run.sh go test -count=1 -run '^TestAllureFormatterWritesResultsForAFixtureRun$' ./features/
 
       - name: Allure smoke -- allure generate over the fixture, check steps and the @gh-NN link
+        if: steps.results.outcome == 'success'
         # The verified Allure archive is kept on the runner (see
         # ci/allure-report.sh), so this and the report step fetch it once.
         env:
@@ -327,6 +338,7 @@ jobs:
         run: ci/allure-smoke.sh allure-smoke/fixture allure-smoke/report
 
       - name: Generate the Allure report (history carried over on a root publish, if any)
+        if: steps.results.outcome == 'success'
         env:
           ALLURE_CACHE_DIR: ${{ runner.tool_cache }}/deck-allure
         run: |
@@ -338,6 +350,7 @@ jobs:
           ci/allure-report.sh ci-results allure-report "$history_dir"
 
       - name: Merge this run's report into the persisted site tree and push it to gh-pages
+        if: steps.results.outcome == 'success'
         # R165: delegates to ci/pages-persist.sh (see its own header comment)
         # instead of a single unretried `git push` -- a concurrent report
         # from another run (a push to main racing its own PR preview, or
@@ -363,16 +376,23 @@ jobs:
       # steps run only for a push or a workflow_dispatch on refs/heads/main,
       # so a pull_request run (this job also runs for those) and the nightly
       # schedule never write a badge; ci/workflowcheck pins that condition.
+      # They run on `!cancelled()`, not `success()`: a failed lint (suite
+      # skipped, no results) or a failed suite still refreshes the badges,
+      # from whatever results exist plus the lint job's own result, so a red
+      # gate never keeps a stale green badge.
       - name: Generate the status badges (ci/badgegen, R290)
-        if: success() && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
+        if: ${{ !cancelled() && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main' }}
+        env:
+          LINT_RESULT: ${{ needs.lint.result }}
         run: |
           set -eu
           rm -rf badges
-          ci/run.sh go run ./ci/badgegen -in ci-results -out badges
+          mkdir -p ci-results
+          ci/run.sh go run ./ci/badgegen -in ci-results -out badges -lint-result "$LINT_RESULT"
           ls -l badges
 
       - name: Publish the status badges to gh-pages (badges/*.json, R290)
-        if: success() && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
+        if: ${{ !cancelled() && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main' }}
         env:
           DECK_PAGES_RUN_ID: ${{ github.run_id }}
         run: ci/pages-persist.sh site badges badges
@@ -403,7 +423,7 @@ jobs:
           path: site
 
       - name: Job summary (Allure report link, coverage totals)
-        if: always()
+        if: always() && steps.results.outcome == 'success'
         run: |
           set -eu
           ci/summary.sh ci-results "${{ steps.target.outputs.link }}" >> "$GITHUB_STEP_SUMMARY"

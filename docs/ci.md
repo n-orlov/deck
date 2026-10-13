@@ -770,7 +770,12 @@ endpoint JSON, one `badges/<name>.json` per gate, each with exactly the keys
 | `vulnerabilities.json` | `quality-report.txt`, the govulncheck and trivy sections | both passed |
 
 A failed gate renders red. A result file that is missing or cannot be parsed
-renders a grey `unknown`, never green. The generator's tests
+renders a grey `unknown`, never green. `-lint-result <success|failure|...>`
+passes the `lint` job's own result to the lint badge: when lint fails, `suite`
+is skipped and no `quality-report.txt` exists, yet the lint badge renders red
+(a failed job is red whatever the report says, a passed one is green unless the
+report says golangci failed, any other value reads the report alone). Every
+other gate with no result file is the grey `unknown`. The generator's tests
 (`ci/badgegen`: `TestBadgeGenTable`, `TestBadgeNeverGreenOnBadInput`,
 `TestBadgeValuesFollowInput`) cover each of those cases.
 
@@ -784,10 +789,20 @@ The result is `badges/*.json` on the `gh-pages` branch, and in the Pages site,
 where a shields.io `endpoint` badge reads
 `https://n-orlov.github.io/deck/badges/<name>.json`.
 
-Both steps carry `if: success() && (github.event_name == 'push' ||
-github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'`,
+Both steps carry `if: ${{ !cancelled() && (github.event_name == 'push' ||
+github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main' }}`,
 so a pull_request run (the job also runs for those) and the nightly schedule
-write no badge. The root report merge (`ci/allure-site.sh`) leaves `badges/`
+write no badge, while every non-cancelled push or dispatch on main refreshes
+them, from the results that exist, even when a gate failed. The `report` job's
+own `if:` lets it run when lint failed and `suite` was skipped (a push or
+dispatch on main only); the download of the results artifact is then allowed to
+fail and the Allure steps and results summary, which need it, are skipped, so
+the badges still publish and the Pages artifact carries them.
+`TestReportJobRunsForBadgesWhenLintFailedAndSuiteSkipped`,
+`TestBadgeStepsSurviveAFailedGate` and `TestReportJobStepsNeedingResultsAreGated`
+(`ci/workflowcheck`) and `TestBadgeFailedLintSkippedSuite`,
+`TestBadgeLintJobResult` and `TestBadgeSuiteFailedKeepsRealResults`
+(`ci/badgegen`) cover it. The root report merge (`ci/allure-site.sh`) leaves `badges/`
 alone, as it does `pr/`. `TestBadgeStepsMainOnly` and
 `TestNoPullRequestJobWritesBadges` (`ci/workflowcheck`) evaluate those
 conditions over concrete triggers; `TestPagesPersistPublishesBadgesAndRootKeepsThem`
