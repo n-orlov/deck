@@ -2026,6 +2026,14 @@ func writeSessionNameTx(ctx context.Context, tx *sql.Tx, sessionID, newName, nam
 // observers never see a changed row without its corresponding event. eventKind
 // and payload describe the event; query/args describe the row mutation.
 func (s *Store) mutateSessionWithEvent(ctx context.Context, sessionID, fieldName, eventKind, source, payload string, at int64, query string, args ...any) error {
+	return s.mutateSessionWithEventAlso(ctx, sessionID, fieldName, eventKind, source, payload, at, nil, query, args...)
+}
+
+// mutateSessionWithEventAlso is mutateSessionWithEvent plus alsoSQL, extra
+// statements (each bound to the session id alone) run in the same
+// transaction once the row update has matched exactly one session, so they
+// commit or roll back with it.
+func (s *Store) mutateSessionWithEventAlso(ctx context.Context, sessionID, fieldName, eventKind, source, payload string, at int64, alsoSQL []string, query string, args ...any) error {
 	if at == 0 {
 		return errors.New("event timestamp is required")
 	}
@@ -2045,6 +2053,11 @@ func (s *Store) mutateSessionWithEvent(ctx context.Context, sessionID, fieldName
 	}
 	if affected != 1 {
 		return fmt.Errorf("session %q not found", sessionID)
+	}
+	for _, extra := range alsoSQL {
+		if _, err := tx.ExecContext(ctx, extra, sessionID); err != nil {
+			return fmt.Errorf("set %s: %w", fieldName, err)
+		}
 	}
 	if _, err := tx.ExecContext(ctx, `INSERT INTO events (session_id, at, kind, reason, payload)
 		VALUES (?, ?, ?, ?, ?)`, sessionID, at, eventKind, source, payload); err != nil {
@@ -2249,7 +2262,8 @@ func (s *Store) ArchiveSession(ctx context.Context, sessionID string, at int64) 
 	if sessionID == "" {
 		return errors.New("session id is required")
 	}
-	return s.mutateSessionWithEvent(ctx, sessionID, "archived_at", "archived", "user", "", at,
+	return s.mutateSessionWithEventAlso(ctx, sessionID, "archived_at", "archived", "user", "", at,
+		[]string{`DELETE FROM bookmarks WHERE session_id = ?`},
 		`UPDATE sessions SET archived_at = ? WHERE id = ?`, at)
 }
 

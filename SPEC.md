@@ -526,7 +526,11 @@ Invariants:
   key, so a slot names one session and assigning a taken slot moves it rather than duplicating it,
   while a session may hold several slots. Deleting a session removes its slots: tombstoning it
   (`deleted_at` set) clears them in the same write, and reaping the row cascades. A bookmark of a
-  deleted session is therefore never restored by `u`. The table is machine-local, survives a restart,
+  deleted session is therefore never restored by `u`. Archiving a session (`A`, §4) clears its slots
+  the same way: `ArchiveSession` deletes the session's `bookmarks` rows in the transaction that sets
+  `archived_at`, so a failed archive leaves the slots in place. Un-archiving (`U`) and undoing an
+  archive (`u`) do not restore them; the slots stay empty until assigned again. Clearing an empty
+  slot is not an error. The table is machine-local, survives a restart,
   and is not load-bearing: a missing slot is an empty slot, and a jump to an empty slot is a no-op
   with a one-line status message. A migrated database starts with no slot assigned.
 
