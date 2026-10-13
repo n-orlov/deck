@@ -148,3 +148,23 @@ func TestCheckWaitingForTheLockHonoursContext(t *testing.T) {
 		t.Fatalf("after release: %+v; want a request", st)
 	}
 }
+
+// TestCheckerLockProceedsUnlockedWithoutACache: with no cache path, or a
+// cache directory that cannot be created, there is nothing to coordinate on;
+// lock hands back a usable release and reports ok.
+func TestCheckerLockProceedsUnlockedWithoutACache(t *testing.T) {
+	file := filepath.Join(t.TempDir(), "file")
+	if err := os.WriteFile(file, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for name, path := range map[string]string{
+		"no cache path": "",
+		"dir is a file": filepath.Join(file, "sub", "update.json"),
+	} {
+		unlock, ok := (&Checker{CachePath: path}).lock(context.Background())
+		if !ok || unlock == nil {
+			t.Fatalf("%s: lock = (%v, %v), want a release and ok", name, unlock != nil, ok)
+		}
+		unlock()
+	}
+}

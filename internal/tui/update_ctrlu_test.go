@@ -599,10 +599,16 @@ func TestCtrlUFailureNeverShowsBreakingSecret(t *testing.T) {
 		withCreds func(string) string
 		want      string
 	}{
-		"query quote":     {func(u string) string { return u + "?token=sentinel-left\"sentinel-tail" }, "503"},
-		"query backslash": {func(u string) string { return u + "?token=sentinel-left\\sentinel-tail" }, "503"},
-		"query angle":     {func(u string) string { return u + "?token=sentinel-left<sentinel-tail>" }, "503"},
-		"query space":     {func(u string) string { return u + "?token=sentinel-left sentinel-tail" }, "400"},
+		"query quote":          {func(u string) string { return u + "?token=sentinel-left\"sentinel-tail" }, "503"},
+		"query backslash":      {func(u string) string { return u + "?token=sentinel-left\\sentinel-tail" }, "503"},
+		"query angle":          {func(u string) string { return u + "?token=sentinel-left<sentinel-tail>" }, "503"},
+		"query space":          {func(u string) string { return u + "?token=sentinel-left sentinel-tail" }, "400"},
+		"short query angle":    {func(u string) string { return u + "?t=K>Z" }, "503"},
+		"short query space":    {func(u string) string { return u + "?t=K Z" }, "400"},
+		"short query one byte": {func(u string) string { return u + "?t=Z" }, "503"},
+		"short query pair":     {func(u string) string { return u + "?a=1&t=K>Z&b=2" }, "503"},
+		"short userinfo angle": {func(u string) string { return strings.Replace(u, "http://", "http://m:K>Z@", 1) }, "not a valid absolute URL"},
+		"short userinfo space": {func(u string) string { return strings.Replace(u, "http://", "http://m:K Z@", 1) }, "not a valid absolute URL"},
 		"userinfo quote": {func(u string) string {
 			return strings.Replace(u, "http://", "http://mirror:sentinel-left\"sentinel-tail@", 1)
 		}, "not a valid absolute URL"},
@@ -618,6 +624,9 @@ func TestCtrlUFailureNeverShowsBreakingSecret(t *testing.T) {
 			note, frame := m.footerNote(), m.View()
 			if strings.Contains(note, "sentinel") || strings.Contains(frame, "sentinel") {
 				t.Fatalf("a piece of the mirror secret reached the UI: note %q", note)
+			}
+			if strings.HasPrefix(name, "short ") && strings.Contains(note, "Z") {
+				t.Fatalf("a short mirror credential reached the UI note %q", note)
 			}
 			if !strings.HasPrefix(note, "update failed") || !strings.Contains(note, row.want) {
 				t.Fatalf("note %q lost its non-secret diagnostics (want %q)", note, row.want)

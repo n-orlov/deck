@@ -113,14 +113,8 @@ const lockPoll = 20 * time.Millisecond
 // ctx ends while waiting, in which case no request is made and nothing is
 // recorded.
 func (c *Checker) lock(ctx context.Context) (unlock func(), ok bool) {
-	if c.CachePath == "" {
-		return func() {}, true
-	}
-	if err := os.MkdirAll(filepath.Dir(c.CachePath), 0o750); err != nil {
-		return func() {}, true
-	}
-	f, err := os.OpenFile(c.CachePath+".lock", os.O_CREATE|os.O_RDWR, 0o600)
-	if err != nil {
+	f := c.openLock()
+	if f == nil {
 		return func() {}, true
 	}
 	for {
@@ -142,6 +136,19 @@ func (c *Checker) lock(ctx context.Context) (unlock func(), ok bool) {
 		case <-time.After(lockPoll):
 		}
 	}
+}
+
+// openLock opens the cache's sibling lock file, or returns nil when there is
+// no cache or its directory cannot be created or written.
+func (c *Checker) openLock() *os.File {
+	if c.CachePath == "" || os.MkdirAll(filepath.Dir(c.CachePath), 0o750) != nil {
+		return nil
+	}
+	f, err := os.OpenFile(c.CachePath+".lock", os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		return nil
+	}
+	return f
 }
 
 func (c *Checker) status(latest string, requested bool) Status {

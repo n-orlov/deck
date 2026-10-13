@@ -525,6 +525,30 @@ func TestUpdateVerbRedactsMirrorCredentials(t *testing.T) {
 			redactRow{name + " unreachable check", with(plainDead), "127.0.0.1", []string{"update", "--check"}},
 		)
 	}
+	// Credentials shorter than any "sentinel" word, holding a byte that ends
+	// a free-text match: the one-byte tail "Z" must not survive either.
+	for name, secret := range map[string]string{
+		"short query angle":     "?t=K>Z",
+		"short query space":     "?t=K Z",
+		"short query quote":     "?t=K\"Z",
+		"short query one byte":  "?t=Z",
+		"short query pair":      "?a=1&t=K>Z&b=2",
+		"short userinfo space":  "m:K Z@",
+		"short userinfo angle":  "m:K>Z@",
+		"short userinfo single": "m:Z@",
+	} {
+		with := func(u string) string {
+			if strings.HasPrefix(secret, "?") {
+				return u + secret
+			}
+			return strings.Replace(u, "http://", "http://"+secret, 1)
+		}
+		rows = append(rows,
+			redactRow{name + " pinned 503", with(plain503), "127.0.0.1", []string{"update", "--version", "v8.4.1"}},
+			redactRow{name + " latest", with(plain503), "deck update: ", []string{"update"}},
+			redactRow{name + " unreachable check", with(plainDead), "127.0.0.1", []string{"update", "--check"}},
+		)
+	}
 	for _, row := range rows {
 		t.Run(row.name, func(t *testing.T) {
 			dir := t.TempDir()
@@ -537,6 +561,9 @@ func TestUpdateVerbRedactsMirrorCredentials(t *testing.T) {
 			}
 			if strings.Contains(stdout+stderr, "sentinel") {
 				t.Fatalf("the mirror password reached the output: stdout %q stderr %q", stdout, stderr)
+			}
+			if strings.HasPrefix(row.name, "short ") && strings.ContainsAny(strings.TrimPrefix(stdout+stderr, ""), "ZK") {
+				t.Fatalf("a short credential reached the output: stdout %q stderr %q", stdout, stderr)
 			}
 			if updSum(t, exe) != before || len(updNames(t, dir)) != 1 {
 				t.Errorf("binary or directory changed: %v", updNames(t, dir))

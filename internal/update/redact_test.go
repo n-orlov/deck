@@ -3,6 +3,7 @@ package update
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -326,5 +327,98 @@ func TestRunAndCheckRedactBreakingSecrets(t *testing.T) {
 	}
 	if b, _ := os.ReadFile(exe); string(b) != "old" {
 		t.Errorf("binary = %q after failed updates", b)
+	}
+}
+
+// shortSecrets are credentials shorter than minKnownSecret, or whose pieces
+// are, holding a byte that ends a free-text match. Each holds a one-byte tail
+// ("Z", "W", "Y") that no diagnostic of a failed update contains.
+var shortSecrets = map[string]string{
+	"query angle":       "?t=K>Z",
+	"query space":       "?t=K Z",
+	"query quote":       "?t=K\"Z",
+	"query backslash":   "?t=K\\Z",
+	"query second pair": "?a=1&t=K>Z&b=2",
+	"query one byte":    "?t=Z",
+	"userinfo space":    "m:K Z@",
+	"userinfo angle":    "m:K>Z@",
+	"userinfo quote":    "m:K\"Z@",
+	"userinfo one byte": "m:Z@",
+}
+
+// TestRedactShortBreakingSecrets: a configured credential of any length is
+// masked whole, wherever a message quotes the URL, however an earlier pass cut it.
+func TestRedactShortBreakingSecrets(t *testing.T) {
+	for name, secret := range shortSecrets {
+		cfg := breakingURL("http://127.0.0.1:9", secret)
+		for _, msg := range []string{
+			"GET " + cfg + "/releases/download/v1/a.tar.gz: 503 Service Unavailable",
+			fmt.Sprintf("Get %q: dial tcp 127.0.0.1:9: connect: refused", cfg+"/releases/latest"),
+			"GET " + RedactURL(cfg) + ": larger than 5 bytes",
+		} {
+			got := RedactKnown(msg, cfg)
+			if strings.Contains(got, "Z") || !strings.Contains(got, "127.0.0.1") {
+				t.Errorf("%s: RedactKnown(%q) = %q", name, msg, got)
+			}
+		}
+		if got := RedactURL(cfg); strings.Contains(got, "Z") || !strings.Contains(got, "127.0.0.1:9") {
+			t.Errorf("%s: RedactURL(%q) = %q", name, cfg, got)
+		}
+	}
+	// Ordinary words are not rewritten because a credential is one byte long.
+	if got := RedactKnown("Zebra crossing at ?x=1", "http://h/?t=Z"); got != "Zebra crossing at ?x=***" {
+		t.Errorf("RedactKnown rewrote an ordinary word: %q", got)
+	}
+}
+
+// TestRunAndCheckRedactShortSecrets drives Run (pinned and latest) and Check
+// (reachable 503 and dead mirror) with every shortSecrets URL: no byte of the
+// credential reaches the error, the pinned download's error still names the
+// host, and the binary is untouched.
+func TestRunAndCheckRedactShortSecrets(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/releases/latest" || strings.HasSuffix(r.URL.RawQuery, "/releases/latest") {
+			http.Redirect(w, r, "/releases/tag/"+tagV, http.StatusFound)
+			return
+		}
+		http.Error(w, "down", http.StatusServiceUnavailable)
+	}))
+	defer srv.Close()
+	dead := httptest.NewServer(http.NotFoundHandler())
+	deadURL := dead.URL
+	dead.Close()
+	exe := filepath.Join(t.TempDir(), "deck")
+	if err := os.WriteFile(exe, []byte("old"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Dir(exe)
+	t.Setenv("PATH", t.TempDir())
+	for name, secret := range shortSecrets {
+		base := breakingURL(srv.URL, secret)
+		for _, o := range []Options{
+			{BaseURL: base, Exe: exe, Current: "v0.0.1", Version: tagV},
+			{BaseURL: base, Exe: exe, Current: "v0.0.1"},
+			{BaseURL: breakingURL(deadURL, secret), Exe: exe, Current: "v0.0.1", Version: tagV},
+		} {
+			_, err := Run(context.Background(), o)
+			if err == nil || strings.Contains(err.Error(), "Z") || strings.Contains(err.Error(), "K") {
+				t.Errorf("%s: Run(%q, version %q) err = %v", name, o.BaseURL, o.Version, err)
+			}
+			if err != nil && o.Version != "" && !strings.Contains(err.Error(), "127.0.0.1") {
+				t.Errorf("%s: Run err %q lost the host", name, err)
+			}
+		}
+		for _, b := range []string{base, breakingURL(deadURL, secret)} {
+			_, err := Check(context.Background(), Options{BaseURL: b, Exe: exe, Current: "v0.0.1"})
+			if err != nil && (strings.Contains(err.Error(), "Z") || strings.Contains(err.Error(), "K")) {
+				t.Errorf("%s: Check(%q) err = %v", name, b, err)
+			}
+		}
+	}
+	if b, _ := os.ReadFile(exe); string(b) != "old" {
+		t.Errorf("binary = %q after failed updates", b)
+	}
+	if es, _ := os.ReadDir(dir); len(es) != 1 {
+		t.Errorf("directory holds %d entries after failed updates", len(es))
 	}
 }

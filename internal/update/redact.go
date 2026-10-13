@@ -98,10 +98,82 @@ func RedactKnown(s, configured string) string {
 
 // replaceKnown replaces every knownSecrets(configured) in s with "***".
 func replaceKnown(s, configured string) string {
+	s = replaceAnchored(s, configured)
 	for _, secret := range knownSecrets(configured) {
 		s = strings.ReplaceAll(s, secret, redacted)
 	}
 	return s
+}
+
+// anchoredSecret is a credential of any length together with the bytes that
+// pin its position in a URL: a query value follows "key=", a userinfo follows
+// "://" and ends at "@", a password follows ':' and ends at '@'.
+type anchoredSecret struct{ before, secret, after string }
+
+// replaceAnchored masks every anchoredSecrets(configured) in s, whatever its
+// length: the anchor, not the secret's own bytes, says where it is, so a
+// one-byte value or one holding a byte that ends a pattern match (K>Z, K Z) is
+// masked whole and ordinary words are never rewritten.
+func replaceAnchored(s, configured string) string {
+	for _, a := range anchoredSecrets(configured) {
+		for _, form := range secretForms(a.secret) {
+			s = strings.ReplaceAll(s, a.before+form+a.after, a.before+redacted+a.after)
+		}
+	}
+	return s
+}
+
+// anchoredSecrets lists the userinfo, password and query values of a
+// configured URL with their anchors, longest secret first. A query value ends
+// at '&', '#', a space, a quote or the end of the URL; "after" for those is
+// empty, so only the value's leading anchor and its own bytes must match.
+func anchoredSecrets(raw string) []anchoredSecret {
+	head, tail := splitQuery(raw)
+	var out []anchoredSecret
+	for _, u := range userinfoSecrets(head) {
+		if u != "" {
+			out = append(out, anchoredSecret{"://", u, "@"}, anchoredSecret{":", u, "@"})
+		}
+	}
+	for _, kv := range queryPairs(tail) {
+		if kv[1] != "" {
+			out = append(out, anchoredSecret{"?" + kv[0] + "=", kv[1], ""}, anchoredSecret{"&" + kv[0] + "=", kv[1], ""})
+		}
+	}
+	sort.SliceStable(out, func(i, j int) bool { return len(out[i].secret) > len(out[j].secret) })
+	return out
+}
+
+// secretForms is s raw, percent-decoded, percent-encoded and Go-quoted.
+func secretForms(s string) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, form := range []string{s, pathUnescaped(s), queryUnescaped(s)} {
+		for _, f := range []string{form, url.PathEscape(form), url.QueryEscape(form), goQuoted(form)} {
+			if f != "" && !seen[f] {
+				seen[f] = true
+				out = append(out, f)
+			}
+		}
+	}
+	sort.SliceStable(out, func(i, j int) bool { return len(out[i]) > len(out[j]) })
+	return out
+}
+
+// queryPairs is every key=value pair of tail's "?…" query, up to a '#'.
+func queryPairs(tail string) [][2]string {
+	q, ok := strings.CutPrefix(tail, "?")
+	if !ok {
+		return nil
+	}
+	q, _, _ = strings.Cut(q, "#")
+	var out [][2]string
+	for _, kv := range strings.Split(q, "&") {
+		if k, v, ok := strings.Cut(kv, "="); ok {
+			out = append(out, [2]string{k, v})
+		}
+	}
+	return out
 }
 
 // knownSecrets are the credential strings in a configured URL, longest first
@@ -159,16 +231,9 @@ func userinfoSecrets(head string) []string {
 
 // queryValues is every value in tail's "?…" query, up to a '#'.
 func queryValues(tail string) []string {
-	q, ok := strings.CutPrefix(tail, "?")
-	if !ok {
-		return nil
-	}
-	q, _, _ = strings.Cut(q, "#")
 	var out []string
-	for _, kv := range strings.Split(q, "&") {
-		if _, v, ok := strings.Cut(kv, "="); ok {
-			out = append(out, v)
-		}
+	for _, kv := range queryPairs(tail) {
+		out = append(out, kv[1])
 	}
 	return out
 }
