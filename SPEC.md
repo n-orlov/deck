@@ -909,8 +909,10 @@ update` and `ctrl+u` run (§13.1: checksum, then build attestation, then an atom
 indicator reads `updating to vX.Y.Z…` while it runs and Installed (§11) when it ends. deck never
 restarts itself and never touches sessions; the new binary runs at the next start. A failed
 install leaves the binary byte-for-byte as it was, never a partial file, and the indicator reads
-Failed with the cause. It is attempted once per check, so a failure is not retried inside the
-24-hour window. Where the update would be refused (an install directory deck cannot write, a
+Failed with the cause. A running deck attempts the install once, at its start-up check, and never
+retries it while it runs; a later start inside the 24-hour window reads the cached answer (the
+check itself makes no request) and, while that answer still names a newer release, attempts the install again.
+Where the update would be refused (an install directory deck cannot write, a
 package-managed prefix, a `dev` build) deck downloads no archive: the unwritable and managed
 cases show their reason in the indicator, and a `dev` build, which is never outdated, shows
 Skipped with its reason (`auto-update skipped: vX.Y.Z — dev build, install a release with

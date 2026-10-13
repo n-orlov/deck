@@ -62,13 +62,20 @@ func newAutoServer(t *testing.T, badChecksum bool) *autoServer {
 // returns in turn, as the runtime does, and returns the settled model.
 func autoRun(t *testing.T, srv *autoServer, exe, current string, autoUpdate bool) Model {
 	t.Helper()
+	return autoRunCache(t, srv, exe, current, autoUpdate, filepath.Join(t.TempDir(), "update-check.json"))
+}
+
+// autoRunCache is autoRun with the shared update-check cache at cache, so two
+// launches can share one 24-hour window.
+func autoRunCache(t *testing.T, srv *autoServer, exe, current string, autoUpdate bool, cache string) Model {
+	t.Helper()
 	t.Setenv("DECK_UPDATE_URL", srv.URL)
 	t.Setenv("PATH", t.TempDir()) // no gh: checksum-verified only
 	settings := config.Settings{AutoUpdate: autoUpdate, UpdateCheck: true}
 	opts := upd.Options{Exe: exe, Current: current}
 	checker := &upd.Checker{
 		Enabled:   settings.UpdateCheckEnabled,
-		CachePath: filepath.Join(t.TempDir(), "update-check.json"),
+		CachePath: cache,
 		Options:   opts,
 	}
 	install := opts
@@ -206,5 +213,36 @@ func TestAutoUpdateOff(t *testing.T) {
 	}
 	if got := ctrlUFileSum(t, exe); got != oldSum {
 		t.Fatalf("binary changed with auto_update off")
+	}
+}
+
+// TestAutoUpdateFailureRetriesAtNextStart: a running deck attempts the install
+// once, at its start-up check. A later start inside the 24-hour window reads
+// the cached answer (its check makes no request) and attempts the install
+// again; each failed attempt leaves the binary's sha256 unchanged and shows
+// the Failed notice (SPEC §6.5).
+func TestAutoUpdateFailureRetriesAtNextStart(t *testing.T) {
+	srv := newAutoServer(t, true)
+	exe, oldSum := autoBinary(t)
+	cache := filepath.Join(t.TempDir(), "update-check.json")
+	var perStart [3]int32 // /releases/latest requests made during each start
+	for start := 1; start <= 2; start++ {
+		before := srv.checks.Load()
+		m := autoRunCache(t, srv, exe, ctrlUCurrent, true, cache)
+		perStart[start] = srv.checks.Load() - before
+		if m.updateInd.state != updateFailed {
+			t.Fatalf("start %d: indicator %+v, want Failed", start, m.updateInd)
+		}
+		if got := srv.archives.Load(); got != int32(start) {
+			t.Fatalf("start %d: archive downloads = %d, want %d (one attempt per start)", start, got, start)
+		}
+		if got := ctrlUFileSum(t, exe); got != oldSum {
+			t.Fatalf("start %d: binary sha256 = %s, want the original %s", start, got, oldSum)
+		}
+	}
+	// Start 1 makes the daily check's request plus the install's own release
+	// lookup; start 2's check reads the cache, so only the install's lookup.
+	if perStart[2] != perStart[1]-1 {
+		t.Fatalf("latest-release requests per start = %d then %d; want the second start's check to make none", perStart[1], perStart[2])
 	}
 }
