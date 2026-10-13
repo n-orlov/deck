@@ -79,7 +79,12 @@ func assertReconcilerStopsDisappearedSession(t *testing.T, reconcileInterval tim
 			passCost = elapsed
 		}
 	}
+	// The stopped transition is judged on the time its own write ran, recorded
+	// inside the writing transaction, never on when this goroutine happened to
+	// read the row: a late write seen by a late reader is still late.
+	stoppedAt := recordStoppedWrites(t, db)
 	warm := len(snapshots())
+	loopStart := time.Now()
 	stop := startReconciler(t, service, reconcileInterval)
 	if err := service.TMux.Kill(context.Background(), alpha.Slug); err != nil {
 		t.Fatal(err)
@@ -101,11 +106,17 @@ func assertReconcilerStopsDisappearedSession(t *testing.T, reconcileInterval tim
 			t.Fatalf("first tick started %s after the immediate pass, want about one interval (%s)", gap, reconcileInterval)
 		}
 	}
-	// The stopped status itself is held to the original bound (one interval
-	// plus three measured pass costs), counted from the start of the detecting
-	// snapshot, so the interval part is the cadence asserted above and what is
-	// left is the pass's own work.
-	waitForStatus(t, db, alpha.ID, "stopped", time.Until(detecting.at.Add(3*passCost)))
+	// The stopped write itself is held to the original bound: one interval
+	// plus three measured pass costs from the loop start. It is also held to
+	// three pass costs from the start of the snapshot that detected the
+	// disappearance, so the write follows its own detecting pass.
+	original := loopStart.Add(reconcileInterval + 3*passCost)
+	if err := stoppedWrittenBy(stoppedAt, alpha.ID, original, 12*reconcileInterval); err != nil {
+		t.Fatalf("original cadence bound (interval %s + 3 x pass cost %s from loop start): %v", reconcileInterval, passCost, err)
+	}
+	if err := stoppedWrittenBy(stoppedAt, alpha.ID, detecting.at.Add(3*passCost), 0); err != nil {
+		t.Fatalf("detecting-pass bound (3 x pass cost %s from the detecting snapshot): %v", passCost, err)
+	}
 	if err := stop(); err != nil {
 		t.Fatalf("reconcile loop: %v", err)
 	}
@@ -808,10 +819,7 @@ func startReconciler(t *testing.T, service Service, interval time.Duration) (sto
 func waitForStatus(t *testing.T, db *store.Store, id, want string, timeout time.Duration) {
 	t.Helper()
 	deadline := time.Now().Add(timeout)
-	// The status is read at least once even when the deadline has already
-	// passed (a deadline anchored at a recorded event can be behind the clock
-	// by the time this goroutine runs); the bound is on when it was written.
-	for first := true; first || time.Now().Before(deadline); first = false {
+	for time.Now().Before(deadline) {
 		rows, err := db.ListSessions(context.Background())
 		if err != nil {
 			t.Fatal(err)
