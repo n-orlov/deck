@@ -163,15 +163,43 @@ func clientUnarchivesSelectedSession(ctx context.Context, clientName, sessionNam
 }
 
 // unarchiveRepainted reports whether frame shows deck's own repaint after
-// `U`: the selected sidebar row no longer carries the archived badge (ascii
-// "[archived]", possibly truncated to "[arch...", or the unicode glyph) and
-// the footer no longer offers "U unarchive" for it.
+// `U`: the selected sidebar row's own text no longer carries the archived
+// badge (ascii "[archived]", possibly truncated to "[arch...", or the unicode
+// glyph) and the footer legend no longer offers "U unarchive". (The footer
+// note "press u to unarchive" is deliberately not part of this: it rests on
+// screen for the note timeout after the row itself has repainted.) The row is
+// read raw, through selectedSidebarRowText: selectedSidebarLine strips every
+// badge run on purpose (it identifies a row), so a check built on it passed on
+// the frame BEFORE the repaint, and filter.feature:97 then sent `r` while deck
+// had not yet processed the unarchive -- 4 of 8 parallel -count=40 runs under
+// CPU load left the row "stopped".
 func unarchiveRepainted(frame string) bool {
-	row := selectedSidebarLine(frame)
-	if strings.Contains(row, "[arch") || strings.Contains(row, "\u25a3") {
+	row := selectedSidebarRowText(frame)
+	if row == "" || strings.Contains(row, "[arch") || strings.Contains(row, "\u25a3") {
 		return false
 	}
 	return !strings.Contains(frame, "U unarchive")
+}
+
+// selectedSidebarRowText is the sidebar cell of the selected row's first line
+// exactly as drawn (gutter, glyphs, name and badge run included), or "" when no
+// line carries the "> " selection marker.
+func selectedSidebarRowText(frame string) string {
+	const scanWidth = 6
+	for _, line := range strings.Split(frame, "\n") {
+		head := line
+		if len(head) > scanWidth {
+			head = head[:scanWidth]
+		}
+		if !strings.Contains(head, "> ") {
+			continue
+		}
+		if cell, ok := sidebarCell(line); ok {
+			return cell
+		}
+		return line
+	}
+	return ""
 }
 
 // clientPressesLeftInFilterField sends n real left-arrow keys to the open
