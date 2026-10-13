@@ -32,6 +32,9 @@ const (
 	// updateInstalling is the progress state of a confirmed ctrl+u update
 	// (R299): the verified update is running in the background.
 	updateInstalling
+	// updateSkipped says auto_update is on but this build cannot take a
+	// release at all (a dev build, R300): the reason, and no download.
+	updateSkipped
 )
 
 // updateIndicator is the model's whole update-indicator state.
@@ -77,21 +80,37 @@ func (m Model) updateCheckCmd() tea.Cmd {
 	if src.check == nil {
 		return nil
 	}
+	auto := m.settings.AutoUpdate
 	return func() tea.Msg {
 		st := src.check(context.Background())
 		out := updateChecked{status: st}
-		if st.Newer && src.preflight != nil {
+		switch {
+		case src.preflight == nil:
+		case st.Newer:
 			out.refusal = src.preflight()
+		case auto && st.Latest != "":
+			// A dev build is never outdated, so the check sets no Newer; with
+			// auto_update on, the preflight still names why nothing installs.
+			if err := src.preflight(); isDevRefusal(err) {
+				out.refusal = err
+			}
 		}
 		return out
 	}
+}
+
+// isDevRefusal reports whether err refuses a dev build.
+func isDevRefusal(err error) bool {
+	r, ok := upd.AsRefusal(err)
+	return ok && r.Reason == upd.RefusedDev
 }
 
 // onUpdateChecked records the daily check's answer. With auto_update on and
 // an Available result (a newer release this install may take) it installs the
 // release through the same verified update ctrl+u runs, with no prompt. A
 // refusal (unwritable directory, managed prefix, dev build) or a check that
-// found nothing newer starts no download.
+// found nothing newer starts no download; a dev build's refusal reads
+// Skipped (updateSkipped) while auto_update is on.
 func (m Model) onUpdateChecked(msg updateChecked) (tea.Model, tea.Cmd) {
 	m.applyUpdateCheck(msg.status, msg.refusal)
 	if m.settings.AutoUpdate && m.updateInd.state == updateAvailable {
@@ -124,6 +143,8 @@ func (m *Model) applyUpdateCheck(st upd.Status, refusal error) {
 	}
 	next := updateIndicator{state: updateHidden}
 	switch {
+	case st.Latest != "" && m.settings.AutoUpdate && isDevRefusal(refusal):
+		next = updateIndicator{state: updateSkipped, tag: st.Latest, reason: "dev build, install a release with install.sh"}
 	case !st.Newer || st.Latest == "":
 	case refusal == nil:
 		next = updateIndicator{state: updateAvailable, tag: st.Latest}
@@ -154,7 +175,8 @@ func refusalPhrase(err error) string {
 // updateIndicatorText is the indicator's note, or "" when it is hidden. The
 // check being off hides every state but Installed (the binary on disk is new
 // whatever the setting now says). An Available offer is also hidden while
-// auto_update is on: deck installs it without asking.
+// auto_update is on: deck installs it without asking. Skipped shows only
+// while auto_update is on.
 func (m Model) updateIndicatorText() string {
 	ind := m.updateInd
 	if ind.state != updateInstalled && ind.state != updateInstalling && !m.settings.UpdateCheckEnabled() {
@@ -168,6 +190,11 @@ func (m Model) updateIndicatorText() string {
 		return fmt.Sprintf("update available: %s — press ctrl+u to install", ind.tag)
 	case updateRefused:
 		return fmt.Sprintf("update available: %s — %s", ind.tag, ind.reason)
+	case updateSkipped:
+		if !m.settings.AutoUpdate {
+			return ""
+		}
+		return fmt.Sprintf("auto-update skipped: %s — %s", ind.tag, ind.reason)
 	case updateInstalling:
 		return fmt.Sprintf("updating to %s — downloading and verifying…", ind.tag)
 	case updateInstalled:

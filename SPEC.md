@@ -913,8 +913,9 @@ Failed with the cause. It is attempted once per check, so a failure is not retri
 24-hour window. Where the update would be refused (an install directory deck cannot write, a
 package-managed prefix, a `dev` build) deck downloads no archive: the unwritable and managed
 cases show their reason in the indicator, and a `dev` build, which is never outdated, shows
-nothing. With `auto_update` off, deck downloads no archive on its own: a newer release is only
-offered (Available, `ctrl+u`).
+Skipped with its reason (`auto-update skipped: vX.Y.Z — dev build, install a release with
+install.sh`). With `auto_update` off, deck downloads no archive on its own: a newer release is
+only offered (Available, `ctrl+u`), and a `dev` build shows nothing.
 
 Two rules that hold for every key, present and future:
 
@@ -3016,9 +3017,11 @@ truncated-but-honest frame beats an unpredictable one.
   - **Refused** (a newer release exists but this install cannot take it): `update available:
     vX.Y.Z — ` and the reason instead of `ctrl+u`: `install directory is not writable, see deck
     update`, or `installed by a package manager, update it there`.
+  - **Skipped** (`auto_update` on, a `dev` build, a release exists): `auto-update skipped:
+    vX.Y.Z — dev build, install a release with install.sh`. Nothing is downloaded.
   - **Hidden** when `update_check` and `auto_update` are both off, when the check is offline or
-    failed (silently), when the build is current, and for a `dev` build. Installed is the one
-    state the settings do not hide.
+    failed (silently), when the build is current, and for a `dev` build with `auto_update` off.
+    Installed is the one state the settings do not hide.
 
   The indicator is fitted like any other note: it is one line, elided with an ellipsis when it is
   longer than the line, and the footer's own content gives up whole trailing entries to make room

@@ -143,14 +143,14 @@ func TestAutoUpdateFailure(t *testing.T) {
 }
 
 // TestAutoUpdateSkipped: with auto_update on, an install that would be refused
-// downloads no archive. The unwritable and managed rows show the reason; the
-// dev build row has nothing to offer (the check never calls a dev build
-// outdated), so its indicator is hidden.
+// downloads no archive, and the indicator names why: the unwritable and
+// managed rows show their refusal reason, and the dev build row (which the
+// check never calls outdated) shows that auto-update skipped it.
 func TestAutoUpdateSkipped(t *testing.T) {
 	rows := []struct {
 		name string
 		set  func(t *testing.T) (exe, current string)
-		show string // substring of the footer note; "" means hidden
+		show string // substring the footer note must contain
 	}{
 		{"unwritable", func(t *testing.T) (string, string) {
 			if os.Geteuid() == 0 {
@@ -168,7 +168,7 @@ func TestAutoUpdateSkipped(t *testing.T) {
 		{"dev-build", func(t *testing.T) (string, string) {
 			exe, _ := autoBinary(t)
 			return exe, upd.DevVersion
-		}, ""},
+		}, "auto-update skipped: v1.2.3 — dev build"},
 	}
 	for _, row := range rows {
 		t.Run(row.name, func(t *testing.T) {
@@ -182,7 +182,7 @@ func TestAutoUpdateSkipped(t *testing.T) {
 				t.Fatalf("indicator state = %v, want a skipped install", m.updateInd.state)
 			}
 			note := m.footerNote()
-			if (row.show == "") != (note == "") || !strings.Contains(note, row.show) {
+			if note == "" || !strings.Contains(note, row.show) {
 				t.Fatalf("note = %q, want it to contain %q", note, row.show)
 			}
 		})
