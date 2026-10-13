@@ -1,0 +1,6 @@
+{
+  "schemaVersion": 1,
+  "label": "vulnerability audit",
+  "message": "no known vulnerabilities",
+  "color": "green"
+}
