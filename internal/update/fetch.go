@@ -44,14 +44,14 @@ func get(ctx context.Context, c *http.Client, raw string, limit int64) ([]byte, 
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("GET %s: %s", raw, resp.Status)
+		return nil, fmt.Errorf("GET %s: %s", RedactURL(raw), resp.Status)
 	}
 	data, err := io.ReadAll(io.LimitReader(resp.Body, limit+1))
 	if err != nil {
-		return nil, fmt.Errorf("GET %s: %w", raw, err)
+		return nil, fmt.Errorf("GET %s: %w", RedactURL(raw), err)
 	}
 	if int64(len(data)) > limit {
-		return nil, fmt.Errorf("GET %s: larger than %d bytes", raw, limit)
+		return nil, fmt.Errorf("GET %s: larger than %d bytes", RedactURL(raw), limit)
 	}
 	return data, nil
 }

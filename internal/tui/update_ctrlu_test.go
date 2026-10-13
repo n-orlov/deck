@@ -417,3 +417,109 @@ func TestInteractiveCtrlUPassThrough(t *testing.T) {
 		})
 	}
 }
+
+const ctrlUSentinel = "ui-mirror-password-sentinel"
+
+// ctrlUMirrorModel is ctrlUInstallModel pointed at a credentialed mirror URL
+// (user:ctrlUSentinel@127.0.0.1:port) served by handler.
+func ctrlUMirrorModel(t *testing.T, handler http.Handler) (Model, string, string) {
+	t.Helper()
+	srv := httptest.NewServer(handler)
+	t.Cleanup(srv.Close)
+	t.Setenv("DECK_UPDATE_URL", strings.Replace(srv.URL, "http://", "http://ui-user:"+ctrlUSentinel+"@", 1))
+	t.Setenv("PATH", t.TempDir())
+	exe := filepath.Join(t.TempDir(), "deck")
+	if err := os.WriteFile(exe, []byte(ctrlUOldBody), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	opts := upd.Options{Exe: exe, Current: ctrlUCurrent, OnlyIfNewer: true}
+	m := footerNoteFrameModel(240, 24, false)
+	m = m.WithUpdateInstaller(ctrlUCurrent, func(ctx context.Context) (upd.Result, error) { return upd.Run(ctx, opts) })
+	m = checkedModel(t, m, true, upd.Status{Latest: indicatorTag, Newer: true}, nil)
+	return m, exe, ctrlUSum([]byte(ctrlUOldBody))
+}
+
+// TestCtrlUFailureNeverShowsMirrorPassword: a failed ctrl+u against a mirror
+// whose URL carries a password never puts the password in the footer note or
+// the rendered frame, whether the mirror answers HTTP 500, 404 or dies
+// mid-body; the cause stays useful and the binary is untouched.
+func TestCtrlUFailureNeverShowsMirrorPassword(t *testing.T) {
+	asset, err := upd.AssetName(runtime.GOOS, runtime.GOARCH)
+	if err != nil {
+		t.Skip(err)
+	}
+	latest := func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/releases/tag/"+indicatorTag, http.StatusFound)
+	}
+	rows := map[string]struct {
+		handler http.HandlerFunc
+		want    string
+	}{
+		"http 500": {func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == "/releases/latest" {
+				latest(w, r)
+				return
+			}
+			http.Error(w, "boom", http.StatusInternalServerError)
+		}, "500"},
+		"truncated body": {func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == "/releases/latest" {
+				latest(w, r)
+				return
+			}
+			w.Header().Set("Content-Length", "100000")
+			_, _ = w.Write([]byte("short"))
+		}, "unexpected EOF"},
+		"oversize checksums": {func(w http.ResponseWriter, r *http.Request) {
+			switch {
+			case r.URL.Path == "/releases/latest":
+				latest(w, r)
+			case strings.HasSuffix(r.URL.Path, "/"+asset):
+				_, _ = w.Write(ctrlUArchive(t, ctrlUNewBody))
+			default:
+				_, _ = w.Write(bytes.Repeat([]byte("a"), 2<<20))
+			}
+		}, "larger than"},
+	}
+	for name, row := range rows {
+		t.Run(name, func(t *testing.T) {
+			m, exe, oldSum := ctrlUMirrorModel(t, row.handler)
+			m, _ = ctrlUPress(t, m, ctrlUKey)
+			m, cmd := ctrlUPress(t, m, key("enter"))
+			if cmd == nil {
+				t.Fatal("confirming returned no command")
+			}
+			msg := cmd()
+			if _, ok := msg.(updateFailedMsg); !ok {
+				t.Fatalf("the update's end = %T, want updateFailedMsg", msg)
+			}
+			m = sendUpdateMsg(t, m, msg)
+			note, frame := m.footerNote(), m.View()
+			if strings.Contains(note, ctrlUSentinel) || strings.Contains(frame, ctrlUSentinel) {
+				t.Fatalf("the mirror password reached the UI: note %q", note)
+			}
+			if !strings.HasPrefix(note, "update failed") || !strings.Contains(note, row.want) || !strings.Contains(note, "127.0.0.1") {
+				t.Fatalf("note %q lost its non-secret diagnostics (want %q and the host)", note, row.want)
+			}
+			if got := ctrlUFileSum(t, exe); got != oldSum {
+				t.Fatalf("binary sha256 = %s, want the original %s", got, oldSum)
+			}
+		})
+	}
+}
+
+// TestUpdateFailedNoteRedactsAnyCause: whatever produced the cause (a wrapped
+// third-party error, an https mirror, a query token), the footer note is
+// redacted at the point it is drawn.
+func TestUpdateFailedNoteRedactsAnyCause(t *testing.T) {
+	for _, cause := range []string{
+		`Get "https://bob:` + ctrlUSentinel + `@mirror.example/releases/latest": EOF`,
+		"GET https://" + ctrlUSentinel + "@mirror.example/x: 502 Bad Gateway",
+		"GET https://mirror.example/x?token=" + ctrlUSentinel + "&a=b: 500",
+	} {
+		note := updateFailedText(cause)
+		if strings.Contains(note, ctrlUSentinel) || !strings.Contains(note, "mirror.example") {
+			t.Errorf("note %q for cause %q leaks or lost the host", note, cause)
+		}
+	}
+}

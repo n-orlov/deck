@@ -431,3 +431,73 @@ func TestUpdateVerbAgainstFakeServer(t *testing.T) {
 		})
 	})
 }
+
+const updSentinel = "cmd-mirror-password-sentinel"
+
+// TestUpdateVerbRedactsMirrorCredentials drives the real binary against a
+// loopback mirror whose DECK_UPDATE_URL carries a password. Every failure
+// (HTTP status, truncated body, size limit, unreachable host, refused scheme,
+// --check) keeps the password out of stdout and stderr, still names the host
+// and the cause, and leaves the installed binary and directory untouched.
+func TestUpdateVerbRedactsMirrorCredentials(t *testing.T) {
+	asset, err := update.AssetName(runtime.GOOS, runtime.GOARCH)
+	if err != nil {
+		t.Skip(err)
+	}
+	bins := updBinaries{}
+	v100 := bins.build(t, "v1.0.0", "-X main.version=v1.0.0")
+	emptyPath := t.TempDir()
+	mirror := func(h func(w http.ResponseWriter, r *http.Request)) string {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == "/releases/latest" {
+				http.Redirect(w, r, "/releases/tag/"+updLatest, http.StatusFound)
+				return
+			}
+			h(w, r)
+		}))
+		t.Cleanup(srv.Close)
+		return strings.Replace(srv.URL, "http://", "http://mirror-user:"+updSentinel+"@", 1)
+	}
+	dead := httptest.NewServer(http.NotFoundHandler())
+	deadURL := strings.Replace(dead.URL, "http://", "http://mirror-user:"+updSentinel+"@", 1)
+	dead.Close()
+	rows := []struct {
+		name, url, want string
+		args            []string
+	}{
+		{"http status", mirror(func(w http.ResponseWriter, _ *http.Request) { http.Error(w, "x", 500) }), "500 Internal Server Error", []string{"update"}},
+		{"truncated body", mirror(func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Length", "100000")
+			_, _ = w.Write([]byte("short"))
+		}), "unexpected EOF", []string{"update"}},
+		{"size limit", mirror(func(w http.ResponseWriter, r *http.Request) {
+			if strings.HasSuffix(r.URL.Path, "/"+asset) {
+				_, _ = w.Write(updTarGz(t, updNewBody))
+				return
+			}
+			_, _ = w.Write(bytes.Repeat([]byte("a"), 2<<20))
+		}), "larger than", []string{"update"}},
+		{"unreachable", deadURL, "127.0.0.1", []string{"update"}},
+		{"unreachable check", deadURL, "127.0.0.1", []string{"update", "--check"}},
+		{"refused scheme", "ftp://mirror-user:" + updSentinel + "@mirror.example/x", "mirror.example", []string{"update"}},
+		{"refused scheme check", "http://mirror-user:" + updSentinel + "@mirror.example/x", "mirror.example", []string{"update", "--check"}},
+	}
+	for _, row := range rows {
+		t.Run(row.name, func(t *testing.T) {
+			dir := t.TempDir()
+			exe := filepath.Join(dir, "deck")
+			copyFile(t, v100, exe)
+			before := updSum(t, exe)
+			stdout, stderr, code := updRun(t, exe, t.TempDir(), emptyPath, []string{"DECK_UPDATE_URL=" + row.url}, row.args...)
+			if code == 0 || !strings.HasPrefix(stderr, "deck update: ") || !strings.Contains(stderr, row.want) {
+				t.Fatalf("exit %d stderr %q, want a failure naming %q", code, stderr, row.want)
+			}
+			if strings.Contains(stdout+stderr, updSentinel) {
+				t.Fatalf("the mirror password reached the output: stdout %q stderr %q", stdout, stderr)
+			}
+			if updSum(t, exe) != before || len(updNames(t, dir)) != 1 {
+				t.Errorf("binary or directory changed: %v", updNames(t, dir))
+			}
+		})
+	}
+}

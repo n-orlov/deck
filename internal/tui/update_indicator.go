@@ -222,7 +222,7 @@ func (m Model) updateStateText(ind updateIndicator) string {
 // its whitespace collapsed to one line, when there is one.
 func updateFailedText(reason string) string {
 	text := "update failed — see deck update"
-	if cause := strings.Join(strings.Fields(reason), " "); cause != "" {
+	if cause := strings.Join(strings.Fields(upd.RedactText(reason)), " "); cause != "" {
 		text += " (" + cause + ")"
 	}
 	return text

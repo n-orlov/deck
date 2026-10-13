@@ -18,6 +18,11 @@ type CheckResult struct {
 // ("dev") is never reported as having a newer release: it cannot be updated
 // in place, so the answer would be a promise deck cannot keep.
 func Check(ctx context.Context, o Options) (CheckResult, error) {
+	res, err := check(ctx, o)
+	return res, redactErr(err)
+}
+
+func check(ctx context.Context, o Options) (CheckResult, error) {
 	o = o.withDefaults()
 	base := baseURL(o.BaseURL)
 	if err := CheckURL(base); err != nil {

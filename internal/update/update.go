@@ -58,6 +58,11 @@ type Result struct {
 // Run downloads, verifies and installs the release over the executable. On
 // any error the old binary is untouched and no temporary file remains.
 func Run(ctx context.Context, o Options) (Result, error) {
+	res, err := run(ctx, o)
+	return res, redactErr(err)
+}
+
+func run(ctx context.Context, o Options) (Result, error) {
 	o = o.withDefaults()
 	pl, err := o.prepare(ctx)
 	if err != nil {

@@ -62,12 +62,12 @@ func baseURL(override string) string {
 func CheckURL(raw string) error {
 	u, err := url.Parse(raw)
 	if err != nil || u.Host == "" {
-		return fmt.Errorf("update URL %q is not a valid absolute URL", raw)
+		return fmt.Errorf("update URL %q is not a valid absolute URL", RedactURL(raw))
 	}
 	if u.Scheme == "https" || (u.Scheme == "http" && isLoopback(u.Hostname())) {
 		return nil
 	}
-	return fmt.Errorf("update URL %q refused: only https is allowed (http only for a loopback host)", raw)
+	return fmt.Errorf("update URL %q refused: only https is allowed (http only for a loopback host)", RedactURL(raw))
 }
 
 func isLoopback(host string) bool {

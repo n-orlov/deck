@@ -95,7 +95,7 @@ func (m *Model) startUpdate() tea.Cmd {
 		}
 		res, err := run(context.Background())
 		if err != nil {
-			return updateFailedMsg{cause: err.Error()}
+			return updateFailedMsg{cause: upd.RedactText(err.Error())}
 		}
 		if res.Unchanged {
 			return updateFailedMsg{cause: "no newer release to install"}
