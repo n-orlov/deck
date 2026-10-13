@@ -1,4 +1,4 @@
-// concurrencygroups_test.go is task 008's own probe (R165, GH #50),
+// concurrencygroups_test.go (the group test is TestCIWorkflowPushSharesOneGroupPerRefAndDispatchNeverCancelled, formerly ...DifferByEventAndPushSha) is task 008's own probe (R165, GH #50),
 // extended by task cure-01-02: it parses ci.yml's top-level
 // `concurrency:` block as real YAML, then EVALUATES its
 // `group`/`cancel-in-progress` GitHub Actions expressions against a
@@ -9,12 +9,12 @@
 //
 //  1. the `schedule` and `workflow_dispatch` events' own groups differ
 //     from every `push` event's own group;
-//  2. two `push` events with different `github.sha` values get
-//     different groups (a per-commit push group, so pushing again to
-//     main before an earlier run finished never queues behind, or
-//     cancels, that earlier run's own result);
-//  3. `cancel-in-progress` evaluates true only for `pull_request`, false
-//     for every other event in the table;
+//  2. two `push` events with different `github.sha` values get the SAME
+//     group (one group per ref), so pushing again to main cancels the
+//     superseded run instead of queueing a stale one;
+//  3. `cancel-in-progress` evaluates true for `push` and `pull_request`
+//     and false for `schedule` and `workflow_dispatch`, so a nightly or a
+//     dispatch always runs to completion;
 //  4. the `publish` job carries no job-level `concurrency:` of its own
 //     (job-level concurrency would let the retrying deploy-pages steps
 //     inside it fight the workflow-level group instead of the
@@ -72,6 +72,8 @@ type ghValue struct {
 	str    string
 	isBool bool
 	bval   bool
+	list   []string
+	isList bool
 }
 
 func strVal(s string) ghValue { return ghValue{str: s} }
@@ -82,6 +84,9 @@ func boolVal(b bool) ghValue  { return ghValue{isBool: true, bval: b} }
 // string to falsy, any other string to truthy -- see "Objects and
 // literals to boolean" in the expressions docs above).
 func (v ghValue) truthy() bool {
+	if v.isList {
+		return len(v.list) > 0
+	}
 	if v.isBool {
 		return v.bval
 	}
@@ -138,12 +143,15 @@ func tokenizeGhExpr(s string) []string {
 		case strings.HasPrefix(s[i:], "||"):
 			toks = append(toks, "||")
 			i += 2
-		case c == '(' || c == ')':
+		case c == '(' || c == ')' || c == ',':
 			toks = append(toks, string(c))
+			i++
+		case c == '!' && !strings.HasPrefix(s[i:], "!="):
+			toks = append(toks, "!")
 			i++
 		default:
 			j := i
-			for j < len(s) && !strings.ContainsRune(" \t\n()'", rune(s[j])) &&
+			for j < len(s) && !strings.ContainsRune(" \t\n(),'", rune(s[j])) &&
 				!strings.HasPrefix(s[j:], "==") && !strings.HasPrefix(s[j:], "!=") &&
 				!strings.HasPrefix(s[j:], "&&") && !strings.HasPrefix(s[j:], "||") {
 				j++
@@ -202,10 +210,10 @@ func (e *ghExprEval) parseAnd() ghValue {
 }
 
 func (e *ghExprEval) parseEquality() ghValue {
-	left := e.parsePrimary()
+	left := e.parseUnary()
 	for e.peek() == "==" || e.peek() == "!=" {
 		op := e.next()
-		right := e.parsePrimary()
+		right := e.parseUnary()
 		eq := left.equals(right)
 		if op == "!=" {
 			eq = !eq
@@ -215,9 +223,62 @@ func (e *ghExprEval) parseEquality() ghValue {
 	return left
 }
 
+func (e *ghExprEval) parseUnary() ghValue {
+	if e.peek() == "!" {
+		e.next()
+		return boolVal(!e.parseUnary().truthy())
+	}
+	return e.parsePrimary()
+}
+
+// callFn evaluates the two functions the job-level `if:` expressions use:
+// always() (true) and contains(search, item), where search is either a
+// `needs.*.result` list (any element equal to item) or a string.
+func (e *ghExprEval) callFn(name string) ghValue {
+	e.next() // "("
+	var args []ghValue
+	for e.peek() != ")" && e.peek() != "" {
+		args = append(args, e.parseOr())
+		if e.peek() == "," {
+			e.next()
+		}
+	}
+	e.next() // ")"
+	switch name {
+	case "always":
+		return boolVal(true)
+	case "contains":
+		if len(args) != 2 {
+			return boolVal(false)
+		}
+		if args[0].isList {
+			for _, x := range args[0].list {
+				if x == args[1].str {
+					return boolVal(true)
+				}
+			}
+			return boolVal(false)
+		}
+		return boolVal(strings.Contains(strings.ToLower(args[0].str), strings.ToLower(args[1].str)))
+	}
+	return strVal("")
+}
+
 func (e *ghExprEval) parsePrimary() ghValue {
 	tok := e.next()
 	switch {
+	case e.peek() == "(" && tok != "(":
+		return e.callFn(tok)
+	case strings.HasPrefix(tok, "needs.*."):
+		// needs.*.result -> every needs.<job>.result in the context.
+		suffix := strings.TrimPrefix(tok, "needs.*")
+		var vals []string
+		for k, v := range e.ctx {
+			if strings.HasPrefix(k, "needs.") && strings.HasSuffix(k, suffix) && strings.Count(k, ".") == 2 {
+				vals = append(vals, v)
+			}
+		}
+		return ghValue{isList: true, list: vals}
 	case tok == "(":
 		v := e.parseOr()
 		if e.peek() == ")" {
@@ -330,7 +391,7 @@ func (s scenario) ctx() map[string]string {
 	}
 }
 
-func TestCIWorkflowConcurrencyGroupsDifferByEventAndPushSha(t *testing.T) {
+func TestCIWorkflowPushSharesOneGroupPerRefAndDispatchNeverCancelled(t *testing.T) {
 	conc, _ := loadCIWorkflowRaw(t)
 	if conc.Group == "" {
 		t.Fatalf("ci.yml: concurrency.group is empty")
@@ -362,8 +423,8 @@ func TestCIWorkflowConcurrencyGroupsDifferByEventAndPushSha(t *testing.T) {
 	gScheduleAgain := groupOf(scheduleAgain)
 	gDispatchSameSha := groupOf(dispatchSameSha)
 
-	if gPushA == gPushB {
-		t.Errorf("push A group %q == push B group %q: two pushes with different shas must get different groups", gPushA, gPushB)
+	if gPushA != gPushB {
+		t.Errorf("push A group %q != push B group %q: two pushes to main with different shas must share one per-ref group so the newer cancels the superseded run", gPushA, gPushB)
 	}
 	if gSchedule == gPushA || gSchedule == gPushB {
 		t.Errorf("schedule group %q collides with a push group (A=%q, B=%q): schedule must differ from any push group", gSchedule, gPushA, gPushB)
@@ -386,9 +447,9 @@ func TestCIWorkflowConcurrencyGroupsDifferByEventAndPushSha(t *testing.T) {
 	}
 	for _, s := range []scenario{pushA, pushB, schedule, dispatch, scheduleAgain, dispatchSameSha, pr} {
 		got := evalGhBoolTemplate(conc.CancelInProgress, s.ctx())
-		want := s.eventName == "pull_request"
+		want := s.eventName == "pull_request" || s.eventName == "push"
 		if got != want {
-			t.Errorf("cancel-in-progress for %s = %v, want %v (cancel-in-progress must be true only for pull_request)", s.name, got, want)
+			t.Errorf("cancel-in-progress for %s = %v, want %v (cancel-in-progress must be true for push and pull_request only; a schedule or workflow_dispatch run is never cancelled)", s.name, got, want)
 		}
 	}
 

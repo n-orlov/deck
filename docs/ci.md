@@ -16,7 +16,7 @@ look at the Actions run itself, found by its head sha.
 | `report (Allure)` | self-hosted, `needs: [lint, suite]` | Turns the JUnit `suite` produced into an Allure report, merges it into the persisted `gh-pages` site tree, uploads the rendered report as a workflow artifact, and stages the merged tree as a Pages artifact (one upload attempt; its failure fails the job). Holds no `pages:`/`id-token:` permission -- it stages, it never deploys. |
 | `publish (Pages)` | `ubuntu-latest`, `needs: report` | Deploys the root-triggered (`push`/`schedule`/`workflow_dispatch`) Pages artifact. Holds `pages: write`/`id-token: write`. Gated to `push`/`schedule`/`workflow_dispatch` only -- never `pull_request` (a PR-branch deploy is rejected server-side by the repo's `github-pages` environment's branch policy regardless; see "Publishing a PR's own report" below for how a PR's own report still gets published). |
 | `pr-comment` | `ubuntu-latest`, `needs: report` | Runs `go run ./ci/prcomment`, which pages through every existing PR comment and creates or updates the one comment (keyed on an HTML marker) carrying the PR's own `/pr/<n>/` Allure link and its head sha. Only for `pull_request` events whose head repo is this repository. |
-| `notify` | self-hosted, `needs: [lint, suite]` | Posts exactly one message to the Telegram notifier when `lint` or `suite` failed/was cancelled, and only for `push` to `main`, `schedule`, or `workflow_dispatch` (never for a PR). |
+| `notify` | self-hosted, `needs: [lint, suite]` | Posts exactly one message to the Telegram notifier when `lint` or `suite` failed (or, on `schedule`/`workflow_dispatch`, was cancelled), and only for `push` to `main`, `schedule`, or `workflow_dispatch` (never for a PR). A `push` run cancelled by a newer push sends nothing. |
 
 `ci/allure-report.sh` verifies the Allure CLI archive it downloads against a
 pinned SHA-256 and aborts on a mismatch (changing `ALLURE_VERSION` needs a new
@@ -107,50 +107,46 @@ report" below.
 `ci.yml`'s workflow-level `concurrency:` block:
 
 ```
-group: ci-${{ github.workflow }}-${{ github.event_name }}-${{ github.event_name == 'push' && github.sha || (github.event_name == 'pull_request' && github.ref || github.run_id) }}
-cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+group: ci-${{ github.workflow }}-${{ github.event_name }}-${{ (github.event_name == 'push' || github.event_name == 'pull_request') && github.ref || github.run_id }}
+cancel-in-progress: ${{ github.event_name == 'push' || github.event_name == 'pull_request' }}
 ```
 
-folds in `github.event_name`, then a per-event tiebreaker: `github.sha` for
-`push`, `github.ref` for `pull_request`, and `github.run_id` -- unique to
-every single workflow run -- for everything else (`schedule` and
-`workflow_dispatch`). That makes every non-PR run's own group unique to
-that run:
+folds in `github.event_name`, then a per-event tiebreaker: `github.ref` for
+`push` and `pull_request`, and `github.run_id` -- unique to every single
+workflow run -- for everything else (`schedule` and `workflow_dispatch`):
 
-- Every `push` run's group is unique to its own commit sha
-  (`ci-ci-push-<sha>`), so two pushes to `main` are always two independent
-  groups: pushing again never queues behind, and never cancels, an earlier
-  push's own still-running result.
+- Every `push` run to `main` shares one group per ref (`ci-ci-push-refs/heads/main`),
+  so a newer push cancels the superseded push run, whether it is queued or
+  running. Two self-hosted runners serve every push, so a superseded run
+  would otherwise queue for the runners and finish red on a stale commit.
 - Every `schedule` run's group, and every `workflow_dispatch` run's group,
   is unique to that one run (`ci-ci-schedule-<run_id>`,
-  `ci-ci-workflow_dispatch-<run_id>`) -- **not** shared with any other
-  `schedule` or `workflow_dispatch` run, including a second dispatch fired
-  against the very same sha as the first. An earlier design keyed those two
-  lanes on `github.ref` alone (constant across every run of the same
-  event), which put every `schedule` run in one shared group and every
-  `workflow_dispatch` run in another: GitHub keeps only **one pending** run
-  per group and cancels the older pending run the moment a newer one
-  queues into that same group, so two back-to-back nightly runs, or two
-  manual dispatches queued close together, could still cancel each
-  other's pending run under that design -- it did not, in fact, "queue
-  every dispatch to completion". Keying on `github.run_id` instead removes
-  the shared group entirely, so no `schedule`/`workflow_dispatch` run can
-  ever be the pending run a same-lane sibling supersedes: each one runs to
-  completion (or fails outright) independently, exactly like `push`.
-  Neither lane's group is ever shared with `push`'s, or with the other's.
-- Every `pull_request` run's group is unique to its own PR
-  (`github.ref` is that PR's merge ref, the one context this expression
-  still keys on a value that repeats across runs), so a second run on the
-  *same* PR shares that PR's group with the first -- which is what lets
-  `cancel-in-progress` below actually cancel the superseded one.
+  `ci-ci-workflow_dispatch-<run_id>`) -- not shared with any other
+  `schedule` or `workflow_dispatch` run (including a second dispatch on the
+  same sha), and never with `push`'s group. GitHub keeps only one pending
+  run per group, so a shared group would let one queued run supersede
+  another. A dispatch or nightly run therefore always runs to completion; a
+  push never cancels it.
+- Every `pull_request` run's group is unique to its own PR (`github.ref` is
+  that PR's merge ref), so a newer run on the same PR cancels the older one.
 
-`cancel-in-progress` is `true` only when `github.event_name == 'pull_request'`
--- so a superseded run on the same PR is the only run this workflow ever
-cancels. A `push`, `schedule`, or `workflow_dispatch` run is never cancelled
-by another run of any kind -- each one's group is unique to itself, so
-there is never another run in the same group to queue behind, wait for, or
-be superseded by; it can still fail outright (a red `suite`, or the job's
-own `timeout-minutes`), which is a different outcome from `cancelled`.
+`cancel-in-progress` is `true` for `push` and `pull_request`, and `false`
+for `schedule` and `workflow_dispatch`. A run of the last two can still
+fail outright (a red `suite`, or the job's own `timeout-minutes`), which is
+a different outcome from `cancelled`.
+
+A superseded push run is not a red main. When `lint` or `suite` ends
+`cancelled` on a `push`, `report` and `notify` skip: no self-hosted slot is
+spent on the stale run and no notification is sent. `notify` still fires for
+a `failure` on a `push` to `main`, and for a `failure` or `cancelled`
+result on `schedule` and `workflow_dispatch`. A push that changes only
+documentation starts no run: the `push` trigger alone carries
+`paths-ignore: ['**.md', 'prds/**', 'docs/**']`, while `pull_request`,
+`schedule` and `workflow_dispatch` carry no path filter, and a change under
+`ci/`, `cmd/`, `internal/`, `features/`, `.github/` or `badges/`, or to
+`go.mod`, always starts a run. `ci/workflowcheck/concurrencygroups_test.go`
+and `ci/workflowcheck/cihygiene_test.go` pin all of this by parsing
+`ci.yml`.
 
 ## The fork guard
 

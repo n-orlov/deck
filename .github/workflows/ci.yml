@@ -8,6 +8,14 @@ on:
   pull_request:
   push:
     branches: [main]
+    # A push that touches only documentation starts no run (no code to
+    # test). Only `push` carries the filter: pull_request, schedule and
+    # workflow_dispatch always run, and anything under ci/, cmd/,
+    # internal/, features/, .github/ or badges/, or go.mod, is code.
+    paths-ignore:
+      - '**.md'
+      - 'prds/**'
+      - 'docs/**'
   schedule:
     # nightly: 03:17 UTC, an arbitrary off-hour slot so it doesn't collide
     # with GitHub's own top-of-hour cron thundering herd.
@@ -18,41 +26,27 @@ permissions:
   contents: read
 
 concurrency:
-  # R165 (GH #50): the group folds in github.event_name, and then a
-  # per-event tiebreaker chosen so that no two runs of the same non-PR
-  # event can ever land in the same group: github.sha for `push` (every
-  # push already carries a distinct commit), github.ref for
-  # `pull_request` (so a same-PR successor still shares its PR's group,
-  # which is what lets cancel-in-progress cancel a superseded PR run
-  # below), and github.run_id -- unique to every single workflow run,
-  # see GitHub's own docs, "Contexts", https://docs.github.com/en/actions/
-  # learn-github-actions/contexts -- for everything else (`schedule` and
-  # `workflow_dispatch`).
+  # R165 (GH #50), narrowed by the ci-hygiene change: the group folds in
+  # github.event_name and then a per-event tiebreaker.
   #
-  # Before this, push/schedule/workflow_dispatch all evaluated to the
-  # same `ci-ci-refs/heads/main` group (every one of those events' own
-  # `github.ref` is the default branch), so a push to main queued
-  # strictly behind whatever nightly/dispatch run happened to be in
-  # flight. A first fix folded in only github.event_name (plus
-  # github.sha for push), which separated push from schedule/dispatch but
-  # left every `schedule` run sharing ONE group with every other
-  # `schedule` run, and every `workflow_dispatch` run sharing ONE group
-  # with every other `workflow_dispatch` run (both still keyed on the
-  # same constant `github.ref`) -- GitHub keeps only one PENDING run per
-  # group and cancels the older pending run when a newer one queues, so
-  # two schedule runs (or two dispatches on the very same sha) queued
-  # back to back would still cancel each other's pending run, which is
-  # exactly the R165 defect this workflow exists to remove. Keying the
-  # non-push, non-PR branch on github.run_id instead removes that: every
-  # schedule/dispatch run's own group is now unique to that run, so it
-  # can never be the older pending run cancelled by a later one -- it
-  # runs to completion (or fails outright) every time, same as a push.
-  # See GitHub's own docs, "Control the concurrency of workflows and
-  # jobs" (https://docs.github.com/en/actions/using-jobs/using-concurrency):
-  # the group expression is what decides queue/cancel/run-side-by-side,
-  # not the event type by itself.
-  group: ci-${{ github.workflow }}-${{ github.event_name }}-${{ github.event_name == 'push' && github.sha || (github.event_name == 'pull_request' && github.ref || github.run_id) }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  #   push, pull_request  github.ref -- ONE group per ref, so a newer push
+  #                       to main (or a newer push to the same PR) shares
+  #                       the group of the run it supersedes, and
+  #                       cancel-in-progress cancels that superseded run
+  #                       instead of letting it queue for a self-hosted
+  #                       runner and finish red on a stale commit.
+  #   schedule,           github.run_id -- unique to every single workflow
+  #   workflow_dispatch   run, so a nightly or a manual dispatch never
+  #                       shares a group with any other run (not with a
+  #                       push, not with a repeat of itself) and is never
+  #                       cancelled: it runs to completion every time.
+  #
+  # The group expression, not the event type, decides queue/cancel/run
+  # side by side. See GitHub's "Control the concurrency of workflows and
+  # jobs" (https://docs.github.com/en/actions/using-jobs/using-concurrency)
+  # and "Contexts" for github.run_id.
+  group: ci-${{ github.workflow }}-${{ github.event_name }}-${{ (github.event_name == 'push' || github.event_name == 'pull_request') && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'push' || github.event_name == 'pull_request' }}
 
 # Every self-hosted job below repeats this same job-level `if:` (job-level
 # `if:` cannot read the workflow's own top-level `env:`, so it is inlined on
@@ -227,6 +221,7 @@ jobs:
       always()
       && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
       && needs.suite.result != 'skipped'
+      && !(github.event_name == 'push' && (needs.lint.result == 'cancelled' || needs.suite.result == 'cancelled'))
     timeout-minutes: 20
     permissions:
       contents: write
@@ -598,6 +593,9 @@ jobs:
   # cancellation/timeout, or `suite` skipped behind a red lint), and the
   # needs.*.result checks keep it silent on a green run. It is the only
   # place in the workflow that POSTs, so one red run sends one message.
+  # A `push` run whose lint or suite was `cancelled` was superseded by a
+  # newer push (cancel-in-progress above), so it is not a red main and
+  # sends nothing; a cancelled schedule or workflow_dispatch run still does.
   notify:
     name: notify (red main/nightly)
     needs: [lint, suite]
@@ -606,7 +604,7 @@ jobs:
       always()
       && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
       && (github.ref == 'refs/heads/main' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
-      && (contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled'))
+      && (contains(needs.*.result, 'failure') || (github.event_name != 'push' && contains(needs.*.result, 'cancelled')))
     timeout-minutes: 5
     steps:
       - name: POST the red run's URL to the notifier

@@ -4150,12 +4150,14 @@ in the help view.
   applied by the build. Both `FROM` lines of `ci/Dockerfile` are pinned by `@sha256` digest,
   with the tag kept in the reference, so a re-pushed tag cannot change the CI image.
   **Main's Actions history is a truthful signal:** every run on `main` is green unless the code
-  is broken. Every push to `main` gets its own complete run, never cancelled by a later push; the
-  nightly and manual lane never shares a concurrency group with pushes, so a push cannot cancel
-  it; the PR-preview publisher never starts for a `main` run, so it leaves no skipped run behind;
+  is broken. A newer push to `main` cancels the superseded push run
+  (one concurrency group per ref), and a cancelled push run reports nothing and notifies no one; a
+  dispatch or nightly run always runs to completion, because it never shares a concurrency group
+  with pushes, so a push cannot cancel it; a push that changes only documentation (`**.md`,
+  `prds/**`, `docs/**`) starts no run; the PR-preview publisher never starts for a `main` run, so it leaves no skipped run behind;
   and a wall-clock budget (such as `_hook`'s 20 ms, §3.1) is asserted on normal builds only, never on
   the `-race` build. A transient failure of the hosted Pages deploy is retried, not reported as
-  red. Only a superseded pull-request run is ever cancelled.
+  red. Only a superseded push or pull-request run is ever cancelled.
 - **Quality gates.** CI also gates the code's own quality, through one entry point,
   `ci/run.sh ci/quality.sh`, with the tools pinned in `ci/Dockerfile`, so a local run and CI give
   the same verdict. Every gate is on only because the product already passes it **with zero
