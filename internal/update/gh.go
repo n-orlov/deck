@@ -80,10 +80,11 @@ func (g *gh) verify(ctx context.Context, file, repo string) (string, error) {
 var errAttestationFailed = errors.New("attestation verification failed")
 
 // attest checks the downloaded archive file's build attestation. It returns
-// the outcome, or an error when the update must abort. An unauthenticated or
-// absent gh, and a release with no attestation, are "cannot verify": a
-// checksum-only outcome, unless DECK_REQUIRE_ATTESTATION=1 turns it into an
-// abort. Any other gh failure always aborts.
+// the outcome, or an error when the update must abort. Only an unauthenticated
+// or absent gh is "cannot verify": a checksum-only outcome, unless
+// DECK_REQUIRE_ATTESTATION=1 turns it into an abort. With an authenticated gh
+// every nonzero verification result aborts (R294), including a release that
+// has no attestation.
 func (o Options) attest(ctx context.Context, g *gh, archive string) (string, error) {
 	cannot := func(why string) (string, error) {
 		if o.RequireAttestation || os.Getenv(EnvRequireAttestation) == "1" {
@@ -97,9 +98,6 @@ func (o Options) attest(ctx context.Context, g *gh, archive string) (string, err
 	out, err := g.verify(ctx, archive, DefaultRepo)
 	if err == nil {
 		return AttestationVerified, nil
-	}
-	if strings.Contains(out, "no attestations found") {
-		return cannot("this release has no attestation")
 	}
 	return "", fmt.Errorf("%w for %s: %s", errAttestationFailed, filepath.Base(archive), strings.TrimSpace(out))
 }

@@ -164,14 +164,63 @@ func TestAttestation(t *testing.T) {
 	}
 }
 
-func TestAttestationNotFoundIsCannotVerify(t *testing.T) {
+// TestAttestationFailureWithAuthenticatedGhAlwaysAborts covers R294: with an
+// authenticated gh, any nonzero verification result aborts the update and
+// leaves the old executable and its directory byte-identical, whatever the
+// message says and whether or not DECK_REQUIRE_ATTESTATION is set. A release
+// with no attestation is one such result (it replaces the old pin
+// TestAttestationNotFoundIsCannotVerify, which let it through).
+func TestAttestationFailureWithAuthenticatedGhAlwaysAborts(t *testing.T) {
+	msgs := map[string]string{
+		"no attestations found":       "Error: failed to fetch attestations: no attestations found for subject",
+		"signature mismatch":          "Error: no attestations were verified (signature mismatch)",
+		"silent nonzero exit":         "",
+		"mentions no attestation yet": "no attestation was verified",
+	}
+	for name, msg := range msgs {
+		for _, require := range []bool{false, true} {
+			t.Run(name+"/require="+strconv.FormatBool(require), func(t *testing.T) {
+				rel := newRelease(t)
+				srv := rel.serve(t)
+				g := installFakeGh(t, rel, 0, 1, msg)
+				dir, exe := installOld(t)
+				beforeSum, beforeList := fileSum(t, exe), listing(t, dir)
+				res, err := Run(context.Background(), Options{BaseURL: srv.URL, Exe: exe, GOOS: "linux", GOARCH: "amd64", RequireAttestation: require})
+				if err == nil || !strings.Contains(err.Error(), "attestation verification failed") {
+					t.Fatalf("err = %v (res %+v), want an attestation verification failure", err, res)
+				}
+				if res.Attestation != "" {
+					t.Errorf("attestation = %q, want none on an aborted update", res.Attestation)
+				}
+				if got := fileSum(t, exe); got != beforeSum {
+					t.Errorf("old binary sha256 = %s, want %s unchanged", got, beforeSum)
+				}
+				if got := listing(t, dir); !reflect.DeepEqual(got, beforeList) {
+					t.Errorf("install dir = %v, want %v", got, beforeList)
+				}
+				if n := len(g.callsStarting(t, "attestation verify")); n != 1 {
+					t.Errorf("verify calls = %d, want 1", n)
+				}
+			})
+		}
+	}
+}
+
+// TestAttestationUnauthenticatedGhIsCannotVerify keeps the one permitted
+// checksum-only fallback: a gh that is not authenticated is never asked to
+// verify, so even a release with no attestation proceeds on the checksum
+// (and aborts under DECK_REQUIRE_ATTESTATION=1).
+func TestAttestationUnauthenticatedGhIsCannotVerify(t *testing.T) {
 	for _, require := range []bool{false, true} {
 		rel := newRelease(t)
 		srv := rel.serve(t)
-		installFakeGh(t, rel, 0, 1, "no attestations found for subject")
+		g := installFakeGh(t, rel, 1, 1, "no attestations found for subject")
 		_, exe := installOld(t)
 		before := fileSum(t, exe)
 		res, err := Run(context.Background(), Options{BaseURL: srv.URL, Exe: exe, GOOS: "linux", GOARCH: "amd64", RequireAttestation: require})
+		if n := len(g.callsStarting(t, "attestation verify")); n != 0 {
+			t.Errorf("require=%v: %d verify calls with an unauthenticated gh, want 0", require, n)
+		}
 		if require {
 			if err == nil || fileSum(t, exe) != before {
 				t.Errorf("required: err = %v, binary changed = %v", err, fileSum(t, exe) != before)

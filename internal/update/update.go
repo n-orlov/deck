@@ -51,7 +51,7 @@ type Result struct {
 	Path      string // the resolved (symlink-resolved) file that was replaced
 
 	// Attestation is AttestationVerified, or AttestationSkipped when only the
-	// checksum was verified (no usable gh, or a release without attestation).
+	// checksum was verified (no authenticated gh).
 	Attestation string
 }
 
