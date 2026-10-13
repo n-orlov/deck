@@ -2657,7 +2657,14 @@ cursor by the chord `Alt+M` then a digit `0`…`9`, which is layout-independent,
 layout the ten `Alt+Shift+digit` keys (`alt+!`, `alt+@`, `alt+#`, `alt+$`, `alt+%`, `alt+^`,
 `alt+&`, `alt+*`, `alt+(`, `alt+)` for slots 1…9 and 0) set a slot as a convenience. `Esc` or
 any other key after `Alt+M` cancels the chord and is then handled as it normally is, whichever layer
-handles it (the refusal banner's `Esc`, an open dialog, `Ctrl+Q`); a later bare digit never sets a slot. A jump to
+handles it (the refusal banner's `Esc`, an open dialog, `Ctrl+Q`); a later bare digit never sets a slot. **Clearing (R286, R287).** `Alt+M` then `Delete`
+clears every slot held by the session under the cursor, and only that session's; another session's
+slots are untouched, and a one-line message names the cleared slot(s) (`Removed bookmark 3`, or
+`Removed bookmark 1,5` for two). The chord prompt offers it only when that session holds a bookmark: it
+then reads `Press Delete to remove bookmark N` (`N,M` for two slots) after the usual prompt, and for an
+unbookmarked session it is the usual prompt unchanged and `Delete` is not offered. A `Delete` after
+`Alt+M` on an unbookmarked session cancels the chord like any other non-digit key and is then handled as
+it normally is; a `Delete` outside a chord behaves as it always did. A jump to
 an empty slot changes nothing and shows a one-line status message in the footer. With the
 setting off none of these keys is bound in the list and every one reaches whatever it reached
 before.
@@ -2679,8 +2686,11 @@ mode, without returning to the list; a jump to an empty slot or to a stopped ses
 current view in place and shows a one-line message. Every attached bookmark message (the `Alt+M`
 prompt, a slot set, a jump and its refusals) shows in the interactive footer's right-aligned note
 slot and clears on the next key. A slot is set on the session the attached view
-shows. A bare digit completes a pending `Alt+M` chord and is otherwise forwarded to the pane
-unchanged, as is every `Alt+<key>` outside the bound set (`Alt+A`, `Alt+X`, `Alt+.`). `Esc` or any other
+shows. A bare digit completes a pending `Alt+M` chord, and so does `Delete` when the attached session
+holds a bookmark: it clears that session's slots as in the list (same prompt, same message), is
+intercepted and sends zero bytes to the pane. A `Delete` that does not complete the chord (the attached
+session holds no bookmark, or no chord is pending) is forwarded to the pane exactly as before. A bare digit
+is otherwise forwarded to the pane unchanged, as is every `Alt+<key>` outside the bound set (`Alt+A`, `Alt+X`, `Alt+.`). `Esc` or any other
 key after `Alt+M` cancels the chord and is then forwarded as usual (`Ctrl+Q` leaves interactive mode and
 cancels it too; leaving any other way drops it). With the setting off every one of
 these keys is forwarded to the pane exactly as before. **`Ctrl+digit` is deliberately not bound:** a terminal only delivers it with user tmux

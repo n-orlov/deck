@@ -24,6 +24,75 @@ var bookmarkShiftedSlots = map[string]int{
 	"alt+^": 6, "alt+&": 7, "alt+*": 8, "alt+(": 9, "alt+)": 0,
 }
 
+// bookmarkClearKey is the key that, after Alt+M, removes every bookmark the
+// chord's session holds (R286). It is only taken when the session holds one
+// (R287); otherwise it cancels the chord like any other key and is handled
+// as usual.
+const bookmarkClearKey = "delete"
+
+// bookmarkChordPromptBase is the Alt+M prompt of a session that holds no slot.
+const bookmarkChordPromptBase = "Bookmark: press a digit 0-9 to set the slot"
+
+// sessionBookmarkSlots returns the slots session holds ascending; none when
+// the store is unavailable or unreadable.
+func (m Model) sessionBookmarkSlots(sessionID string) []int {
+	if m.store == nil {
+		return nil
+	}
+	all, err := m.store.Bookmarks(context.Background())
+	if err != nil {
+		return nil
+	}
+	var slots []int
+	for slot := 0; slot <= 9; slot++ {
+		if id, ok := all[slot]; ok && id == sessionID {
+			slots = append(slots, slot)
+		}
+	}
+	return slots
+}
+
+// joinBookmarkSlots renders slots as `N` or `N,M`.
+func joinBookmarkSlots(slots []int) string {
+	digits := make([]string, len(slots))
+	for i, slot := range slots {
+		digits[i] = fmt.Sprint(slot)
+	}
+	return strings.Join(digits, ",")
+}
+
+// bookmarkChordPrompt is the one-line prompt Alt+M shows. It offers Delete
+// only when the session the chord starts on holds a bookmark (R287).
+func (m Model) bookmarkChordPrompt(session store.Session, ok bool) string {
+	if ok {
+		if slots := m.sessionBookmarkSlots(session.ID); len(slots) > 0 {
+			return bookmarkChordPromptBase + ". Press Delete to remove bookmark " + joinBookmarkSlots(slots)
+		}
+	}
+	return bookmarkChordPromptBase
+}
+
+// clearBookmarksOf empties every slot session holds and shows the one-line
+// message naming them. It reports false, touching nothing, when there is no
+// session or it holds no slot, so the key falls through (R287).
+func (m *Model) clearBookmarksOf(session store.Session, ok bool) bool {
+	if !ok {
+		return false
+	}
+	slots := m.sessionBookmarkSlots(session.ID)
+	if len(slots) == 0 {
+		return false
+	}
+	for _, slot := range slots {
+		if err := m.store.ClearBookmark(context.Background(), slot); err != nil {
+			m.setBookmarkNote(fmt.Sprintf("Bookmark %d: %v", slot, err))
+			return true
+		}
+	}
+	m.setBookmarkNote("Removed bookmark " + joinBookmarkSlots(slots))
+	return true
+}
+
 // bookmarkJumpSlot reports the slot an `alt+<digit>` key names.
 func bookmarkJumpSlot(key string) (int, bool) {
 	if len(key) == 5 && key[:4] == "alt+" && key[4] >= '0' && key[4] <= '9' {
@@ -56,10 +125,17 @@ func (m Model) handleBookmarkKey(msg tea.KeyMsg) (next Model, handled bool) {
 			m.setBookmark(slot)
 			return m, true
 		}
+		if key == bookmarkClearKey {
+			session, found := m.selectedSession()
+			if m.clearBookmarksOf(session, found) {
+				return m, true
+			}
+		}
 	}
 	if key == bookmarkSetChord {
 		m.bookmarkChord = true
-		m.setBookmarkNote("Bookmark: press a digit 0-9 to set the slot")
+		session, found := m.selectedSession()
+		m.setBookmarkNote(m.bookmarkChordPrompt(session, found))
 		return m, true
 	}
 	if slot, ok := bookmarkShiftedSlots[key]; ok {
@@ -209,10 +285,17 @@ func (m Model) handleInteractiveBookmarkKey(msg tea.KeyMsg) (next Model, handled
 			m.setBookmarkOn(slot, target, found)
 			return m, true
 		}
+		if key == bookmarkClearKey {
+			target, found := m.interactiveTargetSession()
+			if m.clearBookmarksOf(target, found) {
+				return m, true
+			}
+		}
 	}
 	if key == bookmarkSetChord {
 		m.bookmarkChord = true
-		m.setBookmarkNote("Bookmark: press a digit 0-9 to set the slot")
+		target, found := m.interactiveTargetSession()
+		m.setBookmarkNote(m.bookmarkChordPrompt(target, found))
 		return m, true
 	}
 	if slot, ok := bookmarkShiftedSlots[key]; ok {
