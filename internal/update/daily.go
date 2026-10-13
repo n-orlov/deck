@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"syscall"
 	"time"
 )
 
@@ -70,6 +71,14 @@ func (c *Checker) Check(ctx context.Context) Status {
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	// The advisory file lock makes read -> decide -> request -> record one
+	// operation across every process and profile sharing the cache; the
+	// mutex above only orders this Checker's own calls.
+	unlock, ok := c.lock(ctx)
+	if !ok {
+		return Status{}
+	}
+	defer unlock()
 	now := c.now()
 	if rec, ok := c.read(); ok && now.Sub(rec.CheckedAt) < CheckInterval && !rec.CheckedAt.After(now) {
 		return c.status(rec.Latest, false)
@@ -91,6 +100,48 @@ func (c *Checker) Start(ctx context.Context) <-chan Status {
 	out := make(chan Status, 1)
 	go func() { out <- c.Check(ctx) }()
 	return out
+}
+
+// lockPoll is how often a check waiting on another process's check retries
+// the cache lock.
+const lockPoll = 20 * time.Millisecond
+
+// lock takes the exclusive advisory lock on the cache's sibling lock file and
+// returns its release. A check that cannot create the lock file (an
+// unwritable cache directory: there is no shared cache to coordinate on)
+// proceeds unlocked, like every other cache failure; ok is false only when
+// ctx ends while waiting, in which case no request is made and nothing is
+// recorded.
+func (c *Checker) lock(ctx context.Context) (unlock func(), ok bool) {
+	if c.CachePath == "" {
+		return func() {}, true
+	}
+	if err := os.MkdirAll(filepath.Dir(c.CachePath), 0o750); err != nil {
+		return func() {}, true
+	}
+	f, err := os.OpenFile(c.CachePath+".lock", os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		return func() {}, true
+	}
+	for {
+		err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB)
+		if err == nil {
+			return func() {
+				_ = syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
+				_ = f.Close()
+			}, true
+		}
+		if err != syscall.EWOULDBLOCK && err != syscall.EINTR {
+			_ = f.Close()
+			return func() {}, true
+		}
+		select {
+		case <-ctx.Done():
+			_ = f.Close()
+			return nil, false
+		case <-time.After(lockPoll):
+		}
+	}
 }
 
 func (c *Checker) status(latest string, requested bool) Status {

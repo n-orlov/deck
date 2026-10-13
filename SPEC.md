@@ -402,7 +402,7 @@ The daily update check (§6.5) keeps its answer outside every `state.db`, in one
 that all profiles share: `update-check.json` in `$DECK_HOME` when `DECK_HOME` is set, otherwise
 `$XDG_CACHE_HOME/deck/update-check.json` (`~/.cache/deck/update-check.json`). It holds the time of
 the last attempt and the latest release tag seen, nothing else (no credential, no identifier), and it
-is replaced atomically. It is the single thing profiles share; a profile's sessions, settings and
+is replaced atomically, under the lock file `update-check.json.lock` beside it (§6.5). It is the single thing profiles share; a profile's sessions, settings and
 `state.db` stay its own.
 
 ```sql
@@ -894,7 +894,7 @@ and labelled *restart-to-apply* there, because a hook is consumed at launch.
 asks the release server (`https://github.com/n-orlov/deck`, or `DECK_UPDATE_URL`, §13.1) for the
 latest release tag on its own goroutine, never the UI's, and at most once every 24 hours across all
 profiles and all running instances: the answer, a failure included, is stored in the shared
-`update-check.json` (§4), and a check inside that window makes no request. The request is the plain
+`update-check.json` (§4), and a check inside that window makes no request. The read-the-cache, decide, request and record-the-answer steps are one operation under an exclusive advisory file lock (`update-check.json.lock`, beside the cache), so instances and profiles that start together make one request between them, not one each; a check waiting on the lock reads the answer the holder recorded. The request is the plain
 `GET <base>/releases/latest` and nothing more: deck sends no telemetry, no identifier, no session,
 path or configuration data, and the only header is the standard HTTP client one. A failed or offline
 check shows no indicator, returns no error to the user and is not retried inside the window. Setting
