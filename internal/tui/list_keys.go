@@ -39,6 +39,10 @@ func (m Model) onKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if msg.Type == tea.KeyRunes && len(msg.Runes) > 1 && !msg.Paste {
 		return m.replayCoalescedKeys(msg)
 	}
+	// R275: the key that follows Alt+M cancels the chord whichever layer
+	// consumes it (a refusal banner's Esc, an overlay, the dd chord, the
+	// attached Ctrl+Q); only the bookmark layers see it as pending.
+	m.bookmarkChordIn, m.bookmarkChord = m.bookmarkChord, false
 
 	// cure-01-02 (R143/SPEC §11.9): the banner-dismissing Esc has to run
 	// before EVERY other Esc-cleared layer's own dispatch below --

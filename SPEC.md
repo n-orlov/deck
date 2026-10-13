@@ -2652,7 +2652,8 @@ selection only, and attaching stays a separate action. A slot is set to the sess
 cursor by the chord `Alt+M` then a digit `0`…`9`, which is layout-independent, and on a US
 layout the ten `Alt+Shift+digit` keys (`alt+!`, `alt+@`, `alt+#`, `alt+$`, `alt+%`, `alt+^`,
 `alt+&`, `alt+*`, `alt+(`, `alt+)` for slots 1…9 and 0) set a slot as a convenience. `Esc` or
-any other key after `Alt+M` cancels the chord and is then handled as it normally is. A jump to
+any other key after `Alt+M` cancels the chord and is then handled as it normally is, whichever layer
+handles it (the refusal banner's `Esc`, an open dialog, `Ctrl+Q`); a later bare digit never sets a slot. A jump to
 an empty slot changes nothing and shows a one-line status message in the footer. With the
 setting off none of these keys is bound in the list and every one reaches whatever it reached
 before.
@@ -2676,7 +2677,8 @@ prompt, a slot set, a jump and its refusals) shows in the interactive footer's r
 slot and clears on the next key. A slot is set on the session the attached view
 shows. A bare digit completes a pending `Alt+M` chord and is otherwise forwarded to the pane
 unchanged, as is every `Alt+<key>` outside the bound set (`Alt+A`, `Alt+X`, `Alt+.`). `Esc` or any other
-key after `Alt+M` cancels the chord and is then forwarded as usual. With the setting off every one of
+key after `Alt+M` cancels the chord and is then forwarded as usual (`Ctrl+Q` leaves interactive mode and
+cancels it too; leaving any other way drops it). With the setting off every one of
 these keys is forwarded to the pane exactly as before. **`Ctrl+digit` is deliberately not bound:** a terminal only delivers it with user tmux
 configuration, and for `2`…`8` it collides with legacy control keys (`Ctrl+2` is NUL,
 `Ctrl+3`…`Ctrl+7` are ESC, FS, GS, RS, US and `Ctrl+8` is DEL).

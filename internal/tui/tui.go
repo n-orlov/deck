@@ -488,7 +488,12 @@ type Model struct {
 	// the bookmarks setting on); bookmarkNote is the one-line footer status
 	// of the last bookmark key, cleared by the next key.
 	bookmarkChord bool
-	bookmarkNote  string
+	// bookmarkChordIn is the chord state the CURRENT key found pending:
+	// onKeyMsg moves bookmarkChord into it (clearing
+	// bookmarkChord) before any layer runs, so every key cancels a pending
+	// chord whichever layer consumes it, and only the bookmark layers read it.
+	bookmarkChordIn bool
+	bookmarkNote    string
 	// bookmarkSlots is the slot table of one frame's sidebar render
 	// (session id -> slots held), loaded by sidebarEntries on its own copy of
 	// the model and never kept; nil while the bookmarks setting is off.

@@ -48,12 +48,10 @@ func bookmarkChordSlot(key string) (int, bool) {
 // it falls through (handled false) to be handled normally.
 func (m Model) handleBookmarkKey(msg tea.KeyMsg) (next Model, handled bool) {
 	if !m.settings.Bookmarks {
-		m.bookmarkChord = false
 		return m, false
 	}
 	key := msg.String()
-	if m.bookmarkChord {
-		m.bookmarkChord = false
+	if m.bookmarkChordIn {
 		if slot, ok := bookmarkChordSlot(key); ok {
 			m.setBookmark(slot)
 			return m, true
@@ -202,12 +200,10 @@ func (m Model) handleInteractiveBookmarkKey(msg tea.KeyMsg) (next Model, handled
 	// key, as in the list.
 	m.setBookmarkNote("")
 	if !m.settings.Bookmarks {
-		m.bookmarkChord = false
 		return m, false
 	}
 	key := msg.String()
-	if m.bookmarkChord {
-		m.bookmarkChord = false
+	if m.bookmarkChordIn {
 		if slot, ok := bookmarkChordSlot(key); ok {
 			target, found := m.interactiveTargetSession()
 			m.setBookmarkOn(slot, target, found)

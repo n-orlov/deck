@@ -102,7 +102,9 @@ func newBookmarkRig(t *testing.T, on bool) *bookmarkRig {
 func (r *bookmarkRig) press(t *testing.T, msgs ...tea.KeyMsg) {
 	t.Helper()
 	for _, k := range msgs {
-		next, _ := r.m.updateInteractive(k)
+		// Through Update, as a real key travels: the chord cancellation
+		// sits above updateInteractive.
+		next, _ := r.m.Update(k)
 		r.m = next.(Model)
 	}
 }
