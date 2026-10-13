@@ -37,7 +37,14 @@ func TestReconcilerStopsDisappearedSessionAndDoesNotRelaunchServer(t *testing.T)
 	}
 	socket := "priv-reconcile-" + strings.ReplaceAll(time.Now().Format("150405.000000000"), ".", "")
 	t.Cleanup(func() { _ = exec.Command("tmux", "-L", socket, "kill-server").Run() })
-	service := Service{Store: db, TMux: tmux.Client{Socket: socket}, Audit: logger, Clock: clock}
+	// The client reaches the real tmux through a recorder that logs, for every
+	// liveness snapshot (list-panes), when it started and whether it listed
+	// alpha. The cadence is judged on those records and not on the wall-clock
+	// time the status took to flip: a bound of interval + 3 pass costs left a
+	// few milliseconds of slack, and this host's scheduling jitter alone (12
+	// parallel copies of this test, or a CI job on the same runner) spent it.
+	recorder, snapshots := snapshotRecorder(t, "alpha")
+	service := Service{Store: db, TMux: tmux.Client{Binary: recorder, Socket: socket}, Audit: logger, Clock: clock}
 
 	alpha := reconcileSession(t, db, "00000000-0000-4000-8000-000000000021", "alpha", cwd, "shell", "running", "user")
 	beta := reconcileSession(t, db, "00000000-0000-4000-8000-000000000022", "beta", cwd, "claude", "waiting", "hook")
@@ -48,30 +55,36 @@ func TestReconcilerStopsDisappearedSessionAndDoesNotRelaunchServer(t *testing.T)
 	}
 
 	const reconcileInterval = 250 * time.Millisecond
-	// The detecting pass runs on the first tick, so the cadence bound is one
-	// interval plus the cost of a pass. Measure that cost on this host with the
-	// same live sessions instead of guessing a grace period.
-	var passCost time.Duration
-	for i := 0; i < 3; i++ {
-		begun := time.Now()
-		if err := service.Reconcile(context.Background()); err != nil {
-			t.Fatalf("warm-up reconcile: %v", err)
-		}
-		if elapsed := time.Since(begun); elapsed > passCost {
-			passCost = elapsed
-		}
+	if err := service.Reconcile(context.Background()); err != nil {
+		t.Fatalf("warm-up reconcile: %v", err)
 	}
-	loopStart := time.Now()
+	warm := len(snapshots())
 	stop := startReconciler(t, service, reconcileInterval)
 	if err := service.TMux.Kill(context.Background(), alpha.Slug); err != nil {
 		t.Fatal(err)
 	}
-	// The disappearance must be visible within the configured cadence (the
-	// first tick after the loop started, plus one measured pass), not merely
-	// eventually after an arbitrary multi-interval grace period.
-	waitForStatus(t, db, alpha.ID, "stopped", time.Until(loopStart.Add(reconcileInterval+3*passCost)))
+	// The disappearance must be visible at the first tick after the loop
+	// started, not merely eventually; the wait below only bounds a stuck loop.
+	waitForStatus(t, db, alpha.ID, "stopped", 12*reconcileInterval)
 	if err := stop(); err != nil {
 		t.Fatalf("reconcile loop: %v", err)
+	}
+	// The kill races the loop's immediate pass: when that pass already misses
+	// alpha it records the disappearance itself, otherwise the first tick must.
+	passes := snapshots()[warm:]
+	if len(passes) == 0 {
+		t.Fatal("the loop took no liveness snapshot")
+	}
+	if !passes[0].absent {
+		if len(passes) < 2 || !passes[1].absent {
+			t.Fatalf("alpha was still listed by the immediate pass and not missed by the first tick, so the disappearance missed the configured cadence: %#v", passes)
+		}
+		// Anchored at the loop start: the tick is one interval after the
+		// immediate pass started. Half an interval is the margin, as in
+		// TestReconcilerCadenceIsAnchoredAtLoopStartNotFirstPassEnd.
+		if gap := passes[1].at.Sub(passes[0].at); gap >= reconcileInterval+reconcileInterval/2 {
+			t.Fatalf("first tick started %s after the immediate pass, want about one interval (%s)", gap, reconcileInterval)
+		}
 	}
 
 	rows, err := db.ListSessions(context.Background())
@@ -676,6 +689,59 @@ func reconcileSession(t *testing.T, db *store.Store, id, name, cwd, agent, statu
 // function. Stop cancels and joins the loop; it is also registered as a test
 // cleanup, so a failed assertion (t.Fatal) on any path still cancels and joins
 // the goroutine before the test completes and nothing can report after that.
+// snapshot is one liveness snapshot (list-panes) taken through snapshotRecorder.
+type snapshot struct {
+	at     time.Time
+	absent bool // the session whose slug the recorder watches was not listed
+}
+
+// snapshotRecorder writes a tmux wrapper script that forwards every call to the
+// real tmux and, for each list-panes call, appends when it started and whether
+// its output named slug. The returned function reads the records so far.
+func snapshotRecorder(t *testing.T, slug string) (binary string, snapshots func() []snapshot) {
+	t.Helper()
+	dir := t.TempDir()
+	logPath := filepath.Join(dir, "snapshots")
+	binary = filepath.Join(dir, "tmux-recorder")
+	script := strings.NewReplacer("@LOG@", logPath, "@SLUG@", slug).Replace(`#!/bin/sh
+listing=0
+for arg in "$@"; do
+	[ "$arg" = list-panes ] && listing=1
+done
+if [ "$listing" = 0 ]; then
+	exec tmux "$@"
+fi
+at=$(date +%s%N)
+out=$(tmux "$@")
+rc=$?
+case "$out" in
+*'@SLUG@'*) seen=present ;;
+*) seen=absent ;;
+esac
+printf '%s %s\n' "$at" "$seen" >> '@LOG@'
+[ -n "$out" ] && printf '%s\n' "$out"
+exit $rc
+`)
+	if err := os.WriteFile(binary, []byte(script), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	return binary, func() []snapshot {
+		raw, err := os.ReadFile(logPath)
+		if err != nil && !os.IsNotExist(err) {
+			t.Fatal(err)
+		}
+		var out []snapshot
+		for _, line := range strings.Split(strings.TrimSpace(string(raw)), "\n") {
+			var ns int64
+			var seen string
+			if _, err := fmt.Sscanf(line, "%d %s", &ns, &seen); err == nil {
+				out = append(out, snapshot{at: time.Unix(0, ns), absent: seen == "absent"})
+			}
+		}
+		return out
+	}
+}
+
 func startReconciler(t *testing.T, service Service, interval time.Duration) (stop func() error) {
 	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
