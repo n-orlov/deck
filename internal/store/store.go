@@ -2042,17 +2042,8 @@ func (s *Store) mutateSessionWithEventAlso(ctx context.Context, sessionID, field
 		return fmt.Errorf("begin set %s: %w", fieldName, err)
 	}
 	defer rollbackTx(tx)
-	execArgs := append(append([]any{}, args...), sessionID)
-	result, err := tx.ExecContext(ctx, query, execArgs...)
-	if err != nil {
-		return fmt.Errorf("set %s: %w", fieldName, err)
-	}
-	affected, err := result.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("check set %s: %w", fieldName, err)
-	}
-	if affected != 1 {
-		return fmt.Errorf("session %q not found", sessionID)
+	if err := updateOneSessionTx(ctx, tx, sessionID, fieldName, query, args); err != nil {
+		return err
 	}
 	for _, extra := range alsoSQL {
 		if _, err := tx.ExecContext(ctx, extra, sessionID); err != nil {
@@ -2065,6 +2056,24 @@ func (s *Store) mutateSessionWithEventAlso(ctx context.Context, sessionID, field
 	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit set %s: %w", fieldName, err)
+	}
+	return nil
+}
+
+// updateOneSessionTx runs query (args, then the session id) and requires it to
+// have matched exactly one session row.
+func updateOneSessionTx(ctx context.Context, tx *sql.Tx, sessionID, fieldName, query string, args []any) error {
+	execArgs := append(append([]any{}, args...), sessionID)
+	result, err := tx.ExecContext(ctx, query, execArgs...)
+	if err != nil {
+		return fmt.Errorf("set %s: %w", fieldName, err)
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("check set %s: %w", fieldName, err)
+	}
+	if affected != 1 {
+		return fmt.Errorf("session %q not found", sessionID)
 	}
 	return nil
 }
