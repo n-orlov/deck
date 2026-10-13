@@ -59,7 +59,8 @@ func ctrlUEchoMirror(t *testing.T, query, latest, download string) (Model, strin
 
 // TestCtrlUFailureNeverShowsServerEchoedCredential: a mirror whose reply
 // echoes the short credential deck sent it -- in a download's HTTP reason
-// phrase, in the latest redirect's path, or in a malformed status line --
+// phrase, in the latest redirect's path, in a malformed status line, or in a
+// malformed Location header on any status --
 // leaves no trace of it in the footer note or the frame after a failed
 // ctrl+u. The note still names the status code or cause and the host where
 // the cause quotes the URL, and the binary is untouched.
@@ -73,6 +74,8 @@ func TestCtrlUFailureNeverShowsServerEchoedCredential(t *testing.T) {
 		{"one byte", "?t=Z", "Z"},
 		{"quote", "?t=K\"Q", "K\"Q"},
 		{"second pair", "?a=1&t=K>Z&b=2", "K>Z"},
+		{"ticket", "?ticket=R>", "R>"},
+		{"three bytes", "?t=Q>Z", "Q>Z"},
 	} {
 		v := cred.value
 		for name, row := range map[string]struct {
@@ -84,6 +87,9 @@ func TestCtrlUFailureNeverShowsServerEchoedCredential(t *testing.T) {
 			"redirect path":    {raw("302 Found", "Location: /releases/tag/"+url.PathEscape(v)), "", "redirect /releases/tag/*** does not name", false},
 			"malformed status": {found, raw(v + " nope"), "malformed HTTP", true},
 			"latest reason":    {raw("403 no release for " + v), "", "403 no release for ***", false},
+			"bad location 503": {raw("503 Service Unavailable", "Location: %"+v), "", "503 Service Unavailable without a redirect: parse", false},
+			"bad location 200": {raw("200 Fine", "Location: %"+v), "", "200 Fine without a redirect: parse", false},
+			"bad redirect":     {found, raw("302 Found", "Location: /x/%"+v), "failed to parse Location header", true},
 		} {
 			t.Run(cred.name+"/"+name, func(t *testing.T) {
 				m, exe, oldSum := ctrlUEchoMirror(t, cred.query, row.latest, row.download)
@@ -94,7 +100,7 @@ func TestCtrlUFailureNeverShowsServerEchoedCredential(t *testing.T) {
 				}
 				m = sendUpdateMsg(t, m, cmd())
 				note, frame := m.footerNote(), m.View()
-				if strings.ContainsAny(strings.ReplaceAll(note, "vX.Y.Z", ""), "KQZ") {
+				if strings.ContainsAny(strings.NewReplacer("vX.Y.Z", "", "URL", "").Replace(note), "KQRZ") {
 					t.Fatalf("the echoed credential reached the UI note %q", note)
 				}
 				if len(v) > 1 && strings.Contains(frame, v) {

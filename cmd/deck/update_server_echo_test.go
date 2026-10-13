@@ -39,7 +39,8 @@ func updEchoServer(t *testing.T, reply string) string {
 
 // TestUpdateVerbScrubsServerEchoedCredentials: a mirror whose reply echoes
 // the short credential deck sent it (in an HTTP reason phrase, percent-
-// encoded, in the latest redirect's path, or in a malformed status line)
+// encoded, in the latest redirect's path, in a malformed status line, or in a
+// malformed Location header on any status, which a parse error quotes)
 // never gets that credential onto stdout or stderr of the real binary, for
 // `deck update --version`, `deck update` and `deck update --check`. The
 // failure still names the status code and the server's non-secret words, and
@@ -61,6 +62,8 @@ func TestUpdateVerbScrubsServerEchoedCredentials(t *testing.T) {
 		{"one byte", "?t=Z", "Z"},
 		{"quote", "?t=K\"Q", "K\"Q"},
 		{"second pair", "?a=1&t=K>Z&b=2", "K>Z"},
+		{"ticket", "?ticket=R>", "R>"},
+		{"three bytes", "?t=Q>Z", "Q>Z"},
 	} {
 		v := cred.value
 		rows = append(rows,
@@ -70,6 +73,10 @@ func TestUpdateVerbScrubsServerEchoedCredentials(t *testing.T) {
 			row{cred.name + " redirect path", cred.query, reply("302 Found", "Location: /releases/tag/"+url.PathEscape(v)), "redirect /releases/tag/*** does not name", []string{"update"}},
 			row{cred.name + " redirect path check", cred.query, reply("302 Found", "Location: /releases/tag/"+url.PathEscape(v)), "redirect /releases/tag/*** does not name", []string{"update", "--check"}},
 			row{cred.name + " malformed status", cred.query, reply(v + " nope"), "malformed HTTP", []string{"update", "--version", "v8.4.1"}},
+			row{cred.name + " bad location 503", cred.query, reply("503 Service Unavailable", "Location: %"+v), "503 Service Unavailable without a redirect: parse", []string{"update"}},
+			row{cred.name + " bad location 503 check", cred.query, reply("503 Service Unavailable", "Location: %"+v), "503 Service Unavailable without a redirect: parse", []string{"update", "--check"}},
+			row{cred.name + " bad location 200 check", cred.query, reply("200 Fine", "Location: %"+v), "200 Fine without a redirect: parse", []string{"update", "--check"}},
+			row{cred.name + " bad redirect pinned", cred.query, reply("302 Found", "Location: /x/%"+v), "failed to parse Location header", []string{"update", "--version", "v8.4.1"}},
 		)
 	}
 	for _, r := range rows {
@@ -83,7 +90,7 @@ func TestUpdateVerbScrubsServerEchoedCredentials(t *testing.T) {
 			if code == 0 || !strings.HasPrefix(stderr, "deck update: ") || !strings.Contains(stderr, r.want) {
 				t.Fatalf("exit %d stderr %q, want a failure naming %q", code, stderr, r.want)
 			}
-			if out := strings.ReplaceAll(stdout+stderr, "vX.Y.Z", ""); strings.ContainsAny(out, "KQZ") {
+			if out := strings.NewReplacer("vX.Y.Z", "", "URL", "").Replace(stdout + stderr); strings.ContainsAny(out, "KQRZ") {
 				t.Fatalf("the echoed credential reached the output: stdout %q stderr %q", stdout, stderr)
 			}
 			if strings.Contains(r.name, "pinned") && !strings.Contains(stderr, "127.0.0.1") {

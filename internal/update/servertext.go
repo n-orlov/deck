@@ -3,6 +3,7 @@ package update
 import (
 	"errors"
 	"net/url"
+	"reflect"
 	"sort"
 	"strings"
 )
@@ -44,8 +45,9 @@ func fromServer(err error) error {
 // serverString marks s as server text.
 func serverString(s string) error { return &serverText{text: s} }
 
-// serverTexts is the message of every serverText in err's tree, longest
-// first, without descending into one (its message already holds its cause's).
+// serverTexts is the message of every serverText in err's tree, and of every
+// foreignError in it, longest first, without descending into one (its message
+// already holds its cause's).
 func serverTexts(err error) []string {
 	var out []string
 	var walk func(error)
@@ -53,7 +55,7 @@ func serverTexts(err error) []string {
 		if e == nil {
 			return
 		}
-		if _, ok := e.(interface{ isServerText() }); ok {
+		if _, ok := e.(interface{ isServerText() }); ok || foreignError(e) {
 			out = append(out, e.Error())
 			return
 		}
@@ -75,12 +77,21 @@ func serverTexts(err error) []string {
 // (raw, percent-decoded, percent-encoded, Go-quoted) wherever else it
 // appears. Only an occurrence lying wholly inside a non-secret part of the
 // configured URL (its scheme, host, port, path or a query key) is kept, so a
-// one-byte secret does not erase the host a dial error names.
+// one-byte secret does not erase the host a dial error names. A cause may
+// also quote only the start of what the server sent (url.EscapeError quotes
+// "%" and the next two bytes), so a prefix of a secret, two bytes or longer,
+// that a closing quote cuts off is masked too.
 func scrubServerText(s, configured string) string {
 	s = replaceAnchored(s, configured)
 	keep := keptParts(configured)
-	for _, form := range serverSecretForms(configured) {
-		s = replaceOutside(s, form, keep)
+	forms := serverSecretForms(configured)
+	for _, form := range forms {
+		s = replaceOutside(s, form, redacted, keep)
+	}
+	for _, form := range forms {
+		for n := len(form) - 1; n >= 2; n-- {
+			s = replaceOutside(s, form[:n]+`"`, redacted+`"`, keep)
+		}
 	}
 	return s
 }
@@ -115,9 +126,9 @@ func keptParts(configured string) []string {
 	return parts
 }
 
-// replaceOutside replaces every occurrence of secret in s with "***" unless
+// replaceOutside replaces every occurrence of secret in s with repl unless
 // it lies wholly inside an occurrence of one of keep.
-func replaceOutside(s, secret string, keep []string) string {
+func replaceOutside(s, secret, repl string, keep []string) string {
 	if secret == "" || !strings.Contains(s, secret) {
 		return s
 	}
@@ -136,7 +147,7 @@ func replaceOutside(s, secret string, keep []string) string {
 			continue
 		}
 		b.WriteString(s[i:start])
-		b.WriteString(redacted)
+		b.WriteString(repl)
 		i = end
 	}
 	b.WriteString(s[i:])
@@ -167,6 +178,37 @@ func allTrue(bs []bool) bool {
 		if !b {
 			return false
 		}
+	}
+	return true
+}
+
+// deckModule is the module path of deck's own packages.
+var deckModule = strings.TrimSuffix(reflect.TypeOf(serverText{}).PkgPath(), "/internal/update")
+
+// localErrorPkgs declare errors about this machine only (a file, a process,
+// a syscall, a deadline): their text never quotes what a server sent.
+var localErrorPkgs = map[string]bool{
+	"io/fs": true, "os": true, "os/exec": true, "syscall": true, "context": true, "internal/poll": true,
+}
+
+// foreignError reports whether e's concrete type is declared outside deck,
+// fmt, errors and localErrorPkgs: a *url.Error, a net or TLS error, an
+// x509 or url.EscapeError, a type deck has never seen. Such an error may
+// quote what a server sent (a Location header, a status line, a host name),
+// so it is server text even where no boundary marked it with fromServer: a
+// boundary deck forgot to mark then costs readability of that cause, never a
+// leaked credential.
+func foreignError(e error) bool {
+	t := reflect.TypeOf(e)
+	for t.Kind() == reflect.Pointer {
+		t = t.Elem()
+	}
+	p := t.PkgPath()
+	switch {
+	case p == "fmt", p == "errors", localErrorPkgs[p]:
+		return false
+	case p == deckModule, strings.HasPrefix(p, deckModule+"/"):
+		return false
 	}
 	return true
 }

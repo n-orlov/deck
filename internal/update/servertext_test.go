@@ -5,12 +5,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"net"
 	"net/http"
 	"net/url"
 	"os"
 	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 )
 
@@ -81,6 +83,18 @@ var serverEchoes = []struct {
 	}},
 	{"malformed status line", true, true, "malformed HTTP", func(v, _ string) string {
 		return "HTTP/1.1 " + v + " nope\r\nConnection: close\r\n\r\n"
+	}},
+	{"malformed Location on a 503", false, false, "503 Service Unavailable without a redirect: parse", func(v, _ string) string {
+		return "HTTP/1.1 503 Service Unavailable\r\nLocation: %" + v + "\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+	}},
+	{"malformed Location on a 200", false, false, "200 Fine without a redirect: parse", func(v, _ string) string {
+		return "HTTP/1.1 200 Fine\r\nLocation: %" + v + "\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+	}},
+	{"malformed Location on the latest redirect", false, false, "failed to parse Location header", func(v, _ string) string {
+		return "HTTP/1.1 302 Found\r\nLocation: /releases/tag/%" + v + "\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+	}},
+	{"malformed Location on a download redirect", true, false, "failed to parse Location header", func(v, _ string) string {
+		return "HTTP/1.1 302 Found\r\nLocation: %" + v + "\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
 	}},
 }
 
@@ -185,5 +199,39 @@ func TestRedactErrScrubsOnlyServerText(t *testing.T) {
 	}
 	if !errors.Is(err, os.ErrDeadlineExceeded) {
 		t.Error("the cause is no longer reachable")
+	}
+}
+
+// TestRedactErrScrubsUnmarkedForeignErrors: an error of a type declared
+// outside deck (a *url.Error quoting a Location header, a DNS error naming a
+// host a server chose) is scrubbed of a short configured secret even where
+// no boundary marked it as server text, while a local file-system cause keeps
+// its wording and every cause stays reachable.
+func TestRedactErrScrubsUnmarkedForeignErrors(t *testing.T) {
+	for _, c := range []struct {
+		name, cfg string
+		err       error
+		want      string
+	}{
+		{"url parse error", "https://mirror.example/r?ticket=R>", fmt.Errorf("resolve latest release: %w", &url.Error{Op: "parse", URL: "%R>", Err: url.EscapeError("%R>")}),
+			`resolve latest release: parse "%***": invalid URL escape "%***"`},
+		{"truncated escape quote", "https://mirror.example/r?t=Q>W", fmt.Errorf("resolve latest release: %w", &url.Error{Op: "parse", URL: "%Q>W", Err: url.EscapeError("%Q>")}),
+			`resolve latest release: parse "%***": invalid URL escape "%***"`},
+		{"dns error", "https://mirror.example/r?t=Q7", fmt.Errorf("download: %w", &net.DNSError{Err: "no such host", Name: "Q7.example"}),
+			"download: lookup ***.example: no such host"},
+		{"joined url error", "https://u:QW@mirror.example/r", errors.Join(errors.New("first"), &url.Error{Op: "Get", URL: "x", Err: errors.New("QW said no")}),
+			"first\nGet \"x\": *** said no"},
+		{"local path error", "https://mirror.example/r?t=is", fmt.Errorf("replace /tmp/deck: %w", &fs.PathError{Op: "rename", Path: "/tmp/deck", Err: syscall.EACCES}),
+			"replace /tmp/deck: rename /tmp/deck: permission denied"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			got := redactErr(c.err, c.cfg)
+			if got.Error() != c.want {
+				t.Errorf("redactErr = %q, want %q", got.Error(), c.want)
+			}
+			if !errors.Is(got, c.err) {
+				t.Error("the cause is no longer reachable")
+			}
+		})
 	}
 }

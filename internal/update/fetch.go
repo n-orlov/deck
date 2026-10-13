@@ -73,7 +73,8 @@ func LatestTag(ctx context.Context, c *http.Client, base string) (string, error)
 	defer func() { _ = resp.Body.Close() }()
 	loc, err := resp.Location()
 	if err != nil {
-		return "", fmt.Errorf("resolve latest release: %w without a redirect: %w", statusOf(resp), err)
+		// The parse error quotes the Location header the server sent.
+		return "", fmt.Errorf("resolve latest release: %w without a redirect: %w", statusOf(resp), fromServer(err))
 	}
 	return tagFromLocation(loc)
 }
