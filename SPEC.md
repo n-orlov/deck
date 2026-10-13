@@ -2671,8 +2671,9 @@ before.
 
 **Bookmark display and reveal (R277, R278).** With the setting on, a bookmarked row draws the
 slot digit(s) it holds before its name, `[3]` for one slot and `[1,7]` for two, in the `badge`
-token, and the footer and the `?` overlay list the bookmark keys (`alt+0-9/m bookmarks` in the
-footer; the jump, the `Alt+M` chord and the `Alt+Shift+digit` keys in the overlay). With the
+token, and the footer and the `?` overlay list the bookmark keys (`alt+0-9/m bookmarks` and
+`alt+m del clear bookmark` in the footer; the jump, the `Alt+M` chord, the `Alt+Shift+digit` keys and
+the `Alt+M` then `Delete` clear action in the overlay). With the
 setting off no slot digit is drawn and no footer or help line mentions bookmarks. A jump always
 leaves its target selected and visible: when an active filter hides the target the filter is
 cleared, when the target sits in a collapsed group that group is expanded, and a target in the
@@ -2918,8 +2919,8 @@ truncated-but-honest frame beats an unpredictable one.
   action that otherwise looks one-way, and `,` because settings has no other visible entry
   point in the default frame. Absence from the footer is never absence from the keymap, and
   §11's keymap plus the `?` overlay remain the complete list. With the `bookmarks` setting on,
-  one more entry, `alt+0-9/m bookmarks`, trails the fixed set and is the first to be elided on a
-  narrow frame; with the setting off the footer never mentions bookmarks.
+  two more entries, `alt+0-9/m bookmarks` and `alt+m del clear bookmark`, trail the fixed set and are
+  the first to be elided on a narrow frame; with the setting off the footer never mentions bookmarks.
 - **The footer also carries the selected row's status reason**, on its left, separated from
   the keys. §7's reasons are prose — `awaiting signal`, `resumable`, `pane failed after the
   stale frame` — and a sidebar with 31 content columns cannot hold a name and a reason on the

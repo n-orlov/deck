@@ -346,6 +346,7 @@ func (m Model) bookmarkFooterHints() []footerKeyHint {
 	}
 	return []footerKeyHint{
 		{"alt+0-9/m", "alt+0-9/m", "bookmarks", nil},
+		{"alt+m del", "alt+m del", "clear bookmark", nil},
 	}
 }
 
@@ -356,6 +357,7 @@ const bookmarkHelpAnchor = "  , open/close settings"
 const bookmarkHelpLines = `  alt+0 … alt+9 jump to the session bookmarked in that slot: the selection
     moves, nothing attaches; a hidden target is revealed (the filter clears,
     a folded group unfolds). alt+m then a digit 0-9 bookmarks the selected
-    session in that slot (alt+Shift+digit does the same on a US layout);
-    shown only while the bookmarks setting is on
+    session in that slot (alt+Shift+digit does the same on a US layout).
+    alt+m then Delete clears every bookmark the selected session holds.
+    These keys are shown only while the bookmarks setting is on
 `
