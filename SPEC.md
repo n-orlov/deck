@@ -1278,10 +1278,11 @@ in this order, and the first source that answers wins:
    a `derived` or `harness` row takes it; a `user` row is never changed.
 2. The tail of the transcript: the hook's `transcript_path`, or, when the hook named none (the
    reconcile tick), the conversation's own file under `<claude config dir>/projects/<cwd>/<id>.jsonl`.
-   The hook's path is used only when it is an absolute `.jsonl` inside `<claude config dir>/projects`
-   (the session's `CLAUDE_CONFIG_DIR`, else `~/.claude`): a path outside that root, a `..` escape, a
-   symlink (or a symlinked directory) that resolves outside it, and a path that is not a regular file
-   are all ignored, and the conversation's own derived file is read instead (R271). The reader
+   The hook's path is used only when, cleaned and symlink-resolved, it is an existing regular `.jsonl`
+   file inside `<claude config dir>/projects` (the session's `CLAUDE_CONFIG_DIR`, else `~/.claude`): a
+   path outside that root, a `..` escape, a symlink (or a symlinked directory) that resolves outside it,
+   a path that is not a regular file, and a path that does not exist are all ignored, and the
+   conversation's own derived file is read instead (R271, R279). The reader
    refuses a FIFO, socket, device or symlink before reading: it checks the path with `lstat`, opens
    it `O_NONBLOCK|O_NOFOLLOW` and checks the opened file again, so a FIFO with no writer cannot
    hang the read (R270). It opens the file read-only and reads from the end, at most 512 KiB; when it starts

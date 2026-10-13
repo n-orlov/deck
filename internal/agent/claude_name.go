@@ -62,9 +62,10 @@ func (Claude) ReadName(in NameProbeInput) (string, bool, bool) {
 
 // claudeNamePath is the transcript file to read: the hook's path when it is
 // usable, else the path Claude derives from the cwd and the conversation id.
-// The hook's path is usable only when it is an absolute .jsonl inside the
-// Claude projects root (<claude config dir>/projects) that is not a link
-// pointing out of it and not a non-regular file (R271).
+// The hook's path is usable only when it is an absolute, existing, regular
+// .jsonl file whose symlink-resolved path lies inside the Claude projects root
+// (<claude config dir>/projects); a missing file, a link and a non-regular file
+// fall back to the derived path (R271, R279).
 func claudeNamePath(in NameProbeInput) string {
 	root := claudeConfigRoot(in)
 	if root != "" && filepath.IsAbs(in.TranscriptPath) && filepath.Ext(in.TranscriptPath) == ".jsonl" {
@@ -92,10 +93,11 @@ func claudeConfigRoot(in NameProbeInput) string {
 }
 
 // claudeTranscriptConfined reports whether path (already cleaned) may be read
-// as a transcript: it lies lexically inside projects, its directory resolves
-// (through symlinks) inside the resolved projects root, and an existing path
-// is a regular file, so neither a link out of the root nor a FIFO, socket or
-// device is read.
+// as the hook's transcript: it lies lexically inside projects, it exists, its
+// symlink-resolved form lies inside the resolved projects root and is a .jsonl
+// file, and the path itself is a regular file. A missing file, a link, a FIFO,
+// a socket or a device is not eligible, so the caller falls back to the
+// derived transcript path.
 func claudeTranscriptConfined(path, projects string) bool {
 	projects = filepath.Clean(projects)
 	if !filepath.IsAbs(projects) || !pathWithin(projects, path) {
@@ -105,14 +107,11 @@ func claudeTranscriptConfined(path, projects string) bool {
 	if err != nil {
 		return false
 	}
-	realDir, err := filepath.EvalSymlinks(filepath.Dir(path))
-	if err != nil || !pathWithin(realRoot, realDir) {
+	resolved, err := filepath.EvalSymlinks(path)
+	if err != nil || filepath.Ext(resolved) != ".jsonl" || !pathWithin(realRoot, resolved) {
 		return false
 	}
 	info, err := os.Lstat(path)
-	if os.IsNotExist(err) {
-		return true
-	}
 	return err == nil && info.Mode().IsRegular()
 }
 

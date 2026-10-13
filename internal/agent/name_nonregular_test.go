@@ -125,3 +125,48 @@ func TestClaudeNamePathConfinesTheHookTranscript(t *testing.T) {
 		})
 	}
 }
+
+// TestClaudeNamePathFallsBackWhenTheHookTranscriptIsNotAnExistingRegularFile
+// (R271, R279): a hook path inside the projects root that does not exist, is a
+// directory, or is a link (even to a file inside the root) is ineligible, so the
+// derived transcript is chosen and ReadName answers with its title.
+func TestClaudeNamePathFallsBackWhenTheHookTranscriptIsNotAnExistingRegularFile(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "projects", "-work-proj")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	derived := filepath.Join(dir, nameTestUUID+".jsonl")
+	body := `{"type":"custom-title","customTitle":"derived title"}` + "\n"
+	if err := os.WriteFile(derived, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	dirNamedJSONL := filepath.Join(dir, "dir.jsonl")
+	if err := os.Mkdir(dirNamedJSONL, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	innerLink := filepath.Join(dir, "inner-link.jsonl")
+	if err := os.Symlink(derived, innerLink); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct{ row, hook string }{
+		{"missing in-root file", filepath.Join(dir, "missing.jsonl")},
+		{"missing file in a missing in-root directory", filepath.Join(root, "projects", "-gone", "x.jsonl")},
+		{"directory named .jsonl", dirNamedJSONL},
+		{"link to another in-root file", innerLink},
+	} {
+		t.Run(tc.row, func(t *testing.T) {
+			in := NameProbeInput{
+				TranscriptPath: tc.hook, CWD: "/work/proj", ConversationID: nameTestUUID,
+				Env: map[string]string{claudeConfigDirKey: root},
+			}
+			if got := claudeNamePath(in); got != derived {
+				t.Fatalf("claudeNamePath = %q, want the derived %q", got, derived)
+			}
+			name, explicit, ok := NewClaude().ReadName(in)
+			if !ok || name != "derived title" || !explicit {
+				t.Fatalf("ReadName = (%q, %v, %v), want the derived transcript's title", name, explicit, ok)
+			}
+		})
+	}
+}
