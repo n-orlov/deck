@@ -758,6 +758,26 @@ directory by `ci/junit2allure`, and `ci/allure-report.sh` builds the single
 report with its history carried forward. The Allure smoke check and the layout
 are described under "Allure report and Pages layout" above.
 
+## Status badges (`ci/badgegen`, R289)
+
+`go run ./ci/badgegen -in ci-results -out badges` turns the result files
+`ci/suite.sh` and `ci/quality.sh` leave in `ci-results/` into shields.io
+endpoint JSON, one `badges/<name>.json` per gate, each with exactly the keys
+`schemaVersion`, `label`, `message` and `color`:
+
+| file | reads | green when |
+| --- | --- | --- |
+| `lint.json` | `quality-report.txt`, the golangci section | the gate passed |
+| `unit-tests.json` | `junit-merged/junit-go.xml` | no failure or error |
+| `features.json` | `junit-merged/junit-features.xml` | no failure or error |
+| `coverage.json` | `coverage-merged.out` (`cmd/fake-*` excluded) | at least 85%; yellow from 70% |
+| `vulnerabilities.json` | `quality-report.txt`, the govulncheck and trivy sections | both passed |
+
+A failed gate renders red. A result file that is missing or cannot be parsed
+renders a grey `unknown`, never green. The generator's tests
+(`ci/badgegen`: `TestBadgeGenTable`, `TestBadgeNeverGreenOnBadInput`,
+`TestBadgeValuesFollowInput`) cover each of those cases.
+
 ## The pre-release security review (R194)
 
 This is a process, not a gate, and nothing about a review is tracked in the
