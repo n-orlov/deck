@@ -79,10 +79,11 @@ func assertReconcilerStopsDisappearedSession(t *testing.T, reconcileInterval tim
 			passCost = elapsed
 		}
 	}
-	// The stopped transition is judged on the time its own write ran, recorded
-	// inside the writing transaction, never on when this goroutine happened to
-	// read the row: a late write seen by a late reader is still late.
-	stoppedAt := recordStoppedWrites(t, db)
+	// The stopped transition is judged on when the transaction writing it
+	// committed (SQLite's commit hook), and on an independent connection seeing
+	// it after the bound, never on when this goroutine happened to read the
+	// row: a late commit seen by a late reader is still late.
+	stopped := recordStoppedWrites(t, db, paths.StateDB)
 	warm := len(snapshots())
 	loopStart := time.Now()
 	stop := startReconciler(t, service, reconcileInterval)
@@ -106,15 +107,15 @@ func assertReconcilerStopsDisappearedSession(t *testing.T, reconcileInterval tim
 			t.Fatalf("first tick started %s after the immediate pass, want about one interval (%s)", gap, reconcileInterval)
 		}
 	}
-	// The stopped write itself is held to the original bound: one interval
-	// plus three measured pass costs from the loop start. It is also held to
-	// three pass costs from the start of the snapshot that detected the
-	// disappearance, so the write follows its own detecting pass.
+	// The committed stopped transition itself is held to the original bound:
+	// one interval plus three measured pass costs from the loop start. It is
+	// also held to three pass costs from the start of the snapshot that
+	// detected the disappearance, so the commit follows its own detecting pass.
 	original := loopStart.Add(reconcileInterval + 3*passCost)
-	if err := stoppedWrittenBy(stoppedAt, alpha.ID, original, 12*reconcileInterval); err != nil {
+	if err := stoppedCommittedBy(stopped, alpha.ID, original, 12*reconcileInterval); err != nil {
 		t.Fatalf("original cadence bound (interval %s + 3 x pass cost %s from loop start): %v", reconcileInterval, passCost, err)
 	}
-	if err := stoppedWrittenBy(stoppedAt, alpha.ID, detecting.at.Add(3*passCost), 0); err != nil {
+	if err := stoppedCommittedBy(stopped, alpha.ID, detecting.at.Add(3*passCost), 0); err != nil {
 		t.Fatalf("detecting-pass bound (3 x pass cost %s from the detecting snapshot): %v", passCost, err)
 	}
 	if err := stop(); err != nil {
