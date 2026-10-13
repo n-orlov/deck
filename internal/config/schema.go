@@ -804,6 +804,34 @@ var Schema = []Field{
 		Scope: ScopeGlobal,
 	},
 	{
+		Section: "",
+		Key:     "update_check",
+		Kind:    KindToggle,
+		Default: true,
+		Description: "Check for a newer release (SPEC \u00a76.5). When true, deck asks " +
+			"GitHub for the latest release at most once every 24 hours and shows a " +
+			"quiet indicator when one is newer; that one request is deck's only " +
+			"network use and carries no telemetry. false makes no outbound request " +
+			"at all, unless auto_update is on, which implies the check. " +
+			"DECK_UPDATE_CHECK overrides the file when set. Applies immediately.",
+		// R297: the daily check reads Settings.UpdateCheckEnabled fresh each
+		// time it is due, and settingsApplyLive copies a saved change into
+		// the running client -- the same live-read shape bookmarks has.
+		Scope: ScopeGlobal,
+	},
+	{
+		Section: "",
+		Key:     "auto_update",
+		Kind:    KindToggle,
+		Default: false,
+		Description: "Install a newer release without asking (SPEC \u00a76.5). When " +
+			"true, a release the daily check finds is installed by the same path " +
+			"as `deck update`, with every check it makes. True implies " +
+			"update_check, even when update_check is false. Off by default. " +
+			"DECK_AUTO_UPDATE overrides the file when set. Applies immediately.",
+		Scope: ScopeGlobal,
+	},
+	{
 		Section:       "",
 		Key:           "event_hook_events",
 		Kind:          KindListOfStrings,

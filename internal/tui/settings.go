@@ -596,6 +596,12 @@ func (m *Model) settingsApplyLiveScalars(edited, previous config.FileConfig) {
 	if settingsLiveChanged(overrides, "bookmarks", edited.Bookmarks, previous.Bookmarks) {
 		m.settings.Bookmarks = edited.Bookmarks
 	}
+	if settingsLiveChanged(overrides, "update_check", edited.UpdateCheck, previous.UpdateCheck) {
+		m.settings.UpdateCheck = edited.UpdateCheck
+	}
+	if settingsLiveChanged(overrides, "auto_update", edited.AutoUpdate, previous.AutoUpdate) {
+		m.settings.AutoUpdate = edited.AutoUpdate
+	}
 	// ui.preview_paint: repaintForeignDefaults reads this member on every
 	// previewed row, so the next preview tick after a save already paints
 	// the new way -- the ScopeGlobal claim its schema entry makes. Guarded
@@ -1662,6 +1668,8 @@ func settingsEditsFromSettings(s config.Settings) config.FileConfig {
 		EventHookDefault:     s.File.EventHookDefault,
 		AdoptHarnessNames:    s.File.AdoptHarnessNames,
 		Bookmarks:            s.File.Bookmarks,
+		UpdateCheck:          s.File.UpdateCheck,
+		AutoUpdate:           s.File.AutoUpdate,
 		EventHookEvents:      slices.Clone(s.File.EventHookEvents),
 		EventHookTimeout:     s.File.EventHookTimeout,
 		NoteTimeout:          s.File.NoteTimeout,
@@ -1732,6 +1740,14 @@ var settingsTableToggles = map[string]struct {
 	"bookmarks": {
 		get: func(c config.FileConfig) bool { return c.Bookmarks },
 		set: func(c *config.FileConfig, v bool) { c.Bookmarks = v },
+	},
+	"update_check": {
+		get: func(c config.FileConfig) bool { return c.UpdateCheck },
+		set: func(c *config.FileConfig, v bool) { c.UpdateCheck = v },
+	},
+	"auto_update": {
+		get: func(c config.FileConfig) bool { return c.AutoUpdate },
+		set: func(c *config.FileConfig, v bool) { c.AutoUpdate = v },
 	},
 	"ui.attach_on_new": {
 		get: func(c config.FileConfig) bool { return c.AttachOnNew },
@@ -1946,6 +1962,8 @@ func settingsFieldRunningValueDisplay(f config.Field, s config.Settings, fallbac
 func settingsRunningToggles(s config.Settings) map[string]bool {
 	return map[string]bool{
 		"bookmarks":           s.Bookmarks,
+		"update_check":        s.UpdateCheck,
+		"auto_update":         s.AutoUpdate,
 		"ui.ascii":            s.ASCII,
 		"ui.mouse":            s.Mouse,
 		"ui.preview_fit":      s.PreviewFit,

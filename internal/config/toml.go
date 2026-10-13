@@ -48,6 +48,8 @@ type FileConfig struct {
 	EventHookDefault     bool
 	AdoptHarnessNames    bool
 	Bookmarks            bool
+	UpdateCheck          bool
+	AutoUpdate           bool
 	EventHookEvents      []string
 	EventHookTimeout     time.Duration
 	NoteTimeout          time.Duration
@@ -207,6 +209,8 @@ var toggleSetters = map[string]func(*FileConfig, bool){
 	"event_hook_default":     func(c *FileConfig, v bool) { c.EventHookDefault = v },
 	"adopt_harness_names":    func(c *FileConfig, v bool) { c.AdoptHarnessNames = v },
 	"bookmarks":              func(c *FileConfig, v bool) { c.Bookmarks = v },
+	"update_check":           func(c *FileConfig, v bool) { c.UpdateCheck = v },
+	"auto_update":            func(c *FileConfig, v bool) { c.AutoUpdate = v },
 }
 
 var integerSetters = map[string]func(*FileConfig, int){

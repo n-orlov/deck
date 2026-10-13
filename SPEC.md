@@ -56,7 +56,7 @@ worktree per task. What's actually needed is three things:
 | **R2** | **Several sessions may share one cwd.** Two agents in the same directory is normal, not an edge case. | `--continue` / `resume --last` / any "most recent in this directory" resolution is **banned**: it would collapse N sessions onto one conversation. Resume is always by explicit conversation id. |
 | **R3** | **Durable identity.** A named session and its conversation outlive a reboot, an agent upgrade, and `tmux kill-server`. Nothing is auto-restarted; **resume is one keypress, on demand.** | Durable store of `name → cwd → agent → conversation id`. `stopped` is a normal, first-class state, not an error. No boot-time restore service, no autostart. |
 | **R4** | **N concurrent TUIs, one host.** Desktop plus several SSH ttys, hopping between machines mid-task. | State lives in tmux + SQLite (WAL). No process is authoritative, no process is required. Whole-list rewrites from in-memory state are a forbidden pattern; every mutation is a targeted `UPDATE`. Launches take a row lease so two TUIs can't double-start one session. |
-| **R5** | **Lightweight, portable.** One static binary plus tmux, on any Linux. | Go, no cgo, no node, no browser, no Docker, no root, no daemon. systemd is *optional*. No assumption about shell, distro, terminal, or network. |
+| **R5** | **Lightweight, portable.** One static binary plus tmux, on any Linux. | Go, no cgo, no node, no browser, no Docker, no root, no daemon. systemd is *optional*. No assumption about shell, distro, terminal, or network: the daily update check (§6.5) is the only network use, and `update_check = false` removes it. |
 | **R6** | **Five agents:** Claude Code, Pi / oh-my-pi, Codex CLI, GitHub Copilot CLI, and a plain `bash` shell session. | Adapter interface with capability degradation — hooks where they exist, pane heuristics where they don't, and honest UI about the difference. |
 | **R7** | **TUI-only.** All actions in the UI: create, resume, kill, delete, env edit, permission mode, conversation lock, sidebar pin, search, config. | Discoverability is a feature, not a nicety: inline help, no hidden verbs a user needs. |
 | **R8** | **Black-box testable, BDD-specified.** Every behaviour in this spec is expressed as Gherkin and verified against the **real binary** driven through a real terminal, with no in-process hooks and no test-only code paths in the product. | The binary must be *drivable* (keystrokes in) and *observable* (rendered screen, tmux state, files, event-hook invocations, structured log) from outside. Determinism controls — state dir redirection, frozen clock, fixed tick, no animation, no colour — are documented, supported configuration, not test scaffolding (§13). |
@@ -397,6 +397,13 @@ so that work and home, or two organisations, never share a session list. (It is 
 ## 4. Data model
 
 `$XDG_DATA_HOME/deck/state.db`, mode `0600`, schema version in `meta`.
+
+The daily update check (§6.5) keeps its answer outside every `state.db`, in one small JSON file
+that all profiles share: `update-check.json` in `$DECK_HOME` when `DECK_HOME` is set, otherwise
+`$XDG_CACHE_HOME/deck/update-check.json` (`~/.cache/deck/update-check.json`). It holds the time of
+the last attempt and the latest release tag seen, nothing else (no credential, no identifier), and it
+is replaced atomically. It is the single thing profiles share; a profile's sessions, settings and
+`state.db` stay its own.
 
 ```sql
 CREATE TABLE sessions (
@@ -785,7 +792,7 @@ schema:
 
 | where | keys |
 |---|---|
-| top level | `allow_yolo` (default false, §5), `yolo_default` (default false, §5 — inert unless `allow_yolo`), `stale_after` (default 45 s, §7), `capture_min_interval` (§9.4), `tmux_mouse` (default true, §3.2 — `false` restores tmux's own default and with it the arrow-key behaviour), `event_retention_days` (default 30, §12), `pre_launch` (empty by default, §6.4 — the global launch hook), `agent` (empty by default, §3.4 — the kind `deck new` creates when `--agent` is absent; it is a string stored verbatim and checked against the registered kinds only when `deck new` uses it, so a kind deck does not know fails there with `unknown agent kind`; the create dialog ignores it), `post_destroy` (empty by default, §9.2 — the global teardown hook), `event_hook` (empty by default, §10.1 — the one event script; empty makes §10 inert), `event_hook_default` (default false, §10.2), `adopt_harness_names` (default true, §11.4), `bookmarks` (default false, `DECK_BOOKMARKS`, §11.5 — the numbered session bookmarks), `event_hook_events` (default `["waiting","error","ended"]`, §10.2), `event_hook_timeout` (default 3 s, §10.3) |
+| top level | `allow_yolo` (default false, §5), `yolo_default` (default false, §5 — inert unless `allow_yolo`), `stale_after` (default 45 s, §7), `capture_min_interval` (§9.4), `tmux_mouse` (default true, §3.2 — `false` restores tmux's own default and with it the arrow-key behaviour), `event_retention_days` (default 30, §12), `pre_launch` (empty by default, §6.4 — the global launch hook), `agent` (empty by default, §3.4 — the kind `deck new` creates when `--agent` is absent; it is a string stored verbatim and checked against the registered kinds only when `deck new` uses it, so a kind deck does not know fails there with `unknown agent kind`; the create dialog ignores it), `post_destroy` (empty by default, §9.2 — the global teardown hook), `event_hook` (empty by default, §10.1 — the one event script; empty makes §10 inert), `event_hook_default` (default false, §10.2), `adopt_harness_names` (default true, §11.4), `bookmarks` (default false, `DECK_BOOKMARKS`, §11.5 — the numbered session bookmarks), `update_check` (default true, `DECK_UPDATE_CHECK` — the daily check for a newer release, below), `auto_update` (default false, `DECK_AUTO_UPDATE` — true implies the check), `event_hook_events` (default `["waiting","error","ended"]`, §10.2), `event_hook_timeout` (default 3 s, §10.3) |
 | `[env]` | the middle PATH/env layer (§6.1) |
 | `[ui]` | `theme` (§11.6), `ascii` (§11), `mouse` (default true, §11.8), `preview_fit` (default true, §11), `preview_paint` (default `"fit"`, one of `fit`/`nofit`/`bg`/`off`, §11.3), `sort_order` (default `"attention"`, one of `attention`/`created`/`activity`/`name`, §11), `default_group_first` (default false, §11), `attach_on_new` (default true, §11), `attach_on_click` (default true, §11.8), `select_on_drag` (default true, §11.8), `attach_on_resume` (default false, §9.1), `recent_cwd_limit` (default 5, §11.7). **Not** `layout_mode`, `sidebar_width` or the recent-directory list itself — those are machine-local UI state/history and live in `state.db` (§11.2, §11.7), so a keypress never rewrites this file, `note_timeout` (whole seconds or a quoted duration, at least 1; default 10, `DECK_NOTE_TIMEOUT` in whole seconds overrides it, §11.3 — how long a transient footer note stays up) |
 
@@ -820,7 +827,7 @@ terminal's mouse reporting is switched on or off with it), `ui.preview_fit`, `ui
 `ui.sort_order` (the loaded sessions are re-sorted, the selection stays on its session),
 `ui.default_group_first`, `ui.attach_on_new`, `ui.attach_on_click`, `ui.select_on_drag`,
 `ui.attach_on_resume`, `ui.note_timeout` (the next note follows it), `event_hook`, `event_hook_default`, `adopt_harness_names` (the next adoption or
-push follows it), `bookmarks`, `event_hook_events` and
+push follows it), `bookmarks`, `update_check`, `auto_update` (the next check reads them), `event_hook_events` and
 `event_hook_timeout` (the dispatcher reads them from the running settings when an event fires,
 so the next event follows them). A key the file did not change is left as it is, and a key a `DECK_*`
 variable overrides stays pinned to the environment. A changed user theme file re-resolves the
@@ -882,6 +889,19 @@ Global-first is also what lets a session's hook observe whatever the global one 
 the same shell, so the two compose instead of racing. The presence of a per-session hook never
 shadows the global one. Both keys are editable in settings (§11.5) like every other flat key,
 and labelled *restart-to-apply* there, because a hook is consumed at launch.
+
+**The update check (R297) is deck's only network use.** With `update_check` on (the default), deck
+asks the release server (`https://github.com/n-orlov/deck`, or `DECK_UPDATE_URL`, §13.1) for the
+latest release tag on its own goroutine, never the UI's, and at most once every 24 hours across all
+profiles and all running instances: the answer, a failure included, is stored in the shared
+`update-check.json` (§4), and a check inside that window makes no request. The request is the plain
+`GET <base>/releases/latest` and nothing more: deck sends no telemetry, no identifier, no session,
+path or configuration data, and the only header is the standard HTTP client one. A failed or offline
+check shows no indicator, returns no error to the user and is not retried inside the window. Setting
+`update_check = false` (or `DECK_UPDATE_CHECK=0`) disables it: deck then makes no outbound request
+at all. `auto_update` implies the check, so the check runs when either key is on. Both keys are
+read when a check is due, so a settings save or a reload applies at the next one without a restart.
+The explicit `deck update` verb (§3.4, §13.1) is the one other request and runs only when asked.
 
 Two rules that hold for every key, present and future:
 
@@ -3197,6 +3217,10 @@ the TUI must be the place it is edited.
   to `config.toml`. A save applies to the running client at the next key, so it does not say
   *restart-to-apply*. While it is off no bookmark key is bound, no slot digit is drawn, and no
   footer or help line mentions bookmarks.
+- **`update_check` and `auto_update` are toggles** in the General category, global scope, with
+  `DECK_UPDATE_CHECK` (default **on**) and `DECK_AUTO_UPDATE` (default **off**) overriding the file
+  value. `enter` on the row stages the flip and `ctrl+s` saves it to `config.toml`; a save applies at
+  the next check, so neither says *restart-to-apply*. `auto_update` on implies the check (§6.5).
 - **`[ui] attach_on_click`** (default true, `DECK_ATTACH_ON_CLICK`) sits beside `attach_on_new`
   and `attach_on_resume` and governs whether a sidebar row click or double-click enters the
   interactive preview (§11.8). It is `ScopeGlobal`: a save applies to the running client at

@@ -57,6 +57,10 @@ type Paths struct {
 	ConfigFile string
 	LogDir     string
 	StateDB    string
+	// UpdateCache is the daily update check's cache file (SPEC §4, §6.5).
+	// It is the one file every profile shares: the same path for any
+	// profile, and never inside a state.db.
+	UpdateCache string
 }
 
 // Settings contains the supported determinism and polling controls.
@@ -169,6 +173,17 @@ type Settings struct {
 	// and no footer or help line mentions them. DECK_BOOKMARKS overrides the
 	// file when set, the same shape DECK_SELECT_ON_DRAG has.
 	Bookmarks bool
+	// UpdateCheck mirrors config.toml's top-level update_check key (R297,
+	// SPEC §6.5): whether deck makes its once-a-day check for a newer
+	// release. True by default. DECK_UPDATE_CHECK overrides the file when
+	// set. Read UpdateCheckEnabled for the effective answer: auto_update
+	// implies the check.
+	UpdateCheck bool
+	// AutoUpdate mirrors config.toml's top-level auto_update key (R297,
+	// SPEC §6.5): whether a newer release is installed without asking.
+	// False by default; true implies the check. DECK_AUTO_UPDATE overrides
+	// the file when set.
+	AutoUpdate bool
 	// NoteTimeout mirrors config.toml's [ui] note_timeout key (R283, SPEC
 	// \u00a711): how long a transient footer note stays up before it clears
 	// on its own. DECK_NOTE_TIMEOUT (whole seconds) overrides the file.
@@ -442,6 +457,8 @@ func applyFileConfig(settings *Settings, fileCfg FileConfig) {
 	settings.EventHookDefault = fileCfg.EventHookDefault
 	settings.AdoptHarnessNames = fileCfg.AdoptHarnessNames
 	settings.Bookmarks = fileCfg.Bookmarks
+	settings.UpdateCheck = fileCfg.UpdateCheck
+	settings.AutoUpdate = fileCfg.AutoUpdate
 	settings.NoteTimeout = fileCfg.NoteTimeout
 	settings.EventHookEvents = slices.Clone(fileCfg.EventHookEvents)
 	settings.EventHookTimeout = fileCfg.EventHookTimeout
@@ -521,6 +538,8 @@ var envOverrideSteps = []envOverrideStep{
 	boolOverrideStep("DECK_ATTACH_ON_CLICK", "ui.attach_on_click", func(s *Settings) *bool { return &s.AttachOnClick }),
 	boolOverrideStep("DECK_SELECT_ON_DRAG", "ui.select_on_drag", func(s *Settings) *bool { return &s.SelectOnDrag }),
 	boolOverrideStep("DECK_BOOKMARKS", "bookmarks", func(s *Settings) *bool { return &s.Bookmarks }),
+	boolOverrideStep("DECK_UPDATE_CHECK", "update_check", func(s *Settings) *bool { return &s.UpdateCheck }),
+	boolOverrideStep("DECK_AUTO_UPDATE", "auto_update", func(s *Settings) *bool { return &s.AutoUpdate }),
 	boolOverrideStep("DECK_ATTACH_ON_RESUME", "ui.attach_on_resume", func(s *Settings) *bool { return &s.AttachOnResume }),
 	previewPaintOverride,
 	boolOverrideStep("DECK_TMUX_MOUSE", "tmux_mouse", func(s *Settings) *bool { return &s.TmuxMouse }),
@@ -611,6 +630,9 @@ func HistoryFile(home, sessionID string) string {
 	return filepath.Join(home, "history", sessionID)
 }
 
+// UpdateCacheName is the file name of the shared update-check cache.
+const UpdateCacheName = "update-check.json"
+
 // resolvePaths resolves Paths for the given (already-resolved) profile
 // name: the default profile is the flat layout unchanged, byte-for-byte;
 // any other name gets "profiles/<name>" inserted after "deck/" in XDG mode,
@@ -620,8 +642,9 @@ func HistoryFile(home, sessionID string) string {
 // passes) before resolvePaths is reached.
 func resolvePaths(getenv func(string) string, userHome func() (string, error), profile string) (Paths, error) {
 	if root := getenv("DECK_HOME"); root != "" {
+		shared := filepath.Join(root, UpdateCacheName)
 		root = profileRoot(root, profile)
-		return Paths{Home: root, DataDir: root, ConfigFile: filepath.Join(root, "config.toml"), LogDir: filepath.Join(root, "log"), StateDB: filepath.Join(root, "state.db")}, nil
+		return Paths{Home: root, DataDir: root, ConfigFile: filepath.Join(root, "config.toml"), LogDir: filepath.Join(root, "log"), StateDB: filepath.Join(root, "state.db"), UpdateCache: shared}, nil
 	}
 	home, err := userHome()
 	if err != nil {
@@ -642,7 +665,11 @@ func resolvePaths(getenv func(string) string, userHome func() (string, error), p
 	data = profileRoot(filepath.Join(data, "deck"), profile)
 	configDeck := profileRoot(filepath.Join(config, "deck"), profile)
 	stateDeck := profileRoot(filepath.Join(state, "deck"), profile)
-	return Paths{Home: data, DataDir: data, ConfigFile: filepath.Join(configDeck, "config.toml"), LogDir: filepath.Join(stateDeck, "log"), StateDB: filepath.Join(data, "state.db")}, nil
+	cache := getenv("XDG_CACHE_HOME")
+	if cache == "" {
+		cache = filepath.Join(home, ".cache")
+	}
+	return Paths{Home: data, DataDir: data, ConfigFile: filepath.Join(configDeck, "config.toml"), LogDir: filepath.Join(stateDeck, "log"), StateDB: filepath.Join(data, "state.db"), UpdateCache: filepath.Join(cache, "deck", UpdateCacheName)}, nil
 }
 
 // profileRoot inserts "profiles/<name>" after root for any profile other
@@ -1037,3 +1064,8 @@ func (g *IDGenerator) UUID() (string, error) {
 	bytes[8] = (bytes[8] & 0x3f) | 0x80
 	return fmt.Sprintf("%08x-%04x-%04x-%04x-%012x", bytes[:4], bytes[4:6], bytes[6:8], bytes[8:10], bytes[10:16]), nil
 }
+
+// UpdateCheckEnabled reports whether the daily update check may run:
+// update_check is on, or auto_update is on (auto_update implies the check,
+// SPEC §6.5). It is the one place that rule lives.
+func (s Settings) UpdateCheckEnabled() bool { return s.UpdateCheck || s.AutoUpdate }

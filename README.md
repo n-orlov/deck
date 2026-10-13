@@ -46,6 +46,8 @@ deck
 | `?` | all keys |
 | `q` | quit |
 
+Update check: once a day deck asks GitHub for the latest release tag, so it can say a newer one exists. That one request is deck's only network use; it sends nothing but the request itself (no telemetry, no identifiers). Set `update_check = false` in `config.toml` (or `DECK_UPDATE_CHECK=0`, or the toggle in settings `,`) to disable it and deck makes no outbound request. `auto_update = true` (default false) implies the check. The answer is cached in `update-check.json`, shared by all profiles (SPEC §4).
+
 Config: `~/.config/deck/config.toml`. State: `~/.local/share/deck/`. tmux socket: `tmux -L deck`.
 
 ## Themes
