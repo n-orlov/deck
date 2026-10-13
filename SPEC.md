@@ -6,8 +6,9 @@ tmux as the only runtime dependency.
 
 Interaction model: **`deck` is a TUI. Every user action happens in the UI.** There is no
 user-facing command line: the only arguments choose *which* deck opens — `deck [<profile>]`
-(§3.4) — plus `--profiles` and `--version`, and none of them performs an action. The one
-exception is `deck new --agent <kind>` (§3.4), a detached shortcut for the create dialog.
+(§3.4) — plus `--profiles` and `--version`, and none of them performs an action. The two
+exceptions are detached verbs: `deck new --agent <kind>` (§3.4), a shortcut for the create
+dialog, and `deck update` (§3.4, §13.1), which installs a newer release over the running binary.
 
 **deck is the primary way to control a session; direct `tmux` is the fallback for the awkward
 cases.** Where deck's own view and a bare `tmux attach` elsewhere want different things from
@@ -65,7 +66,7 @@ worktree per task. What's actually needed is three things:
 Git worktrees, branches, PRs, CI · web UI / HTTP server / PWA / tunnels · Docker or
 sandboxing · ACP or any structured-render protocol · plugins · **a theme *engine***
 (themes are colour-only data files, and a theme can change nothing but colour — §11.6) · **a
-user-facing CLI or scripting surface** (choosing a profile at launch, and `deck new --agent <kind>`, §3.4, are not one) ·
+user-facing CLI or scripting surface** (choosing a profile at launch, `deck new --agent <kind>` and `deck update`, §3.4, are not one) ·
 **multi-host / remote sessions** · declarative config files describing the session set · multiple windows or a shell drawer per session
 (one agent or shell per session, full stop) · orchestration, task queues, kanban,
 auto-approval · env profiles or secret-manager integrations · auto-restart on crash ·
@@ -312,6 +313,21 @@ so that work and home, or two organisations, never share a session list. (It is 
   is exit 2 `error: unknown agent kind "<kind>"` -- the create service's own message, before
   anything on disk is opened -- and an unknown option is `error: unknown flag <arg>`. A kind
   whose executable is not on `PATH` is refused by the create service (§6.3) with exit 1.
+- **`deck update` is a detached verb, and a profile named `update` is reached with
+  `DECK_PROFILE=update`.** The word `update` as the first argument always runs the verb (it opens no
+  TUI), so `deck update` never opens the profile `update`; `DECK_PROFILE=update deck` does, and
+  `deck update` is unaffected by `DECK_PROFILE`. Like `--version` it is answered before the
+  configuration is loaded and before tmux is looked for, so it works with neither. `deck update`
+  installs the latest release over the running binary through the verified path of §13.1;
+  `deck update --check` makes one request and changes nothing (no file, no state row) and reports
+  `update available: <old> -> <new>` or `deck <old> is up to date`; `deck update --version vX.Y.Z`
+  pins a release and permits a downgrade (it cannot be combined with `--check`). An install prints
+  `deck updated: <old> -> <new> (<path>)` and a note that a running deck must be restarted to use the
+  new version (running sessions are not disturbed); when the latest release is not newer it prints
+  `already the latest release` and changes nothing. Every failure (a refusal of §13.1, a checksum or
+  attestation failure, no network, an unknown option) prints `deck update: <cause>` on stderr and
+  exits 1, with the installed binary byte-identical; an unknown option or a stray argument is exit
+  2. An offline `--check` is such an error and changes nothing.
 - **A deck stays on the profile it launched on.** There is no switcher and no in-place
   switch: changing profile is quitting and starting `deck <other>`, and decks on different
   profiles run side by side in different terminals. Several clients on one profile behave
@@ -3966,7 +3982,7 @@ listed here rather than left to a test package:
 | **Interactive transport** | `DECK_INTERACTIVE_TRANSPORT=pipe\|capture` pins §11.9's render path. | A *selector over two implementations of one contract*, not a behaviour switch: both paths must satisfy the same scenarios, so a scenario can exercise either deterministically. The **scrollback scenarios are the one exception**, and named as such: §11.9 gives interactive scrollback to the pipe transport only, because the capture path's own poll tick rebuilds the grid from the visible screen, so those scenarios are pipe-only by construction rather than by oversight. Stated explicitly because this section otherwise forbids knobs that change what the product does. |
 | **Update source** | `DECK_UPDATE_URL` overrides the release base URL `deck update` (and the update check) use, default `https://github.com/n-orlov/deck`. `<base>/releases/latest` must answer with a redirect to `<base>/releases/tag/vX.Y.Z`, and the archive `deck_<os>_<arch>.tar.gz` and `checksums.txt` are fetched from `<base>/releases/download/<tag>/`. The base must be `https`; plain `http` is accepted only for a loopback host (`127.0.0.1`, `::1`, `localhost`), and every redirect hop is held to the same rule. | Every update test points deck at an `httptest` loopback fake release server, so no test touches the network. |
 | **Update attestation** | `deck update` downloads the archive and `checksums.txt` through an authenticated `gh` (`gh release download <tag> -R n-orlov/deck`) when one is on `PATH` and the base is the default one, and over plain HTTPS otherwise (also when the `gh` download fails). After the checksum check it runs `gh attestation verify <archive> --repo n-orlov/deck` on the downloaded archive when an authenticated `gh` is present; a verification failure always aborts, leaving the old binary byte-identical and no file beside it. Without a usable `gh`, or for a release that has no attestation (`no attestations found`), the update proceeds on the checksum alone and says so, unless `DECK_REQUIRE_ATTESTATION=1`, which aborts instead, as `install.sh` does (§13.2, release attestation). | Tests put a fake `gh` alone on `PATH` that records each call; no test reaches the real `gh` or the network. |
-| **Update refusals** | `deck update` changes nothing, prints a message and never escalates privileges (no `sudo`, `doas` or `pkexec` is ever run) when: the running build's version is `dev`; the binary, before or after resolving symlinks, lies at or under one of these managed prefixes: `/usr/bin`, `/usr/sbin`, `/bin`, `/sbin`, `/usr/lib`, `/usr/libexec`, `/opt/homebrew`, `/usr/local/Cellar`, `/home/linuxbrew`, `/nix/store`, `/snap` (end of managed prefixes; Homebrew on macOS is `/opt/homebrew` or `/usr/local/Cellar`, on Linux `/home/linuxbrew`; a bare `/usr` is not listed, so a manual install in `/usr/local/bin` is updated); or the binary's directory is not writable, in which case the message names the directory and says to re-run with sudo or to reinstall to `~/.local/bin` via `DECK_INSTALL_DIR` (§13.2). The refusals are checked before any network request. | One test per refusal, each asserting the binary's sha256 is unchanged; a further test puts recording fakes for `sudo`, `doas` and `pkexec` on `PATH` and asserts none is invoked. |
+| **Update refusals** | `deck update` changes nothing, prints a message and never escalates privileges (no `sudo`, `doas` or `pkexec` is ever run) when: the running build's version is `dev`; the binary, before or after resolving symlinks, lies at or under one of these managed prefixes: `/usr/bin`, `/usr/sbin`, `/bin`, `/sbin`, `/usr/lib`, `/usr/libexec`, `/opt/homebrew`, `/usr/local/Cellar`, `/home/linuxbrew`, `/nix/store`, `/snap` (end of managed prefixes; Homebrew on macOS is `/opt/homebrew` or `/usr/local/Cellar`, on Linux `/home/linuxbrew`; a bare `/usr` is not listed, so a manual install in `/usr/local/bin` is updated); or the binary's directory is not writable, in which case the message names the directory and says to re-run with sudo or to reinstall to `~/.local/bin` via `DECK_INSTALL_DIR` (§13.2). The refusals are checked before any network request. | One test per refusal, each asserting the binary's sha256 is unchanged; a further test puts recording fakes for `sudo`, `doas` and `pkexec` on `PATH` and asserts none is invoked. The real-binary test in `cmd/deck/` cannot create `/usr/bin`, so it builds with `-tags deckupdatetest`, which lets `DECK_UPDATE_TEST_ROOT` relocate the tree the prefixes are matched under (never part of a release). |
 | **Structured log** | JSONL to `$DECK_HOME/log/deck.jsonl`: every state transition, launch argv, hook receipt with duration, and one `event_hook` line per event-hook spawn with its exit status and the script's duration (none for a detached session-end spawn, §10.3). | The observability surface for things not visible on screen — argv, timings, retries. |
 | **Launch audit** | Each launch appends the exact argv + resolved env keys (values redacted) to the log. | Proves "resume by id, never `--continue`" (R2) without reading agent internals. |
 

@@ -14,13 +14,17 @@ import (
 // Options configures one update. The zero value updates the running binary
 // to the latest release from the default (or DECK_UPDATE_URL) base.
 type Options struct {
-	BaseURL string       // overrides DECK_UPDATE_URL and DefaultBaseURL
-	Version string       // a vX.Y.Z tag to pin; empty means latest
-	GOOS    string       // default runtime.GOOS
-	GOARCH  string       // default runtime.GOARCH
-	Exe     string       // binary to replace; default os.Executable()
-	Current string       // the running build's version; "dev" refuses (see refuse.go)
-	Client  *http.Client // default: HTTPS-only redirects, 2 min timeout
+	BaseURL string // overrides DECK_UPDATE_URL and DefaultBaseURL
+	Version string // a vX.Y.Z tag to pin; empty means latest
+	GOOS    string // default runtime.GOOS
+	GOARCH  string // default runtime.GOARCH
+	Exe     string // binary to replace; default os.Executable()
+	Current string // the running build's version; "dev" refuses (see refuse.go)
+	// OnlyIfNewer makes a latest-release install do nothing (Result.Unchanged)
+	// when the latest release is not newer than Current. A pinned Version
+	// always installs.
+	OnlyIfNewer bool
+	Client      *http.Client // default: HTTPS-only redirects, 2 min timeout
 
 	// Repo is the GitHub repository an authenticated gh downloads the release
 	// from. Empty means DefaultRepo when the base is DefaultBaseURL, and "no gh
@@ -40,8 +44,11 @@ type Options struct {
 
 // Result reports a successful update.
 type Result struct {
-	Tag  string // the release installed
-	Path string // the resolved (symlink-resolved) file that was replaced
+	Tag string // the release installed (or, when Unchanged, the latest release)
+	// Unchanged is set when OnlyIfNewer found nothing newer: nothing was
+	// downloaded and the binary was not touched.
+	Unchanged bool
+	Path      string // the resolved (symlink-resolved) file that was replaced
 
 	// Attestation is AttestationVerified, or AttestationSkipped when only the
 	// checksum was verified (no usable gh, or a release without attestation).
@@ -70,6 +77,9 @@ func Run(ctx context.Context, o Options) (Result, error) {
 	tag, err := o.tag(ctx, base)
 	if err != nil {
 		return Result{}, err
+	}
+	if o.OnlyIfNewer && o.Version == "" && !IsNewer(tag, o.Current) {
+		return Result{Tag: tag, Path: target, Unchanged: true}, nil
 	}
 	work, err := os.MkdirTemp("", "deck-update-")
 	if err != nil {
@@ -104,6 +114,9 @@ func (o Options) withDefaults() Options {
 	}
 	if o.Exe == "" {
 		o.Exe, _ = os.Executable()
+	}
+	if o.root == "" && testRoot != nil {
+		o.root = testRoot()
 	}
 	return o
 }

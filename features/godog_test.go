@@ -188,6 +188,7 @@ func initializeScenario(sc *godog.ScenarioContext) {
 	registerAutoEnterSteps(sc)
 	registerAttachOnClickSteps(sc)
 	registerBookmarksClearSteps(sc)
+	registerSelfUpdateSteps(sc)
 	registerInteractiveRefusalsSteps(sc)
 	registerInteractiveScrollSteps(sc)
 	registerInteractiveCursorSteps(sc)

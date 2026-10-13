@@ -42,6 +42,9 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	if isProfilesRequest(args) {
 		return runProfilesListing(os.Getenv, os.UserHomeDir, stdout)
 	}
+	if isUpdateRequest(args) {
+		return runUpdateCommand(args, stdout, stderr)
+	}
 	if code, handled := runDetachedVerb(args, stdin, stdout, stderr); handled {
 		return code
 	}

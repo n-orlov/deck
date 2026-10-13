@@ -28,7 +28,7 @@ curl -fsSL https://raw.githubusercontent.com/n-orlov/deck/main/install.sh | sh
   that only the checksum was verified; `DECK_REQUIRE_ATTESTATION=1` makes that case abort instead.
 - Requires **tmux >= 3.2**. Agents (`claude`, `pi`, `codex`, `copilot`) only appear if they are on `PATH`.
 - Linux and macOS, amd64 and arm64. **No Windows** (needs tmux) -- use WSL.
-- Check: `deck --version`. Update: rerun the same line.
+- Check: `deck --version`. Update: `deck update` (or rerun the same line). `deck update --check` only reports whether a newer release exists, and `deck update --version vX.Y.Z` pins a release (a downgrade is allowed). It verifies the archive's checksum and, with an authenticated `gh`, its build attestation, and refuses a dev build, a package-managed install (Homebrew, apt, Nix, snap) and an unwritable directory. Restart a running deck afterwards. A profile named `update` is opened with `DECK_PROFILE=update deck`.
 
 ## Run
 
