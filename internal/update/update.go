@@ -19,6 +19,7 @@ type Options struct {
 	GOOS    string       // default runtime.GOOS
 	GOARCH  string       // default runtime.GOARCH
 	Exe     string       // binary to replace; default os.Executable()
+	Current string       // the running build's version; "dev" refuses (see refuse.go)
 	Client  *http.Client // default: HTTPS-only redirects, 2 min timeout
 
 	// Repo is the GitHub repository an authenticated gh downloads the release
@@ -29,6 +30,8 @@ type Options struct {
 	// DECK_REQUIRE_ATTESTATION=1.
 	RequireAttestation bool
 
+	// root is test-only: the tree the managed prefixes are matched under.
+	root string
 	// writeFile and rename are the two filesystem steps that can fail after
 	// verification; tests inject errors through them.
 	writeFile func(name string, data []byte, perm os.FileMode) error
@@ -49,6 +52,9 @@ type Result struct {
 // any error the old binary is untouched and no temporary file remains.
 func Run(ctx context.Context, o Options) (Result, error) {
 	o = o.withDefaults()
+	if err := refuseDev(o.Current); err != nil {
+		return Result{}, err
+	}
 	asset, err := AssetName(o.GOOS, o.GOARCH)
 	if err != nil {
 		return Result{}, err
@@ -57,7 +63,7 @@ func Run(ctx context.Context, o Options) (Result, error) {
 	if err := CheckURL(base); err != nil {
 		return Result{}, err
 	}
-	target, err := resolveExecutable(o.Exe)
+	target, err := o.checkTarget()
 	if err != nil {
 		return Result{}, err
 	}
