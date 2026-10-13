@@ -59,7 +59,7 @@ type Result struct {
 // any error the old binary is untouched and no temporary file remains.
 func Run(ctx context.Context, o Options) (Result, error) {
 	res, err := run(ctx, o)
-	return res, redactErr(err)
+	return res, redactErr(err, baseURL(o.BaseURL))
 }
 
 func run(ctx context.Context, o Options) (Result, error) {

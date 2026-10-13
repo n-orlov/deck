@@ -424,9 +424,15 @@ const ctrlUSentinel = "ui-mirror-password-sentinel"
 // (user:ctrlUSentinel@127.0.0.1:port) served by handler.
 func ctrlUMirrorModel(t *testing.T, handler http.Handler) (Model, string, string) {
 	t.Helper()
+	return ctrlUMirrorModelAs(t, "ui-user:"+ctrlUSentinel, handler)
+}
+
+// ctrlUMirrorModelAs is ctrlUMirrorModel with the mirror URL's userinfo.
+func ctrlUMirrorModelAs(t *testing.T, userinfo string, handler http.Handler) (Model, string, string) {
+	t.Helper()
 	srv := httptest.NewServer(handler)
 	t.Cleanup(srv.Close)
-	t.Setenv("DECK_UPDATE_URL", strings.Replace(srv.URL, "http://", "http://ui-user:"+ctrlUSentinel+"@", 1))
+	t.Setenv("DECK_UPDATE_URL", strings.Replace(srv.URL, "http://", "http://"+userinfo+"@", 1))
 	t.Setenv("PATH", t.TempDir())
 	exe := filepath.Join(t.TempDir(), "deck")
 	if err := os.WriteFile(exe, []byte(ctrlUOldBody), 0o755); err != nil {
@@ -514,6 +520,7 @@ func TestCtrlUFailureNeverShowsMirrorPassword(t *testing.T) {
 func TestUpdateFailedNoteRedactsAnyCause(t *testing.T) {
 	for _, cause := range []string{
 		`Get "https://bob:` + ctrlUSentinel + `@mirror.example/releases/latest": EOF`,
+		"GET https://bob:it's-" + ctrlUSentinel + "@'" + ctrlUSentinel + "'@mirror.example/x: 503 Service Unavailable",
 		"GET https://" + ctrlUSentinel + "@mirror.example/x: 502 Bad Gateway",
 		"GET https://mirror.example/x?token=" + ctrlUSentinel + "&a=b: 500",
 	} {
@@ -521,5 +528,46 @@ func TestUpdateFailedNoteRedactsAnyCause(t *testing.T) {
 		if strings.Contains(note, ctrlUSentinel) || !strings.Contains(note, "mirror.example") {
 			t.Errorf("note %q for cause %q leaks or lost the host", note, cause)
 		}
+	}
+}
+
+// TestCtrlUFailureNeverShowsOddMirrorPassword: the same guarantee for
+// passwords url.Parse accepts but a "safe character" match misses (an
+// apostrophe, an '@', sub-delims): a 503 from the mirror leaves no piece of
+// the password in the footer note or the frame, keeps the status and host,
+// and leaves the binary untouched.
+func TestCtrlUFailureNeverShowsOddMirrorPassword(t *testing.T) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/releases/latest" {
+			http.Redirect(w, r, "/releases/tag/"+indicatorTag, http.StatusFound)
+			return
+		}
+		http.Error(w, "down", http.StatusServiceUnavailable)
+	})
+	for name, pw := range map[string]string{
+		"apostrophe":  "independent'sentinel-password",
+		"at sign":     "sentinel-left@sentinel-right",
+		"sub-delims":  "sentinel(!$&*+,;=~)sentinel",
+		"apostrophe@": "it's-sentinel@'sentinel'",
+	} {
+		t.Run(name, func(t *testing.T) {
+			m, exe, oldSum := ctrlUMirrorModelAs(t, "mirror:"+pw, handler)
+			m, _ = ctrlUPress(t, m, ctrlUKey)
+			m, cmd := ctrlUPress(t, m, key("enter"))
+			if cmd == nil {
+				t.Fatal("confirming returned no command")
+			}
+			m = sendUpdateMsg(t, m, cmd())
+			note, frame := m.footerNote(), m.View()
+			if strings.Contains(note, "sentinel") || strings.Contains(frame, "sentinel") {
+				t.Fatalf("a piece of the mirror password reached the UI: note %q", note)
+			}
+			if !strings.HasPrefix(note, "update failed") || !strings.Contains(note, "503") || !strings.Contains(note, "127.0.0.1") {
+				t.Fatalf("note %q lost its non-secret diagnostics (want 503 and the host)", note)
+			}
+			if got := ctrlUFileSum(t, exe); got != oldSum {
+				t.Fatalf("binary sha256 = %s, want the original %s", got, oldSum)
+			}
+		})
 	}
 }

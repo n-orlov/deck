@@ -19,7 +19,7 @@ type CheckResult struct {
 // in place, so the answer would be a promise deck cannot keep.
 func Check(ctx context.Context, o Options) (CheckResult, error) {
 	res, err := check(ctx, o)
-	return res, redactErr(err)
+	return res, redactErr(err, baseURL(o.BaseURL))
 }
 
 func check(ctx context.Context, o Options) (CheckResult, error) {

@@ -437,8 +437,9 @@ const updSentinel = "cmd-mirror-password-sentinel"
 // TestUpdateVerbRedactsMirrorCredentials drives the real binary against a
 // loopback mirror whose DECK_UPDATE_URL carries a password. Every failure
 // (HTTP status, truncated body, size limit, unreachable host, refused scheme,
-// --check) keeps the password out of stdout and stderr, still names the host
-// and the cause, and leaves the installed binary and directory untouched.
+// --check, and passwords holding ' @ ( ) ! $ & * + , ; = ~) keeps every piece
+// of the password out of stdout and stderr, still names the host and the
+// cause, and leaves the installed binary and directory untouched.
 func TestUpdateVerbRedactsMirrorCredentials(t *testing.T) {
 	asset, err := update.AssetName(runtime.GOOS, runtime.GOARCH)
 	if err != nil {
@@ -461,10 +462,11 @@ func TestUpdateVerbRedactsMirrorCredentials(t *testing.T) {
 	dead := httptest.NewServer(http.NotFoundHandler())
 	deadURL := strings.Replace(dead.URL, "http://", "http://mirror-user:"+updSentinel+"@", 1)
 	dead.Close()
-	rows := []struct {
+	type redactRow struct {
 		name, url, want string
 		args            []string
-	}{
+	}
+	rows := []redactRow{
 		{"http status", mirror(func(w http.ResponseWriter, _ *http.Request) { http.Error(w, "x", 500) }), "500 Internal Server Error", []string{"update"}},
 		{"truncated body", mirror(func(w http.ResponseWriter, _ *http.Request) {
 			w.Header().Set("Content-Length", "100000")
@@ -482,6 +484,24 @@ func TestUpdateVerbRedactsMirrorCredentials(t *testing.T) {
 		{"refused scheme", "ftp://mirror-user:" + updSentinel + "@mirror.example/x", "mirror.example", []string{"update"}},
 		{"refused scheme check", "http://mirror-user:" + updSentinel + "@mirror.example/x", "mirror.example", []string{"update", "--check"}},
 	}
+	// Passwords whose bytes a "safe character" match misses: url.Parse takes
+	// the userinfo up to the LAST '@' and accepts ' ( ) ! $ & * + , ; = ~ %.
+	// Every piece a partial match could leave behind holds "sentinel".
+	unavailable := mirror(func(w http.ResponseWriter, _ *http.Request) { http.Error(w, "down", http.StatusServiceUnavailable) })
+	for name, pw := range map[string]string{
+		"apostrophe":  "independent'sentinel-password",
+		"at sign":     "sentinel-left@sentinel-right",
+		"sub-delims":  "sentinel(!$&*+,;=~)sentinel",
+		"apostrophe@": "it's-sentinel@'sentinel'",
+	} {
+		odd := strings.Replace(unavailable, "mirror-user:"+updSentinel, "mirror:"+pw, 1)
+		oddDead := strings.Replace(deadURL, "mirror-user:"+updSentinel, "mirror:"+pw, 1)
+		rows = append(rows,
+			redactRow{name + " pinned 503", odd, "503 Service Unavailable", []string{"update", "--version", "v8.4.1"}},
+			redactRow{name + " latest 503", odd, "503 Service Unavailable", []string{"update"}},
+			redactRow{name + " unreachable check", oddDead, "127.0.0.1", []string{"update", "--check"}},
+		)
+	}
 	for _, row := range rows {
 		t.Run(row.name, func(t *testing.T) {
 			dir := t.TempDir()
@@ -492,7 +512,7 @@ func TestUpdateVerbRedactsMirrorCredentials(t *testing.T) {
 			if code == 0 || !strings.HasPrefix(stderr, "deck update: ") || !strings.Contains(stderr, row.want) {
 				t.Fatalf("exit %d stderr %q, want a failure naming %q", code, stderr, row.want)
 			}
-			if strings.Contains(stdout+stderr, updSentinel) {
+			if strings.Contains(stdout+stderr, "sentinel") {
 				t.Fatalf("the mirror password reached the output: stdout %q stderr %q", stdout, stderr)
 			}
 			if updSum(t, exe) != before || len(updNames(t, dir)) != 1 {
