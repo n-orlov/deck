@@ -993,6 +993,12 @@ func (c *Clock) AdvanceShared() (time.Time, error) {
 		c.mu.Unlock()
 		return value, nil
 	}
+	return c.advanceSharedFile()
+}
+
+// advanceSharedFile steps the clock persisted at sharedPath under an
+// exclusive flock, so concurrent clients each advance it exactly once.
+func (c *Clock) advanceSharedFile() (time.Time, error) {
 	if err := os.MkdirAll(filepath.Dir(c.sharedPath), 0o700); err != nil {
 		return c.Now(), fmt.Errorf("create shared clock directory: %w", err)
 	}
@@ -1007,15 +1013,23 @@ func (c *Clock) AdvanceShared() (time.Time, error) {
 	defer unlockFile(lock)
 	current := c.Now()
 	value := current.Add(c.step)
+	if err := c.publishShared(value); err != nil {
+		return current, err
+	}
+	return value, nil
+}
+
+// publishShared atomically replaces the shared clock file with value.
+func (c *Clock) publishShared(value time.Time) error {
 	temporary := c.sharedPath + ".tmp-" + strconv.Itoa(os.Getpid())
 	if err := os.WriteFile(temporary, []byte(value.Format(time.RFC3339Nano)+"\n"), 0o600); err != nil {
-		return current, fmt.Errorf("write shared clock: %w", err)
+		return fmt.Errorf("write shared clock: %w", err)
 	}
 	if err := os.Rename(temporary, c.sharedPath); err != nil {
 		_ = os.Remove(temporary)
-		return current, fmt.Errorf("publish shared clock: %w", err)
+		return fmt.Errorf("publish shared clock: %w", err)
 	}
-	return value, nil
+	return nil
 }
 
 func lockFile(file *os.File) error {

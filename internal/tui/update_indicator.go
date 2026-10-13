@@ -141,20 +141,27 @@ func (m *Model) applyUpdateCheck(st upd.Status, refusal error) {
 	if m.updateInd.state == updateInstalled || m.updateInd.state == updateInstalling {
 		return
 	}
-	next := updateIndicator{state: updateHidden}
-	switch {
-	case st.Latest != "" && m.settings.AutoUpdate && isDevRefusal(refusal):
-		next = updateIndicator{state: updateSkipped, tag: st.Latest, reason: "dev build, install a release with install.sh"}
-	case !st.Newer || st.Latest == "":
-	case refusal == nil:
-		next = updateIndicator{state: updateAvailable, tag: st.Latest}
-	case upd.IsRefusal(refusal):
-		next = updateIndicator{state: updateRefused, tag: st.Latest, reason: refusalPhrase(refusal)}
-	}
+	next := m.classifyUpdateCheck(st, refusal)
 	if next != m.updateInd {
 		m.footerNoteSets[noteUpdate]++
 	}
 	m.updateInd = next
+}
+
+// classifyUpdateCheck maps a check result and its preflight refusal to the
+// indicator state it leaves.
+func (m *Model) classifyUpdateCheck(st upd.Status, refusal error) updateIndicator {
+	switch {
+	case st.Latest != "" && m.settings.AutoUpdate && isDevRefusal(refusal):
+		return updateIndicator{state: updateSkipped, tag: st.Latest, reason: "dev build, install a release with install.sh"}
+	case !st.Newer || st.Latest == "":
+		return updateIndicator{state: updateHidden}
+	case refusal == nil:
+		return updateIndicator{state: updateAvailable, tag: st.Latest}
+	case upd.IsRefusal(refusal):
+		return updateIndicator{state: updateRefused, tag: st.Latest, reason: refusalPhrase(refusal)}
+	}
+	return updateIndicator{state: updateHidden}
 }
 
 // refusalPhrase is the short reason the indicator names for a refusal.
@@ -182,6 +189,12 @@ func (m Model) updateIndicatorText() string {
 	if ind.state != updateInstalled && ind.state != updateInstalling && !m.settings.UpdateCheckEnabled() {
 		return ""
 	}
+	return m.updateStateText(ind)
+}
+
+// updateStateText is the note for one indicator state under the current
+// auto_update setting.
+func (m Model) updateStateText(ind updateIndicator) string {
 	switch ind.state {
 	case updateAvailable:
 		if m.settings.AutoUpdate {
@@ -200,11 +213,17 @@ func (m Model) updateIndicatorText() string {
 	case updateInstalled:
 		return fmt.Sprintf("update installed: %s — restart deck to apply", ind.tag)
 	case updateFailed:
-		text := "update failed — see deck update"
-		if cause := strings.Join(strings.Fields(ind.reason), " "); cause != "" {
-			text += " (" + cause + ")"
-		}
-		return text
+		return updateFailedText(ind.reason)
 	}
 	return ""
+}
+
+// updateFailedText is the Failed note: the fixed phrase plus the cause, with
+// its whitespace collapsed to one line, when there is one.
+func updateFailedText(reason string) string {
+	text := "update failed — see deck update"
+	if cause := strings.Join(strings.Fields(reason), " "); cause != "" {
+		text += " (" + cause + ")"
+	}
+	return text
 }
