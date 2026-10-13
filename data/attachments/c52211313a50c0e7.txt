@@ -1,0 +1,39 @@
+ab2e
+    runtime.chanrecv1(0x2ed7f73a25a0?, 0x0?)
+                                                /usr/local/go/src/runtime/chan.go:509 +0x12 fp=0x2ed7f7020eb0 sp=0x2ed7f7020e88 pc=0x41a652
+                                                                                                                                           github.com/charmbrace
+let/bubbletea.Tick.func1()
+                                /go-cache/mod/github.com/charmbracelet/bubbletea@v1.3.10/commands.go:157 +0x45 fp=0x2ed7f7020f18 sp=0x2ed7f7020eb0 pc=0x8c4145
+                                                                                                                                                              gi
+thub.com/charmbracelet/bubbletea.(*Program).execBatchMsg.func2()
+                                                                        /go-cache/mod/github.com/charmbracelet/bubbletea@v1.3.10/tea.go:560 +0xab fp=0x2ed7f7020
+fe0 sp=0x2ed7f7020f18 pc=0x8cbeab
+                                 runtime.goexit({})
+                                                        /usr/local/go/src/runtime/asm_amd64.s:1771 +0x1 fp=0x2ed7f7020fe8 sp=0x2ed7f7020fe0 pc=0x48dd01
+                                                                                                                                                       created b
+y github.com/charmbracelet/bubbletea.(*Program).execBatchMsg in goroutine 640
+                                                                                /go-cache/mod/github.com/charmbracelet/bubbletea@v1.3.10/tea.go:549 +0x106
+
+                                                                                                                                                          rax
+ 0xca
+     rbx    0x0
+               rcx    0x48f843
+                              rdx    0x0
+                                        rdi    0x12f2d58
+                                                        rsi    0x80
+                                                                   rbp    0x7ffcb6a9f8a8
+                                                                                        rsp    0x7ffcb6a9f860
+                                                                                                             r8     0x0
+                                                                                                                       r9     0x0
+                                                                                                                                 r10    0x0
+                                                                                                                                           r11    0x286
+                                                                                                                                                       r12    0x
+2ed7f7008008
+            r13    0x1
+                      r14    0x12f1400
+                                      r15    0x1
+                                                rip    0x48f841
+                                                               rflags 0x286
+                                                                           cs     0x33
+                                                                                      fs     0x0
+                                                                                                gs     0x0

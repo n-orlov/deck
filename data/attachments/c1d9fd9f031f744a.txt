@@ -1,0 +1,41 @@
++ deck - sessions -----------------+---------------------------------------------------------------------------------------------------------------------------+
+| socket: deck_test_249603_2       | Last output before exit - not live:                                                                                       |
+| v default  (1)                   | '/tmp/deck-scenario-978117509/deck-a/deck' _hook\"}]}]","-c","hooks.UserPromptSubmit=[{hooks=[{type=\"command\",command=\ |
+| > x bound ! error                | "'/tmp/deck-scenario-978117509/deck-a/deck' _hook\"}]}]","-c","hooks.PermissionRequest=[{hooks=[{type=\"command\",command |
+|   <relative-time>                       | =\"'/tmp/deck-scenario-978117509/deck-a/deck' _hook\"}]}]","-c","hooks.Stop=[{hooks=[{type=\"command\",command=\"'/tmp/de |
+|                                  | ck-scenario-978117509/deck-a/deck' _hook\"}]}]","-c","hooks.SessionEnd=[{hooks=[{type=\"command\",command=\"'/tmp/deck-sc |
+|                                  | enario-978117509/deck-a/deck' _hook\"}]}]","--dangerously-bypass-hook-trust"]                                             |
+|                                  | fake-codex ask-for-approval: on-request                                                                                   |
+|                                  | fake-codex sandbox: workspace-write                                                                                       |
+|                                  | › Ask Codex to do anything                                                                                                |
+|                                  | {"command":"prompt","text":"hello through binary A"}                                                                      |
+|                                  | /rename boundfake-codex session-id: 8ad7df97-40b4-44eb-b27a-82d63ecfe5dc                                                  |
+|                                  | fake-codex transcript-path: /tmp/deck-scenario-978117509/agent-fixture-home/.codex/sessions/2026/10/13/rollout-2026-10-13 |
+|                                  | T22-50-14-8ad7df97-40b4-44eb-b27a-82d63ecfe5dc.jsonl                                                                      |
+|                                  | fake-codex hook fired: SessionStart                                                                                       |
+|                                  | fake-codex hook fired: UserPromptSubmit                                                                                   |
+|                                  | • Working (5s • esc to interrupt)                                                                                         |
+|                                  | › Ask Codex to do anything                                                                                                |
+|                                  | {"command":"permission","tool_name":"apply_patch"}                                                                        |
+|                                  |                                                                                                                           |
+|                                  | fake-codex: decode command: unexpected end of JSON input                                                                  |
+|                                  |                                                                                                                           |
+|                                  |                                                                                                                           |
+|                                  |                                                                                                                           |
+|                                  |                                                                                                                           |
+|                                  |                                                                                                                           |
+|                                  |                                                                                                                           |
+|                                  |                                                                                                                           |
+|                                  |                                                                                                                           |
+|                                  |                                                                                                                           |
+|                                  |                                                                                                                           |
+|                                  |                                                                                                                           |
+|                                  |                                                                                                                           |
+|                                  |                                                                                                                           |
+|                                  |                                                                                                                           |
+|                                  |                                                                                                                           |
+|                                  |                                                                                                                           |
+|                                  | Pane is dead (status 2, Tue Oct 13 22:50:15 2026)                                                                         |
++----------------------------------+---------------------------------------------------------------------------------------------------------------------------+
+error - tmux pane exited with status 2 - hooks: bound to /tmp/deck-scenario...    up/down - Enter interactive - a attach - Y acknowledge - n new - x kill - ...
+surviving deck client: hung deck client killed after 1s

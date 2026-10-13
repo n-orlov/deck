@@ -1,0 +1,30 @@
++------------------------------------------------------------------------------+
+| Create session                                                               |
+|   Name: dc-walk-name                                                         |
+|     the display name; also the source of the session's tmux slug             |
+|   Working directory: /dc-walk/cwd                                            |
+| the session's cwd; must exist and be a directory; Ctrl+P/Ctrl+N cycles       |
+| recent history; right/end completes a shown directory match                  |
+|   Agent: claude (left/right cycles: claude, shell)                           |
+| which coding agent adapter launches this session; not on PATH: codex,        |
+| copilot, pi                                                                  |
+|   Permission profile: plan (left/right cycles: safe, plan, edits)            |
+| how much the agent may do without asking; an unsupported profile degrades to |
+| safe; yolo is not offered because allow_yolo is not enabled in config.toml   |
+|   Launch args (JSON array): walk-launch-args                                 |
+|     extra arguments appended verbatim after the adapter's own argv           |
+|   Env (key=value, comma-separated): WALK_ENV=1                               |
+|     session env, wins PATH resolution; secrets masked, Ctrl+R reveals        |
+| > Pre-launch command:                                                        |
+|     a command run in the pane before the agent starts, e.g. to load secrets  |
+|   Post-destroy command:                                                      |
+| a command run after this session's own Archive or Delete durably succeeds; a |
+| non-zero exit or timeout never blocks teardown (fail-open)                   |
+|   Login shell: off (space toggles)                                           |
+| makes captured_path advisory only (not applied): runs via $SHELL -lc instead |
+| of the agent argv, so the login shell sets PATH                              |
+| Event hook (event_hook_enabled): inherit (left/right cycles: inherit, on,    |
+| off)                                                                         |
+| whether the event hook (event_hook) runs for this session; inherit follows   |
+| event_hook_default                                                           |
++------------------------------------------------------------------------------+

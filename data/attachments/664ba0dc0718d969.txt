@@ -1,0 +1,34 @@
+Fake Codex
+fake-codex argv: ["-a","on-request","-s","workspace-write","-c","hooks.SessionStart=[{hooks=[{type=\"command\",command=\"'/tmp/deck-scenario-1319920670/deck-a/deck' _hook\"}]}]","-c","hooks.UserPromptSubmit=[{hooks=[{type=\"command\",command=\"'/tmp/deck-scenario-1319920670/deck-a/deck' _hook\"}]}]","-c","hooks.PermissionRequest=[{hooks=[{type=\"command\",command=\"'/tmp/deck-scenario-1319920670/deck-a/deck' _hook\"}]}]","-c","hooks.Stop=[{hooks=[{type=\"command\",command=\"'/tmp/deck-scenario-1319920670/deck-a/deck' _hook\"}]}]","-c","hooks.SessionEnd=[{hooks=[{type=\"command\",command=\"'/tmp/deck-scenario-1319920670/deck-a/deck' _hook\"}]}]","--dangerously-bypass-hook-trust"]
+fake-codex ask-for-approval: on-request
+fake-codex sandbox: workspace-write
+› Ask Codex to do anything
+/rename bound{"command":"prompt","text":"hello through binary A"}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+surviving deck client: hung deck client killed after 1s
