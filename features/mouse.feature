@@ -275,7 +275,7 @@ Feature: §11.8 mouse bindings and the [ui] mouse / DECK_MOUSE opt-out (requirem
     Given deck client "A" is started
     When deck client "A" creates shell session "preview-gesture-noop"
     And within one configured reconcile interval deck client "A" row "preview-gesture-noop" contains "running"
-    And deck client "A" captures its frame as "before-preview-mouse-bindings"
+    And deck client "A" captures its settled frame as "before-preview-mouse-bindings"
     And deck client "A" scrolls the wheel up at column 70 row 15
     And deck client "A" scrolls the wheel down at column 70 row 15
     Then deck client "A" frame still matches the captured "before-preview-mouse-bindings" frame

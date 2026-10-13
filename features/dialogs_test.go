@@ -385,13 +385,22 @@ func clientWalksAndEditsEveryCreateFieldAssertingVisibility(ctx context.Context,
 	if err := ensureCreateModalAgent(ctx, client, "shell"); err != nil {
 		return err
 	}
+	// A keystroke's repaint arrives asynchronously, so the edit is polled for
+	// rather than read once after a fixed sleep (a loaded runner repaints
+	// later than any fixed sleep); the assertion is still that the edit
+	// becomes visible, and it fails with the last frame when it never does.
 	assertVisible := func(step, want string) error {
-		time.Sleep(30 * time.Millisecond)
-		frame := client.Frame(false)
-		if !strings.Contains(frame, want) {
-			return fmt.Errorf("after %s, deck client %q screen does not contain %q:\n%s", step, clientName, want, frame)
+		deadline := time.Now().Add(5 * time.Second)
+		for {
+			frame := client.Frame(false)
+			if strings.Contains(frame, want) {
+				return nil
+			}
+			if time.Now().After(deadline) {
+				return fmt.Errorf("after %s, deck client %q screen does not contain %q:\n%s", step, clientName, want, frame)
+			}
+			time.Sleep(20 * time.Millisecond)
 		}
-		return nil
 	}
 	// Field 0 (Name): already focused on open; typing appends, per
 	// createFieldIsText.

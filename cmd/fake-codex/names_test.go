@@ -212,3 +212,38 @@ func TestThreadNamesWriteWaitsForAReaderInsteadOfFailing(t *testing.T) {
 		t.Fatalf("threads.name = %q, want the renamed thread", name.String)
 	}
 }
+
+// TestRenameDraftSurvivesACommandTypedBehindItAndALateEnter reproduces the
+// pane input of the stale-binding codex scenario: deck's "/rename bound"
+// draft sits on the composer line when the scenario types its permission
+// command behind it, the first Enter submits both, and deck's own Enter
+// arrives afterwards as an empty line. The permission command must run, the
+// name must be applied, and the empty line must not end the pane.
+func TestRenameDraftSurvivesACommandTypedBehindItAndALateEnter(t *testing.T) {
+	_, _, output := runPane(t,
+		`{"command":"prompt","text":"hello"}`,
+		`/rename bound{"command":"permission","tool_name":"apply_patch"}`,
+		``,
+		`   `,
+		`{"command":"stop","message":"done"}`,
+	)
+	for _, want := range []string{"Press enter to confirm or esc to cancel", "• done"} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("pane output lacks %q; the glued command or the line after the empty one did not run:\n%s", want, output)
+		}
+	}
+}
+
+func TestSplitRenameDraft(t *testing.T) {
+	for _, tc := range []struct{ line, name, command string }{
+		{`/rename bound`, "bound", ""},
+		{`/rename bound{"command":"stop"}`, "bound", `{"command":"stop"}`},
+		{`{"command":"stop"}`, "", `{"command":"stop"}`},
+		{``, "", ``},
+	} {
+		name, command := splitRenameDraft(tc.line)
+		if name != tc.name || command != tc.command {
+			t.Errorf("splitRenameDraft(%q) = %q, %q; want %q, %q", tc.line, name, command, tc.name, tc.command)
+		}
+	}
+}

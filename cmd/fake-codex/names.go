@@ -67,6 +67,26 @@ func typedRename(line string) (string, bool) {
 	return rest, ok && rest != ""
 }
 
+// splitRenameDraft splits one submitted line into the "/rename <name>" draft
+// deck typed and a pane command typed right behind it. Deck types its rename
+// without a newline and submits it after a gap (agent.CodexRenameGap); a
+// scenario command typed inside that gap lands on the same composer line, so
+// the line the fixture reads is the draft followed by the command's JSON. The
+// draft's name is the text before the JSON; the rest is the command. A line
+// without a draft is returned whole as the command.
+func splitRenameDraft(line string) (name, command string) {
+	trimmed := strings.TrimSpace(line)
+	if !strings.HasPrefix(trimmed, renameLinePrefix) {
+		return "", line
+	}
+	if at := strings.Index(trimmed, `{"command":`); at > 0 {
+		name, _ = typedRename(trimmed[:at])
+		return name, trimmed[at:]
+	}
+	name, _ = typedRename(trimmed)
+	return name, ""
+}
+
 // start creates the thread row with the conversation's first prompt (or finds
 // the one a resumed conversation already has) and persists a held name.
 func (n *threadNames) start(id, rolloutPath string) error {

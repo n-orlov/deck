@@ -370,14 +370,21 @@ func runCommands(input io.Reader, stdout, stderr io.Writer, hooks map[string]str
 	}
 	scanner := bufio.NewScanner(input)
 	for scanner.Scan() {
-		if name, ok := typedRename(scanner.Text()); ok {
-			if err := runner.names.rename(name); err != nil {
+		draft, command := splitRenameDraft(scanner.Text())
+		if draft != "" {
+			if err := runner.names.rename(draft); err != nil {
 				return err
 			}
+		}
+		// A real composer ignores a submit with nothing typed. Deck submits
+		// its "/rename" draft with a separate, later Enter, so that Enter can
+		// arrive after the rename was already consumed with a scenario
+		// command glued behind it; it is an empty line, not a bad command.
+		if strings.TrimSpace(command) == "" {
 			continue
 		}
 		var request paneRequest
-		if err := json.Unmarshal(scanner.Bytes(), &request); err != nil {
+		if err := json.Unmarshal([]byte(command), &request); err != nil {
 			return fmt.Errorf("decode command: %w", err)
 		}
 		done, err := runner.run(request)
