@@ -20,6 +20,17 @@ import (
 )
 
 func TestReconcilerStopsDisappearedSessionAndDoesNotRelaunchServer(t *testing.T) {
+	// The rule is the cadence, not one tuned interval: the same scenario runs at
+	// three intervals, each held to its own bound.
+	for _, interval := range []time.Duration{250 * time.Millisecond, 150 * time.Millisecond, 400 * time.Millisecond} {
+		t.Run(interval.String(), func(t *testing.T) {
+			assertReconcilerStopsDisappearedSession(t, interval)
+		})
+	}
+}
+
+func assertReconcilerStopsDisappearedSession(t *testing.T, reconcileInterval time.Duration) {
+	t.Helper()
 	home, cwd := t.TempDir(), t.TempDir()
 	clock, err := config.NewClock("2025-01-02T03:04:05Z", "")
 	if err != nil {
@@ -54,37 +65,49 @@ func TestReconcilerStopsDisappearedSessionAndDoesNotRelaunchServer(t *testing.T)
 		}
 	}
 
-	const reconcileInterval = 250 * time.Millisecond
-	if err := service.Reconcile(context.Background()); err != nil {
-		t.Fatalf("warm-up reconcile: %v", err)
+	// The detecting pass runs at the immediate pass or on the first tick, so the
+	// cadence bound is one interval plus the cost of a pass. Measure that cost
+	// on this host with the same live sessions instead of guessing a grace
+	// period.
+	var passCost time.Duration
+	for i := 0; i < 3; i++ {
+		begun := time.Now()
+		if err := service.Reconcile(context.Background()); err != nil {
+			t.Fatalf("warm-up reconcile: %v", err)
+		}
+		if elapsed := time.Since(begun); elapsed > passCost {
+			passCost = elapsed
+		}
 	}
 	warm := len(snapshots())
 	stop := startReconciler(t, service, reconcileInterval)
 	if err := service.TMux.Kill(context.Background(), alpha.Slug); err != nil {
 		t.Fatal(err)
 	}
-	// The disappearance must be visible at the first tick after the loop
-	// started, not merely eventually; the wait below only bounds a stuck loop.
-	waitForStatus(t, db, alpha.ID, "stopped", 12*reconcileInterval)
-	if err := stop(); err != nil {
-		t.Fatalf("reconcile loop: %v", err)
+	// Synchronise on the detecting snapshot, not on wall-clock time since the
+	// loop started: the kill races the immediate pass, so the first snapshot
+	// that misses alpha is that pass's or the first tick's. This wait only
+	// guards a stuck loop; the cadence is asserted on the records below.
+	passes := waitForAbsentSnapshot(t, snapshots, warm, 12*reconcileInterval)
+	detecting := passes[len(passes)-1]
+	if len(passes) > 2 {
+		t.Fatalf("alpha was still listed by the immediate pass and not missed by the first tick, so the disappearance missed the configured cadence: %#v", passes)
 	}
-	// The kill races the loop's immediate pass: when that pass already misses
-	// alpha it records the disappearance itself, otherwise the first tick must.
-	passes := snapshots()[warm:]
-	if len(passes) == 0 {
-		t.Fatal("the loop took no liveness snapshot")
-	}
-	if !passes[0].absent {
-		if len(passes) < 2 || !passes[1].absent {
-			t.Fatalf("alpha was still listed by the immediate pass and not missed by the first tick, so the disappearance missed the configured cadence: %#v", passes)
-		}
+	if len(passes) == 2 {
 		// Anchored at the loop start: the tick is one interval after the
 		// immediate pass started. Half an interval is the margin, as in
 		// TestReconcilerCadenceIsAnchoredAtLoopStartNotFirstPassEnd.
-		if gap := passes[1].at.Sub(passes[0].at); gap >= reconcileInterval+reconcileInterval/2 {
+		if gap := detecting.at.Sub(passes[0].at); gap >= reconcileInterval+reconcileInterval/2 {
 			t.Fatalf("first tick started %s after the immediate pass, want about one interval (%s)", gap, reconcileInterval)
 		}
+	}
+	// The stopped status itself is held to the original bound (one interval
+	// plus three measured pass costs), counted from the start of the detecting
+	// snapshot, so the interval part is the cadence asserted above and what is
+	// left is the pass's own work.
+	waitForStatus(t, db, alpha.ID, "stopped", time.Until(detecting.at.Add(3*passCost)))
+	if err := stop(); err != nil {
+		t.Fatalf("reconcile loop: %v", err)
 	}
 
 	rows, err := db.ListSessions(context.Background())
@@ -742,6 +765,24 @@ exit $rc
 	}
 }
 
+// waitForAbsentSnapshot returns the snapshots recorded after the first warm
+// ones, up to and including the first that did not list the watched session.
+func waitForAbsentSnapshot(t *testing.T, snapshots func() []snapshot, warm int, stuck time.Duration) []snapshot {
+	t.Helper()
+	deadline := time.Now().Add(stuck)
+	for time.Now().Before(deadline) {
+		passes := snapshots()[warm:]
+		for i, pass := range passes {
+			if pass.absent {
+				return passes[:i+1]
+			}
+		}
+		time.Sleep(2 * time.Millisecond)
+	}
+	t.Fatalf("no liveness snapshot missed the killed session within %s", stuck)
+	return nil
+}
+
 func startReconciler(t *testing.T, service Service, interval time.Duration) (stop func() error) {
 	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
@@ -767,7 +808,10 @@ func startReconciler(t *testing.T, service Service, interval time.Duration) (sto
 func waitForStatus(t *testing.T, db *store.Store, id, want string, timeout time.Duration) {
 	t.Helper()
 	deadline := time.Now().Add(timeout)
-	for time.Now().Before(deadline) {
+	// The status is read at least once even when the deadline has already
+	// passed (a deadline anchored at a recorded event can be behind the clock
+	// by the time this goroutine runs); the bound is on when it was written.
+	for first := true; first || time.Now().Before(deadline); first = false {
 		rows, err := db.ListSessions(context.Background())
 		if err != nil {
 			t.Fatal(err)
