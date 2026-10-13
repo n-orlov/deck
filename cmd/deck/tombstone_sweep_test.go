@@ -77,7 +77,7 @@ func TestAbandonedDDIsReapedAtNextStoreOpen(t *testing.T) {
 		return append(os.Environ(),
 			"DECK_HOME="+home, "DECK_TMUX_SOCKET="+socket, "DECK_RECONCILE_MS=5000",
 			"NO_COLOR=1", "DECK_ASCII=1", "DECK_ANIM=0", "TERM=xterm-256color", "SHELL=/bin/sh",
-			"DECK_DELETE_GRACE_MS="+deleteGraceMS, "DECK_CLOCK="+clock)
+			"DECK_DELETE_GRACE_MS="+deleteGraceMS, "DECK_CLOCK="+clock, "DECK_UPDATE_CHECK=0")
 	}
 	paths := config.Paths{Home: home, LogDir: filepath.Join(home, "log"), StateDB: filepath.Join(home, "state.db")}
 

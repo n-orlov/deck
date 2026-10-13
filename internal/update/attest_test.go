@@ -9,6 +9,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/n-orlov/deck/internal/testnet"
 )
 
 // TestMain keeps every update test off the developer's real gh: PATH holds
@@ -20,7 +22,9 @@ func TestMain(m *testing.M) {
 	}
 	_ = os.Setenv("PATH", dir)
 	_ = os.Unsetenv(EnvRequireAttestation)
-	code := m.Run()
+	// Behind a rejecting proxy: a test that forgot its fake release server
+	// fails the package naming the public host it reached.
+	code := testnet.Main(m)
 	_ = os.RemoveAll(dir)
 	os.Exit(code)
 }

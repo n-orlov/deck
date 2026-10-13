@@ -143,7 +143,10 @@ func StartScreenDriverWithArgs(ctx context.Context, binary string, env []string,
 func startScreenDriver(ctx context.Context, binary string, env []string, dir string, args []string, cols, rows uint16) (*ScreenDriver, error) {
 	cmd := exec.CommandContext(ctx, binary, args...)
 	cmd.Dir = dir
-	cmd.Env = append(os.Environ(), env...)
+	// A launched deck checks for a newer release by default, which reaches the
+	// public release endpoint. No scenario is about that, so the check is off
+	// unless the caller's env says otherwise (a later entry wins).
+	cmd.Env = append(append(os.Environ(), "DECK_UPDATE_CHECK=0"), env...)
 	cmd.Env = append(cmd.Env, "TERM=xterm-256color", fmt.Sprintf("COLUMNS=%d", cols), fmt.Sprintf("LINES=%d", rows))
 	terminal, err := pty.StartWithSize(cmd, &pty.Winsize{Rows: rows, Cols: cols})
 	if err != nil {

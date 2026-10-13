@@ -92,7 +92,7 @@ func launchProfileCreationPTY(t *testing.T, binary, home string) (terminal *os.F
 	sum := fnv.New32a()
 	_, _ = sum.Write([]byte(home))
 	socket := fmt.Sprintf("priv-profile-creation-%d-%08x", os.Getpid(), sum.Sum32())
-	cmd.Env = append(os.Environ(), "DECK_HOME="+home, "DECK_TMUX_SOCKET="+socket, "NO_COLOR=1", "DECK_ASCII=1", "DECK_ANIM=0", "TERM=xterm-256color", "SHELL=/bin/sh")
+	cmd.Env = append(os.Environ(), "DECK_HOME="+home, "DECK_TMUX_SOCKET="+socket, "NO_COLOR=1", "DECK_ASCII=1", "DECK_ANIM=0", "TERM=xterm-256color", "SHELL=/bin/sh", "DECK_UPDATE_CHECK=0")
 	terminal, err := pty.StartWithSize(cmd, &pty.Winsize{Rows: 24, Cols: 100})
 	if err != nil {
 		cancelCtx()

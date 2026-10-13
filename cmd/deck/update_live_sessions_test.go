@@ -5,17 +5,21 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/creack/pty"
 	"github.com/n-orlov/deck/internal/config"
 	"github.com/n-orlov/deck/internal/store"
+	"github.com/n-orlov/deck/internal/testnet"
 	"github.com/n-orlov/deck/internal/tmux"
 )
 
@@ -40,6 +44,40 @@ var liveSessions = []struct{ id, conversation, name string }{
 type liveFixture struct {
 	home, socket, events string
 	paths                config.Paths
+
+	// The fixtures leave the default-on update check running: they are about
+	// what an update does to live sessions, so the TUI keeps asking for the
+	// latest release. It asks a local fake release server (releaseURL, the
+	// DECK_UPDATE_URL of every process the fixture starts), and guard is a
+	// rejecting proxy that records anything sent to a public host instead.
+	releaseURL string
+	checks     atomic.Int32 // latest-release lookups the fake server answered
+	guard      *testnet.Guard
+}
+
+// fakeRelease answers the latest-release lookup with liveNewVersion, the way
+// github.com redirects /releases/latest to the newest tag.
+func (f *liveFixture) fakeRelease(t *testing.T) string {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/releases/latest" {
+			http.NotFound(w, r)
+			return
+		}
+		f.checks.Add(1)
+		http.Redirect(w, r, "/releases/tag/"+liveNewVersion, http.StatusFound)
+	}))
+	t.Cleanup(srv.Close)
+	return srv.URL
+}
+
+// assertNoPublicRequests fails the test if anything the fixture started asked
+// for a non-loopback host.
+func (f *liveFixture) assertNoPublicRequests(t *testing.T) {
+	t.Helper()
+	if got := f.guard.Violations(); len(got) > 0 {
+		t.Errorf("the live-session fixture reached the public network: %v", got)
+	}
 }
 
 func buildLiveDeck(t *testing.T, name, version string, schema int) string {
@@ -74,6 +112,14 @@ func newLiveFixture(t *testing.T) *liveFixture {
 		paths:  config.Paths{Home: home, DataDir: home, ConfigFile: filepath.Join(home, "config.toml"), LogDir: filepath.Join(home, "log"), StateDB: filepath.Join(home, "state.db")},
 	}
 	t.Cleanup(func() { _ = exec.Command("tmux", "-L", f.socket, "kill-server").Run() })
+	guard, err := testnet.Start()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(guard.Close)
+	f.guard = guard
+	f.releaseURL = f.fakeRelease(t)
+	t.Cleanup(func() { f.assertNoPublicRequests(t) })
 
 	// The event hook writes its stdin payload (which names the sending deck's
 	// version) to one file per run.
@@ -109,7 +155,11 @@ func newLiveFixture(t *testing.T) *liveFixture {
 }
 
 func (f *liveFixture) env() []string {
-	return append(os.Environ(), "DECK_HOME="+f.home, "DECK_TMUX_SOCKET="+f.socket, "DECK_RECONCILE_MS=200")
+	env := append(os.Environ(), "DECK_HOME="+f.home, "DECK_TMUX_SOCKET="+f.socket, "DECK_RECONCILE_MS=200")
+	if f.releaseURL != "" {
+		env = append(env, "DECK_UPDATE_URL="+f.releaseURL)
+	}
+	return append(env, f.guard.Env()...)
 }
 
 // startTUI runs the binary as a TUI under a pty and waits for both sessions to
@@ -378,4 +428,63 @@ func TestUpdateNewTUIOldHooks(t *testing.T) {
 	if !running() {
 		t.Fatal("the new TUI exited while the old hooks ran")
 	}
+}
+
+// Part C: the live-session fixtures start a real TUI with the default-on update
+// check still running, and that check reaches only the fixture's local fake
+// release server. The rejecting proxy records any request for a public host.
+func TestLiveSessionFixtureChecksOnlyTheLocalReleaseServer(t *testing.T) {
+	bin := buildLiveDeck(t, "deck-old", liveOldVersion, 0)
+	f := newLiveFixture(t)
+	running := f.startTUI(t, bin)
+
+	deadline := time.Now().Add(10 * time.Second)
+	for f.checks.Load() == 0 && time.Now().Before(deadline) {
+		time.Sleep(50 * time.Millisecond)
+	}
+	if f.checks.Load() == 0 {
+		t.Fatal("the TUI never asked the fake release server for the latest release: the fixture has disabled the update behaviour it is about")
+	}
+	f.assertNoPublicRequests(t)
+	if !running() {
+		t.Fatal("the TUI exited")
+	}
+}
+
+// The monitor is only worth having if it sees the defect: the same TUI started
+// with the default release endpoint (no fake server) asks for github.com, and
+// the proxy records it. Nothing leaves the machine; the proxy refuses it.
+func TestLiveSessionFixtureMonitorSeesAPublicCheck(t *testing.T) {
+	bin := buildLiveDeck(t, "deck-old", liveOldVersion, 0)
+	f := newLiveFixture(t)
+	f.releaseURL = "" // the default endpoint
+	f.startTUI(t, bin)
+
+	deadline := time.Now().Add(10 * time.Second)
+	var got []string
+	for time.Now().Before(deadline) {
+		if got = f.guard.Violations(); len(got) > 0 {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	if len(got) == 0 {
+		t.Fatal("the monitor recorded nothing for a TUI that checks the default release endpoint")
+	}
+	if !strings.Contains(strings.Join(got, " "), "github.com") {
+		t.Fatalf("recorded %v, want the github.com release endpoint", got)
+	}
+	// This test provoked the request on purpose: drop the guard's record so the
+	// fixture's cleanup assertion is not tripped by it.
+	f.guard = mustStartGuard(t)
+}
+
+func mustStartGuard(t *testing.T) *testnet.Guard {
+	t.Helper()
+	g, err := testnet.Start()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(g.Close)
+	return g
 }

@@ -11,6 +11,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/n-orlov/deck/internal/testnet"
 )
 
 // goBuildCache memoizes the `go build` outputs the scenario lifecycle and the
@@ -175,7 +177,10 @@ func firstError(errs ...error) error {
 }
 
 func TestMain(m *testing.M) {
-	code := m.Run()
+	// Every scenario launches real deck binaries; none may reach a public
+	// release endpoint (the launcher disables the check unless a scenario
+	// points DECK_UPDATE_URL at a local fake server).
+	code := testnet.Main(m)
 	if err := scenarioBuilds.cleanup(); err != nil {
 		fmt.Fprintf(os.Stderr, "remove memoized scenario builds: %v\n", err)
 		if code == 0 {

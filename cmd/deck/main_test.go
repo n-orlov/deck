@@ -161,7 +161,7 @@ func TestDeckBinaryShellCreateAndSlugCollisionThroughPTY(t *testing.T) {
 	defer cancel()
 	cmd := exec.CommandContext(ctx, binary)
 	cmd.Env = append(os.Environ(), "DECK_HOME="+home, "DECK_TMUX_SOCKET="+socket,
-		"DECK_RECONCILE_MS=100", "NO_COLOR=1", "DECK_ASCII=1", "DECK_ANIM=0", "TERM=xterm-256color", "SHELL=/bin/sh",
+		"DECK_RECONCILE_MS=100", "NO_COLOR=1", "DECK_ASCII=1", "DECK_ANIM=0", "TERM=xterm-256color", "SHELL=/bin/sh", "DECK_UPDATE_CHECK=0",
 		"TMUX=/nested,123,0") // successful private attachment proves the subprocess clears TMUX
 	terminal, err := pty.StartWithSize(cmd, &pty.Winsize{Rows: 24, Cols: 100})
 	if err != nil {
@@ -277,7 +277,7 @@ func startDeckPTYClient(t *testing.T, binary, home, socket string, reconcile tim
 	// auto-entry would hand to the new pane instead.
 	cmd.Env = append(os.Environ(), "DECK_HOME="+home, "DECK_TMUX_SOCKET="+socket,
 		"DECK_RECONCILE_MS="+fmt.Sprint(reconcile.Milliseconds()), "NO_COLOR=1", "DECK_ASCII=1", "DECK_ANIM=0", "TERM=xterm-256color", "SHELL=/bin/sh",
-		"DECK_ATTACH_ON_NEW=0")
+		"DECK_ATTACH_ON_NEW=0", "DECK_UPDATE_CHECK=0")
 	terminal, err := pty.StartWithSize(cmd, &pty.Winsize{Rows: 24, Cols: 100})
 	if err != nil {
 		cancel()
@@ -388,7 +388,7 @@ func TestDeckBinaryEmptyHelpAndQuitThroughPTY(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, binary)
-	cmd.Env = append(os.Environ(), "DECK_HOME="+t.TempDir(), "DECK_TMUX_SOCKET=priv-tui-pty", "DECK_RECONCILE_MS=100", "NO_COLOR=1", "DECK_ASCII=1", "DECK_ANIM=0", "TERM=xterm-256color")
+	cmd.Env = append(os.Environ(), "DECK_HOME="+t.TempDir(), "DECK_TMUX_SOCKET=priv-tui-pty", "DECK_RECONCILE_MS=100", "NO_COLOR=1", "DECK_ASCII=1", "DECK_ANIM=0", "TERM=xterm-256color", "DECK_UPDATE_CHECK=0")
 	// helpView() (internal/tui) is ~195 lines with the border at this test's
 	// width (task 010 added the reveal-toggle lines; task 078 added
 	// framedDialogScrollable's own height-bounding, but that only clips once

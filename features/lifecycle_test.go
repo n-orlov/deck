@@ -320,6 +320,9 @@ func (h *ScenarioHarness) Environment(extra ...string) []string {
 		// are about it turn it back on (attachOnNewIsEnabled), and the
 		// later entry wins because exec keeps the last of a duplicated key.
 		"DECK_ATTACH_ON_NEW=0",
+		// The default-on update check would reach the public release
+		// endpoint from every launched deck; scenarios are not about it.
+		"DECK_UPDATE_CHECK=0",
 	}
 	// NO_COLOR=1 is the default so every scenario that does not care about
 	// colour keeps seeing plain text, but a requirement-1 scenario that does

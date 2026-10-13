@@ -176,7 +176,7 @@ func TestDeckBinaryLaunchTouchesLastUsedMarker(t *testing.T) {
 	cmd := exec.CommandContext(ctx, binary)
 	cmd.Env = append(os.Environ(),
 		"DECK_HOME="+home, "DECK_TMUX_SOCKET="+socket,
-		"NO_COLOR=1", "DECK_ASCII=1", "DECK_ANIM=0", "TERM=xterm-256color", "SHELL=/bin/sh")
+		"NO_COLOR=1", "DECK_ASCII=1", "DECK_ANIM=0", "TERM=xterm-256color", "SHELL=/bin/sh", "DECK_UPDATE_CHECK=0")
 	terminal, err := pty.StartWithSize(cmd, &pty.Winsize{Rows: 24, Cols: 100})
 	if err != nil {
 		t.Fatalf("start deck under pty: %v", err)
