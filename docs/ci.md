@@ -797,6 +797,33 @@ alone, as it does `pr/`. `TestBadgeStepsMainOnly` and
 conditions over concrete triggers; `TestPagesPersistPublishesBadgesAndRootKeepsThem`
 (`ci/pagespersist`) covers the publish path.
 
+### The README badge block (`ci/readmebadges`, R291)
+
+The first lines of `README.md`, between `<!-- badges:start -->` and
+`<!-- badges:end -->`, are written by `go run ./ci/readmebadges` and by nothing
+else; edit the generator, never the block. Its only input is the `go` directive
+of `go.mod`. The block holds the `ci.yml` status badge for `main`, five
+shields.io `endpoint` badges and three static ones:
+
+| badge | comes from | links to |
+| --- | --- | --- |
+| CI | `actions/workflows/ci.yml/badge.svg?branch=main` | the `ci.yml` runs on `main` |
+| lint, unit tests, features, vulnerabilities | `https://n-orlov.github.io/deck/badges/<name>.json`, the `gh-pages` path `badges/<name>.json` that `ci/badgegen` writes (see above) | the `ci.yml` runs on `main` |
+| coverage | `badges/coverage.json`, same path | the published report |
+| license | static | the repository |
+| Go version | static, the `go` directive of `go.mod` | the Go release history |
+| report | static | the published Allure report, `https://n-orlov.github.io/deck/` |
+
+The endpoint badges are not written by this generator: `ci/badgegen` writes
+the JSON from the gate results and the `report` job publishes it, on `push` and
+`workflow_dispatch` runs of `main` only. A `pull_request` run (and the nightly
+schedule) never regenerates or publishes a badge, so a PR cannot change what
+the README shows. The committed block changes only when someone reruns
+`go run ./ci/readmebadges` (after a `go.mod` bump, say) and commits the result.
+`TestReadmeBadgeBlockMatchesGenerator` fails on any difference, one character
+included, and `TestReadmeGoVersionBadgeMatchesGoMod` fails when the Go-version
+badge stops matching `go.mod` (`ci/readmebadges`).
+
 ## The pre-release security review (R194)
 
 This is a process, not a gate, and nothing about a review is tracked in the
