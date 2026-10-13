@@ -227,3 +227,104 @@ func TestRunAndCheckRedactOddPasswords(t *testing.T) {
 		t.Errorf("binary = %q after failed updates", b)
 	}
 }
+
+// breakingSecrets are credentials holding a byte that ends a free-text match
+// (a double quote, a backslash, angle brackets, whitespace), placed in the
+// query and in the userinfo of a configured URL. Every piece a match cut at
+// that byte could leave behind holds "sentinel".
+var breakingSecrets = map[string]string{
+	"query quote":        "?token=sentinel-left\"sentinel-tail",
+	"query backslash":    "?token=sentinel-left\\sentinel-tail",
+	"query angle":        "?token=sentinel-left<sentinel-mid>sentinel-tail",
+	"query space":        "?k=1&token=sentinel-left sentinel-tail",
+	"userinfo quote":     "mirror:sentinel-left\"sentinel-tail@",
+	"userinfo backslash": "mirror:sentinel-left\\sentinel-tail@",
+	"userinfo angle":     "mirror:sentinel-left<sentinel-tail>@",
+}
+
+// breakingURL puts a breakingSecrets entry into srvURL: a query after the
+// host, a userinfo before it.
+func breakingURL(srvURL, secret string) string {
+	if strings.HasPrefix(secret, "?") {
+		return srvURL + secret
+	}
+	return strings.Replace(srvURL, "http://", "http://"+secret, 1)
+}
+
+// TestRedactTextQuotedEscapes: inside a Go-quoted URL (a net/http *url.Error)
+// a secret's '"' is written \" and its '\' is written \; the escape is part
+// of the secret, not its end, and the closing quote still ends the match.
+func TestRedactTextQuotedEscapes(t *testing.T) {
+	for _, c := range []struct{ in, want string }{
+		{`Get "https://h/x?token=sentinel-a\"sentinel-b": EOF`, `Get "https://h/x?token=***": EOF`},
+		{`Get "https://h/x?token=sentinel-a\\sentinel-b&c=d": EOF`, `Get "https://h/x?token=***&c=***": EOF`},
+		{`Get "https://u:sentinel-a\"sentinel-b@h/x": EOF`, `Get "https://***@h/x": EOF`},
+		{`Get "https://u:sentinel-a\\sentinel-b@h/x": EOF`, `Get "https://***@h/x": EOF`},
+	} {
+		if got := RedactText(c.in); got != c.want {
+			t.Errorf("RedactText(%q) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}
+
+// TestRedactKnownAfterPartialRedaction: text an earlier pattern pass already
+// cut at a breaking byte still loses every remaining piece of the configured
+// secret, and a Go-quoted copy of it is masked whole.
+func TestRedactKnownAfterPartialRedaction(t *testing.T) {
+	configured := "http://127.0.0.1:1?token=sentinel-left\"sentinel-tail"
+	for _, msg := range []string{
+		`GET http://127.0.0.1:1?token=***"sentinel-tail/releases/download/v8.4.1/a.tar.gz: 503 Service Unavailable`,
+		`Get "http://127.0.0.1:1?token=sentinel-left\"sentinel-tail/releases/latest": EOF`,
+		"token sentinel-left%22sentinel-tail rejected",
+	} {
+		got := RedactKnown(msg, configured)
+		if strings.Contains(got, "sentinel") || !strings.Contains(got, "127.0.0.1") && strings.Contains(msg, "127.0.0.1") {
+			t.Errorf("RedactKnown(%q) = %q", msg, got)
+		}
+	}
+}
+
+// TestRunAndCheckRedactBreakingSecrets drives Run (pinned and latest) and
+// Check against a loopback mirror answering 503, and Check against a dead
+// one, for every breakingSecrets URL: no piece of the secret reaches the
+// error, the pinned download's error still names the host, and the binary is
+// untouched.
+func TestRunAndCheckRedactBreakingSecrets(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/releases/latest" {
+			http.Redirect(w, r, "/releases/tag/"+tagV, http.StatusFound)
+			return
+		}
+		http.Error(w, "down", http.StatusServiceUnavailable)
+	}))
+	defer srv.Close()
+	dead := httptest.NewServer(http.NotFoundHandler())
+	deadURL := dead.URL
+	dead.Close()
+	exe := filepath.Join(t.TempDir(), "deck")
+	if err := os.WriteFile(exe, []byte("old"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", t.TempDir())
+	for name, secret := range breakingSecrets {
+		base := breakingURL(srv.URL, secret)
+		for _, o := range []Options{
+			{BaseURL: base, Exe: exe, Current: "v0.0.1", Version: tagV},
+			{BaseURL: base, Exe: exe, Current: "v0.0.1"},
+		} {
+			_, err := Run(context.Background(), o)
+			if err == nil || strings.Contains(err.Error(), "sentinel") || o.Version != "" && !strings.Contains(err.Error(), "127.0.0.1") {
+				t.Errorf("%s: Run(version %q) err = %v", name, o.Version, err)
+			}
+		}
+		for _, b := range []string{base, breakingURL(deadURL, secret)} {
+			_, err := Check(context.Background(), Options{BaseURL: b, Exe: exe, Current: "v0.0.1"})
+			if err != nil && strings.Contains(err.Error(), "sentinel") {
+				t.Errorf("%s: Check(reachable %v) err = %v", name, b == base, err)
+			}
+		}
+	}
+	if b, _ := os.ReadFile(exe); string(b) != "old" {
+		t.Errorf("binary = %q after failed updates", b)
+	}
+}

@@ -502,6 +502,29 @@ func TestUpdateVerbRedactsMirrorCredentials(t *testing.T) {
 			redactRow{name + " unreachable check", oddDead, "127.0.0.1", []string{"update", "--check"}},
 		)
 	}
+	// Secrets holding a byte that ends a free-text match ('"', '\\', '<',
+	// whitespace), in the query and the userinfo: an earlier, partial
+	// redaction must not leave the piece after that byte behind.
+	plain503 := strings.Replace(unavailable, "mirror-user:"+updSentinel+"@", "", 1)
+	plainDead := strings.Replace(deadURL, "mirror-user:"+updSentinel+"@", "", 1)
+	for name, secret := range map[string]string{
+		"query quote":        "?token=sentinel-left\"sentinel-tail",
+		"query backslash":    "?token=sentinel-left\\sentinel-tail",
+		"query angle":        "?token=sentinel-left<sentinel-tail>",
+		"userinfo quote":     "mirror:sentinel-left\"sentinel-tail@",
+		"userinfo backslash": "mirror:sentinel-left\\sentinel-tail@",
+	} {
+		with := func(u string) string {
+			if strings.HasPrefix(secret, "?") {
+				return u + secret
+			}
+			return strings.Replace(u, "http://", "http://"+secret, 1)
+		}
+		rows = append(rows,
+			redactRow{name + " pinned 503", with(plain503), "127.0.0.1", []string{"update", "--version", "v8.4.1"}},
+			redactRow{name + " unreachable check", with(plainDead), "127.0.0.1", []string{"update", "--check"}},
+		)
+	}
 	for _, row := range rows {
 		t.Run(row.name, func(t *testing.T) {
 			dir := t.TempDir()

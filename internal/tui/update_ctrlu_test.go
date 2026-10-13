@@ -430,9 +430,16 @@ func ctrlUMirrorModel(t *testing.T, handler http.Handler) (Model, string, string
 // ctrlUMirrorModelAs is ctrlUMirrorModel with the mirror URL's userinfo.
 func ctrlUMirrorModelAs(t *testing.T, userinfo string, handler http.Handler) (Model, string, string) {
 	t.Helper()
+	return ctrlUMirrorModelURL(t, func(u string) string { return strings.Replace(u, "http://", "http://"+userinfo+"@", 1) }, handler)
+}
+
+// ctrlUMirrorModelURL is ctrlUMirrorModel with DECK_UPDATE_URL set to
+// withCreds(the mirror's plain URL).
+func ctrlUMirrorModelURL(t *testing.T, withCreds func(string) string, handler http.Handler) (Model, string, string) {
+	t.Helper()
 	srv := httptest.NewServer(handler)
 	t.Cleanup(srv.Close)
-	t.Setenv("DECK_UPDATE_URL", strings.Replace(srv.URL, "http://", "http://"+userinfo+"@", 1))
+	t.Setenv("DECK_UPDATE_URL", withCreds(srv.URL))
 	t.Setenv("PATH", t.TempDir())
 	exe := filepath.Join(t.TempDir(), "deck")
 	if err := os.WriteFile(exe, []byte(ctrlUOldBody), 0o755); err != nil {
@@ -564,6 +571,59 @@ func TestCtrlUFailureNeverShowsOddMirrorPassword(t *testing.T) {
 			}
 			if !strings.HasPrefix(note, "update failed") || !strings.Contains(note, "503") || !strings.Contains(note, "127.0.0.1") {
 				t.Fatalf("note %q lost its non-secret diagnostics (want 503 and the host)", note)
+			}
+			if got := ctrlUFileSum(t, exe); got != oldSum {
+				t.Fatalf("binary sha256 = %s, want the original %s", got, oldSum)
+			}
+		})
+	}
+}
+
+// TestCtrlUFailureNeverShowsBreakingSecret: a mirror credential holding a
+// byte that ends a free-text match ('"', '\\', '<', whitespace), in the query
+// or the userinfo, leaves no piece of itself in the footer note or the frame
+// after the failure; the note still names the cause (and the host, where the
+// cause quotes the URL), and the binary is untouched.
+func TestCtrlUFailureNeverShowsBreakingSecret(t *testing.T) {
+	// With a query in the base URL the appended path lands in the query, so
+	// the latest lookup is recognised by its suffix wherever it ends up; the
+	// download then fails with a message that quotes the URL.
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/releases/latest") || strings.HasSuffix(r.URL.RawQuery, "/releases/latest") {
+			http.Redirect(w, r, "/releases/tag/"+indicatorTag, http.StatusFound)
+			return
+		}
+		http.Error(w, "down", http.StatusServiceUnavailable)
+	})
+	for name, row := range map[string]struct {
+		withCreds func(string) string
+		want      string
+	}{
+		"query quote":     {func(u string) string { return u + "?token=sentinel-left\"sentinel-tail" }, "503"},
+		"query backslash": {func(u string) string { return u + "?token=sentinel-left\\sentinel-tail" }, "503"},
+		"query angle":     {func(u string) string { return u + "?token=sentinel-left<sentinel-tail>" }, "503"},
+		"query space":     {func(u string) string { return u + "?token=sentinel-left sentinel-tail" }, "400"},
+		"userinfo quote": {func(u string) string {
+			return strings.Replace(u, "http://", "http://mirror:sentinel-left\"sentinel-tail@", 1)
+		}, "not a valid absolute URL"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			m, exe, oldSum := ctrlUMirrorModelURL(t, row.withCreds, handler)
+			m, _ = ctrlUPress(t, m, ctrlUKey)
+			m, cmd := ctrlUPress(t, m, key("enter"))
+			if cmd == nil {
+				t.Fatal("confirming returned no command")
+			}
+			m = sendUpdateMsg(t, m, cmd())
+			note, frame := m.footerNote(), m.View()
+			if strings.Contains(note, "sentinel") || strings.Contains(frame, "sentinel") {
+				t.Fatalf("a piece of the mirror secret reached the UI: note %q", note)
+			}
+			if !strings.HasPrefix(note, "update failed") || !strings.Contains(note, row.want) {
+				t.Fatalf("note %q lost its non-secret diagnostics (want %q)", note, row.want)
+			}
+			if row.want != "400" && !strings.Contains(note, "127.0.0.1") {
+				t.Fatalf("note %q lost the host", note)
 			}
 			if got := ctrlUFileSum(t, exe); got != oldSum {
 				t.Fatalf("binary sha256 = %s, want the original %s", got, oldSum)
