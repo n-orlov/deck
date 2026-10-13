@@ -17,6 +17,13 @@
 #
 #   ci/pages-persist.sh <site dir> <report dir> root [<max attempts>]
 #   ci/pages-persist.sh <site dir> <report dir> pr <number> [<max attempts>]
+#   ci/pages-persist.sh <site dir> <badges dir> badges [<max attempts>]
+#
+# The `badges` mode (R290) publishes the shields.io endpoint JSON that
+# ci/badgegen wrote into <badges dir> as <site dir>/badges/*.json, replacing
+# the previous badges/ tree and leaving everything else on gh-pages alone,
+# through this same fetch/merge/commit/push-with-retry loop. ci.yml runs it
+# only for a push or workflow_dispatch on refs/heads/main.
 #
 # <site dir> must already be a git checkout of gh-pages (or a freshly
 # orphaned one, on a first run), with `origin` set up and authenticated --
@@ -31,7 +38,7 @@
 set -eu
 
 usage() {
-    echo "usage: ci/pages-persist.sh <site dir> <report dir> root|pr [<number>] [<max attempts>]" >&2
+    echo "usage: ci/pages-persist.sh <site dir> <report dir> root|pr|badges [<number>] [<max attempts>]" >&2
     exit 1
 }
 
@@ -44,6 +51,8 @@ shift 3
 number=""
 case "$mode" in
     root)
+        ;;
+    badges)
         ;;
     pr)
         [ $# -ge 1 ] || usage
@@ -67,6 +76,12 @@ esac
 script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 
 merge_report() {
+    if [ "$mode" = "badges" ]; then
+        rm -rf "$site/badges"
+        mkdir -p "$site/badges"
+        cp -a "$report/." "$site/badges/"
+        return 0
+    fi
     rm -rf "$site/.new-report"
     mkdir -p "$site/.new-report"
     cp -a "$report/." "$site/.new-report/"
@@ -90,7 +105,7 @@ while :; do
         cd "$site"
         git -c user.name="github-actions[bot]" \
             -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
-            commit -q -m "allure: $mode report for run ${DECK_PAGES_RUN_ID:-$$}"
+            commit -q -m "$(if [ "$mode" = badges ]; then echo badges; else echo allure; fi): $mode report for run ${DECK_PAGES_RUN_ID:-$$}"
     )
 
     if (cd "$site" && git push -q origin gh-pages); then

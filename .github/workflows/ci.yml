@@ -360,6 +360,28 @@ jobs:
             ci/pages-persist.sh site allure-report pr "${{ steps.target.outputs.pr_number }}"
           fi
 
+      # R290: the status badges. ci/badgegen turns this run's gate results
+      # (ci-results/, downloaded above) into shields.io endpoint JSON under
+      # badges/, and the second step publishes that directory as badges/*.json
+      # in the gh-pages tree through the same ci/pages-persist.sh path the
+      # report uses (the Pages artifact below then carries them too). Both
+      # steps run only for a push or a workflow_dispatch on refs/heads/main,
+      # so a pull_request run (this job also runs for those) and the nightly
+      # schedule never write a badge; ci/workflowcheck pins that condition.
+      - name: Generate the status badges (ci/badgegen, R290)
+        if: success() && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
+        run: |
+          set -eu
+          rm -rf badges
+          ci/run.sh go run ./ci/badgegen -in ci-results -out badges
+          ls -l badges
+
+      - name: Publish the status badges to gh-pages (badges/*.json, R290)
+        if: success() && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
+        env:
+          DECK_PAGES_RUN_ID: ${{ github.run_id }}
+        run: ci/pages-persist.sh site badges badges
+
       - name: Drop the GITHUB_TOKEN extraheader from the site checkout
         # R197 (GH #61): the push above needed the header copied into
         # site/.git/config; nothing after it does, and the token must not

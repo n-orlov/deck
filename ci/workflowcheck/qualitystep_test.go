@@ -21,12 +21,16 @@ import (
 // `uses:` (left unread, but present so a `uses:` step unmarshals cleanly
 // instead of erroring on an unexpected key).
 type ciStep struct {
-	Name string `yaml:"name"`
-	Run  string `yaml:"run"`
-	Uses string `yaml:"uses"`
+	Name string            `yaml:"name"`
+	If   string            `yaml:"if"`
+	Run  string            `yaml:"run"`
+	Uses string            `yaml:"uses"`
+	Env  map[string]string `yaml:"env"`
+	With map[string]any    `yaml:"with"`
 }
 
 type ciJob struct {
+	If    string   `yaml:"if"`
 	Steps []ciStep `yaml:"steps"`
 }
 

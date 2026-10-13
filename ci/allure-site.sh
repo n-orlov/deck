@@ -1,7 +1,7 @@
 #!/bin/sh
 # ci/allure-site.sh — merges one freshly generated Allure report into the
 # persisted Pages site tree (R146): a main/nightly report replaces the
-# site root (leaving any live pr/<n>/ subtree alone), a PR report replaces
+# site root (leaving any live pr/<n>/ subtree and the badges/ tree alone), a PR report replaces
 # only its own pr/<n>/ subtree (leaving the root and every other PR alone).
 # This is what lets a single `actions/deploy-pages` artifact -- which
 # always replaces the *whole* site -- carry every still-live report
@@ -28,7 +28,7 @@ staged="$site/.new-report"
 case "$mode" in
     root)
         dest="$site"
-        find "$site" -mindepth 1 -maxdepth 1 ! -name pr ! -name .new-report ! -name .git -exec rm -rf {} +
+        find "$site" -mindepth 1 -maxdepth 1 ! -name pr ! -name badges ! -name .new-report ! -name .git -exec rm -rf {} +
         ;;
     pr)
         number=${3:?"usage: ci/allure-site.sh <site dir> pr <number>"}

@@ -270,3 +270,76 @@ func TestPagesPersistFailsWhenRetriesExhausted(t *testing.T) {
 		t.Errorf("expected the script to report exhausting all %s attempts, got:\n%s", maxAttempts, out)
 	}
 }
+
+// TestPagesPersistPublishesBadgesAndRootKeepsThem is R290's publish path: the
+// `badges` mode lands badges/*.json on gh-pages (replacing a stale badge,
+// leaving the report and pr/<n>/ alone) even when a concurrent push forces a
+// retry, and a later `root` report merge does not wipe badges/.
+func TestPagesPersistPublishesBadgesAndRootKeepsThem(t *testing.T) {
+	tmp := t.TempDir()
+	home := filepath.Join(tmp, "home")
+	if err := os.MkdirAll(home, 0o755); err != nil {
+		t.Fatalf("mkdir %s: %v", home, err)
+	}
+	origin := newBareOrigin(t, home, tmp)
+
+	seed := checkoutGhPages(t, home, tmp, "seed", origin)
+	writeFile(t, filepath.Join(seed, "index.html"), "root-baseline")
+	writeFile(t, filepath.Join(seed, "pr", "7", "index.html"), "pr-7-baseline")
+	writeFile(t, filepath.Join(seed, "badges", "stale.json"), "stale")
+	if err := commitAndPush(t, home, seed, "baseline"); err != nil {
+		t.Fatalf("seed push: %v", err)
+	}
+
+	site := checkoutGhPages(t, home, tmp, "site", origin)
+	concurrent := checkoutGhPages(t, home, tmp, "concurrent", origin)
+	writeFile(t, filepath.Join(concurrent, "pr", "42", "index.html"), "pr-42-concurrent")
+	if err := commitAndPush(t, home, concurrent, "concurrent pr 42 report"); err != nil {
+		t.Fatalf("concurrent push: %v", err)
+	}
+
+	badges := filepath.Join(tmp, "badges-out")
+	writeFile(t, filepath.Join(badges, "lint.json"), `{"label":"lint"}`)
+	writeFile(t, filepath.Join(badges, "coverage.json"), `{"label":"coverage"}`)
+
+	cmd := exec.Command("sh", pagesPersistScript(t), site, badges, "badges", "5")
+	cmd.Env = gitEnv(home)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("ci/pages-persist.sh badges failed: %v\n%s", err, out)
+	} else if !strings.Contains(string(out), "pushed on attempt 2") {
+		t.Errorf("expected the badges push to succeed on its retry, got:\n%s", out)
+	}
+
+	verify := checkoutGhPages(t, home, tmp, "verify", origin)
+	for name, want := range map[string]string{"lint.json": `{"label":"lint"}`, "coverage.json": `{"label":"coverage"}`} {
+		if got := readFile(t, filepath.Join(verify, "badges", name)); got != want {
+			t.Errorf("badges/%s = %q, want %q", name, got, want)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(verify, "badges", "stale.json")); err == nil {
+		t.Errorf("badges/stale.json survived; the badges mode must replace the badges/ tree")
+	}
+	if got := readFile(t, filepath.Join(verify, "index.html")); got != "root-baseline" {
+		t.Errorf("root = %q, want it untouched by a badges publish", got)
+	}
+	if got := readFile(t, filepath.Join(verify, "pr", "42", "index.html")); got != "pr-42-concurrent" {
+		t.Errorf("concurrent pr/42/ = %q, want it kept", got)
+	}
+
+	// A later root report (also what the nightly schedule publishes) keeps badges/.
+	report := filepath.Join(tmp, "report")
+	writeFile(t, filepath.Join(report, "index.html"), "root-fresh")
+	site2 := checkoutGhPages(t, home, tmp, "site2", origin)
+	cmd = exec.Command("sh", pagesPersistScript(t), site2, report, "root", "5")
+	cmd.Env = gitEnv(home)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("ci/pages-persist.sh root failed: %v\n%s", err, out)
+	}
+	verify2 := checkoutGhPages(t, home, tmp, "verify2", origin)
+	if got := readFile(t, filepath.Join(verify2, "badges", "lint.json")); got != `{"label":"lint"}` {
+		t.Errorf("badges/lint.json = %q after a root merge, want it kept", got)
+	}
+	if got := readFile(t, filepath.Join(verify2, "index.html")); got != "root-fresh" {
+		t.Errorf("root = %q, want the fresh report", got)
+	}
+}

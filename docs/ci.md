@@ -778,6 +778,25 @@ renders a grey `unknown`, never green. The generator's tests
 (`ci/badgegen`: `TestBadgeGenTable`, `TestBadgeNeverGreenOnBadInput`,
 `TestBadgeValuesFollowInput`) cover each of those cases.
 
+### Publishing the badges (R290)
+
+The `report` job of `ci.yml` has two badge steps, "Generate the status badges"
+(`ci/run.sh go run ./ci/badgegen -in ci-results -out badges`) and "Publish the
+status badges to gh-pages" (`ci/pages-persist.sh site badges badges`, the
+`badges` mode of the same fetch/commit/push-with-retry script the report uses).
+The result is `badges/*.json` on the `gh-pages` branch, and in the Pages site,
+where a shields.io `endpoint` badge reads
+`https://n-orlov.github.io/deck/badges/<name>.json`.
+
+Both steps carry `if: success() && (github.event_name == 'push' ||
+github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'`,
+so a pull_request run (the job also runs for those) and the nightly schedule
+write no badge. The root report merge (`ci/allure-site.sh`) leaves `badges/`
+alone, as it does `pr/`. `TestBadgeStepsMainOnly` and
+`TestNoPullRequestJobWritesBadges` (`ci/workflowcheck`) evaluate those
+conditions over concrete triggers; `TestPagesPersistPublishesBadgesAndRootKeepsThem`
+(`ci/pagespersist`) covers the publish path.
+
 ## The pre-release security review (R194)
 
 This is a process, not a gate, and nothing about a review is tracked in the
