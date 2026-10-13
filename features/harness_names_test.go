@@ -90,6 +90,7 @@ func aliasDerivedSession(h *ScenarioHarness, derived string) error {
 		h.sessionNameAliases = map[string]string{}
 	}
 	h.sessionNameAliases[derived] = id
+	h.trackSessionNames = true
 	return nil
 }
 

@@ -301,25 +301,53 @@ func jsonlRecordOnce(path, typeKey, recordType, field string, accept func(string
 	return fmt.Errorf("name contract unsupported: no %q entry with a string %q in %s (entry types seen: %v)", recordType, field, path, seen)
 }
 
-// resolveSessionName maps a scenario's label for an unnamed session to the
-// row's CURRENT name (deck renames the row when it adopts the harness's
-// ai-title, so the alias is the row id, not the derived name); every other
-// name is returned unchanged.
-func (h *ScenarioHarness) resolveSessionName(name string) string {
+// sessionRowFilter is the WHERE clause (and its two arguments) that selects
+// the session a scenario step names. Deck renames a row when it adopts the
+// harness's generated title, on its own tick, so a step can name a row by a
+// name it had a moment ago. The clause is one statement, never a lookup of the
+// current name followed by a query on it (that pair raced the tick): a row that
+// carries the name wins, and only when none does is the row id remembered for
+// the name used (sessionNameAliases for an unnamed create, sessionNameHistory
+// for every name a tracked scenario has seen) followed to its current name.
+func (h *ScenarioHarness) sessionRowFilter(name string) (string, []any) {
 	id, ok := h.sessionNameAliases[name]
 	if !ok {
-		return name
+		id = h.sessionNameHistory[name]
+	}
+	return `(name = ? OR (id = ? AND NOT EXISTS (SELECT 1 FROM sessions WHERE name = ?)))`, []any{name, id, name}
+}
+
+// snapshotSessionNames remembers the row id of every session by its current
+// name, so a later step that names a row by a name it has since been renamed
+// away from still finds it (sessionRowFilter). It runs before each step of a
+// scenario that tracks names and never fails a step.
+func (h *ScenarioHarness) snapshotSessionNames() {
+	if !h.trackSessionNames {
+		return
+	}
+	if _, err := os.Stat(filepath.Join(h.Home, "state.db")); err != nil {
+		return
 	}
 	db, err := openObservedDatabase(h)
 	if err != nil {
-		return name
+		return
 	}
 	defer func() { _ = db.Close() }()
-	var current string
-	if err := db.QueryRow(`SELECT name FROM sessions WHERE id = ?`, id).Scan(&current); err != nil {
-		return name
+	rows, err := db.Query(`SELECT id, name FROM sessions`)
+	if err != nil {
+		return
 	}
-	return current
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		var id, name string
+		if rows.Scan(&id, &name) != nil {
+			return
+		}
+		if h.sessionNameHistory == nil {
+			h.sessionNameHistory = map[string]string{}
+		}
+		h.sessionNameHistory[name] = id
+	}
 }
 
 // clientCreatesUnnamedAgentSession submits the create modal with the name left

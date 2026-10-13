@@ -1055,7 +1055,8 @@ func sessionIDByName(h *ScenarioHarness, name string) (string, error) {
 	}
 	defer db.Close()
 	var id string
-	if err := db.QueryRow(`SELECT id FROM sessions WHERE name = ?`, h.resolveSessionName(name)).Scan(&id); err != nil {
+	where, args := h.sessionRowFilter(name)
+	if err := db.QueryRow(`SELECT id FROM sessions WHERE `+where, args...).Scan(&id); err != nil {
 		return "", fmt.Errorf("observe session %q id: %w", name, err)
 	}
 	return id, nil
@@ -1068,7 +1069,8 @@ func sessionConversationID(h *ScenarioHarness, name string) (string, error) {
 	}
 	defer db.Close()
 	var conversationID sql.NullString
-	if err := db.QueryRow(`SELECT conversation_id FROM sessions WHERE name = ?`, h.resolveSessionName(name)).Scan(&conversationID); err != nil {
+	where, args := h.sessionRowFilter(name)
+	if err := db.QueryRow(`SELECT conversation_id FROM sessions WHERE `+where, args...).Scan(&conversationID); err != nil {
 		return "", fmt.Errorf("observe session %q conversation id: %w", name, err)
 	}
 	return conversationID.String, nil
@@ -1625,7 +1627,8 @@ func sessionSlugByName(h *ScenarioHarness, name string) (string, error) {
 	}
 	defer db.Close()
 	var slug string
-	if err := db.QueryRow(`SELECT slug FROM sessions WHERE name = ?`, h.resolveSessionName(name)).Scan(&slug); err != nil {
+	where, args := h.sessionRowFilter(name)
+	if err := db.QueryRow(`SELECT slug FROM sessions WHERE `+where, args...).Scan(&slug); err != nil {
 		return "", fmt.Errorf("observe session %q slug: %w", name, err)
 	}
 	return slug, nil

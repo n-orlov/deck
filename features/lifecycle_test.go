@@ -36,6 +36,10 @@ type ScenarioHarness struct {
 	// sessionNameAliases maps a scenario's label for an unnamed session to the
 	// row id deck gave it (clientCreatesUnnamedAgentSession).
 	sessionNameAliases map[string]string
+	// sessionNameHistory maps every session name a tracked scenario has seen
+	// to the row id (snapshotSessionNames), trackSessionNames turns it on.
+	sessionNameHistory map[string]string
+	trackSessionNames  bool
 	sentinel           []byte
 	databaseFixture    []byte
 	newerRefusal       string
@@ -682,6 +686,12 @@ func registerScenarioLifecycle(sc *godog.ScenarioContext) {
 			return ctx, err
 		}
 		return context.WithValue(ctx, scenarioHarnessKey{}, harness), nil
+	})
+	sc.StepContext().Before(func(ctx context.Context, _ *godog.Step) (context.Context, error) {
+		if harness, err := scenarioHarness(ctx); err == nil {
+			harness.snapshotSessionNames()
+		}
+		return ctx, nil
 	})
 	sc.After(func(ctx context.Context, _ *godog.Scenario, scenarioErr error) (context.Context, error) {
 		harness, err := scenarioHarness(ctx)
