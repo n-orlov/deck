@@ -503,7 +503,12 @@ type Model struct {
 	// bookmarkChord) before any layer runs, so every key cancels a pending
 	// chord whichever layer consumes it, and only the bookmark layers read it.
 	bookmarkChordIn bool
-	bookmarkNote    string
+	// bookmarkChordFor is the session Alt+M started on and bookmarkChordForIn
+	// is that identity as the CURRENT key found it pending (moved exactly as
+	// bookmarkChord is). Delete clears this session's slots, never whatever a
+	// reload has since selected (R286).
+	bookmarkChordFor, bookmarkChordForIn bookmarkChordTarget
+	bookmarkNote                         string
 	// bookmarkSlots is the slot table of one frame's sidebar render
 	// (session id -> slots held), loaded by sidebarEntries on its own copy of
 	// the model and never kept; nil while the bookmarks setting is off.

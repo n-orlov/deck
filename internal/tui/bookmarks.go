@@ -61,6 +61,26 @@ func joinBookmarkSlots(slots []int) string {
 	return strings.Join(digits, ",")
 }
 
+// bookmarkChordTarget is the session an Alt+M chord started on, fixed when
+// the chord starts. id is empty when no session was selected; offered is true
+// when the prompt offered Delete because that session held a slot.
+type bookmarkChordTarget struct {
+	id      string
+	offered bool
+}
+
+// startBookmarkChord arms the chord on session (ok false: none) and shows its
+// prompt, remembering which session the prompt spoke about.
+func (m *Model) startBookmarkChord(session store.Session, ok bool) {
+	m.bookmarkChord = true
+	m.bookmarkChordFor = bookmarkChordTarget{}
+	if ok {
+		m.bookmarkChordFor.id = session.ID
+		m.bookmarkChordFor.offered = len(m.sessionBookmarkSlots(session.ID)) > 0
+	}
+	m.setBookmarkNote(m.bookmarkChordPrompt(session, ok))
+}
+
 // bookmarkChordPrompt is the one-line prompt Alt+M shows. It offers Delete
 // only when the session the chord starts on holds a bookmark (R287).
 func (m Model) bookmarkChordPrompt(session store.Session, ok bool) string {
@@ -72,16 +92,26 @@ func (m Model) bookmarkChordPrompt(session store.Session, ok bool) string {
 	return bookmarkChordPromptBase
 }
 
-// clearBookmarksOf empties every slot session holds and shows the one-line
-// message naming them. It reports false, touching nothing, when there is no
-// session or it holds no slot, so the key falls through (R287).
-func (m *Model) clearBookmarksOf(session store.Session, ok bool) bool {
-	if !ok {
+// clearChordBookmarks empties every slot the chord's session holds and shows
+// the one-line message naming them. The session is the one Alt+M started on,
+// resolved by id: a reload that moved the selection or removed the session
+// between the two keys never redirects the clear to another session (R286).
+// It reports false, touching nothing, when the chord began on a session that
+// held no slot, so the key falls through (R287). When the prompt offered
+// Delete but that session's slots are gone by now, the key is consumed with a
+// message rather than falling through onto whatever is selected now.
+func (m *Model) clearChordBookmarks() bool {
+	target := m.bookmarkChordForIn
+	if target.id == "" {
 		return false
 	}
-	slots := m.sessionBookmarkSlots(session.ID)
+	slots := m.sessionBookmarkSlots(target.id)
 	if len(slots) == 0 {
-		return false
+		if !target.offered {
+			return false
+		}
+		m.setBookmarkNote("Bookmark: the session no longer holds a bookmark")
+		return true
 	}
 	for _, slot := range slots {
 		if err := m.store.ClearBookmark(context.Background(), slot); err != nil {
@@ -126,16 +156,14 @@ func (m Model) handleBookmarkKey(msg tea.KeyMsg) (next Model, handled bool) {
 			return m, true
 		}
 		if key == bookmarkClearKey {
-			session, found := m.selectedSession()
-			if m.clearBookmarksOf(session, found) {
+			if m.clearChordBookmarks() {
 				return m, true
 			}
 		}
 	}
 	if key == bookmarkSetChord {
-		m.bookmarkChord = true
 		session, found := m.selectedSession()
-		m.setBookmarkNote(m.bookmarkChordPrompt(session, found))
+		m.startBookmarkChord(session, found)
 		return m, true
 	}
 	if slot, ok := bookmarkShiftedSlots[key]; ok {
@@ -286,16 +314,14 @@ func (m Model) handleInteractiveBookmarkKey(msg tea.KeyMsg) (next Model, handled
 			return m, true
 		}
 		if key == bookmarkClearKey {
-			target, found := m.interactiveTargetSession()
-			if m.clearBookmarksOf(target, found) {
+			if m.clearChordBookmarks() {
 				return m, true
 			}
 		}
 	}
 	if key == bookmarkSetChord {
-		m.bookmarkChord = true
 		target, found := m.interactiveTargetSession()
-		m.setBookmarkNote(m.bookmarkChordPrompt(target, found))
+		m.startBookmarkChord(target, found)
 		return m, true
 	}
 	if slot, ok := bookmarkShiftedSlots[key]; ok {

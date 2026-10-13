@@ -290,3 +290,147 @@ func TestInteractiveChordDeleteUnbookmarkedForwarded(t *testing.T) {
 		t.Fatalf("bookmarks = %v, want slot 6 kept", got)
 	}
 }
+
+// R286: the clear chord belongs to the session Alt+M started on. A background
+// reload between the two keys (sessionsLoaded, as the poller delivers it) may
+// move the selection or drop the session; Delete never clears another
+// session's slots.
+
+// reloadWith delivers a background session reload that holds only keep, in order.
+func reloadWith(t *testing.T, m Model, keep ...store.Session) Model {
+	t.Helper()
+	next, _ := m.Update(sessionsLoaded{sessions: keep})
+	return next.(Model)
+}
+
+func TestBookmarkClearChordKeepsItsSessionAcrossReload(t *testing.T) {
+	cases := []struct {
+		name string
+		// slots held when the chord starts (s0 is selected); after is what
+		// the store holds when Delete arrives.
+		before, after map[int]string
+		keep          []int // indexes of the base sessions the reload keeps
+		wantSlots     map[int]string
+		wantNote      string
+	}{
+		{ // the finding: s0 vanishes, s1 becomes the selection
+			name:      "session dropped, slots already cleared, neighbour keeps its slot",
+			before:    map[int]string{3: "s0", 9: "s1"},
+			after:     map[int]string{9: "s1"},
+			keep:      []int{1, 2, 3},
+			wantSlots: map[int]string{9: "s1"},
+			wantNote:  "no longer holds",
+		},
+		{ // availability changed but the session still owns its slot: that slot is the chord's
+			name:      "session dropped from the list, its slots still cleared, neighbour kept",
+			before:    map[int]string{3: "s0", 9: "s1"},
+			after:     map[int]string{3: "s0", 9: "s1"},
+			keep:      []int{1, 2, 3},
+			wantSlots: map[int]string{9: "s1"},
+			wantNote:  "Removed bookmark 3",
+		},
+		{ // slots added to the old session meanwhile are also its own
+			name:      "slot added to the chord session before Delete",
+			before:    map[int]string{2: "s0", 5: "s1"},
+			after:     map[int]string{2: "s0", 4: "s0", 5: "s1"},
+			keep:      []int{1, 2, 3},
+			wantSlots: map[int]string{5: "s1"},
+			wantNote:  "Removed bookmark 2,4",
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			m, db := bookmarkKeyModel(t, true)
+			base := append([]store.Session(nil), m.baseSessions...)
+			for slot, id := range c.before {
+				assign(t, db, slot, id)
+			}
+			m, _ = sendKey(t, m, altRune('m'))
+			for slot := 0; slot <= 9; slot++ {
+				if err := db.ClearBookmark(context.Background(), slot); err != nil {
+					t.Fatal(err)
+				}
+			}
+			for slot, id := range c.after {
+				assign(t, db, slot, id)
+			}
+			var keep []store.Session
+			for _, i := range c.keep {
+				keep = append(keep, base[i])
+			}
+			m = reloadWith(t, m, keep...)
+			if got := selectedID(t, m); got == "s0" {
+				t.Fatalf("test setup: selection stayed on s0 after the reload")
+			}
+			m, _ = sendKey(t, m, deleteKey())
+			want := map[int]string{}
+			for slot, id := range c.wantSlots {
+				want[slot] = id
+			}
+			if got := mustBookmarks(t, db); !reflect.DeepEqual(got, want) {
+				t.Fatalf("bookmarks = %v, want %v", got, want)
+			}
+			if !strings.Contains(m.bookmarkNote, c.wantNote) {
+				t.Fatalf("message = %q, want it to contain %q", m.bookmarkNote, c.wantNote)
+			}
+		})
+	}
+}
+
+// A chord that began on an unbookmarked session keeps its fall-through even
+// when a reload selects a bookmarked one: the Delete clears nothing.
+func TestBookmarkClearChordUnbookmarkedStartIgnoresReloadedSelection(t *testing.T) {
+	m, db := bookmarkKeyModel(t, true)
+	assign(t, db, 7, "s1")
+	base := append([]store.Session(nil), m.baseSessions...)
+	m, _ = sendKey(t, m, altRune('m'))
+	m = reloadWith(t, m, base[1], base[2], base[3])
+	m, _ = sendKey(t, m, deleteKey())
+	if got := mustBookmarks(t, db); !reflect.DeepEqual(got, map[int]string{7: "s1"}) {
+		t.Fatalf("bookmarks = %v, want slot 7 kept", got)
+	}
+}
+
+// Interactive mode: the attached session is the chord's session; a reload
+// that drops it between Alt+M and Delete never clears the other session.
+func TestInteractiveClearChordKeepsItsSessionAcrossReload(t *testing.T) {
+	t.Run("attached session dropped, slots already cleared", func(t *testing.T) {
+		r := newBookmarkRig(t, true)
+		assign(t, r.db, 3, r.a.ID)
+		assign(t, r.db, 9, r.b.ID)
+		r.press(t, altRune('m'))
+		if err := r.db.ClearBookmark(context.Background(), 3); err != nil {
+			t.Fatal(err)
+		}
+		next, _ := r.m.Update(sessionsLoaded{sessions: []store.Session{r.b}})
+		r.m = next.(Model)
+		r.press(t, deleteKey())
+		if got := mustBookmarks(t, r.db); !reflect.DeepEqual(got, map[int]string{9: r.b.ID}) {
+			t.Fatalf("bookmarks = %v, want only slot 9 of the other session", got)
+		}
+	})
+	t.Run("attached session dropped from the list, slots still owned", func(t *testing.T) {
+		r := newBookmarkRig(t, true)
+		assign(t, r.db, 3, r.a.ID)
+		assign(t, r.db, 9, r.b.ID)
+		r.press(t, altRune('m'))
+		next, _ := r.m.Update(sessionsLoaded{sessions: []store.Session{r.b}})
+		r.m = next.(Model)
+		r.press(t, deleteKey())
+		if got := mustBookmarks(t, r.db); !reflect.DeepEqual(got, map[int]string{9: r.b.ID}) {
+			t.Fatalf("bookmarks = %v, want the chord session's slot 3 cleared and slot 9 kept", got)
+		}
+	})
+	t.Run("attached session still owns its slots", func(t *testing.T) {
+		r := newBookmarkRig(t, true)
+		assign(t, r.db, 3, r.a.ID)
+		assign(t, r.db, 9, r.b.ID)
+		r.press(t, altRune('m'))
+		next, _ := r.m.Update(sessionsLoaded{sessions: []store.Session{r.b, r.a}})
+		r.m = next.(Model)
+		r.press(t, deleteKey())
+		if got := mustBookmarks(t, r.db); !reflect.DeepEqual(got, map[int]string{9: r.b.ID}) {
+			t.Fatalf("bookmarks = %v, want only slot 9 kept", got)
+		}
+	})
+}

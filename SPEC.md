@@ -2725,7 +2725,12 @@ slots are untouched, and a one-line message names the cleared slot(s) (`Removed 
 then reads `Press Delete to remove bookmark N` (`N,M` for two slots) after the usual prompt, and for an
 unbookmarked session it is the usual prompt unchanged and `Delete` is not offered. A `Delete` after
 `Alt+M` on an unbookmarked session cancels the chord like any other non-digit key and is then handled as
-it normally is; a `Delete` outside a chord behaves as it always did. A jump to
+it normally is; a `Delete` outside a chord behaves as it always did. The chord's session is fixed when
+`Alt+M` is pressed (the session under the cursor in the list, the attached session in interactive mode)
+and `Delete` clears that session's slots by identity: a background reload that moves the selection or drops
+the session between the two keys never redirects the clear to another session. If the prompt offered
+`Delete` and the session no longer holds a slot by then, the key is consumed with the message `Bookmark:
+the session no longer holds a bookmark` instead of falling through onto the new selection. A jump to
 an empty slot changes nothing and shows a one-line status message in the footer. With the
 setting off none of these keys is bound in the list and every one reaches whatever it reached
 before.

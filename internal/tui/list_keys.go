@@ -43,6 +43,7 @@ func (m Model) onKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// consumes it (a refusal banner's Esc, an overlay, the dd chord, the
 	// attached Ctrl+Q); only the bookmark layers see it as pending.
 	m.bookmarkChordIn, m.bookmarkChord = m.bookmarkChord, false
+	m.bookmarkChordForIn, m.bookmarkChordFor = m.bookmarkChordFor, bookmarkChordTarget{}
 
 	// cure-01-02 (R143/SPEC §11.9): the banner-dismissing Esc has to run
 	// before EVERY other Esc-cleared layer's own dispatch below --

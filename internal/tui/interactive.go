@@ -548,6 +548,7 @@ func (m Model) exitInteractive() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	m.bookmarkChord, m.bookmarkChordIn = false, false
+	m.bookmarkChordFor, m.bookmarkChordForIn = bookmarkChordTarget{}, bookmarkChordTarget{}
 	// R149/GH #47: leaving interactive mode returns keyboard focus to the
 	// sidebar's own selection, so a wheel drift left over the sidebar
 	// (m.sidebarScrollDrifted) is ended here too, through the same follow
