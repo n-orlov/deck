@@ -31,19 +31,8 @@ import (
 func main() { os.Exit(run(os.Args, os.Stdin, os.Stdout, os.Stderr)) }
 
 func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
-	if isVersionRequest(args) {
-		printVersion(stdout)
-		return 0
-	}
-	if isSchemaRequest(args) {
-		printSchema(stdout)
-		return 0
-	}
-	if isProfilesRequest(args) {
-		return runProfilesListing(os.Getenv, os.UserHomeDir, stdout)
-	}
-	if isUpdateRequest(args) {
-		return runUpdateCommand(args, stdout, stderr)
+	if code, handled := runEarlyVerb(args, stdout, stderr); handled {
+		return code
 	}
 	if code, handled := runDetachedVerb(args, stdin, stdout, stderr); handled {
 		return code
@@ -66,6 +55,29 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	}
 
 	return runTUI(settings, stderr)
+}
+
+// runEarlyVerb answers --version, --schema, --profiles and `deck update`
+// before any config or tmux check, so they work on a machine with neither.
+func runEarlyVerb(args []string, stdout, stderr io.Writer) (int, bool) {
+	switch {
+	case isVersionRequest(args):
+		printVersion(stdout)
+		return 0, true
+	case isSchemaRequest(args):
+		printSchema(stdout)
+		return 0, true
+	case isProfilesRequest(args):
+		return profilesVerb(stdout), true
+	case isUpdateRequest(args):
+		return runUpdateCommand(args, stdout, stderr), true
+	}
+	return 0, false
+}
+
+// profilesVerb is `deck --profiles` against the real environment.
+func profilesVerb(stdout io.Writer) int {
+	return runProfilesListing(os.Getenv, os.UserHomeDir, stdout)
 }
 
 // runDetachedVerb runs the verbs that act on the profile's store with no TUI:

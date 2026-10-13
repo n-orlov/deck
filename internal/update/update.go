@@ -59,41 +59,53 @@ type Result struct {
 // any error the old binary is untouched and no temporary file remains.
 func Run(ctx context.Context, o Options) (Result, error) {
 	o = o.withDefaults()
-	if err := refuseDev(o.Current); err != nil {
-		return Result{}, err
-	}
-	asset, err := AssetName(o.GOOS, o.GOARCH)
+	pl, err := o.prepare(ctx)
 	if err != nil {
 		return Result{}, err
 	}
-	base := baseURL(o.BaseURL)
-	if err := CheckURL(base); err != nil {
-		return Result{}, err
-	}
-	target, err := o.checkTarget()
-	if err != nil {
-		return Result{}, err
-	}
-	tag, err := o.tag(ctx, base)
-	if err != nil {
-		return Result{}, err
-	}
-	if o.OnlyIfNewer && o.Version == "" && !IsNewer(tag, o.Current) {
-		return Result{Tag: tag, Path: target, Unchanged: true}, nil
+	if o.OnlyIfNewer && o.Version == "" && !IsNewer(pl.tag, o.Current) {
+		return Result{Tag: pl.tag, Path: pl.target, Unchanged: true}, nil
 	}
 	work, err := os.MkdirTemp("", "deck-update-")
 	if err != nil {
 		return Result{}, fmt.Errorf("create a scratch directory: %w", err)
 	}
 	defer func() { _ = os.RemoveAll(work) }()
-	bin, att, err := o.fetchBinary(ctx, fetchPlan{releaseURL: base + "/releases/download/" + tag, tag: tag, asset: asset, repo: o.ghRepo(base), work: work})
+	bin, att, err := o.fetchBinary(ctx, fetchPlan{releaseURL: pl.base + "/releases/download/" + pl.tag, tag: pl.tag, asset: pl.asset, repo: o.ghRepo(pl.base), work: work})
 	if err != nil {
 		return Result{}, err
 	}
-	if err := o.replace(target, bin); err != nil {
+	if err := o.replace(pl.target, bin); err != nil {
 		return Result{}, err
 	}
-	return Result{Tag: tag, Path: target, Attestation: att}, nil
+	return Result{Tag: pl.tag, Path: pl.target, Attestation: att}, nil
+}
+
+// runPlan is what Run settles before it downloads anything.
+type runPlan struct {
+	asset, base, target, tag string
+}
+
+// prepare runs Run's refusals and lookups in order: dev build, platform,
+// release URL, install target, then the tag to install.
+func (o Options) prepare(ctx context.Context) (runPlan, error) {
+	var pl runPlan
+	if err := refuseDev(o.Current); err != nil {
+		return pl, err
+	}
+	var err error
+	if pl.asset, err = AssetName(o.GOOS, o.GOARCH); err != nil {
+		return pl, err
+	}
+	pl.base = baseURL(o.BaseURL)
+	if err = CheckURL(pl.base); err != nil {
+		return pl, err
+	}
+	if pl.target, err = o.checkTarget(); err != nil {
+		return pl, err
+	}
+	pl.tag, err = o.tag(ctx, pl.base)
+	return pl, err
 }
 
 func (o Options) withDefaults() Options {

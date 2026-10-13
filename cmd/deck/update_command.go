@@ -31,32 +31,43 @@ type updateArgs struct {
 func parseUpdateArgs(rest []string, stderr io.Writer) (updateArgs, bool) {
 	var out updateArgs
 	for i := 0; i < len(rest); i++ {
-		arg := rest[i]
-		flag, value, hasValue := strings.Cut(arg, "=")
-		switch {
-		case arg == "--check":
-			out.check = true
-		case flag == "--version" && hasValue:
-			out.version = value
-		case flag == "--version" && i+1 < len(rest):
-			i++
-			out.version = rest[i]
-		case flag == "--version":
-			sayln(stderr, "error: --version needs a value (a release tag such as v1.2.3)")
-			return out, false
-		case strings.HasPrefix(arg, "-"):
-			sayf(stderr, "error: unknown flag %s\n", arg)
-			return out, false
-		default:
-			sayf(stderr, "error: deck update takes options only, got %q\n", arg)
+		next, ok := out.parseOne(rest, i, stderr)
+		if !ok {
 			return out, false
 		}
+		i = next
 	}
 	if out.check && out.version != "" {
 		sayln(stderr, "error: --check and --version cannot be combined")
 		return out, false
 	}
 	return out, true
+}
+
+// parseOne reads rest[i] (and the value after it for a bare --version) into a,
+// returning the index of the last argument it consumed.
+func (a *updateArgs) parseOne(rest []string, i int, stderr io.Writer) (int, bool) {
+	arg := rest[i]
+	flag, value, hasValue := strings.Cut(arg, "=")
+	switch {
+	case arg == "--check":
+		a.check = true
+	case flag == "--version" && hasValue:
+		a.version = value
+	case flag == "--version" && i+1 < len(rest):
+		i++
+		a.version = rest[i]
+	case flag == "--version":
+		sayln(stderr, "error: --version needs a value (a release tag such as v1.2.3)")
+		return i, false
+	case strings.HasPrefix(arg, "-"):
+		sayf(stderr, "error: unknown flag %s\n", arg)
+		return i, false
+	default:
+		sayf(stderr, "error: deck update takes options only, got %q\n", arg)
+		return i, false
+	}
+	return i, true
 }
 
 // runUpdateCommand is `deck update [--check] [--version vX.Y.Z]`. Exit 2 is a
