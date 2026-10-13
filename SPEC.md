@@ -3010,6 +3010,19 @@ truncated-but-honest frame beats an unpredictable one.
   longer than the line, and the footer's own content gives up whole trailing entries to make room
   (at 80x24 with Available shown the list legend keeps the entries that fit whole and drops the
   rest; none is cut mid-entry).
+- **`ctrl+u` installs the offered update** (R299). While the indicator reads Available, `ctrl+u`
+  in the list opens a confirmation (§11.4) and, once confirmed, runs the same verified update
+  as `deck update` (§13.1) in the background; the UI stays responsive. The indicator reads
+  `updating to vX.Y.Z — downloading and verifying…` while it runs, then Installed on success.
+  On failure the indicator reads Failed with the cause, and the old binary stays exactly as it
+  was: nothing partial is ever left. It never restarts deck and never touches sessions. In every
+  other state (Installed, Failed, Refused for an unwritable or managed install, Hidden, and
+  while an update is already running) `ctrl+u` is inert: it opens no dialog, starts no update
+  and is absent from the footer legend and the `?` help; while Available is up both list it
+  (`ctrl+u update deck`). It has no other list-mode binding. In a text field it keeps its
+  line-editing meaning (§11.11, delete from the caret to the start). **In interactive mode
+  (§11.9) deck never handles it, whatever the indicator reads: it is forwarded to the pane as
+  the single byte 0x15, exactly as for any other key, so no dialog opens and no update starts.**
 - **A note expires.** The selection-copy, field-copy, attach-failure, resume and archive-undone
   notes clear on their own `[ui] note_timeout` after they were set (10 s by default; whole
   seconds, at least 1; `DECK_NOTE_TIMEOUT` overrides the file; a save applies it to the next
@@ -3033,6 +3046,14 @@ contract so learning any one of them teaches the rest:
   of its own**, but only if it states them inline where they apply — the `r` that reveals a
   masked secret (§6.4) is the canonical example: an explicit per-view toggle, named on screen
   at the place it acts. Nothing *undeclared* is load-bearing.
+- **The update confirmation** (`ctrl+u` while the update indicator reads Available, §11) is a
+  dialog with no fields: it shows the current version and the target version, says that
+  confirming downloads the release, verifies its checksum and build attestation and replaces
+  the binary in the background, and that deck keeps running and does not touch sessions.
+  `↵` installs and closes the dialog, leaving the progress state in the footer indicator; `esc`
+  cancels and changes nothing — no request, no write. Every other key is swallowed, so a second
+  `ctrl+u` inside it does nothing. It is never offered in interactive mode, where `ctrl+u` is
+  the pane's (§11.9).
 - **`tab` is reserved for completion and never moves between fields.** On a path field it is
   bash's completion key and nothing else (§11.7); on every other field, and in every dialog
   that has no path field at all, it is unbound. A key that navigates on seven fields and
@@ -3657,6 +3678,8 @@ footer (it is a hint line, not a toolbar, and §11.3 already binds it to what is
 `Enter` hands the keyboard to the selected session without leaving the list. deck fits the
 session's window to the preview panel, streams the pane into an in-process cell grid, and
 forwards keystrokes to it. `Ctrl+Q` returns. `a` remains the escalation to a real terminal.
+`Ctrl+U` is among the forwarded keys: deck never handles it here, so the update confirmation (§11.4) is
+not offered and the pane receives the single byte 0x15 whatever the update indicator reads.
 Entering is an attachment in §7's sense: the same durable transaction as `a`'s attach answers
 a `waiting` row and acknowledges an `error` row, applied only once entry has actually
 succeeded — a refused entry claims nothing.

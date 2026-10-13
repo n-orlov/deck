@@ -237,6 +237,18 @@ func TestHelpOverlayKeymapMatchesBoundKeys(t *testing.T) {
 			}
 			continue
 		}
+		if key == "ctrl+u" {
+			// R299: the update key is documented only
+			// while the Available offer is up, so helpText(false) cannot list
+			// it; the offer's own help lines are checked here instead, and
+			// TestCtrlUInertStates covers that no other state lists it.
+			offered := New(nil, config.Settings{UpdateCheck: true}, "")
+			offered.updateInd = updateIndicator{state: updateAvailable, tag: "v9.9.9"}
+			if !strings.Contains(offered.helpBody(), "  ctrl+u install") {
+				missingFromHelp = append(missingFromHelp, key+" (the Available offer's help lines went missing)")
+			}
+			continue
+		}
 		if !documented[key] {
 			missingFromHelp = append(missingFromHelp, key)
 		}

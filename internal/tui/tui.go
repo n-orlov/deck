@@ -332,6 +332,11 @@ type Model struct {
 	// (update_indicator.go, R298).
 	updateSrc updateSource
 	updateInd updateIndicator
+	// updateInstall and updateConfirming are R299's ctrl+u flow: the verified
+	// update to run, and the confirmation dialog that gates it
+	// (update_install.go).
+	updateInstall    updateInstaller
+	updateConfirming bool
 	// pendingDelete is true for exactly one keypress after a lone `d`
 	// (SPEC's dd chord): a second `d` opens deleteConfirming; ANY other
 	// key (including Esc) clears pendingDelete without performing any
@@ -4546,6 +4551,7 @@ var viewScreens = []viewScreen{
 	{func(m Model) bool { return m.restartChoosing && m.hasSessions() }, Model.restartChoiceView},
 	{func(m Model) bool { return m.deleteConfirming && m.hasSessions() }, Model.deleteConfirmView},
 	{func(m Model) bool { return m.archiveConfirming && m.hasSessions() }, Model.archiveConfirmView},
+	{func(m Model) bool { return m.updateConfirming }, Model.updateConfirmView},
 	{func(m Model) bool { return m.settingsOpen }, Model.settingsView},
 	{func(m Model) bool { return m.renaming && m.hasSessions() }, Model.renameView},
 	{func(m Model) bool { return m.launchInputsEditing && m.hasSessions() }, Model.launchInputsView},
@@ -5266,7 +5272,8 @@ func (m Model) footerLegendSegments() (segments []string, widths []int) {
 		segments = append(segments, seg)
 		widths = append(widths, stringWidth(plain))
 	}
-	for _, e := range m.bookmarkFooterHints() {
+	extra := append(m.bookmarkFooterHints(), m.updateFooterHints()...)
+	for _, e := range extra {
 		segments = append(segments, m.colorToken(theme.Key, e.unicodeKey)+" "+m.colorToken(theme.Hint, e.hint))
 		widths = append(widths, stringWidth(e.unicodeKey+" "+e.hint))
 	}
@@ -9667,7 +9674,11 @@ func helpText(ascii bool) string {
 // bookmarks setting on, the bookmark keys (R277); nothing about bookmarks
 // appears while it is off.
 func (m Model) helpBody() string {
-	return helpTextFor(m.settings.ASCII, m.settings.Bookmarks)
+	text := helpTextFor(m.settings.ASCII, m.settings.Bookmarks)
+	if m.updateOffered() {
+		text = strings.Replace(text, bookmarkHelpAnchor, updateHelpLines+bookmarkHelpAnchor, 1)
+	}
+	return text
 }
 
 func helpTextFor(ascii, bookmarks bool) string {

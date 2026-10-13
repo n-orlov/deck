@@ -91,6 +91,7 @@ var mouseSuppressingOverlays = []func(Model) bool{
 	func(m Model) bool { return m.restartChoosing },
 	func(m Model) bool { return m.deleteConfirming },
 	func(m Model) bool { return m.archiveConfirming },
+	func(m Model) bool { return m.updateConfirming },
 	func(m Model) bool { return m.eventLogOpen },
 	func(m Model) bool { return m.filtering },
 	func(m Model) bool { return m.interactive },

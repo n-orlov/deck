@@ -20,3 +20,10 @@ func updateIndicatorSource(settings config.Settings) (func(context.Context) upda
 	}
 	return checker.Check, func() error { return update.Preflight(opts) }
 }
+
+// updateInstallSource is what ctrl+u runs once confirmed: the running build's
+// version and the same verified update `deck update` performs.
+func updateInstallSource() (string, func(context.Context) (update.Result, error)) {
+	opts := update.Options{Current: version, OnlyIfNewer: true}
+	return version, func(ctx context.Context) (update.Result, error) { return update.Run(ctx, opts) }
+}

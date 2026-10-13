@@ -224,6 +224,8 @@ func init() {
 		// second `A` inside the dialog a no-op rather than a re-entrant archive,
 		// and what keeps `x`/`dd`/`r` from acting on the row the dialog asks about.
 		{func(m Model) bool { return m.archiveConfirming }, Model.updateArchiveConfirm},
+		// R299: the update confirmation intercepts every key while it is open.
+		{func(m Model) bool { return m.updateConfirming }, Model.updateUpdateConfirm},
 		{func(m Model) bool { return m.settingsOpen }, func(m Model, msg tea.KeyMsg) (tea.Model, tea.Cmd) { return m.updateSettings(msg) }},
 		{func(m Model) bool { return m.themePicking }, Model.updateThemePicker},
 		{func(m Model) bool { return m.help }, Model.updateHelpView},
@@ -274,6 +276,8 @@ func init() {
 		"enter":  Model.keyEnter,
 		"F":      Model.keyEnterFull,
 		"a":      Model.keyAttach,
+		// R299: inert unless the update indicator reads Available.
+		"ctrl+u": Model.keyUpdate,
 	}
 }
 

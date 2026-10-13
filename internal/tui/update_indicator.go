@@ -29,6 +29,9 @@ const (
 	updateInstalled
 	// updateFailed says an update was attempted and failed, naming the cause.
 	updateFailed
+	// updateInstalling is the progress state of a confirmed ctrl+u update
+	// (R299): the verified update is running in the background.
+	updateInstalling
 )
 
 // updateIndicator is the model's whole update-indicator state.
@@ -108,7 +111,7 @@ func (m Model) onUpdateFailed(msg updateFailedMsg) (tea.Model, tea.Cmd) {
 // the process: a later check never replaces it. A refusal that is not a
 // Refusal (the binary cannot be located) hides the indicator.
 func (m *Model) applyUpdateCheck(st upd.Status, refusal error) {
-	if m.updateInd.state == updateInstalled {
+	if m.updateInd.state == updateInstalled || m.updateInd.state == updateInstalling {
 		return
 	}
 	next := updateIndicator{state: updateHidden}
@@ -146,7 +149,7 @@ func refusalPhrase(err error) string {
 // auto_update is on: deck installs it without asking.
 func (m Model) updateIndicatorText() string {
 	ind := m.updateInd
-	if ind.state != updateInstalled && !m.settings.UpdateCheckEnabled() {
+	if ind.state != updateInstalled && ind.state != updateInstalling && !m.settings.UpdateCheckEnabled() {
 		return ""
 	}
 	switch ind.state {
@@ -157,6 +160,8 @@ func (m Model) updateIndicatorText() string {
 		return fmt.Sprintf("update available: %s — press ctrl+u to install", ind.tag)
 	case updateRefused:
 		return fmt.Sprintf("update available: %s — %s", ind.tag, ind.reason)
+	case updateInstalling:
+		return fmt.Sprintf("updating to %s — downloading and verifying…", ind.tag)
 	case updateInstalled:
 		return fmt.Sprintf("update installed: %s — restart deck to apply", ind.tag)
 	case updateFailed:

@@ -1398,7 +1398,7 @@ func (m Model) keysInterceptedAheadOfScrollables() bool {
 // keysInterceptedAheadOfScrollables: the confirm, settings, theme-picker and
 // launch-input dialogs.
 func (m Model) confirmOrSettingsOverlayOpen() bool {
-	return m.deleteConfirming || m.archiveConfirming ||
+	return m.deleteConfirming || m.archiveConfirming || m.updateConfirming ||
 		m.settingsOpen || m.settingsDiscardConfirm || m.themePicking || m.launchInputsEditing
 }
 
