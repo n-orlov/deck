@@ -5,8 +5,8 @@
 [![features](https://img.shields.io/endpoint?url=https%3A%2F%2Fn-orlov.github.io%2Fdeck%2Fbadges%2Ffeatures.json)](https://github.com/n-orlov/deck/actions/workflows/ci.yml?query=branch%3Amain)
 [![coverage](https://img.shields.io/endpoint?url=https%3A%2F%2Fn-orlov.github.io%2Fdeck%2Fbadges%2Fcoverage.json)](https://n-orlov.github.io/deck/)
 [![vulnerabilities](https://img.shields.io/endpoint?url=https%3A%2F%2Fn-orlov.github.io%2Fdeck%2Fbadges%2Fvulnerabilities.json)](https://github.com/n-orlov/deck/actions/workflows/ci.yml?query=branch%3Amain)
-[![license](https://img.shields.io/badge/license-none_declared-lightgrey)](https://github.com/n-orlov/deck)
-[![Go version](https://img.shields.io/badge/go-1.25.0-00ADD8)](https://go.dev/doc/devel/release)
+[![license](https://img.shields.io/badge/license-none_declared-lightgrey)](https://github.com/n-orlov/deck/actions/workflows/ci.yml?query=branch%3Amain)
+[![Go version](https://img.shields.io/badge/go-1.25.0-00ADD8)](https://github.com/n-orlov/deck/actions/workflows/ci.yml?query=branch%3Amain)
 [![report](https://img.shields.io/badge/report-Allure-blue)](https://n-orlov.github.io/deck/)
 <!-- badges:end -->
 

@@ -140,6 +140,28 @@ func TestBadgeBlockContent(t *testing.T) {
 	}
 }
 
+// TestEveryBadgeLinksToWorkflowOrReport pins R291's link rule: each badge in
+// the block links either to the ci.yml workflow's runs on main or to the
+// published report, and nowhere else.
+func TestEveryBadgeLinksToWorkflowOrReport(t *testing.T) {
+	block := Block("1.25.0")
+	lines := strings.Split(block, "\n")
+	allowed := map[string]bool{
+		"https://github.com/n-orlov/deck/actions/workflows/ci.yml?query=branch%3Amain": true,
+		"https://n-orlov.github.io/deck/":                                              true,
+	}
+	for _, line := range lines[1 : len(lines)-1] {
+		i := strings.LastIndex(line, "](")
+		if i < 0 || !strings.HasSuffix(line, ")") {
+			t.Fatalf("badge line has no link: %q", line)
+		}
+		link := line[i+2 : len(line)-1]
+		if !allowed[link] {
+			t.Errorf("badge links to %q, neither the ci.yml workflow nor the report: %q", link, line)
+		}
+	}
+}
+
 func TestGoVersionParsing(t *testing.T) {
 	if v, err := GoVersion("module x\n\ngo 1.25.0\n\ntoolchain go1.26.9\n"); err != nil || v != "1.25.0" {
 		t.Fatalf("got %q, %v", v, err)

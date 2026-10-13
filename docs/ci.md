@@ -810,8 +810,8 @@ shields.io `endpoint` badges and three static ones:
 | CI | `actions/workflows/ci.yml/badge.svg?branch=main` | the `ci.yml` runs on `main` |
 | lint, unit tests, features, vulnerabilities | `https://n-orlov.github.io/deck/badges/<name>.json`, the `gh-pages` path `badges/<name>.json` that `ci/badgegen` writes (see above) | the `ci.yml` runs on `main` |
 | coverage | `badges/coverage.json`, same path | the published report |
-| license | static | the repository |
-| Go version | static, the `go` directive of `go.mod` | the Go release history |
+| license | static | the `ci.yml` runs on `main` |
+| Go version | static, the `go` directive of `go.mod` | the `ci.yml` runs on `main` (which build and test with that version) |
 | report | static | the published Allure report, `https://n-orlov.github.io/deck/` |
 
 The endpoint badges are not written by this generator: `ci/badgegen` writes

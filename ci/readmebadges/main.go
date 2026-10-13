@@ -13,7 +13,9 @@
 //     the badges/<name>.json the report job publishes to gh-pages and linked
 //     to the ci.yml workflow (the coverage badge links to the report);
 //   - static badges for the licence, the Go version (the "go" directive of
-//     go.mod) and the published Allure report, the last linked to the report.
+//     go.mod) and the published Allure report. The licence and Go-version
+//     badges link to the ci.yml workflow's runs on main (which build and
+//     test with that Go version); the report badge links to the report.
 //
 // The generator reads go.mod only. It has no network access and writes no
 // file other than README.md.
@@ -39,6 +41,9 @@ const (
 const (
 	repoURL     = "https://github.com/n-orlov/deck"
 	workflowURL = repoURL + "/actions/workflows/ci.yml"
+	// mainRunsURL is the ci.yml workflow's runs on main: the link of every
+	// badge except coverage and report, which link to the report.
+	mainRunsURL = workflowURL + "?query=branch%3Amain"
 	pagesURL    = "https://n-orlov.github.io/deck/"
 	badgesURL   = pagesURL + "badges/"
 	// licenseText is what the licence badge states. The repository declares
@@ -88,9 +93,9 @@ func Block(goVersion string) string {
 	lines := []string{StartMarker}
 	lines = append(lines, badge("CI",
 		workflowURL+"/badge.svg?branch=main",
-		workflowURL+"?query=branch%3Amain"))
+		mainRunsURL))
 	for _, g := range gateBadges {
-		link := workflowURL + "?query=branch%3Amain"
+		link := mainRunsURL
 		if g.Name == "coverage" {
 			link = pagesURL
 		}
@@ -98,8 +103,8 @@ func Block(goVersion string) string {
 		lines = append(lines, badge(g.Alt, image, link))
 	}
 	lines = append(lines,
-		badge("license", staticImage("license", licenseText, "lightgrey"), repoURL),
-		badge("Go version", staticImage("go", goVersion, "00ADD8"), "https://go.dev/doc/devel/release"),
+		badge("license", staticImage("license", licenseText, "lightgrey"), mainRunsURL),
+		badge("Go version", staticImage("go", goVersion, "00ADD8"), mainRunsURL),
 		badge("report", staticImage("report", "Allure", "blue"), pagesURL),
 		EndMarker)
 	return strings.Join(lines, "\n")
