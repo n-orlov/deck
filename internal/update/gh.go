@@ -57,7 +57,7 @@ func (g *gh) run(ctx context.Context, args ...string) (string, error) {
 // download fetches one release asset into dir through gh and returns its bytes.
 func (g *gh) download(ctx context.Context, repo, tag, asset, dir string, limit int64) ([]byte, error) {
 	if out, err := g.run(ctx, "release", "download", tag, "-R", repo, "-p", asset, "-D", dir, "--clobber"); err != nil {
-		return nil, fmt.Errorf("gh release download %s: %w: %s", asset, err, strings.TrimSpace(out))
+		return nil, fmt.Errorf("gh release download %s: %w: %w", asset, err, serverString(strings.TrimSpace(out)))
 	}
 	name := filepath.Join(dir, asset)
 	fi, err := os.Stat(name)
@@ -99,5 +99,5 @@ func (o Options) attest(ctx context.Context, g *gh, archive string) (string, err
 	if err == nil {
 		return AttestationVerified, nil
 	}
-	return "", fmt.Errorf("%w for %s: %s", errAttestationFailed, filepath.Base(archive), strings.TrimSpace(out))
+	return "", fmt.Errorf("%w for %s: %w", errAttestationFailed, filepath.Base(archive), serverString(strings.TrimSpace(out)))
 }

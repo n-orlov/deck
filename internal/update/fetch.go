@@ -2,13 +2,14 @@ package update
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
 	"path"
 	"regexp"
+	"strconv"
+	"strings"
 	"time"
 )
 
@@ -40,15 +41,15 @@ func get(ctx context.Context, c *http.Client, raw string, limit int64) ([]byte, 
 	}
 	resp, err := c.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, fromServer(err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("GET %s: %s", RedactURL(raw), resp.Status)
+		return nil, fmt.Errorf("GET %s: %w", RedactURL(raw), statusOf(resp))
 	}
 	data, err := io.ReadAll(io.LimitReader(resp.Body, limit+1))
 	if err != nil {
-		return nil, fmt.Errorf("GET %s: %w", RedactURL(raw), err)
+		return nil, fmt.Errorf("GET %s: %w", RedactURL(raw), fromServer(err))
 	}
 	if int64(len(data)) > limit {
 		return nil, fmt.Errorf("GET %s: larger than %d bytes", RedactURL(raw), limit)
@@ -67,12 +68,12 @@ func LatestTag(ctx context.Context, c *http.Client, base string) (string, error)
 	}
 	resp, err := noFollow.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("resolve latest release: %w", err)
+		return "", fmt.Errorf("resolve latest release: %w", fromServer(err))
 	}
 	defer func() { _ = resp.Body.Close() }()
 	loc, err := resp.Location()
 	if err != nil {
-		return "", fmt.Errorf("resolve latest release: %s without a redirect: %w", resp.Status, err)
+		return "", fmt.Errorf("resolve latest release: %w without a redirect: %w", statusOf(resp), err)
 	}
 	return tagFromLocation(loc)
 }
@@ -80,7 +81,15 @@ func LatestTag(ctx context.Context, c *http.Client, base string) (string, error)
 func tagFromLocation(loc *url.URL) (string, error) {
 	tag := path.Base(loc.Path)
 	if path.Base(path.Dir(loc.Path)) != "tag" || !stableTag.MatchString(tag) {
-		return "", errors.New("resolve latest release: redirect " + loc.Path + " does not name a stable vX.Y.Z tag")
+		return "", fmt.Errorf("resolve latest release: redirect %w does not name a stable vX.Y.Z tag", serverString(loc.Path))
 	}
 	return tag, nil
+}
+
+// statusOf is resp's status for an error: the code deck parsed, then the
+// reason phrase the server chose, marked as server text (a server may echo
+// the credential there).
+func statusOf(resp *http.Response) error {
+	reason := strings.TrimPrefix(resp.Status, strconv.Itoa(resp.StatusCode))
+	return fmt.Errorf("%d%w", resp.StatusCode, serverString(reason))
 }

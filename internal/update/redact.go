@@ -297,13 +297,20 @@ func (e *redactedError) Unwrap() error { return e.err }
 
 // redactErr returns err unchanged when its message holds no credential of
 // any URL nor of the configured one, else an error with the same cause and a
-// redacted message.
+// redacted message. Server text inside it (see serverText) is scrubbed of
+// the configured secrets at any length first.
 func redactErr(err error, configured string) error {
 	if err == nil {
 		return nil
 	}
 	msg := err.Error()
-	if clean := RedactKnown(msg, configured); clean != msg {
+	clean := msg
+	for _, t := range serverTexts(err) {
+		if scrubbed := scrubServerText(t, configured); scrubbed != t {
+			clean = strings.ReplaceAll(clean, t, scrubbed)
+		}
+	}
+	if clean = RedactKnown(clean, configured); clean != msg {
 		return &redactedError{err: err, msg: clean}
 	}
 	return err
