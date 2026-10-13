@@ -4892,7 +4892,11 @@ func (m Model) footerReasonLineWithin(width int) string {
 	if reasonWidth < reasonBudget {
 		reasonBudget = reasonWidth
 	}
-	return m.elideToWidth(reason, reasonBudget) + gap + m.footerLegendWithin(available-reasonBudget)
+	legend := m.footerLegendWithin(available - reasonBudget)
+	if legend == "" {
+		return m.elideToWidth(reason, width)
+	}
+	return m.elideToWidth(reason, reasonBudget) + gap + legend
 }
 
 // footerSegment is one styled piece of the interactive footer and its plain
@@ -4974,7 +4978,8 @@ func (m Model) interactiveFooterLine() string {
 
 // interactiveFooterLineWithin is interactiveFooterLine fitted to width
 // columns, which is narrower than the terminal when the note slot takes the
-// right side. Ctrl+Q is never dropped.
+// right side. The Ctrl+Q hint is dropped last, and only whole: when width is
+// less than the hint needs the line is empty, never a partial key.
 func (m Model) interactiveFooterLineWithin(width int) string {
 	forwardNote := m.colorToken(theme.Hint, "keystrokes forward to the live pane")
 	sep := m.glyph(" · ", " - ")
@@ -4998,7 +5003,10 @@ func (m Model) interactiveFooterLineWithin(width int) string {
 	if cue == "" {
 		if stringWidth("keystrokes forward to the live pane")+sepWidth+quitWidth > width {
 			if quitWidth > width {
-				return key
+				// The hint is one whole entry: with less room than it
+				// needs (a note took the right side) it is omitted, never
+				// shown as a bare key or clipped mid-word.
+				return ""
 			}
 			return quit
 		}
@@ -5024,11 +5032,9 @@ func (m Model) interactiveFooterLineWithin(width int) string {
 
 	budget := width - quitWidth
 	if budget < 0 {
-		// Narrower than deck's own 80-column floor guarantees (footerLine's
-		// caller never reaches here below that floor -- computeLayout's
-		// BelowMinimum short-circuits first); still never drop the one way
-		// out.
-		return key
+		// Less room than the hint needs: a note took the right side. The
+		// hint is omitted whole rather than shown as a partial key.
+		return ""
 	}
 	kept := footerSegmentsKept(segments, budget, sepWidth)
 	if kept == 0 {
@@ -5277,9 +5283,9 @@ func (m Model) footerLegendWidth() int {
 // the elision is marked with `…` (`...` under DECK_ASCII) in the `hint`
 // token, so the line stays the one line SPEC §11.3 guarantees stays on
 // screen and the user can see that the legend is not the whole story (the
-// `?` overlay and §11's keymap remain the complete list). Only a budget
-// too narrow for even the first entry plus that marker falls back to a
-// plain clip, which is a terminal narrower than any deck supports.
+// `?` overlay and §11's keymap remain the complete list). A budget too
+// narrow for even the first entry plus that marker yields "": the legend
+// never clips a key or its text.
 func (m Model) footerLegendWithin(budget int) string {
 	segments, widths := m.footerLegendSegments()
 	sep := m.glyph(" · ", " - ")
@@ -5301,7 +5307,7 @@ func (m Model) footerLegendWithin(budget int) string {
 		width, kept = next, i+1
 	}
 	if kept == 0 {
-		return truncateToWidth(strings.Join(segments, sep), budget)
+		return ""
 	}
 	return strings.Join(segments[:kept], sep) + sep + marker
 }

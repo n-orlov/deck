@@ -2928,7 +2928,10 @@ truncated-but-honest frame beats an unpredictable one.
   same resume note again). A note is one
   line: a multi-line message is collapsed to one and, when it is longer than the line, elided
   with an ellipsis and never wrapped. It keeps its text up to the full width; the footer's own
-  content gives up whole trailing entries to make room. The below-minimum notice keeps the
+  content gives up whole trailing entries to make room, and an entry that does not fit whole is
+  left out, never clipped: the list legend shows whole entries (then `…`) or none, and the
+  interactive footer shows the `Ctrl+Q leave interactive mode` hint whole or not at all, never a
+  bare or partial key, when the note leaves less room than the hint needs. The below-minimum notice keeps the
   footer over any note. A failure message too long for the line stays whole in the `i` detail
   dialog, which shows the attach error wrapped across lines. The banners above the
   frame, the pending-delete prompt and the filter status line are not notes and keep their

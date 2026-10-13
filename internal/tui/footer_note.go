@@ -297,7 +297,9 @@ func (m Model) footerWithNote(note string) string {
 	if budget > 0 {
 		left = m.footerLeftWithin(budget)
 		if stringWidth(left) > budget {
-			left = truncateToWidth(left, budget)
+			// Never clip a key or its text: what does not fit whole is
+			// left out.
+			left = ""
 		}
 	}
 	pad := width - stringWidth(left) - noteWidth

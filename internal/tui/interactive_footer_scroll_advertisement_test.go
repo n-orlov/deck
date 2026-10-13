@@ -70,7 +70,8 @@ func TestInteractiveFooterAtTheLiveBottomNeverNamesTheScrollKeys(t *testing.T) {
 // width this table drives, each one forcing one more degradation step
 // than the last) the rendered footer never exceeds the frame, and
 // Ctrl+Q -- the one way out of interactive mode -- survives every single
-// one of those steps, including the narrowest.
+// one of those steps down to the hint's own width, below which it is omitted
+// whole rather than clipped.
 func TestInteractiveFooterDegradesWithoutOverflowingTheFrame(t *testing.T) {
 	const offset = 5 // fixes the cue's own text (and width) across the table
 	cases := []struct {
@@ -88,7 +89,11 @@ func TestInteractiveFooterDegradesWithoutOverflowingTheFrame(t *testing.T) {
 		// information -- is the next to drop.
 		{80, "golden 80 columns: the scroll-key advertisement is dropped next", []string{"Scrolled back 5 lines", "Ctrl+Q"}, []string{"Shift+PgUp/PgDn"}},
 		{60, "narrower still: even the cue itself is dropped", []string{"Ctrl+Q", "leave interactive mode"}, []string{"Scrolled back", "Shift+PgUp/PgDn"}},
-		{20, "narrower than Ctrl+Q's own hint: only the bare key survives", []string{"Ctrl+Q"}, []string{"leave interactive mode", "Scrolled back", "Shift+PgUp/PgDn"}},
+		// Narrower than the hint itself (only a note can leave so little;
+		// the frame's own floor is 80): the hint is one whole entry, so it
+		// is omitted rather than shown as a bare key. Covered with a note
+		// by TestInteractiveFooterWithNoteNeverShowsAPartialQuitHint.
+		{20, "narrower than Ctrl+Q's own hint: nothing partial survives", nil, []string{"Ctrl", "leave interactive mode", "Scrolled back", "Shift+PgUp/PgDn"}},
 	}
 
 	for _, tc := range cases {
@@ -96,7 +101,7 @@ func TestInteractiveFooterDegradesWithoutOverflowingTheFrame(t *testing.T) {
 		if got := stringWidth(footer); got > tc.width {
 			t.Fatalf("%s (width=%d): footer %q has visible width %d, want <= %d", tc.name, tc.width, footer, got, tc.width)
 		}
-		if !strings.Contains(footer, "Ctrl+Q") {
+		if tc.width >= stringWidth("Ctrl+Q leave interactive mode") && !strings.Contains(footer, "Ctrl+Q") {
 			t.Fatalf("%s (width=%d): footer = %q, Ctrl+Q must survive every degradation step", tc.name, tc.width, footer)
 		}
 		for _, want := range tc.wantContains {
