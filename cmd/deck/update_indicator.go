@@ -13,8 +13,11 @@ import (
 // and auto_update both off the check makes no request.
 func updateIndicatorSource(settings config.Settings) (func(context.Context) update.Status, func() error) {
 	opts := update.Options{Current: version}
+	// No Enabled gate here: the model reads the current effective update_check
+	// and auto_update each time it asks for a check (a live save or an
+	// external reload changes them), so a copy of the startup settings would
+	// keep a check off after the user turns it on.
 	checker := &update.Checker{
-		Enabled:   settings.UpdateCheckEnabled,
 		CachePath: settings.Paths.UpdateCache,
 		Options:   opts,
 	}

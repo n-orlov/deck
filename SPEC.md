@@ -827,7 +827,7 @@ terminal's mouse reporting is switched on or off with it), `ui.preview_fit`, `ui
 `ui.sort_order` (the loaded sessions are re-sorted, the selection stays on its session),
 `ui.default_group_first`, `ui.attach_on_new`, `ui.attach_on_click`, `ui.select_on_drag`,
 `ui.attach_on_resume`, `ui.note_timeout` (the next note follows it), `event_hook`, `event_hook_default`, `adopt_harness_names` (the next adoption or
-push follows it), `bookmarks`, `update_check`, `auto_update` (the next check reads them), `event_hook_events` and
+push follows it), `bookmarks`, `update_check`, `auto_update` (a save or reload that turns the check on runs it at once, one that turns `auto_update` on installs an offered release at once, and one that turns them off stops every later automatic request or install), `event_hook_events` and
 `event_hook_timeout` (the dispatcher reads them from the running settings when an event fires,
 so the next event follows them). A key the file did not change is left as it is, and a key a `DECK_*`
 variable overrides stays pinned to the environment. A changed user theme file re-resolves the
@@ -900,7 +900,12 @@ path or configuration data, and the only header is the standard HTTP client one.
 check shows no indicator, returns no error to the user and is not retried inside the window. Setting
 `update_check = false` (or `DECK_UPDATE_CHECK=0`) disables it: deck then makes no outbound request
 at all. `auto_update` implies the check, so the check runs when either key is on. Both keys are
-read when a check is due, so a settings save or a reload applies at the next one without a restart.
+read from the running settings each time a check is requested or an answer is applied, never from a
+copy taken at start-up. A settings save or an external reload that turns the check on (`update_check`,
+or `auto_update`, which implies it) runs the daily check at once, without a restart, still bound by
+the 24-hour cache; one that turns `auto_update` on while a newer release is on offer installs it at
+once; one that turns the check off makes no later request, and an answer already in flight is shown
+but never installed while `auto_update` is off. A key a `DECK_*` variable overrides stays pinned.
 The explicit `deck update` verb (§3.4, §13.1) is the one other request and runs only when asked.
 
 **Auto-update (R300).** With `auto_update = true` (or `DECK_AUTO_UPDATE=1`), a check that finds a
@@ -909,7 +914,7 @@ update` and `ctrl+u` run (§13.1: checksum, then build attestation, then an atom
 indicator reads `updating to vX.Y.Z…` while it runs and Installed (§11) when it ends. deck never
 restarts itself and never touches sessions; the new binary runs at the next start. A failed
 install leaves the binary byte-for-byte as it was, never a partial file, and the indicator reads
-Failed with the cause. A running deck attempts the install once, at its start-up check, and never
+Failed with the cause. A running deck attempts the install once, at its start-up check (or when a live change first turns the check or `auto_update` on), and never
 retries it while it runs; a later start inside the 24-hour window reads the cached answer (the
 check itself makes no request) and, while that answer still names a newer release, attempts the install again.
 Where the update would be refused (an install directory deck cannot write, a

@@ -80,6 +80,12 @@ func (m Model) updateCheckCmd() tea.Cmd {
 	if src.check == nil {
 		return nil
 	}
+	// The effective settings are read here, when the request is made, never
+	// from a copy captured at startup (SPEC §6.5): a check switched off by a
+	// live save or an external reload makes no request.
+	if !m.settings.UpdateCheckEnabled() {
+		return nil
+	}
 	auto := m.settings.AutoUpdate
 	return func() tea.Msg {
 		st := src.check(context.Background())
@@ -97,6 +103,24 @@ func (m Model) updateCheckCmd() tea.Cmd {
 		}
 		return out
 	}
+}
+
+// updateSettingsApplied runs after a live settings save or an external reload
+// changed m.settings. Enabling the check (update_check or auto_update going
+// on) runs the daily check now, without a restart; turning auto_update on
+// while a release is already on offer installs it at once, as an auto-update
+// check that had found it would. Disabling needs no command: the next
+// updateCheckCmd sees the check off and makes no request, and an answer
+// already in flight is applied without an install (onUpdateChecked reads the
+// current auto_update).
+func (m *Model) updateSettingsApplied(wasEnabled, wasAuto bool) tea.Cmd {
+	if m.settings.AutoUpdate && !wasAuto && m.updateInd.state == updateAvailable {
+		return m.startUpdate()
+	}
+	if m.settings.UpdateCheckEnabled() && !wasEnabled {
+		return m.updateCheckCmd()
+	}
+	return nil
 }
 
 // isDevRefusal reports whether err refuses a dev build.

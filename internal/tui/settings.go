@@ -533,8 +533,12 @@ func (m *Model) settingsEventHookRefusal() string {
 // settingsFieldEnvOverride for the one map this reuses instead of adding a
 // second notion of "overridden".
 func (m *Model) settingsApplyLiveFields(edited, previous config.FileConfig) tea.Cmd {
+	wasEnabled, wasAuto := m.settings.UpdateCheckEnabled(), m.settings.AutoUpdate
 	m.settingsApplyLiveScalars(edited, previous)
 	cmd := m.settingsApplyLiveMouse(edited, previous)
+	if updateCmd := m.updateSettingsApplied(wasEnabled, wasAuto); updateCmd != nil {
+		cmd = tea.Batch(cmd, updateCmd)
+	}
 	m.settingsApplyLiveTheme(edited, previous)
 	m.settingsApplyLiveSortOrder(edited, previous)
 	m.settingsApplyLiveDefaultGroupFirst(edited, previous)
