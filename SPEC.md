@@ -919,6 +919,15 @@ Skipped with its reason (`auto-update skipped: vX.Y.Z — dev build, install a r
 install.sh`). With `auto_update` off, deck downloads no archive on its own: a newer release is
 only offered (Available, `ctrl+u`), and a `dev` build shows nothing.
 
+**Live sessions across an update (R301).** An update never disturbs a running agent. The atomic
+replace makes the next `_hook` run any session's agent starts the new binary, with the session's
+status and the state database unchanged (`PRAGMA integrity_check` stays `ok`) while an older TUI
+keeps running. In the other direction, a newer TUI over sessions whose agents still run the older
+binary's hook command is served by the existing mechanisms alone: the older hook meets a newer
+schema, re-execs the `writer_binary` the TUI recorded (§3.1), and the new version lands the
+update. No further mechanism is involved. `TestUpdateOldTUINewHooks` and
+`TestUpdateNewTUIOldHooks` in `cmd/deck/` exercise both directions with real binaries.
+
 Two rules that hold for every key, present and future:
 
 - **The schema is the single source of truth** for parsing the file *and* for generating the
