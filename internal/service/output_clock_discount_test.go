@@ -107,3 +107,69 @@ func TestDiscountWindowIsAtMostOneBucket(t *testing.T) {
 		}
 	}
 }
+
+// sameBucketHarness takes its baseline read at window_activity 1000, the same
+// 10 s bucket (100) as the discounted redraw at 1003, with the discount window
+// anchored at wall time 1001 s.
+func sameBucketHarness(t *testing.T) *outputHarness {
+	t.Helper()
+	h := newOutputHarness(t)
+	now := time.Unix(1001, 0)
+	h.clock.Now = func() time.Time { return now }
+	h.pane = pane("hello", "~/proj  main  ctx:12%")
+	if h.tick(1000) {
+		t.Fatal("the baseline read must count nothing")
+	}
+	return h
+}
+
+// A discounted change in the bucket already examined is remembered too: the
+// next bucket's read of the unchanged transcript (footer-only activity at
+// 1012) does not count the deck-caused redraw.
+func TestDiscountedSameBucketOutputIsNotCountedLater(t *testing.T) {
+	causes := map[string]func(h *outputHarness){
+		"resize": func(h *outputHarness) { h.clock.Discount(h.id, DiscountResize) },
+		"key":    func(h *outputHarness) { h.clock.Discount(h.id, DiscountKey) },
+		"attach": func(h *outputHarness) { h.clock.AttachStarted(h.id); h.clock.AttachEnded(h.id) },
+	}
+	for name, start := range causes {
+		t.Run(name, func(t *testing.T) {
+			h := sameBucketHarness(t)
+			start(h)
+			h.provoke()
+			if h.tick(1003) {
+				t.Fatalf("deck-caused redraw advanced last_output_at to %d", h.lastOutputAt())
+			}
+			h.pane = pane("hello\nredraw", "~/proj  main  ctx:13%")
+			if h.tick(1012) {
+				t.Fatalf("footer-only activity after a same-bucket discounted redraw advanced last_output_at to %d", h.lastOutputAt())
+			}
+			if got := h.lastOutputAt(); got != 0 {
+				t.Fatalf("last_output_at = %d, want 0", got)
+			}
+		})
+	}
+}
+
+// Real output after a same-bucket discounted redraw still counts, and a
+// same-bucket tick outside any window still captures nothing.
+func TestSameBucketDiscountKeepsLaterOutputCounting(t *testing.T) {
+	h := sameBucketHarness(t)
+	h.clock.Discount(h.id, DiscountResize)
+	h.provoke()
+	h.tick(1003)
+	reads := h.reads
+	if h.tick(1008) {
+		t.Fatal("a same-bucket tick outside the window must write nothing")
+	}
+	if h.reads != reads {
+		t.Fatalf("a same-bucket tick outside the window captured the pane (%d -> %d reads)", reads, h.reads)
+	}
+	h.pane = pane("hello\nredraw\nagent output", "~/proj  main  ctx:12%")
+	if !h.tick(1012) {
+		t.Fatal("real output after the window must advance last_output_at")
+	}
+	if got := h.lastOutputAt(); got != 1012_000 {
+		t.Fatalf("last_output_at = %d, want %d", got, 1012_000)
+	}
+}

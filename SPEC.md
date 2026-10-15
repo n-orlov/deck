@@ -1141,7 +1141,7 @@ precedence above reads it. tmux's `window_activity` (whole seconds) only *nomina
 because it also moves for footer and statusline churn (`ctx:%`, branch, model). Each probing
 reconcile tick (the TUI's, never the hook-critical `Reconcile`) compares the window's activity bucket
 (`window_activity` divided by the bucket width, 10 s) with the last one examined for that session. A
-tick in the same bucket reads and writes nothing. When the bucket has advanced, deck captures the
+tick in the same bucket reads and writes nothing (except inside a discount window, below). When the bucket has advanced, deck captures the
 pane, cuts it at the boundary the probe's `lastContentLine` uses, **the earlier of the last two
 separator lines**, and hashes the **transcript region** above it (trailing blanks ignored). Only a
 changed hash counts: it writes `last_output_at` as `window_activity` in milliseconds. A bucket
@@ -1154,7 +1154,10 @@ as `last_probe_at` above), and it leaves `status`, `status_source` and `status_a
 
 **Deck-caused output is discounted (R305).** Output deck itself provokes is not the agent's activity,
 so a transcript change the pane shows inside a *discount window* does not advance `last_output_at`
-(the change is still hashed and remembered, so the same text never counts later). The window is
+(the change is still hashed and remembered, so the same text never counts later). This holds in a
+bucket already examined too: a tick whose `window_activity` moved inside a window captures and
+re-baselines the hash even though the bucket did not advance (it writes nothing), so a deck-caused
+redraw in the same bucket as the last reading is not counted by the next bucket's read. The window is
 **5 seconds, and never more than one output bucket** (`min(bucket, 5 s)`), and it starts at each of:
 a deck-caused resize (a preview fit that issued a `resize-window`, and interactive entry and exit,
 which resize the window and make the pane redraw on SIGWINCH), a key deck forwards to the pane in

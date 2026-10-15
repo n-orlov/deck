@@ -69,8 +69,9 @@ const (
 )
 
 type outputState struct {
-	bucket int64 // the window_activity bucket last examined
-	hash   [sha256.Size]byte
+	bucket   int64 // the window_activity bucket last examined
+	activity int64 // the window_activity second last read
+	hash     [sha256.Size]byte
 }
 
 // NewOutputClock returns a clock with the given bucket width, or
@@ -197,8 +198,9 @@ func (c *OutputClock) discounted(sessionID string, windowActivity int64) bool {
 
 // Observe takes one reconcile tick's reading for a session: windowActivity is
 // tmux's window_activity in Unix seconds, and capture reads the pane. It
-// reports whether it wrote last_output_at. capture is called only when the
-// bucket advanced; a tick whose bucket did not change reads and writes nothing.
+// reports whether it wrote last_output_at. capture is called when the bucket
+// advanced, or when window_activity moved inside a discount window (to
+// remember the deck-caused text); any other tick captures and writes nothing.
 func (c *OutputClock) Observe(ctx context.Context, store OutputStore, sessionID string, windowActivity int64, capture func(context.Context) (string, error)) (bool, error) {
 	if c == nil || windowActivity <= 0 {
 		return false, nil
@@ -216,6 +218,27 @@ func (c *OutputClock) Observe(ctx context.Context, store OutputStore, sessionID 
 	previous, seen := c.state[sessionID]
 	c.mu.Unlock()
 	if seen && bucket <= previous.bucket {
+		// R305: output inside a deck-caused window in a bucket already
+		// examined is still hashed, so the deck-caused text becomes the
+		// baseline and the next bucket's read does not count it. Only a
+		// window_activity that moved and lies in a window costs a capture.
+		if windowActivity <= previous.activity {
+			return false, nil
+		}
+		if !c.discounted(sessionID, windowActivity) {
+			previous.activity = windowActivity
+			c.mu.Lock()
+			c.state[sessionID] = previous
+			c.mu.Unlock()
+			return false, nil
+		}
+		pane, err := capture(ctx)
+		if err != nil {
+			return false, fmt.Errorf("capture pane for output clock of session %q: %w", sessionID, err)
+		}
+		c.mu.Lock()
+		c.state[sessionID] = outputState{bucket: previous.bucket, activity: windowActivity, hash: sha256.Sum256([]byte(agent.TranscriptRegion(pane)))}
+		c.mu.Unlock()
 		return false, nil
 	}
 	pane, err := capture(ctx)
@@ -236,7 +259,7 @@ func (c *OutputClock) Observe(ctx context.Context, store OutputStore, sessionID 
 		}
 	}
 	c.mu.Lock()
-	c.state[sessionID] = outputState{bucket: bucket, hash: hash}
+	c.state[sessionID] = outputState{bucket: bucket, activity: windowActivity, hash: hash}
 	c.mu.Unlock()
 	return changed, nil
 }
