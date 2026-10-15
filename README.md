@@ -28,7 +28,7 @@ curl -fsSL https://raw.githubusercontent.com/n-orlov/deck/main/install.sh | sh
   that only the checksum was verified; `DECK_REQUIRE_ATTESTATION=1` makes that case abort instead.
 - Requires **tmux >= 3.2**. Agents (`claude`, `pi`, `codex`, `copilot`) only appear if they are on `PATH`.
 - Linux and macOS, amd64 and arm64. **No Windows** (needs tmux) -- use WSL.
-- Check: `deck --version`. Update: `deck update` (or rerun the same line). `deck update --check` only reports whether a newer release exists, and `deck update --version vX.Y.Z` pins a release (a downgrade is allowed). It verifies the archive's checksum and, with an authenticated `gh`, its build attestation, and refuses a dev build, a package-managed install (Homebrew, apt, Nix, snap) and an unwritable directory. Restart a running deck afterwards. A profile named `update` is opened with `DECK_PROFILE=update deck`.
+- Check: `deck --version`. Update: `deck update` (or rerun the same line). `deck update --check` only reports whether a newer release exists, and `deck update --version vX.Y.Z` pins a release (a downgrade is allowed). It verifies the archive's checksum and, with an authenticated `gh`, its build attestation; without one only the checksum is checked (it catches corruption, not a tampered release), and `DECK_REQUIRE_ATTESTATION=1` makes that case abort. The `ctrl+u` confirmation in deck says which of the two will happen before it runs, and the footer's `update installed` note says `checksum-only` when only the checksum was verified. It refuses a dev build, a package-managed install (Homebrew, apt, Nix, snap) and an unwritable directory. Restart a running deck afterwards. A profile named `update` is opened with `DECK_PROFILE=update deck`.
 
 ## Run
 

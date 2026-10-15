@@ -180,7 +180,7 @@ func TestCtrlUConfirmInstall(t *testing.T) {
 		t.Fatalf("update ran %d times, want 1", runs.Load())
 	}
 	m = sendUpdateMsg(t, m, msg)
-	const want = "update installed: v1.2.3 — restart deck to apply"
+	const want = "update installed: v1.2.3 (checksum-only, attestation not verified) — restart deck to apply"
 	if got := m.footerNote(); got != want {
 		t.Fatalf("after the update: note = %q, want %q", got, want)
 	}

@@ -3100,7 +3100,11 @@ truncated-but-honest frame beats an unpredictable one.
     indicator goes straight to the progress text): `update available: vX.Y.Z — press ctrl+u to install`.
   - **Installed** (after an auto or manual update): `update installed: vX.Y.Z — restart deck to
     apply`. It replaces the Available text and stays until deck restarts: no later check result,
-    failure or setting change takes it back.
+    failure or setting change takes it back. The TUI keeps the update's `Result.Attestation`
+    (R331): when the install was verified by the checksum alone (`checksum-only`, no authenticated
+    `gh`), the text reads `update installed: vX.Y.Z (checksum-only, attestation not verified) —
+    restart deck to apply`. An attested install keeps the plain text. The state is the indicator's
+    `attestation` field; the tests assert it and the `checksum-only` token, not the sentence.
   - **Failed** (an update attempt failed): `update failed — see deck update`, followed by the
     cause in parentheses.
   - **Refused** (a newer release exists but this install cannot take it): `update available:
@@ -3154,8 +3158,14 @@ contract so learning any one of them teaches the rest:
   at the place it acts. Nothing *undeclared* is load-bearing.
 - **The update confirmation** (`ctrl+u` while the update indicator reads Available, §11) is a
   dialog with no fields: it shows the current version and the target version, says that
-  confirming downloads the release, verifies its checksum and build attestation and replaces
-  the binary in the background, and that deck keeps running and does not touch sessions.
+  confirming downloads the release, verifies its checksum and replaces the binary in the
+  background, and that deck keeps running and does not touch sessions. Before anything runs it
+  also states, on a line `Attestation: <state>`, whether the build attestation will be verified
+  (R331): `verified` when an authenticated `gh` is on `PATH`; `checksum-only` when there is none,
+  where the checksum alone is used, which catches corruption only; `refused` when there is none
+  and `DECK_REQUIRE_ATTESTATION=1`, where the update will be refused and nothing installed. The
+  state is asked each time the dialog opens, by the same test the update itself applies
+  (`update.PlanAttestation`), and is the model's `updateAttPlan`.
   `↵` installs and closes the dialog, leaving the progress state in the footer indicator; `esc`
   cancels and changes nothing — no request, no write. Every other key is swallowed, so a second
   `ctrl+u` inside it does nothing. It is never offered in interactive mode, where `ctrl+u` is

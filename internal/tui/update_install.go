@@ -17,13 +17,34 @@ import (
 type updateInstaller struct {
 	current string
 	run     func(context.Context) (upd.Result, error)
+	// plan says what the update will do about the build attestation
+	// (upd.AttestationVerified / AttestationSkipped / AttestationRefused). Nil
+	// means upd.PlanAttestation, the question the update itself will ask.
+	plan func() string
+}
+
+// WithUpdateAttestationPlan replaces how the ctrl+u confirmation learns
+// whether the attestation will be verified (R331). Tests use it; the default
+// asks upd.PlanAttestation, which looks for an authenticated gh.
+func (m Model) WithUpdateAttestationPlan(plan func() string) Model {
+	m.updateInstall.plan = plan
+	return m
+}
+
+// attestationPlan asks the installer what the update will do about the
+// attestation, now.
+func (m Model) attestationPlan() string {
+	if m.updateInstall.plan != nil {
+		return m.updateInstall.plan()
+	}
+	return upd.PlanAttestation(context.Background(), upd.Options{})
 }
 
 // WithUpdateInstaller wires ctrl+u's confirmed update into the model. A model
 // without an installer still shows the confirmation, but confirming it fails
 // with "updating is unavailable".
 func (m Model) WithUpdateInstaller(current string, run func(context.Context) (upd.Result, error)) Model {
-	m.updateInstall = updateInstaller{current: current, run: run}
+	m.updateInstall = updateInstaller{current: current, run: run, plan: m.updateInstall.plan}
 	return m
 }
 
@@ -58,6 +79,7 @@ func (m Model) keyUpdate(_ tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	m.updateConfirming = true
+	m.updateAttPlan = m.attestationPlan()
 	return m, nil
 }
 
@@ -103,7 +125,7 @@ func (m *Model) startUpdate() tea.Cmd {
 		if res.Tag == "" {
 			res.Tag = tag
 		}
-		return updateInstalledMsg{tag: res.Tag}
+		return updateInstalledMsg{tag: res.Tag, attestation: res.Attestation}
 	}
 }
 
@@ -123,13 +145,38 @@ func (m Model) updateConfirmBody() string {
 Current version: %s
 Target version:  %s
 
-Confirming downloads the release, verifies its checksum and build
-attestation and replaces the deck binary on disk, in the background.
-deck keeps running, does not restart and does not touch your sessions:
-restart deck to run the new version.
+Attestation: %s
+%s
 
-Enter installs · Esc cancels
-`, current, upd.StripControl(m.updateInd.tag))
+Confirming downloads the release, verifies its checksum and replaces
+the deck binary on disk, in the background. deck keeps running, does
+not restart and does not touch your sessions: restart deck to run the
+new version.
+
+%s
+`, current, upd.StripControl(m.updateInd.tag), m.updateAttPlan, attestationSentence(m.updateAttPlan), updateConfirmHint(m.updateAttPlan))
+}
+
+// updateConfirmHint is the dialog's key line: a refused update cannot be
+// installed, so Enter is not offered.
+func updateConfirmHint(plan string) string {
+	if plan == upd.AttestationRefused {
+		return "Enter tries anyway and is refused · Esc cancels"
+	}
+	return "Enter installs · Esc cancels"
+}
+
+// attestationSentence is what the confirmation says about the build
+// attestation for one plan (R331). The token on the line above it carries the
+// state; this is its explanation.
+func attestationSentence(plan string) string {
+	switch plan {
+	case upd.AttestationVerified:
+		return "The build attestation will be verified with your authenticated gh."
+	case upd.AttestationRefused:
+		return "No authenticated gh is available and " + upd.EnvRequireAttestation + "=1 is set:\nthe update will be refused and nothing will be installed."
+	}
+	return "No authenticated gh is available, so the build attestation will not be\nverified: only the checksum is used, which catches corruption only."
 }
 
 func (m Model) styledUpdateConfirmBody() string {
@@ -139,7 +186,7 @@ func (m Model) styledUpdateConfirmBody() string {
 		switch {
 		case i == 0:
 			lines[i] = m.colorToken(theme.Title, l)
-		case l == "Enter installs · Esc cancels":
+		case l == "Enter installs · Esc cancels" || l == updateConfirmHint(upd.AttestationRefused):
 			lines[i] = m.colorToken(theme.Hint, l)
 		}
 	}

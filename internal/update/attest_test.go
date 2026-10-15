@@ -302,3 +302,48 @@ func (c countingTransport) RoundTrip(r *http.Request) (*http.Response, error) {
 	c.hits[r.URL.Path]++
 	return c.base.RoundTrip(r)
 }
+
+// TestPlanAttestationPredictsWhatRunDoes: PlanAttestation answers, before any
+// download, the three outcomes Run then produces (R331).
+func TestPlanAttestationPredictsWhatRunDoes(t *testing.T) {
+	for _, c := range []struct {
+		name     string
+		auth     int // -1: no gh on PATH
+		require  bool
+		want     string
+		wantEnv  bool
+		wantRun  string
+		runFails bool
+	}{
+		{"authenticated", 0, false, AttestationVerified, false, AttestationVerified, false},
+		{"unauthenticated", 1, false, AttestationSkipped, false, AttestationSkipped, false},
+		{"absent", -1, false, AttestationSkipped, false, AttestationSkipped, false},
+		{"absent, option", -1, true, AttestationRefused, false, "", true},
+		{"absent, env", -1, false, AttestationRefused, true, "", true},
+		{"authenticated, env", 0, false, AttestationVerified, true, AttestationVerified, false},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			rel := newRelease(t)
+			srv := rel.serve(t)
+			if c.auth >= 0 {
+				installFakeGh(t, rel, c.auth, 0, "")
+			} else {
+				t.Setenv("PATH", t.TempDir())
+			}
+			if c.wantEnv {
+				t.Setenv(EnvRequireAttestation, "1")
+			} else {
+				t.Setenv(EnvRequireAttestation, "")
+			}
+			o := Options{BaseURL: srv.URL, GOOS: "linux", GOARCH: "amd64", RequireAttestation: c.require}
+			if got := PlanAttestation(context.Background(), o); got != c.want {
+				t.Fatalf("PlanAttestation = %q, want %q", got, c.want)
+			}
+			_, o.Exe = installOld(t)
+			res, err := Run(context.Background(), o)
+			if (err != nil) != c.runFails || res.Attestation != c.wantRun {
+				t.Errorf("Run: attestation %q, err %v; want %q, fails=%v", res.Attestation, err, c.wantRun, c.runFails)
+			}
+		})
+	}
+}

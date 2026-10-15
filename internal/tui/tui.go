@@ -337,6 +337,10 @@ type Model struct {
 	// (update_install.go).
 	updateInstall    updateInstaller
 	updateConfirming bool
+	// updateAttPlan is what the open ctrl+u confirmation told the user about
+	// the attestation (upd.AttestationVerified / Skipped / Refused), set when
+	// the dialog opened (R331).
+	updateAttPlan string
 	// pendingDelete is true for exactly one keypress after a lone `d`
 	// (SPEC's dd chord): a second `d` opens deleteConfirming; ANY other
 	// key (including Esc) clears pendingDelete without performing any

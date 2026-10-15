@@ -119,7 +119,7 @@ func TestAutoUpdate(t *testing.T) {
 	if m.updateConfirming {
 		t.Fatal("auto-update opened a confirmation")
 	}
-	if got, want := m.footerNote(), "update installed: v1.2.3 — restart deck to apply"; got != want {
+	if got, want := m.footerNote(), "update installed: v1.2.3 (checksum-only, attestation not verified) — restart deck to apply"; got != want {
 		t.Fatalf("indicator = %q, want %q", got, want)
 	}
 	if got := srv.archives.Load(); got != 1 {

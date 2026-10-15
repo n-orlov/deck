@@ -42,6 +42,10 @@ type updateIndicator struct {
 	state  updateIndicatorState
 	tag    string // the release the state talks about
 	reason string // the refusal reason (updateRefused) or the cause (updateFailed)
+	// attestation is Result.Attestation of an installed update
+	// (updateInstalled only): upd.AttestationSkipped means only the checksum
+	// was verified (R331).
+	attestation string
 }
 
 // updateSource is how the model learns about releases: the throttled daily
@@ -61,7 +65,7 @@ type updateChecked struct {
 
 // updateInstalledMsg and updateFailedMsg report an update attempt's end. The
 // ctrl+u flow and the auto-install send them.
-type updateInstalledMsg struct{ tag string }
+type updateInstalledMsg struct{ tag, attestation string }
 type updateFailedMsg struct{ cause string }
 
 // WithUpdateSource wires the daily update check into the model: check is the
@@ -144,7 +148,7 @@ func (m Model) onUpdateChecked(msg updateChecked) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) onUpdateInstalled(msg updateInstalledMsg) (tea.Model, tea.Cmd) {
-	m.updateInd = updateIndicator{state: updateInstalled, tag: msg.tag}
+	m.updateInd = updateIndicator{state: updateInstalled, tag: msg.tag, attestation: msg.attestation}
 	m.footerNoteSets[noteUpdate]++
 	return m, nil
 }
@@ -236,6 +240,9 @@ func (m Model) updateStateText(ind updateIndicator) string {
 	case updateInstalling:
 		return fmt.Sprintf("updating to %s — downloading and verifying…", ind.tag)
 	case updateInstalled:
+		if ind.attestation == upd.AttestationSkipped {
+			return fmt.Sprintf("update installed: %s (checksum-only, attestation not verified) — restart deck to apply", ind.tag)
+		}
 		return fmt.Sprintf("update installed: %s — restart deck to apply", ind.tag)
 	case updateFailed:
 		return updateFailedText(ind.reason)

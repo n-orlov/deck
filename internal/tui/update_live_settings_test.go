@@ -151,7 +151,7 @@ func TestLiveSaveEnablingAutoUpdateInstallsWithoutRestart(t *testing.T) {
 	r.startup()
 	r.assertRequests(0)
 	r.saveToggle("auto_update")
-	if got := r.h.m.footerNote(); got != "update installed: v1.2.3 — restart deck to apply" {
+	if got := r.h.m.footerNote(); got != "update installed: v1.2.3 (checksum-only, attestation not verified) — restart deck to apply" {
 		t.Fatalf("after enabling auto_update: note = %q", got)
 	}
 	if r.binary() != ctrlUNewBody || r.srv.archives.Load() != 1 {

@@ -23,7 +23,28 @@ const EnvRequireAttestation = "DECK_REQUIRE_ATTESTATION"
 const (
 	AttestationVerified = "verified"
 	AttestationSkipped  = "checksum-only"
+	// AttestationRefused is only ever a PlanAttestation answer: the update
+	// would be refused, because the attestation cannot be checked and
+	// DECK_REQUIRE_ATTESTATION=1 forbids falling back to the checksum.
+	AttestationRefused = "refused"
 )
+
+// PlanAttestation says, before anything is downloaded, what Run would do
+// about the build attestation: AttestationVerified (an authenticated gh is
+// present, so the attestation is verified and a failure aborts),
+// AttestationSkipped (no authenticated gh: the checksum alone is used, which
+// catches corruption only) or AttestationRefused (no authenticated gh and
+// DECK_REQUIRE_ATTESTATION=1 or Options.RequireAttestation). It asks the same
+// question attest does and touches nothing.
+func PlanAttestation(ctx context.Context, o Options) string {
+	if findGh(ctx) != nil {
+		return AttestationVerified
+	}
+	if o.RequireAttestation || os.Getenv(EnvRequireAttestation) == "1" {
+		return AttestationRefused
+	}
+	return AttestationSkipped
+}
 
 const ghTimeout = 2 * time.Minute
 
