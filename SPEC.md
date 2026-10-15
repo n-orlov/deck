@@ -1105,6 +1105,13 @@ Rules:
   and the phase 2 real-Claude logs), so none is guessed; until one is established the hook side
   (`permission_prompt`, `elicitation_dialog`) is the only source for those shapes. The idle, running, starting
   and error goldens never probe `waiting`.
+- **Codex terminal error is anchored (R313).** Codex's `■` error rule (`error`, reason `terminal error`) matches only
+  on the **last content line**, the way pi's `Error:` is anchored: the last content block above codex's composer
+  (the last `›` line within the final three non-blank lines, then its footer) must be led by a `■ ` in column 0.
+  Codex indents an agent cell's and a tool result's continuation lines, and a long error line wraps with indented
+  continuations, so the block's head is found by reading up over indented lines. A `■` in a markdown body, in a
+  progress bar (`[■■■□□]`) or in a tool's output, followed or surrounded by more transcript, is not `error`. A
+  trailing `■ unexpected status ...` line is. Goldens: `testdata/probes/codex/error.txt`.
 - Probe heuristics live in one table-driven file with golden-file tests over captured pane
   text — a fixture corpus per agent, so a spinner or prompt redesign upstream is a
   one-fixture fix.
@@ -1604,7 +1611,8 @@ names** as Claude (`session_id`, `cwd`, `transcript_path`, `hook_event_name`,
 Claude-compatible shim, so the receiver parses codex payloads with no new payload work.
 `PermissionRequest` is the only genuinely new event name. Codex has no analogue of Claude's
 stop-failure event, so a codex row's `error` comes from the probe or from process death, not
-from a hook.
+from a hook. The probe reads codex's `■` error glyph only as the head of the last content block above the
+composer (R313, §7), never from a `■` elsewhere in the capture.
 
 **The one hard limitation: in the interactive TUI `SessionStart` does not fire at launch — it
 fires when the first prompt is submitted.** A freshly launched, never-prompted codex is

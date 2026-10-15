@@ -111,8 +111,12 @@ var probeRules = []probeRule{
 	// "waiting" entry.
 	{kind: "codex", contains: []string{"Press enter to confirm or esc to cancel"}, status: "waiting", reason: "approval prompt"},
 	// A leading "■" marks codex's terminal, retries-exhausted error line
-	// (error.txt) and appears nowhere else in the corpus.
-	{kind: "codex", contains: []string{"■"}, status: "error", reason: "terminal error"},
+	// (error.txt). R313: it counts only as the head of the last content block
+	// above codex's composer (codexTerminalError), the way pi's "Error:" is
+	// anchored to its last content line: "■" in a markdown body, a progress bar
+	// or a tool's output is followed by more transcript, or is indented, and is
+	// not an error.
+	{kind: "codex", contains: []string{"■"}, match: codexTerminalError, status: "error", reason: "terminal error"},
 	// TRAP (see codex-PROVENANCE.md "Two traps"): "esc to interrupt" also
 	// appears on a mid-retry network-error cell (retrying.txt:
 	// "Reconnecting... 4/5 (2s • esc to interrupt)"), which is textually
@@ -309,6 +313,44 @@ func isSeparatorLine(line string) bool {
 		}
 	}
 	return true
+}
+
+// codexTerminalError reports whether the pane's last content block, above
+// codex's composer and footer, is led by codex's error glyph: a line starting
+// "■ " in column 0. Codex indents an agent cell's and a tool result's
+// continuation lines, and wraps a long error line with indented continuations
+// too, so the block's head is found by walking up over indented lines. The
+// composer is the last "›" line within the pane's final three non-blank lines
+// (the placeholder or a draft, then the footer); a pane without one is read to
+// its end.
+func codexTerminalError(pane string) bool {
+	lines := strings.Split(strings.ReplaceAll(pane, "\r\n", "\n"), "\n")
+	end := len(lines)
+	for end > 0 && strings.TrimSpace(lines[end-1]) == "" {
+		end--
+	}
+	seen := 0
+	for i := end - 1; i >= 0 && seen < 3; i-- {
+		if strings.TrimSpace(lines[i]) == "" {
+			continue
+		}
+		seen++
+		if strings.HasPrefix(lines[i], "›") {
+			end = i
+			break
+		}
+	}
+	for end > 0 && strings.TrimSpace(lines[end-1]) == "" {
+		end--
+	}
+	if end == 0 {
+		return false
+	}
+	i := end - 1
+	for i > 0 && (strings.HasPrefix(lines[i], " ") || strings.HasPrefix(lines[i], "\t")) {
+		i--
+	}
+	return strings.HasPrefix(lines[i], "■ ")
 }
 
 // copilotWorkingFooter reports whether the pane's live footer is Copilot's
