@@ -22,13 +22,18 @@ type probeRule struct {
 	// (copilot's working footer and `✗ ` error line are positional, which a
 	// bare substring cannot express).
 	match func(pane string) bool
+	// live, when set, tests the contains markers against the pane's live
+	// region (claudeLiveRegion) instead of the whole capture (R311).
+	live bool
 }
 
 var probeRules = []probeRule{
 	// Claude fallback rules. Hooks are Claude's primary status source, but a
 	// stale hook is deliberately eligible for this sampled fallback (SPEC §7).
-	{kind: "claude", contains: []string{"API Error:"}, status: "error", reason: "api error"},
-	{kind: "claude", contains: []string{"Do you want to proceed?", "Yes"}, status: "waiting", reason: "permission prompt"},
+	// R311: both markers count only in the live region (claudeLiveRegion): an
+	// error or a dialog that scrolled up into the transcript is history.
+	{kind: "claude", contains: []string{"API Error:"}, live: true, status: "error", reason: "api error"},
+	{kind: "claude", contains: []string{"Do you want to proceed?", "Yes"}, live: true, status: "waiting", reason: "permission prompt"},
 	{kind: "claude", contains: []string{"esc to interrupt"}, status: "running", reason: "working indicator"},
 	// R310 (testdata/probes/claude-PROVENANCE.md says which footer texts were
 	// verified): idle is the footer being present with no working indicator above it
@@ -161,8 +166,12 @@ func probe(kind, pane string) (status, reason string) {
 // matches reports whether every one of the rule's conditions holds for pane.
 // tail is the pane's lastContentLine, computed once by the caller.
 func (rule probeRule) matches(pane, tail string) bool {
+	text := pane
+	if rule.live {
+		text = claudeLiveRegion(pane)
+	}
 	for _, marker := range rule.contains {
-		if !strings.Contains(pane, marker) {
+		if !strings.Contains(text, marker) {
 			return false
 		}
 	}
@@ -170,6 +179,60 @@ func (rule probeRule) matches(pane, tail string) bool {
 		return false
 	}
 	return rule.tailPrefix == "" || strings.HasPrefix(tail, rule.tailPrefix)
+}
+
+// claudeLiveRegion returns the part of a Claude pane that can still be live:
+// from the last transcript line down to the composer, composer excluded (R311).
+// A transcript line is one that starts with Claude's turn glyphs: `●` (an
+// assistant message or tool call), `⎿` (a tool result) or the prompt glyph
+// `❯`/`>` followed by anything but a dialog option number (an echoed user
+// turn). The composer is the chrome claudeComposerStart finds. Anything above
+// the last transcript line has been followed by newer output, so a marker
+// there (an old `API Error:`, an answered `Do you want to proceed?`) is
+// history. A pane with no transcript line is live throughout.
+func claudeLiveRegion(pane string) string {
+	lines := strings.Split(strings.ReplaceAll(pane, "\r\n", "\n"), "\n")
+	lines = lines[:claudeComposerStart(lines)]
+	start := 0
+	for i := len(lines) - 1; i >= 0; i-- {
+		if isClaudeTranscriptLine(lines[i]) {
+			start = i
+			break
+		}
+	}
+	return strings.Join(lines[start:], "\n")
+}
+
+// claudeComposerStart is the index where the composer begins: the shared
+// separator boundary when the pane draws one, else (no composer chrome) a
+// bare trailing prompt line, which is the composer too.
+func claudeComposerStart(lines []string) int {
+	if end := transcriptEnd(lines); end < len(lines) {
+		return end
+	}
+	end := len(lines)
+	for end > 0 && strings.TrimSpace(lines[end-1]) == "" {
+		end--
+	}
+	if end > 0 && isClaudePromptLine(lines[end-1]) {
+		return end - 1
+	}
+	return len(lines)
+}
+
+func isClaudeTranscriptLine(line string) bool {
+	trimmed := strings.TrimSpace(line)
+	return strings.HasPrefix(trimmed, "●") || strings.HasPrefix(trimmed, "⎿") || isClaudePromptLine(line)
+}
+
+// isClaudePromptLine reports a line led by the prompt glyph that is not a
+// dialog's numbered option (claudeOptionCursor).
+func isClaudePromptLine(line string) bool {
+	trimmed := strings.TrimSpace(line)
+	if !strings.HasPrefix(trimmed, "❯") && !strings.HasPrefix(trimmed, ">") {
+		return false
+	}
+	return !claudeOptionCursor.MatchString(line)
 }
 
 // lastContentLine returns the pane's last non-blank transcript line,

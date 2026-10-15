@@ -1080,6 +1080,16 @@ Rules:
   (`⏵⏵ bypass permissions on (shift+tab to cycle)`) is taken from the phase 4t PRD and is the only mode text a
   golden carries. The default-mode footer text was **not verified**: no repo evidence of it exists, so no golden
   covers it, and the rule matches on the `⏵⏵` and `(shift+tab to cycle)` markers rather than a mode string.
+- **Claude live region (R311).** For Claude, `API Error:` (`error`, reason `api error`) and the permission-dialog
+  markers (`Do you want to proceed?` with `Yes`, `waiting`, reason `permission prompt`) count only in the **live
+  region** of the capture: from the last transcript line down to the composer, composer excluded. A transcript
+  line starts with `●` (assistant message or tool call), `⎿` (tool result) or the prompt glyph `❯`/`>` not followed
+  by a dialog option number (an echoed user turn); the composer is the chrome below the last two separator rules,
+  or, on a pane with no rules, a bare trailing prompt line. A marker above the last transcript line has been
+  followed by newer output, so it is history: an old `API Error:` above a live composer is not `error`, and an
+  answered `Do you want to proceed?` above a live composer is not `waiting`. A live dialog is `waiting` and a live
+  error is `error`. A pane with no transcript line is live throughout. Only these two rules are anchored; the
+  working indicator and the idle footer are read from the whole capture as before.
 - Probe heuristics live in one table-driven file with golden-file tests over captured pane
   text — a fixture corpus per agent, so a spinner or prompt redesign upstream is a
   one-fixture fix.
