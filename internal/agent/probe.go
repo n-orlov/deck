@@ -30,7 +30,11 @@ var probeRules = []probeRule{
 	{kind: "claude", contains: []string{"API Error:"}, status: "error", reason: "api error"},
 	{kind: "claude", contains: []string{"Do you want to proceed?", "Yes"}, status: "waiting", reason: "permission prompt"},
 	{kind: "claude", contains: []string{"esc to interrupt"}, status: "running", reason: "working indicator"},
-	{kind: "claude", contains: []string{"Claude Code", "❯"}, status: "idle", reason: "idle prompt"},
+	// R310 (testdata/probes/claude-PROVENANCE.md says which footer texts were
+	// verified): idle is the footer being present with no working indicator above it
+	// having matched, never the startup banner (it scrolls away) and never the
+	// composer's content (an unsent draft does not change status).
+	{kind: "claude", contains: []string{"⏵⏵", "(shift+tab to cycle)"}, status: "idle", reason: "idle footer"},
 	{kind: "claude", contains: []string{"Starting Claude Code"}, status: "starting", reason: "startup"},
 
 	// Pi has no verified hook source, so these sampled verdicts are its status

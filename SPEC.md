@@ -1070,6 +1070,16 @@ Rules:
   old and the pane shows the idle footer, the probe records `idle` (`ready`); while the pane
   shows the `Working` footer the row stays `running`, and a hook verdict younger than the window
   is never probed over.
+- **Claude idle probe (R310).** Claude probes `idle` (reason `idle footer`) when the permission-mode footer
+  `⏵⏵ … (shift+tab to cycle)` is present and the `esc to interrupt` working indicator is absent, whatever the
+  composer holds: an unsent draft does not change status (`Claude.PromptReady` is what detects drafts). The old
+  `Claude Code` + `❯` banner rule is gone, since the banner scrolls away. Goldens in
+  `internal/agent/testdata/probes/claude/` (a scrolled pane with an empty composer, the same with a draft, the
+  alternate screen with no scrollback, and an `esc to interrupt` pane) reproduce observed pane shapes and are not
+  byte captures; `claude-PROVENANCE.md` says so. **Verification:** the bypass-permissions footer text
+  (`⏵⏵ bypass permissions on (shift+tab to cycle)`) is taken from the phase 4t PRD and is the only mode text a
+  golden carries. The default-mode footer text was **not verified**: no repo evidence of it exists, so no golden
+  covers it, and the rule matches on the `⏵⏵` and `(shift+tab to cycle)` markers rather than a mode string.
 - Probe heuristics live in one table-driven file with golden-file tests over captured pane
   text — a fixture corpus per agent, so a spinner or prompt redesign upstream is a
   one-fixture fix.
