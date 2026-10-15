@@ -86,6 +86,13 @@ var Mappings = map[string]Mapping{
 	"session_info_changed": {Kind: "session_info_changed"},
 }
 
+// waitingNotifications are the Notification notification_type values that are a
+// status (R309 hook half): a permission prompt and an elicitation dialog ask
+// the operator for something. idle_prompt (R308) only says the agent has been
+// idle for a while; auth_success and any unrecognised type say nothing about a
+// question either. Those are recorded as events and change no status.
+var waitingNotifications = map[string]bool{"permission_prompt": true, "elicitation_dialog": true}
+
 // piSessionStartStatus is the status Pi's SessionStart keeps: R307 moves
 // Claude, Codex and Copilot onto idle, and the shared SessionStart mapping
 // follows them, so Pi's own extension event (SPEC §8.3) is held at running here.
@@ -431,6 +438,12 @@ func decodeHook(db Store, raw []byte, event string, at int64) (payload, Mapping,
 	mapping, ok := Mappings[p.EventName]
 	if !ok {
 		return payload{}, Mapping{}, fmt.Errorf("unsupported hook event %q", p.EventName)
+	}
+	if p.EventName == "Notification" && !waitingNotifications[p.Notification] {
+		// R308/R309: idle_prompt, auth_success and any type deck does not
+		// recognise are recorded, never applied. Only a notification that asks
+		// the operator something is waiting.
+		mapping.Status = ""
 	}
 	return p, mapping, nil
 }

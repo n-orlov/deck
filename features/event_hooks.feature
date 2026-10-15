@@ -24,11 +24,11 @@ Feature: The event hook (SPEC section 10), end to end against the released binar
     Then the capture script has recorded exactly 0 invocations
     When the state database session "gate" has its own event hook on
     And the released deck _hook receives "Notification" for session "gate" using injected identity:
-      | notification_type | idle_prompt |
+      | notification_type | permission_prompt |
     Then the capture script has recorded exactly 1 invocation
     And capture invocation 1 has the event kind "waiting" as its only argument
     And capture invocation 1 has environment "DECK_EVENT_KIND" equal to "waiting"
-    And capture invocation 1 has environment "DECK_EVENT_REASON" equal to "idle_prompt"
+    And capture invocation 1 has environment "DECK_EVENT_REASON" equal to "permission_prompt"
     And capture invocation 1 has environment "DECK_SESSION_NAME" equal to "gate"
     And capture invocation 1 has environment "DECK_SESSION_AGENT" equal to "claude"
     And capture invocation 1 has a non-empty environment "DECK_SESSION_ID"
@@ -37,7 +37,7 @@ Feature: The event hook (SPEC section 10), end to end against the released binar
     And capture invocation 1 has stdin JSON field "session.name" equal to "gate"
     And capture invocation 1 has stdin JSON field "session.status" equal to "waiting"
     And capture invocation 1 has stdin JSON field "event.kind" equal to "waiting"
-    And capture invocation 1 has stdin JSON field "event.reason" equal to "idle_prompt"
+    And capture invocation 1 has stdin JSON field "event.reason" equal to "permission_prompt"
     And capture invocation 1 has stdin JSON field "event.at" that is non-empty
     And capture invocation 1 has stdin JSON field "deck.version" that is non-empty
     And session "gate"'s latest "notification" event records hook kind "waiting", exit status 0 and output containing "captured waiting"
@@ -51,13 +51,13 @@ Feature: The event hook (SPEC section 10), end to end against the released binar
       event_hook_default = true
       """
     And the released deck _hook receives "Notification" for session "gate" using injected identity:
-      | notification_type | another_prompt |
+      | notification_type | permission_prompt |
     Then the capture script has recorded exactly 1 invocation
     When the state database session "gate" has its own event hook inherit
     And the released deck _hook receives "Notification" for session "gate" using injected identity:
-      | notification_type | one_more_prompt |
+      | notification_type | elicitation_dialog |
     Then the capture script has recorded exactly 2 invocations
-    And capture invocation 2 has environment "DECK_EVENT_REASON" equal to "one_more_prompt"
+    And capture invocation 2 has environment "DECK_EVENT_REASON" equal to "elicitation_dialog"
     And the structured log holds 2 event-hook invocations for session "gate", the last of kind "waiting" exit status 0
     When deck client "A" exits cleanly
 
@@ -101,7 +101,7 @@ Feature: The event hook (SPEC section 10), end to end against the released binar
     And capture invocation 1 has the event kind "idle" as its only argument
     When the state database session "own list" inherits the event hook events
     And the released deck _hook receives "Notification" for session "own list" using injected identity:
-      | notification_type | another_prompt |
+      | notification_type | permission_prompt |
     Then the capture script has recorded exactly 2 invocations
     And capture invocation 2 has the event kind "waiting" as its only argument
     When deck client "A" exits cleanly
@@ -126,7 +126,7 @@ Feature: The event hook (SPEC section 10), end to end against the released binar
       event_hook_default = true
       """
     And the released deck _hook receives "Notification" for session "inert" using injected identity:
-      | notification_type | another_prompt |
+      | notification_type | permission_prompt |
     Then the capture script has recorded exactly 1 invocation
     When deck client "A" exits cleanly
 

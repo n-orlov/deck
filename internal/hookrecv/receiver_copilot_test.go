@@ -304,9 +304,9 @@ func TestCopilotRootResolution(t *testing.T) {
 func TestReceiveFromWithoutAnEnvEventIsReceive(t *testing.T) {
 	db := newHookStore(t)
 	createHookSession(t, db, "row-1", "claude", "conv-1")
-	raw := []byte(`{"hook_event_name":"Notification","session_id":"conv-1","notification_type":"idle_prompt"}`)
+	raw := []byte(`{"hook_event_name":"Notification","session_id":"conv-1","notification_type":"permission_prompt"}`)
 	result, err := ReceiveFrom(context.Background(), db, raw, Origin{SessionID: "row-1"}, 100)
-	if err != nil || result.Status != "waiting" || result.Reason != "idle_prompt" {
+	if err != nil || result.Status != "waiting" || result.Reason != "permission_prompt" {
 		t.Fatalf("result = %#v err = %v", result, err)
 	}
 }

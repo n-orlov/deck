@@ -166,7 +166,7 @@ var hookPayloadCases = []struct {
 }{
 	{"claude", "claude", `{"hook_event_name":"Stop","session_id":"conv-1","last_assistant_message":"all done"}`, "", "idle", "stop"},
 	{"codex", "codex", `{"hook_event_name":"PermissionRequest","session_id":"conv-1","tool_name":"shell"}`, "", "waiting", "permission_request"},
-	{"pi", "pi", `{"hook_event_name":"Notification","session_id":"conv-1","notification_type":"idle_prompt"}`, "", "waiting", "notification"},
+	{"pi", "pi", `{"hook_event_name":"Notification","session_id":"conv-1","notification_type":"permission_prompt"}`, "", "waiting", "notification"},
 	{"copilot", "copilot", `{"sessionId":"conv-1","stopReason":"end_turn"}`, "agentStop", "idle", "stop"},
 }
 
@@ -503,7 +503,7 @@ echo crash-hook-done
 	waitForRetainedDeadPane(t, client, crashed.Slug)
 
 	start := time.Now()
-	if code, stderr := f.run(`{"hook_event_name":"Notification","session_id":"conv-1","notification_type":"idle_prompt"}`); code != 0 {
+	if code, stderr := f.run(`{"hook_event_name":"Notification","session_id":"conv-1","notification_type":"permission_prompt"}`); code != 0 {
 		t.Fatalf("hook exit = %d, stderr %q", code, stderr)
 	}
 	if elapsed := time.Since(start); elapsed > 2*f.settings.EventHookTimeout+f.settings.Reconcile+2*time.Second {
@@ -538,7 +538,7 @@ echo gone-hook-done
 	if err := exec.Command("tmux", "-L", f.settings.Socket, "kill-server").Run(); err != nil {
 		t.Fatal(err)
 	}
-	if code, stderr := f.run(`{"hook_event_name":"Notification","session_id":"conv-1","notification_type":"idle_prompt"}`); code != 0 {
+	if code, stderr := f.run(`{"hook_event_name":"Notification","session_id":"conv-1","notification_type":"permission_prompt"}`); code != 0 {
 		t.Fatalf("hook exit = %d, stderr %q", code, stderr)
 	}
 	calls := strings.Split(strings.TrimSpace(f.read(t, "calls")), "\n")
@@ -587,7 +587,7 @@ echo hook-done
 		t.Fatal(err)
 	}
 	start := time.Now()
-	if code, stderr := f.run(`{"hook_event_name":"Notification","session_id":"conv-1","notification_type":"idle_prompt"}`); code != 0 {
+	if code, stderr := f.run(`{"hook_event_name":"Notification","session_id":"conv-1","notification_type":"permission_prompt"}`); code != 0 {
 		t.Fatalf("hook exit = %d, stderr %q", code, stderr)
 	}
 	// The hook's own offer (1 s) overlaps the one death batch (1 s); five serial deaths would add 5 s.
@@ -649,7 +649,7 @@ func TestHookLivenessPassCutsManyHungHooksAtOneTimeout(t *testing.T) {
 		t.Fatal(err)
 	}
 	start := time.Now()
-	if code, stderr := f.run(`{"hook_event_name":"Notification","session_id":"conv-1","notification_type":"idle_prompt"}`); code != 0 {
+	if code, stderr := f.run(`{"hook_event_name":"Notification","session_id":"conv-1","notification_type":"permission_prompt"}`); code != 0 {
 		t.Fatalf("hook exit = %d, stderr %q", code, stderr)
 	}
 	if elapsed := time.Since(start); elapsed > 2*f.settings.EventHookTimeout+f.settings.Reconcile+2*time.Second {
@@ -672,7 +672,7 @@ func TestHookLivenessPassCutsManyHungHooksAtOneTimeout(t *testing.T) {
 // the six deaths is still recorded durably, `_hook` exits as it does with no
 // event hook, and the pass costs no script time at all.
 func TestHookLivenessPassWithAnUnstartableScriptStillRecordsEveryDeath(t *testing.T) {
-	payload := `{"hook_event_name":"Notification","session_id":"conv-1","notification_type":"idle_prompt"}`
+	payload := `{"hook_event_name":"Notification","session_id":"conv-1","notification_type":"permission_prompt"}`
 	baseline := newEventHookFixture(t, "claude", "running")
 	baseline.settings.EventHook = ""
 	baselineCode, baselineStderr := baseline.run(payload)

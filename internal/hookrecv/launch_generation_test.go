@@ -22,7 +22,7 @@ func TestSupersededLaunchGenerationDropsTheWholeHookClass(t *testing.T) {
 	}{
 		{event: "SessionEnd", extra: `,"reason":"other"`, wantStatus: "stopped"},
 		{event: "Stop", extra: `,"last_assistant_message":"from the dead pane"`, wantStatus: "idle"},
-		{event: "Notification", extra: `,"notification_type":"question"`, wantStatus: "waiting"},
+		{event: "Notification", extra: `,"notification_type":"permission_prompt"`, wantStatus: "waiting"},
 		{event: "SessionStart", extra: `,"source":"resume"`, wantStatus: "idle"},
 		{event: "UserPromptSubmit", wantStatus: "running"},
 		{event: "StopFailure", extra: `,"error_type":"api_error"`, wantStatus: "error"},

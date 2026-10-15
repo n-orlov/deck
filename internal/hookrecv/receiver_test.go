@@ -26,9 +26,6 @@ func TestReceiveMappingTable(t *testing.T) {
 		{name: "session start compacted", event: "SessionStart", extra: `,"source":"compact"`, current: "starting", wantStatus: "idle", wantReason: "compact"},
 		{name: "user prompt", event: "UserPromptSubmit", current: "idle", wantStatus: "running"},
 		{name: "permission notification", event: "Notification", extra: `,"notification_type":"permission_prompt"`, current: "running", wantStatus: "waiting", wantReason: "permission_prompt"},
-		{name: "question notification", event: "Notification", extra: `,"notification_type":"question"`, current: "running", wantStatus: "waiting", wantReason: "question"},
-		{name: "needs input notification", event: "Notification", extra: `,"notification_type":"needs_input"`, current: "running", wantStatus: "waiting", wantReason: "needs_input"},
-		{name: "idle notification", event: "Notification", extra: `,"notification_type":"idle_prompt"`, current: "running", wantStatus: "waiting", wantReason: "idle_prompt"},
 		{name: "stop", event: "Stop", extra: `,"last_assistant_message":"done ✓"`, current: "running", wantStatus: "idle", wantMessage: "done ✓"},
 		{name: "API failure", event: "StopFailure", extra: `,"error_type":"api_error"`, current: "running", wantStatus: "error", wantReason: "api_error"},
 		{name: "turn failure", event: "StopFailure", extra: `,"error_type":"turn_error"`, current: "running", wantStatus: "error", wantReason: "turn_error"},
@@ -100,7 +97,7 @@ func TestReceiveHookAppliesOverAnyStaleSourceExceptStopped(t *testing.T) {
 					if _, err := db.DB().Exec(`UPDATE sessions SET status = ?, status_reason = 'before', status_source = ?, status_at = 7, notify_epoch = 3, acknowledged = 1, last_message = 'before message' WHERE id = ?`, current, currentSource, id); err != nil {
 						t.Fatal(err)
 					}
-					raw := []byte(fmt.Sprintf(`{"hook_event_name":%q,"session_id":%q,"source":"resume","notification_type":"question","error_type":"api_error","reason":"logout","last_assistant_message":"after message"}`, event, id))
+					raw := []byte(fmt.Sprintf(`{"hook_event_name":%q,"session_id":%q,"source":"resume","notification_type":"permission_prompt","error_type":"api_error","reason":"logout","last_assistant_message":"after message"}`, event, id))
 					if _, err := Receive(context.Background(), db, raw, "", "", 20); err != nil {
 						t.Fatal(err)
 					}

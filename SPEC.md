@@ -978,7 +978,8 @@ other section restates a transition, they only refer here:
 | `idle` | `SessionStart` | stays `idle` |
 | `starting` | no signal for `stale_after` | stays `starting`, becomes probe-eligible |
 | `starting` | pane is alive, **`shell` rows only** | `running` — see the shell rule below |
-| `running` | needs input: permission prompt, question, idle prompt | `waiting` |
+| `running` | needs input: a `permission_prompt` or `elicitation_dialog` notification, or a prompt or question the probe sees | `waiting` |
+| *any* | Claude `idle_prompt` notification (R308) | unchanged — recorded as an event, never applied |
 | `running` | turn finished cleanly | `idle` |
 | `running` | turn or API failure | `error` |
 | `waiting` | answered: probe verdict, or the user attaches | `running` |
@@ -997,7 +998,7 @@ clearable by unarchiving (§9.2).
 |---|---|---|
 | `starting` | tmux session created, no agent signal yet | dim |
 | `running` | agent is working | normal |
-| `waiting` | **needs me** — permission prompt, question, idle prompt | bright, in the attention count, sorted first |
+| `waiting` | **needs me** — permission prompt, question | bright, in the attention count, sorted first |
 | `idle` | turn finished cleanly | check, `last_message` in the detail pane |
 | `error` | turn or process died | red, unseen marker sticks, crash tail captured |
 | `stopped` | record alive, no tmux session (post-reboot, killed) | grey, labelled *resumable* |
@@ -1480,7 +1481,9 @@ Subscribed events — a handful per turn, never per tool call:
 |---|---|---|
 | session start | `idle` | confirms the assigned id; the source field distinguishes fresh vs resumed vs compacted. **`SessionStart` lands on `idle`, never `running` (R307)**, including `--resume` and `--continue`: a session that has started has not been asked anything. The `UserPromptSubmit` below, or a working indicator the probe sees, is what enters `running` |
 | user prompt submitted | `running` | also feeds prompt count; **enters `running`** |
-| notification (permission prompt / question / needs-input / idle prompt) | `waiting` | **the golden signal**; the notification type becomes `status_reason` |
+| notification, `notification_type` `permission_prompt` or `elicitation_dialog` | `waiting` | **the golden signal**; the notification type becomes `status_reason` |
+| notification, `notification_type` `idle_prompt` | no change | **R308**: it only says the agent has been idle a while. It writes no status, no `status_at`, no `acknowledged` or `notify_epoch` change and no attention transition on an idle, a running or a waiting row, and `Stop` then `idle_prompt` leaves the row `idle`. No `idle_since` value is stamped: the notification is recorded as a `notification` event (reason `idle_prompt`) and nothing else |
+| notification, any other `notification_type` (`auth_success`, a type this deck build has not seen, or none) | no change | **R309 hook half**: recorded as a `notification` event, never applied. Only the two types above are `waiting`, the same two Copilot's `notification` maps (§8.4). The probe-side producers (permission, question, plan approval, trust prompt) are §7's probe rules |
 | stop | `idle` | carries the last assistant message — use it; the transcript file lags |
 | stop-failure | `error` | error type becomes `status_reason` |
 | session end | `stopped` | **Session-end hooks share a ~1.5 s total budget**, raisable to ~60 s only by declaring a longer per-hook timeout. deck declares a modest one and still does one SQLite write, dispatches the `ended` event hook detached (§10.3: started and left running, no timeout and no recorded result) and exits — a script's latency is the user's to bound, so it never holds the agent's exit. |

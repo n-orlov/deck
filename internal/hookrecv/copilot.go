@@ -73,7 +73,7 @@ var copilotMappings = map[string]Mapping{
 
 // copilotWaitingNotifications are the notification_type values that are a
 // status; every other type changes nothing.
-var copilotWaitingNotifications = map[string]bool{"permission_prompt": true, "elicitation_dialog": true}
+var copilotWaitingNotifications = waitingNotifications
 
 // copilotMapping returns the mapping of one Copilot event. A mapping with an
 // empty Status is recorded as an event and never applied.
