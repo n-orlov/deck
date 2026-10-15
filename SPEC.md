@@ -997,6 +997,17 @@ Rules:
   reason an ordinary one is, since the keyboard reaches the pane either way. Being
   *displaced* from the preview by another client records nothing: that is something done to
   the user, not by them. Leaving an attention state bumps `notify_epoch` (§10.3).
+- **A repeat write is inert.** A status write that leaves the status unchanged — a probe
+  seeing `waiting`, `running` or `error` again, a hook or the user restating the current
+  status — does not touch `status_at`, `notify_epoch`, `hook_fired` or the seen state
+  (`acknowledged`); precedence decides the stored `status_source` exactly as it does for a
+  transition. It updates the reason (a hook repeating the status with a different reason
+  changes the reason and not `status_at`), and `last_probe_at` may still advance. The event
+  is still recorded. Only a change of status dates the row, opens an attention episode and
+  marks it unseen, so a row cleared with `Y` and then re-probed `waiting` stays cleared and
+  keeps its position in the `attention` and `activity` sort orders (both order by
+  `status_at`). A hook repeating the current status therefore does not extend a hook verdict's
+  freshness window: staleness (§7, below) is measured from the last change of status.
 - **Attaching to a `waiting` row also clears the status to `running`** (not only the
   acknowledgement): answering the prompt is why you attached, deck watched you do it, and
   no hook fires on a prompt being answered — the subscribed hooks (§8.1) are per-turn, not

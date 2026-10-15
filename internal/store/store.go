@@ -1103,15 +1103,32 @@ func statusWins(in StatusUpdateInput, cur statusRow) bool {
 }
 
 // writeStatusUpdate stores the winning verdict on the session row.
+//
+// A write that leaves the status unchanged is inert (SPEC §7, R303): it
+// keeps status_at, notify_epoch, hook_fired and the acknowledged state exactly
+// as stored, and updates only the reason, the source the precedence rules let
+// win (statusWins decides that exactly as for a transition) and the side
+// columns the write explicitly carries (kill/crash verdict, last message, an
+// explicit Acknowledged). A repeat is the same status being
+// reported again, not a transition, so it has no moment to date, no
+// episode to open or close and nothing to mark unseen.
 func writeStatusUpdate(ctx context.Context, tx *sql.Tx, input StatusUpdateInput, cur statusRow) error {
+	repeat := input.Status == cur.status
+	statusAt := input.At
+	if repeat {
+		statusAt = cur.at
+	}
 	notifyEpoch := cur.notifyEpoch
 	if isAttentionStatus(cur.status) && !isAttentionStatus(input.Status) {
 		notifyEpoch++
 	}
 	acknowledged := cur.acknowledged
 	if isAttentionStatus(input.Status) {
-		acknowledged = 0
-	} else if input.Acknowledged != nil {
+		if !repeat {
+			acknowledged = 0
+		}
+	}
+	if input.Acknowledged != nil && !isAttentionStatus(input.Status) {
 		acknowledged = boolInt(*input.Acknowledged)
 	}
 	newKilled := cur.killedByUser
@@ -1135,7 +1152,7 @@ func writeStatusUpdate(ctx context.Context, tx *sql.Tx, input StatusUpdateInput,
 		pane_exit_status = CASE WHEN ? = 1 THEN NULL ELSE COALESCE(?, pane_exit_status) END,
 		crash_tail = CASE WHEN ? = 1 THEN NULL WHEN ? IS NULL THEN crash_tail ELSE ? END,
 		last_message = CASE WHEN ? = '' THEN last_message ELSE ? END
-		WHERE id = ?`, input.Status, input.Reason, input.Source, input.At,
+		WHERE id = ?`, input.Status, input.Reason, input.Source, statusAt,
 		newKilled, acknowledged, notifyEpoch, notifyEpoch != cur.notifyEpoch, clearCrash, input.PaneExitStatus,
 		clearCrash, input.PaneExitStatus, input.CrashTail, lastMessage, lastMessage, input.SessionID)
 	if err != nil {

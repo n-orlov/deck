@@ -75,21 +75,26 @@ func newCopilotProbeService(t *testing.T, seed string) (Service, *store.Store) {
 func TestCopilotAbortDemotesAHookRunningRowWhoseIdleFooterIsShown(t *testing.T) {
 	svc, db := newCopilotProbeService(t, "copilot-abort")
 	row := copilotProbeRow(t, svc, db, "copilot", "safe", "idle.txt", 1)
-	// Younger than the window, the same pane changes nothing.
-	if err := db.UpdateSessionStatus(context.Background(), store.StatusUpdateInput{
-		SessionID: row.ID, Status: "running", Reason: "prompt", Source: "hook", At: svc.Clock.Now().UnixMilli(), EventKind: "user_prompt_submitted",
-	}); err != nil {
-		t.Fatal(err)
+	// A hook repeating the status the row already has is inert (R303) and
+	// would not date the verdict, so each hook verdict below is a transition
+	// out of idle, whose moment status_at keeps.
+	hookRunningAt := func(at int64) {
+		t.Helper()
+		for _, in := range []store.StatusUpdateInput{
+			{SessionID: row.ID, Status: "idle", Reason: "ready", Source: "hook", At: at, EventKind: "stop"},
+			{SessionID: row.ID, Status: "running", Reason: "prompt", Source: "hook", At: at, EventKind: "user_prompt_submitted"},
+		} {
+			if err := db.UpdateSessionStatus(context.Background(), in); err != nil {
+				t.Fatal(err)
+			}
+		}
 	}
+	// Younger than the window, the same pane changes nothing.
+	hookRunningAt(svc.Clock.Now().UnixMilli())
 	if got := probeCopilotRow(t, svc, db, row); got.Status != "running" || got.StatusSource != "hook" {
 		t.Fatalf("a fresh hook verdict was probed: %#v", got)
 	}
-	if err := db.UpdateSessionStatus(context.Background(), store.StatusUpdateInput{
-		SessionID: row.ID, Status: "running", Reason: "prompt", Source: "hook",
-		At: svc.Clock.Now().UnixMilli() - config.DefaultStaleAfter.Milliseconds(), EventKind: "user_prompt_submitted",
-	}); err != nil {
-		t.Fatal(err)
-	}
+	hookRunningAt(svc.Clock.Now().UnixMilli() - config.DefaultStaleAfter.Milliseconds())
 	got := probeCopilotRow(t, svc, db, row)
 	if got.Status != "idle" || got.StatusSource != "probe" || got.StatusReason != "ready" {
 		t.Fatalf("aborted copilot row = status %q source %q reason %q, want idle/probe/ready", got.Status, got.StatusSource, got.StatusReason)
