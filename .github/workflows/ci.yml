@@ -101,6 +101,10 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          # Full history: TestThresholdsNotLoosened resolves `git merge-base
+          # HEAD origin/main`, which a depth-1 pull_request checkout cannot.
+          fetch-depth: 0
 
       - name: Build/refresh the CI image
         run: docker build -t deck-ci:local -f ci/Dockerfile ci
