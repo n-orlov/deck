@@ -9,6 +9,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -567,6 +568,48 @@ func TestUpdateVerbRedactsMirrorCredentials(t *testing.T) {
 			}
 			if updSum(t, exe) != before || len(updNames(t, dir)) != 1 {
 				t.Errorf("binary or directory changed: %v", updNames(t, dir))
+			}
+		})
+	}
+}
+
+// TestUpdateVerbStderrStripsControlCharacters: a release server whose redirect
+// path holds an ESC, a BEL, a C1 CSI byte, an OSC title sequence or a newline
+// (percent-encoded in the Location header) gets none of them onto `deck
+// update`'s stderr; printable and multi-byte text stays.
+func TestUpdateVerbStderrStripsControlCharacters(t *testing.T) {
+	withVersion(t, "v1.0.0")
+	for _, c := range []struct{ name, raw, want string }{
+		{"ESC", "ok\x1b[31mred", "ok[31mred"},
+		{"BEL", "a\x07b", "ab"},
+		{"C1 CSI byte", "a\u009b31mb", "a31mb"},
+		{"OSC title sequence", "x\x1b]0;pwned\x07y", "x]0;pwnedy"},
+		{"newline", "line1\nline2", "line1line2"},
+		{"normal string", "not-a-tag", "not-a-tag"},
+		{"multi-byte string", "ошибка-配信-é", "ошибка-配信-é"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Location", "/releases/tag/"+url.PathEscape(c.raw))
+				w.WriteHeader(http.StatusFound)
+			}))
+			t.Cleanup(srv.Close)
+			home := t.TempDir()
+			t.Setenv("HOME", home)
+			t.Setenv("DECK_HOME", filepath.Join(home, "deck"))
+			t.Setenv("DECK_UPDATE_URL", srv.URL)
+			for _, args := range [][]string{{"deck", "update", "--check"}, {"deck", "update"}} {
+				var stdout, stderr bytes.Buffer
+				if code := run(args, strings.NewReader(""), &stdout, &stderr); code != 1 {
+					t.Fatalf("%v: exit %d, want 1; stderr %q", args, code, stderr.String())
+				}
+				got := stderr.String()
+				if !strings.Contains(got, "/releases/tag/"+c.want+" does not name") {
+					t.Errorf("%v: stderr %q lacks the stripped text %q", args, got, c.want)
+				}
+				if strings.ContainsFunc(strings.TrimSuffix(got, "\n"), func(r rune) bool { return r <= 0x1f || (r >= 0x7f && r <= 0x9f) }) {
+					t.Errorf("%v: stderr %q holds a control character", args, got)
+				}
 			}
 		})
 	}

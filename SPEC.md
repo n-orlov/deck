@@ -930,6 +930,18 @@ Skipped with its reason (`auto-update skipped: vX.Y.Z — dev build, install a r
 install.sh`). With `auto_update` off, deck downloads no archive on its own: a newer release is
 only offered (Available, `ctrl+u`), and a `dev` build shows nothing.
 
+**Terminal-safe update errors (R330).** Text a release server or `gh` sent back (a redirect path, an
+HTTP reason phrase, a `checksums.txt` field, `gh` stderr) can hold terminal control characters. Every
+C0 (U+0000-U+001F, newline included), DEL (U+007F) and C1 (U+0080-U+009F) character is removed from it
+before it reaches the footer's `update failed` note, the `ctrl+u` confirmation (target and current
+version) or `deck update`'s stderr (`update.StripControl`); printable and multi-byte UTF-8 text stays.
+The removal runs before the credential redaction, so a secret an echo split with a control character
+is whole again and is still masked. `TestStripControl`, `TestServerTextErrorsCarryNoControlCharacters`
+and `TestRedactionStillAppliesToSanitisedText` (`internal/update`), `TestUpdateFailedTextStripsControlCharacters`,
+`TestCtrlUDialogStripsControlCharacters` and `TestUpdateFailedTextRedactsSanitisedText` (`internal/tui`)
+and `TestUpdateVerbStderrStripsControlCharacters` (`cmd/deck`) cover ESC, BEL, a C1 CSI byte, an OSC
+title sequence, a newline, a normal string and a multi-byte string at those sinks.
+
 **Live sessions across an update (R301).** An update never disturbs a running agent. The atomic
 replace makes the next `_hook` run any session's agent starts the new binary, with the session's
 status and the state database unchanged (`PRAGMA integrity_check` stays `ok`) while an older TUI

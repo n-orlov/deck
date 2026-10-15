@@ -95,7 +95,7 @@ func (m *Model) startUpdate() tea.Cmd {
 		}
 		res, err := run(context.Background())
 		if err != nil {
-			return updateFailedMsg{cause: upd.RedactText(err.Error())}
+			return updateFailedMsg{cause: upd.RedactText(upd.StripControl(err.Error()))}
 		}
 		if res.Unchanged {
 			return updateFailedMsg{cause: "no newer release to install"}
@@ -114,7 +114,7 @@ func (m Model) updateConfirmView() string {
 // updateConfirmBody is the confirmation's text: the running and the target
 // version, what confirming does and what it leaves alone.
 func (m Model) updateConfirmBody() string {
-	current := m.updateInstall.current
+	current := upd.StripControl(m.updateInstall.current)
 	if current == "" {
 		current = "unknown"
 	}
@@ -129,7 +129,7 @@ deck keeps running, does not restart and does not touch your sessions:
 restart deck to run the new version.
 
 Enter installs · Esc cancels
-`, current, m.updateInd.tag)
+`, current, upd.StripControl(m.updateInd.tag))
 }
 
 func (m Model) styledUpdateConfirmBody() string {

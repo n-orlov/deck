@@ -86,7 +86,7 @@ func runUpdateCommand(args []string, stdout, stderr io.Writer) int {
 	}
 	res, err := update.Run(ctx, uo)
 	if err != nil {
-		sayln(stderr, "deck update:", err)
+		sayln(stderr, "deck update:", update.RedactText(update.StripControl(err.Error())))
 		return 1
 	}
 	old := buildVersion()
@@ -106,7 +106,7 @@ func runUpdateCommand(args []string, stdout, stderr io.Writer) int {
 func reportUpdateCheck(ctx context.Context, uo update.Options, stdout, stderr io.Writer) int {
 	res, err := update.Check(ctx, uo)
 	if err != nil {
-		sayln(stderr, "deck update:", err)
+		sayln(stderr, "deck update:", update.RedactText(update.StripControl(err.Error())))
 		return 1
 	}
 	cur := buildVersion()

@@ -219,6 +219,7 @@ func (m Model) updateIndicatorText() string {
 // updateStateText is the note for one indicator state under the current
 // auto_update setting.
 func (m Model) updateStateText(ind updateIndicator) string {
+	ind.tag = upd.StripControl(ind.tag)
 	switch ind.state {
 	case updateAvailable:
 		if m.settings.AutoUpdate {
@@ -246,7 +247,7 @@ func (m Model) updateStateText(ind updateIndicator) string {
 // its whitespace collapsed to one line, when there is one.
 func updateFailedText(reason string) string {
 	text := "update failed — see deck update"
-	if cause := strings.Join(strings.Fields(upd.RedactText(reason)), " "); cause != "" {
+	if cause := strings.Join(strings.Fields(upd.RedactText(upd.StripControl(reason))), " "); cause != "" {
 		text += " (" + cause + ")"
 	}
 	return text
