@@ -51,8 +51,8 @@ func TestBookmarksMigrationUpgradesAV13Database(t *testing.T) {
 		t.Fatalf("open v13 fixture for migration: %v", err)
 	}
 	defer st.Close()
-	if SchemaVersion != 14 {
-		t.Fatalf("SchemaVersion = %d, want 14", SchemaVersion)
+	if SchemaVersion < 14 {
+		t.Fatalf("SchemaVersion = %d, want at least 14", SchemaVersion)
 	}
 	var version, sessions, marks int
 	if err := st.DB().QueryRow(`SELECT version FROM meta WHERE key = 'schema_version'`).Scan(&version); err != nil || version != SchemaVersion {

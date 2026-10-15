@@ -445,6 +445,7 @@ CREATE TABLE sessions (
   launch_lease_owner TEXT,                  -- pid@boot_id#generation holding a start (§9.3)
   launch_lease_until INTEGER NOT NULL DEFAULT 0,
   last_probe_at      INTEGER NOT NULL DEFAULT 0, -- last pane sample that matched no §7 rule; a column, never an event (§7)
+  last_output_at     INTEGER NOT NULL DEFAULT 0, -- the output clock: ms of the newest transcript-region output reconcile confirmed (§7); a column, never an event
   created_at         INTEGER NOT NULL,
   last_attached_at   INTEGER NOT NULL DEFAULT 0,
   archived_at        INTEGER NOT NULL DEFAULT 0,
@@ -556,6 +557,11 @@ Invariants:
   slot is not an error. The table is machine-local, survives a restart,
   and is not load-bearing: a missing slot is an empty slot, and a jump to an empty slot is a no-op
   with a one-line status message. A migrated database starts with no slot assigned.
+
+- Schema version 15 adds `sessions.last_output_at` (the output clock, §7), `0` until a session's
+  transcript has been seen to change. `ALTER TABLE ADD COLUMN` touches no existing value, so a migrated
+  database starts every session at 0 and recreates no row. The column is written by a plain
+  `UPDATE` and never as an `events` row.
 
 ---
 
@@ -1128,6 +1134,23 @@ reader is unbounded write amplification, and at §6.5's default reconcile cadenc
 unmatched session alone produces two rows a second forever. The general rule the events
 table is held to: **a kind is only written if something reads that kind**, and the reader is
 named where the kind is introduced.
+
+**The output clock (`sessions.last_output_at`).** Reconcile keeps one more clock per session, and it
+answers "when did the agent last print something", not "what is its status": nothing in the
+precedence above reads it. tmux's `window_activity` (whole seconds) only *nominates* a moment,
+because it also moves for footer and statusline churn (`ctx:%`, branch, model). Each probing
+reconcile tick (the TUI's, never the hook-critical `Reconcile`) compares the window's activity bucket
+(`window_activity` divided by the bucket width, 10 s) with the last one examined for that session. A
+tick in the same bucket reads and writes nothing. When the bucket has advanced, deck captures the
+pane, cuts it at the boundary the probe's `lastContentLine` uses, **the earlier of the last two
+separator lines**, and hashes the **transcript region** above it (trailing blanks ignored). Only a
+changed hash counts: it writes `last_output_at` as `window_activity` in milliseconds. A bucket
+whose transcript hash did not change, such as a footer-only update, writes nothing. So two changes
+inside one bucket write once (the second sees no new bucket), and a tick with no bucket change
+writes nothing. The first reading of a session after deck starts is only a baseline and counts
+nothing, so a restart does not make every row look freshly active; the in-memory baseline is not
+persisted. The write is a plain `UPDATE` of that one column, never an `events` row (the same rule
+as `last_probe_at` above), and it leaves `status`, `status_source` and `status_at` untouched.
 
 ---
 

@@ -231,10 +231,34 @@ func (s Service) reconcileLivePane(ctx context.Context, session store.Session, o
 	if err := s.promoteLiveShell(ctx, session); err != nil {
 		return err
 	}
+	if staleAfter > 0 {
+		if err := s.observeOutput(ctx, session, observed); err != nil {
+			return err
+		}
+	}
 	if staleAfter > 0 && session.Agent != "shell" && probeEligible(session, s.Clock.Now(), staleAfter) {
 		return s.probeLivePane(ctx, session, observed, staleAfter)
 	}
 	return nil
+}
+
+// observeOutput feeds sessions.last_output_at (R304) from the session's pane:
+// tmux's window_activity nominates a bucket and the transcript-region hash
+// confirms it (OutputClock). It runs only on the TUI's probing path, never in
+// the hook-critical Reconcile, and only when the service carries a clock.
+func (s Service) observeOutput(ctx context.Context, session store.Session, observed tmux.Session) error {
+	if s.Output == nil || len(observed.Panes) == 0 {
+		return nil
+	}
+	pane := observed.Panes[0]
+	_, err := s.Output.Observe(ctx, s.Store, session.ID, pane.WindowActivity, func(ctx context.Context) (string, error) {
+		captured, err := s.TMux.CapturePane(ctx, pane.ID, tmux.CaptureOptions{StartLine: "-200", EndLine: "-"})
+		return string(captured), err
+	})
+	if err != nil && tmux.IsTargetAbsent(err) {
+		return nil
+	}
+	return err
 }
 
 // promoteLiveShell: shells have no higher-quality signal or probe, so a live

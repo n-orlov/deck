@@ -78,6 +78,9 @@ type Pane struct {
 	// real geometry ("45×22 of 120×40") rather than inferring it from
 	// however much non-blank content happened to be captured.
 	Width, Height int
+	// WindowActivity is the pane's window_activity: the Unix time in whole
+	// seconds of the window's last output. 0 when tmux reports none.
+	WindowActivity int64
 }
 
 // CaptureOptions describes an explicit tmux pane range. Line positions use
@@ -830,15 +833,15 @@ func sessionFromPaneFacts(name, output string) (Session, error) {
 // pane_current_command, pane_title, ...): List splits ONE `list-panes -a` read
 // on newline and `|`, and tmux prints such fields raw, so a directory named
 // with a newline and a fake line could forge a dead pane for another deck
-// session. Every field here is a number or a %-prefixed pane id.
-const paneFactsFormat = "#{pane_id}|#{pane_pid}|#{pane_dead}|#{pane_dead_status}|#{pane_dead_signal}|#{pane_width}|#{pane_height}"
+// session. Every field here is a number or a %-prefixed pane id (window_activity is epoch seconds).
+const paneFactsFormat = "#{pane_id}|#{pane_pid}|#{pane_dead}|#{pane_dead_status}|#{pane_dead_signal}|#{pane_width}|#{pane_height}|#{window_activity}"
 
 // sessionNamePattern is the shape of every name sessionName produces.
 var sessionNamePattern = regexp.MustCompile(`^deck_[a-z0-9_-]+$`)
 
 func parsePaneFacts(name, line string) (Pane, error) {
 	fields := strings.Split(line, "|")
-	if len(fields) != 7 || !paneIDPattern.MatchString(fields[0]) {
+	if (len(fields) != 7 && len(fields) != 8) || !paneIDPattern.MatchString(fields[0]) {
 		return Pane{}, fmt.Errorf("parse pane facts for session %q: %q", name, line)
 	}
 	pid, err := strconv.Atoi(fields[1])
@@ -853,7 +856,14 @@ func parsePaneFacts(name, line string) (Pane, error) {
 	if err != nil {
 		return Pane{}, fmt.Errorf("parse pane height for session %q: %w", name, err)
 	}
-	pane := Pane{ID: fields[0], PID: pid, Dead: fields[2] == "1", Width: width, Height: height}
+	var activity int64
+	if len(fields) == 8 && fields[7] != "" { // a fixture predating window_activity sends seven
+		activity, err = strconv.ParseInt(fields[7], 10, 64)
+		if err != nil {
+			return Pane{}, fmt.Errorf("parse pane window activity for session %q: %w", name, err)
+		}
+	}
+	pane := Pane{ID: fields[0], PID: pid, Dead: fields[2] == "1", Width: width, Height: height, WindowActivity: activity}
 	pane.DeadStatus, err = parseDeadStatus(name, fields[3], fields[4])
 	if err != nil {
 		return Pane{}, err

@@ -176,22 +176,7 @@ func (rule probeRule) matches(pane, tail string) bool {
 // It answers "what did the agent actually leave on screen last".
 func lastContentLine(pane string) string {
 	lines := strings.Split(strings.ReplaceAll(pane, "\r\n", "\n"), "\n")
-
-	// Find the last two (possibly non-adjacent) separator lines and drop
-	// everything from the earlier of the two onward as footer chrome.
-	end := len(lines)
-	separators := 0
-	for i := len(lines) - 1; i >= 0; i-- {
-		if isSeparatorLine(strings.TrimSpace(lines[i])) {
-			separators++
-			if separators == 2 {
-				end = i
-				break
-			}
-		}
-	}
-
-	for i := end - 1; i >= 0; i-- {
+	for i := transcriptEnd(lines) - 1; i >= 0; i-- {
 		line := strings.TrimSpace(lines[i])
 		if line == "" || isSeparatorLine(line) {
 			continue
@@ -199,6 +184,41 @@ func lastContentLine(pane string) string {
 		return line
 	}
 	return ""
+}
+
+// transcriptEnd is the index of the first footer-chrome line: the earlier of
+// the pane's last two (possibly non-adjacent) separator lines, or len(lines)
+// when the pane has fewer than two. It is the one boundary lastContentLine and
+// TranscriptRegion share.
+func transcriptEnd(lines []string) int {
+	separators := 0
+	for i := len(lines) - 1; i >= 0; i-- {
+		if isSeparatorLine(strings.TrimSpace(lines[i])) {
+			separators++
+			if separators == 2 {
+				return i
+			}
+		}
+	}
+	return len(lines)
+}
+
+// TranscriptRegion returns the part of pane above the composer/footer chrome:
+// everything above the last two separator lines, the same boundary
+// lastContentLine uses (the whole pane when it has fewer than two). Trailing
+// whitespace on each line and trailing blank lines are dropped, so redraw
+// padding is not a change. The R304 output clock hashes it, so a ctx:%, branch
+// or model change in the footer never reads as output.
+func TranscriptRegion(pane string) string {
+	lines := strings.Split(strings.ReplaceAll(pane, "\r\n", "\n"), "\n")
+	lines = lines[:transcriptEnd(lines)]
+	for i := range lines {
+		lines[i] = strings.TrimRight(lines[i], " \t")
+	}
+	for len(lines) > 0 && lines[len(lines)-1] == "" {
+		lines = lines[:len(lines)-1]
+	}
+	return strings.Join(lines, "\n")
 }
 
 // isSeparatorLine reports whether line is non-empty and consists entirely of

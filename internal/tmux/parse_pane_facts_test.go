@@ -39,3 +39,16 @@ func TestParsePaneFactsReadsExitStatusAndLiveness(t *testing.T) {
 		t.Fatalf("exited pane = %+v, want dead with exit status 3", exited)
 	}
 }
+
+func TestParsePaneFactsReadsWindowActivity(t *testing.T) {
+	pane, err := parsePaneFacts("deck_a", "%3|77|0|||100|40|1760000123")
+	if err != nil || pane.WindowActivity != 1760000123 {
+		t.Fatalf("parsePaneFacts = %+v, %v; want window activity 1760000123", pane, err)
+	}
+	if _, err := parsePaneFacts("deck_a", "%3|77|0|||100|40|soon"); err == nil || !strings.Contains(err.Error(), "window activity") {
+		t.Fatalf("a non-numeric window_activity must be named in the error, got %v", err)
+	}
+	if !strings.Contains(paneFactsFormat, "#{window_activity}") {
+		t.Fatalf("paneFactsFormat does not read window_activity: %q", paneFactsFormat)
+	}
+}

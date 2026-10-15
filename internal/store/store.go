@@ -25,7 +25,7 @@ import (
 const busyTimeoutMillis = 5000
 
 // SchemaVersion is the newest schema understood by this binary.
-const SchemaVersion = 14
+const SchemaVersion = 15
 
 // SupportedSchemaVersion is the newest schema this binary opens: SchemaVersion
 // in every shipped build. A test build (-tags deckoldschema, see
@@ -428,6 +428,11 @@ type Session struct {
 	// the moment any later verdict — probe or otherwise — updates the row,
 	// so a stale miss can never be shown once fresher evidence exists.
 	LastProbeAt int64
+	// LastOutputAt is the wall-clock millisecond time of the newest
+	// transcript-region output confirmed at reconcile (R304), 0 when none has
+	// been. It is the output clock: footer/statusline churn never advances it,
+	// and it is written by RecordOutput as a column, never an event.
+	LastOutputAt int64
 	// EnvDirty is SPEC §6.1/§6.3's env_dirty column (task 021): true once a
 	// session-env edit has been written and mirrored into tmux's own
 	// environment table for future panes, but has NOT yet reached the
@@ -824,7 +829,7 @@ func scanSession(row interface {
 		&session.StatusAt, &session.CreatedAt, &killedByUser, &paneExitStatus, &crashTail,
 		&session.NotifyEpoch, &lastMessage, &acknowledged, &launchArgsJSON, &envJSON, &preLaunch, &postDestroy,
 		&loginShell, &session.PermissionProfile, &permissionProfileReason, &conversationID, &resumePin, &session.ResumeState,
-		&groupID, &groupName, &session.LastProbeAt, &envDirty, &session.DeletedAt, &session.ArchivedAt, &launchDirty,
+		&groupID, &groupName, &session.LastProbeAt, &session.LastOutputAt, &envDirty, &session.DeletedAt, &session.ArchivedAt, &launchDirty,
 		&leaseOwner, &session.PinnedAt, &session.HookExecutable, &eventHookEnabled, &eventHookEvents, &session.NameSource, &pendingName, &pendingAt, &nameAdopt, &nameAdopted); err != nil {
 		return Session{}, err
 	}
@@ -875,7 +880,7 @@ const sessionColumns = `sessions.id, sessions.name, slug, cwd, agent, captured_p
 		COALESCE(status_reason, ''), status_source, status_at, created_at,
 		killed_by_user, pane_exit_status, crash_tail, notify_epoch, last_message, acknowledged,
 		launch_args, env, pre_launch, post_destroy, login_shell, permission_profile, permission_profile_reason, conversation_id, resume_pin, resume_state,
-		sessions.group_id, groups.name, last_probe_at, env_dirty, deleted_at, archived_at, launch_dirty,
+		sessions.group_id, groups.name, last_probe_at, last_output_at, env_dirty, deleted_at, archived_at, launch_dirty,
 		COALESCE(launch_lease_owner, ''), pinned_at, COALESCE(hook_executable, ''),
 		event_hook_enabled, event_hook_events, name_source, pending_harness_name, pending_harness_name_at, harness_name_adopt, name_adopted`
 
@@ -1435,6 +1440,32 @@ func (s *Store) RecordProbeMiss(ctx context.Context, sessionID string, at int64)
 	affected, err := result.RowsAffected()
 	if err != nil {
 		return fmt.Errorf("check set last_probe_at: %w", err)
+	}
+	if affected != 1 {
+		return fmt.Errorf("session %q not found", sessionID)
+	}
+	return nil
+}
+
+// RecordOutput sets sessions.last_output_at to at (R304). Like RecordProbeMiss
+// it is a plain UPDATE of one column and never appends to events: the output
+// clock advances once per bucket per session, and an event kind nothing reads
+// would grow the log for as long as an agent works. It does not touch status,
+// status_source or status_at.
+func (s *Store) RecordOutput(ctx context.Context, sessionID string, at int64) error {
+	if sessionID == "" {
+		return errors.New("session id is required")
+	}
+	if at <= 0 {
+		return errors.New("output timestamp is required")
+	}
+	result, err := s.db.ExecContext(ctx, `UPDATE sessions SET last_output_at = ? WHERE id = ?`, at, sessionID)
+	if err != nil {
+		return fmt.Errorf("set last_output_at: %w", err)
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("check set last_output_at: %w", err)
 	}
 	if affected != 1 {
 		return fmt.Errorf("session %q not found", sessionID)
@@ -2938,7 +2969,7 @@ func (s *Store) migrate(version int) error {
 // the schemaVN variables at call time (tests substitute them); a version
 // outside 0..SchemaVersion-1 has no migration path.
 func applySchemaLadder(tx *sql.Tx, version int) error {
-	rungs := [][]string{schemaV1, schemaV2, schemaV3, schemaV4, schemaV5, schemaV6, schemaV7, schemaV8, schemaV9, schemaV10, schemaV11, schemaV12, schemaV13, schemaV14}
+	rungs := [][]string{schemaV1, schemaV2, schemaV3, schemaV4, schemaV5, schemaV6, schemaV7, schemaV8, schemaV9, schemaV10, schemaV11, schemaV12, schemaV13, schemaV14, schemaV15}
 	if version < 0 || version >= len(rungs) {
 		return fmt.Errorf("no migration path from schema version %d", version)
 	}
@@ -3198,6 +3229,16 @@ var schemaV14 = []string{
 	`CREATE INDEX IF NOT EXISTS bookmarks_session ON bookmarks(session_id)`,
 	`CREATE TRIGGER IF NOT EXISTS bookmarks_clear_on_tombstone AFTER UPDATE OF deleted_at ON sessions
 		WHEN NEW.deleted_at != 0 BEGIN DELETE FROM bookmarks WHERE session_id = NEW.id; END`,
+}
+
+// schemaV15 adds sessions.last_output_at (R304): the wall-clock millisecond
+// time of the newest transcript-region output reconcile has confirmed for the
+// session, 0 until the first. It is a clock, not a status: it is written by a
+// plain UPDATE (RecordOutput), never as an event row, and nothing in SPEC §7
+// precedence reads it. ALTER TABLE ADD COLUMN touches no existing value, so an
+// upgrade from v14 recreates no session.
+var schemaV15 = []string{
+	`ALTER TABLE sessions ADD COLUMN last_output_at INTEGER NOT NULL DEFAULT 0`,
 }
 
 // getUIState returns the persisted value for key, or def when no row exists

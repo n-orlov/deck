@@ -78,6 +78,17 @@ func TestListOracleFixtureServerResultIsPinned(t *testing.T) {
 	if err != nil {
 		t.Fatalf("List: %v", err)
 	}
+	// window_activity (R304) is tmux's own clock reading: it must be a real
+	// recent epoch second for every pane, and is then blanked because the
+	// oracle cannot know the exact second.
+	for i := range got {
+		for j := range got[i].Panes {
+			if at := got[i].Panes[j].WindowActivity; at < time.Now().Unix()-3600 || at > time.Now().Unix()+60 {
+				t.Fatalf("pane %s window_activity = %d, want a recent epoch second", got[i].Panes[j].ID, at)
+			}
+			got[i].Panes[j].WindowActivity = 0
+		}
+	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("List result changed.\n got: %s\nwant: %s", describeSessions(got), describeSessions(want))
 	}

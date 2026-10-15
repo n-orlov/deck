@@ -493,6 +493,9 @@ func preFrameTombstoneSweep(ctx context.Context, db *store.Store, settings confi
 // hourly throttle re-engages exactly as before for anything that arrives
 // afterwards.
 func newTUIReconcile(db *store.Store, sessions service.Service, settings config.Settings) func(context.Context) error {
+	if sessions.Output == nil {
+		sessions.Output = service.NewOutputClock(service.DefaultOutputBucket)
+	}
 	return func(ctx context.Context) error {
 		if err := sessions.ReconcileWithProbes(ctx, settings.StaleAfter); err != nil {
 			return err
