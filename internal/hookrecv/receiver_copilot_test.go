@@ -118,6 +118,13 @@ func TestCopilotNoChangeEventsLeaveTheRowUntouched(t *testing.T) {
 			before, _ := db.GetSession(context.Background(), "row-1")
 			receiveCopilot(t, db, tc.event, copilotPayload(tc.extra), "")
 			after, _ := db.GetSession(context.Background(), "row-1")
+			// The event itself moves only the derived event clock
+			// (Session.LastEventAt, read from events and stored on no row;
+			// covered by store.TestAnyEventOnTheRowAdvancesLastEventAt).
+			if after.LastEventAt <= before.LastEventAt {
+				t.Fatalf("no-change event not seen by LastEventAt: %d -> %d", before.LastEventAt, after.LastEventAt)
+			}
+			after.LastEventAt = before.LastEventAt
 			if fmt.Sprintf("%#v", before) != fmt.Sprintf("%#v", after) {
 				t.Fatalf("row changed:\nbefore %#v\nafter  %#v", before, after)
 			}

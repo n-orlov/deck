@@ -66,6 +66,14 @@ func TestIdlePromptChangesNothingOnIdleRunningAndWaitingRows(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			// The notification is an event, so the derived event clock
+			// (Session.LastEventAt, read from events and stored on no row;
+			// covered by store.TestAnyEventOnTheRowAdvancesLastEventAt) moves
+			// to it; everything stored on the row stays as it was.
+			if after.LastEventAt != 50 {
+				t.Fatalf("idle_prompt event not seen by LastEventAt: %d, want 50", after.LastEventAt)
+			}
+			after.LastEventAt = before.LastEventAt
 			if !reflect.DeepEqual(before, after) {
 				t.Fatalf("idle_prompt changed the row (status, status_at, source, reason, notify_epoch, acknowledged or other):\nbefore %#v\nafter  %#v", before, after)
 			}

@@ -109,3 +109,16 @@ func TestUnverifiedLeavesTheSortPositionUnchanged(t *testing.T) {
 		}
 	}
 }
+
+// TestRecentEventKeepsAnOldRunningRowVerified: the quiet window counts from
+// the newest event, not status_at. A repeat verdict 1.5 s ago (status_at left
+// ancient by R303) keeps the plain running glyph despite three misses.
+func TestRecentEventKeepsAnOldRunningRowVerified(t *testing.T) {
+	row := quietRunning("recentevent", 3)
+	row.StatusAt = 1000
+	row.LastEventAt = 10_000_000 - 1500
+	line := unverifiedRowLine(t, unverifiedModel(false, row).View(), "recentevent")
+	if !strings.Contains(line, "◐ recentevent") || strings.Contains(line, "◔") {
+		t.Fatalf("a row with an event 1.5 s ago was decorated unverified: %q", line)
+	}
+}

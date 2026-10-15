@@ -27,6 +27,7 @@ func openAsSchema12(t *testing.T, seed func(*store.Store)) *store.Store {
 		`ALTER TABLE sessions DROP COLUMN name_adopted`,
 		`ALTER TABLE sessions DROP COLUMN last_output_at`,
 		`ALTER TABLE sessions DROP COLUMN probe_miss_streak`,
+		`DROP INDEX events_session_at`,
 		`UPDATE meta SET version = 12 WHERE key = 'schema_version'`,
 	} {
 		if _, err := db.DB().Exec(statement); err != nil {

@@ -142,3 +142,86 @@ func TestStreakCountsConsecutiveMissesAcrossAHit(t *testing.T) {
 		t.Fatalf("streak = %d, want 2 (misses are consecutive)", row.ProbeMissStreak)
 	}
 }
+
+// TestRecentRepeatVerdictRestartsTheQuietWindow: R315's window is "no event for
+// 3 x stale_after", not "status_at is old". A repeat running verdict records an
+// event but leaves status_at alone (R303), so a row whose status_at is ancient
+// but whose last event is recent must not be decorated by three quick misses
+// until the full window has elapsed since that event.
+func TestRecentRepeatVerdictRestartsTheQuietWindow(t *testing.T) {
+	window := 3 * unverifiedStale.Milliseconds()
+	for _, source := range []string{"hook", "probe"} {
+		t.Run(source, func(t *testing.T) {
+			db := seedRunning(t)
+			const verdictAt = 200000
+			input := StatusUpdateInput{SessionID: "row", Status: "running", Source: source, At: verdictAt}
+			if source == "hook" {
+				input.Reason, input.EventKind = "UserPromptSubmit", "hook.UserPromptSubmit"
+			} else {
+				input.Reason, input.EventKind, input.StaleAfter = "working indicator", "probe.running", unverifiedStale.Milliseconds()
+			}
+			if err := db.UpdateSessionStatus(context.Background(), input); err != nil {
+				t.Fatal(err)
+			}
+			for i := int64(1); i <= 3; i++ {
+				if err := db.RecordProbeMiss(context.Background(), "row", verdictAt+500*i); err != nil {
+					t.Fatal(err)
+				}
+			}
+			row := streakRow(t, db)
+			if row.StatusAt != 1000 || row.ProbeMissStreak != 3 || row.LastEventAt != verdictAt {
+				t.Fatalf("status_at=%d streak=%d last_event_at=%d; want 1000, 3, %d", row.StatusAt, row.ProbeMissStreak, row.LastEventAt, verdictAt)
+			}
+			if row.Unverified(time.UnixMilli(verdictAt+1500), unverifiedStale) {
+				t.Fatal("1.5 s after a repeat verdict the row was unverified; the quiet window must restart at the event")
+			}
+			if row.Unverified(time.UnixMilli(verdictAt+window-1), unverifiedStale) {
+				t.Fatal("unverified one millisecond before 3 x stale_after since the last event")
+			}
+			if !row.Unverified(time.UnixMilli(verdictAt+window), unverifiedStale) {
+				t.Fatal("not unverified once 3 x stale_after has passed since the last event")
+			}
+		})
+	}
+}
+
+// TestAnyEventOnTheRowAdvancesLastEventAt: LastEventAt reads the newest event
+// of every writer (here a note, which goes through no status path), never
+// moves backwards, ignores orphan events, and recording the event leaves the
+// stored session row itself unchanged.
+func TestAnyEventOnTheRowAdvancesLastEventAt(t *testing.T) {
+	db := seedRunning(t)
+	ctx := context.Background()
+	if err := db.RecordSessionNote(ctx, "row", "note", 90000); err != nil {
+		t.Fatal(err)
+	}
+	if got := streakRow(t, db).LastEventAt; got != 90000 {
+		t.Fatalf("last_event_at = %d after a note at 90000", got)
+	}
+	if err := db.RecordSessionNote(ctx, "row", "older", 50000); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.RecordOrphanEvent(ctx, EventInput{At: 999999, Kind: "hook.Stop"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := streakRow(t, db).LastEventAt; got != 90000 {
+		t.Fatalf("last_event_at = %d, want 90000 (never backwards, orphans ignored)", got)
+	}
+	var rowBefore, rowAfter string
+	dump := `SELECT quote(status) || quote(status_at) || quote(probe_miss_streak) || quote(last_probe_at) FROM sessions WHERE id = 'row'`
+	if err := db.db.QueryRow(dump).Scan(&rowBefore); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.RecordSessionNote(ctx, "row", "later", 120000); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.db.QueryRow(dump).Scan(&rowAfter); err != nil {
+		t.Fatal(err)
+	}
+	if rowBefore != rowAfter {
+		t.Fatalf("recording an event rewrote the session row: %s -> %s", rowBefore, rowAfter)
+	}
+	if got := streakRow(t, db).LastEventAt; got != 120000 {
+		t.Fatalf("last_event_at = %d after a note at 120000", got)
+	}
+}

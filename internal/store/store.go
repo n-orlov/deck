@@ -25,7 +25,7 @@ import (
 const busyTimeoutMillis = 5000
 
 // SchemaVersion is the newest schema understood by this binary.
-const SchemaVersion = 16
+const SchemaVersion = 17
 
 // SupportedSchemaVersion is the newest schema this binary opens: SchemaVersion
 // in every shipped build. A test build (-tags deckoldschema, see
@@ -432,6 +432,13 @@ type Session struct {
 	// last verdict (R315): RecordProbeMiss adds one, any probe or hook verdict
 	// (and any status write) resets it to 0. A column, never an event.
 	ProbeMissStreak int
+	// LastEventAt is the `at` of the newest event recorded for the row, 0
+	// when none has been (R315). It is derived at read time from the events
+	// table (indexed by events_session_at), not stored on the row, so
+	// recording an event never rewrites the session row, yet every event — a
+	// repeat verdict that leaves status_at alone included — restarts the
+	// unverified quiet window.
+	LastEventAt int64
 	// LastOutputAt is the wall-clock millisecond time of the newest
 	// transcript-region output confirmed at reconcile (R304), 0 when none has
 	// been. It is the output clock: footer/statusline churn never advances it,
@@ -833,7 +840,7 @@ func scanSession(row interface {
 		&session.StatusAt, &session.CreatedAt, &killedByUser, &paneExitStatus, &crashTail,
 		&session.NotifyEpoch, &lastMessage, &acknowledged, &launchArgsJSON, &envJSON, &preLaunch, &postDestroy,
 		&loginShell, &session.PermissionProfile, &permissionProfileReason, &conversationID, &resumePin, &session.ResumeState,
-		&groupID, &groupName, &session.LastProbeAt, &session.LastOutputAt, &session.ProbeMissStreak, &envDirty, &session.DeletedAt, &session.ArchivedAt, &launchDirty,
+		&groupID, &groupName, &session.LastProbeAt, &session.LastOutputAt, &session.ProbeMissStreak, &session.LastEventAt, &envDirty, &session.DeletedAt, &session.ArchivedAt, &launchDirty,
 		&leaseOwner, &session.PinnedAt, &session.HookExecutable, &eventHookEnabled, &eventHookEvents, &session.NameSource, &pendingName, &pendingAt, &nameAdopt, &nameAdopted); err != nil {
 		return Session{}, err
 	}
@@ -884,7 +891,7 @@ const sessionColumns = `sessions.id, sessions.name, slug, cwd, agent, captured_p
 		COALESCE(status_reason, ''), status_source, status_at, created_at,
 		killed_by_user, pane_exit_status, crash_tail, notify_epoch, last_message, acknowledged,
 		launch_args, env, pre_launch, post_destroy, login_shell, permission_profile, permission_profile_reason, conversation_id, resume_pin, resume_state,
-		sessions.group_id, groups.name, last_probe_at, last_output_at, probe_miss_streak, env_dirty, deleted_at, archived_at, launch_dirty,
+		sessions.group_id, groups.name, last_probe_at, last_output_at, probe_miss_streak, COALESCE((SELECT MAX(events.at) FROM events WHERE events.session_id = sessions.id), 0), env_dirty, deleted_at, archived_at, launch_dirty,
 		COALESCE(launch_lease_owner, ''), pinned_at, COALESCE(hook_executable, ''),
 		event_hook_enabled, event_hook_events, name_source, pending_harness_name, pending_harness_name_at, harness_name_adopt, name_adopted`
 
@@ -1444,10 +1451,11 @@ const (
 	UnverifiedAgeFactor  = 3
 )
 
-// Unverified reports whether a `running` row has gone unconfirmed (R315): its
-// status_at (the last event that changed what the row says; a repeat verdict
-// ends the streak instead) is at least UnverifiedAgeFactor x staleAfter old
-// and its probe has missed UnverifiedMissStreak times in a row. It is derived
+// Unverified reports whether a `running` row has gone unconfirmed (R315): no
+// event has been recorded for it for at least UnverifiedAgeFactor x
+// staleAfter (measured from the newer of LastEventAt and status_at, so a
+// repeat verdict that leaves status_at alone still restarts the window) and
+// its probe has missed UnverifiedMissStreak times in a row. It is derived
 // for display only: it reads no stored flag, writes nothing, and changes
 // neither the status, its text nor the sort position. staleAfter <= 0 means
 // probing is off, so nothing is ever unverified.
@@ -1455,7 +1463,8 @@ func (s Session) Unverified(now time.Time, staleAfter time.Duration) bool {
 	if staleAfter <= 0 || s.Status != "running" || s.ProbeMissStreak < UnverifiedMissStreak {
 		return false
 	}
-	return now.UnixMilli()-s.StatusAt >= UnverifiedAgeFactor*staleAfter.Milliseconds()
+	quietSince := max(s.StatusAt, s.LastEventAt)
+	return now.UnixMilli()-quietSince >= UnverifiedAgeFactor*staleAfter.Milliseconds()
 }
 
 // RecordProbeMiss notes that a stale-eligible pane was sampled but matched
@@ -3015,7 +3024,7 @@ func (s *Store) migrate(version int) error {
 // the schemaVN variables at call time (tests substitute them); a version
 // outside 0..SchemaVersion-1 has no migration path.
 func applySchemaLadder(tx *sql.Tx, version int) error {
-	rungs := [][]string{schemaV1, schemaV2, schemaV3, schemaV4, schemaV5, schemaV6, schemaV7, schemaV8, schemaV9, schemaV10, schemaV11, schemaV12, schemaV13, schemaV14, schemaV15, schemaV16}
+	rungs := [][]string{schemaV1, schemaV2, schemaV3, schemaV4, schemaV5, schemaV6, schemaV7, schemaV8, schemaV9, schemaV10, schemaV11, schemaV12, schemaV13, schemaV14, schemaV15, schemaV16, schemaV17}
 	if version < 0 || version >= len(rungs) {
 		return fmt.Errorf("no migration path from schema version %d", version)
 	}
@@ -3293,6 +3302,16 @@ var schemaV15 = []string{
 // resets it), never an event, and nothing in SPEC §7 precedence reads it.
 var schemaV16 = []string{
 	`ALTER TABLE sessions ADD COLUMN probe_miss_streak INTEGER NOT NULL DEFAULT 0`,
+}
+
+// schemaV17 adds the events_session_at index (R315). R315's quiet window is
+// "no event for 3 x stale_after", and status_at cannot measure that, because
+// a repeat verdict records an event while leaving status_at alone (R303).
+// Session.LastEventAt is therefore read as the newest events.at for the row,
+// and this index makes that per-row MAX a single index probe. It adds no
+// column and writes no row.
+var schemaV17 = []string{
+	`CREATE INDEX IF NOT EXISTS events_session_at ON events(session_id, at)`,
 }
 
 // getUIState returns the persisted value for key, or def when no row exists

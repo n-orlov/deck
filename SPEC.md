@@ -446,6 +446,7 @@ CREATE TABLE sessions (
   launch_lease_until INTEGER NOT NULL DEFAULT 0,
   last_probe_at      INTEGER NOT NULL DEFAULT 0, -- last pane sample that matched no §7 rule; a column, never an event (§7)
   last_output_at     INTEGER NOT NULL DEFAULT 0, -- the output clock: ms of the newest transcript-region output reconcile confirmed (§7); a column, never an event
+  probe_miss_streak  INTEGER NOT NULL DEFAULT 0, -- consecutive probe passes that matched no §7 rule (R315); a column, never an event
   created_at         INTEGER NOT NULL,
   last_attached_at   INTEGER NOT NULL DEFAULT 0,
   archived_at        INTEGER NOT NULL DEFAULT 0,
@@ -562,6 +563,11 @@ Invariants:
   transcript has been seen to change. `ALTER TABLE ADD COLUMN` touches no existing value, so a migrated
   database starts every session at 0 and recreates no row. The column is written by a plain
   `UPDATE` and never as an `events` row.
+- Schema version 16 adds `sessions.probe_miss_streak` (R315, §7), `0` on a migrated row. It is written by
+  plain `UPDATE`s and never as an `events` row.
+- Schema version 17 adds the index `events_session_at` on `events(session_id, at)` (R315, §7), so the newest
+  event of a session (the unverified marker's quiet window) is one index probe. It adds no column and
+  rewrites no row.
 
 ---
 
@@ -1021,12 +1027,15 @@ Rules:
   sparse check for a turn begun without a hook: a probe that sees the working indicator moves the row to
   `running` with source `probe`; a probe that matches nothing leaves it `idle` (`last_probe_at` only). An
   `error` or `stopped` row is never probed.
-- **Unverified running row (R315).** A `running` row whose `status_at` is at least **3 × `stale_after`**
-  old and whose probe has matched no rule on **3 consecutive** passes is shown as *unverified*: its status
+- **Unverified running row (R315).** A `running` row with no event for at least **3 × `stale_after`**
+  and whose probe has matched no rule on **3 consecutive** passes is shown as *unverified*: its status
   glyph is `◔` (ASCII `-`) instead of `◐` (ASCII `~`), in the same one column (§11). The miss streak is the
   column `sessions.probe_miss_streak` (schema v16): `RecordProbeMiss` adds one with a plain `UPDATE`, never
   an event, and any probe verdict (even one that lost precedence), any hook verdict and any status write
-  sets it back to 0, which clears the marker at once. The marker is derived at render time and stored
+  sets it back to 0, which clears the marker at once. "No event" is measured from the newest `events.at`
+  recorded for the session, of any kind and from any writer (the newer of it and `status_at` is used), read
+  at render time through the `events_session_at` index (schema v17) and stored on no row: a repeat verdict
+  that leaves `status_at` alone (R303) still restarts the 3 × `stale_after` window. The marker is derived at render time and stored
   nowhere: the status stays `running`, the status word reads `running`, no text is added, and the row keeps
   its sort position in every order. It never applies with `stale_after` 0 (probing off) and never to a
   `starting`, `waiting`, `idle`, `error` or `stopped` row.
@@ -2732,7 +2741,7 @@ always did), and the permission badge for non-`safe` **last**. The
 - Status glyphs `●` waiting · `◐` running · `○` idle · `◌` starting · `■` stopped ·
   `✗` error · `▣` archived. Under `DECK_ASCII=1` / `[ui] ascii` each is one ASCII column: `?` waiting,
   `~` running, `o` idle, `.` starting, `#` stopped, `x` error. An **unverified** `running` row (§7, R315:
-  3 × `stale_after` without an event and 3 consecutive probe misses) draws `◔` (ASCII `-`) in the running
+  3 × `stale_after` without an event, measured from the session's newest event, and 3 consecutive probe misses) draws `◔` (ASCII `-`) in the running
   glyph's column, in the running token; the status word and the sort position do not change. One column, always in the same column, so the shape of the
   list is readable before any text is. **No glyph deck renders may have East Asian Width
   `Wide` or `Fullwidth`** (`⏸` U+23F8, `⚡` U+26A1 and most emoji): those occupy two cells
