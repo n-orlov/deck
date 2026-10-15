@@ -5,7 +5,7 @@
 [![features](https://img.shields.io/endpoint?url=https%3A%2F%2Fn-orlov.github.io%2Fdeck%2Fbadges%2Ffeatures.json)](https://github.com/n-orlov/deck/actions/workflows/ci.yml?query=branch%3Amain)
 [![coverage](https://img.shields.io/endpoint?url=https%3A%2F%2Fn-orlov.github.io%2Fdeck%2Fbadges%2Fcoverage.json)](https://n-orlov.github.io/deck/)
 [![vulnerabilities](https://img.shields.io/endpoint?url=https%3A%2F%2Fn-orlov.github.io%2Fdeck%2Fbadges%2Fvulnerabilities.json)](https://github.com/n-orlov/deck/actions/workflows/ci.yml?query=branch%3Amain)
-[![license](https://img.shields.io/badge/license-none_declared-lightgrey)](https://github.com/n-orlov/deck/actions/workflows/ci.yml?query=branch%3Amain)
+[![license](https://img.shields.io/badge/license-Apache--2.0-blue)](https://github.com/n-orlov/deck/actions/workflows/ci.yml?query=branch%3Amain)
 [![Go version](https://img.shields.io/badge/go-1.25.0-00ADD8)](https://github.com/n-orlov/deck/actions/workflows/ci.yml?query=branch%3Amain)
 [![report](https://img.shields.io/badge/report-Allure-blue)](https://n-orlov.github.io/deck/)
 <!-- badges:end -->
@@ -128,6 +128,18 @@ git tag v0.2.0 && git push origin v0.2.0
 
 GitHub Actions ([release.yml](.github/workflows/release.yml)) builds the four binaries,
 stamps the tag into `deck --version`, attests the tarballs and `checksums.txt`, and publishes the release.
+
+## Remix, don't PR
+
+This project is **closed to pull requests and open to remix**. It is Apache-2.0: fork it, rewrite it,
+let your agent adapt it, and keep your version. I don't review or merge outside pull requests and
+there is no maintenance promise. Ideas, bug reports and links to your remix are welcome in
+[Discussions](https://github.com/n-orlov/deck/discussions). How to do it: [REMIX.md](REMIX.md).
+Background: [Geoff Huntley's remix model](https://ghuntley.com/remix/).
+
+## License
+
+Apache-2.0 (see [LICENSE](LICENSE)).
 
 ## Develop
 

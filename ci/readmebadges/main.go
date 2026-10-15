@@ -46,10 +46,9 @@ const (
 	mainRunsURL = workflowURL + "?query=branch%3Amain"
 	pagesURL    = "https://n-orlov.github.io/deck/"
 	badgesURL   = pagesURL + "badges/"
-	// licenseText is what the licence badge states. The repository declares
-	// no licence (no LICENSE file; the GitHub API reports none), so the
-	// badge says so rather than naming one.
-	licenseText = "none declared"
+	// licenseText is what the licence badge states: the repository ships an
+	// Apache-2.0 LICENSE file.
+	licenseText = "Apache-2.0"
 )
 
 // gateBadges are the endpoint badges, in README order: the file stem
@@ -103,7 +102,7 @@ func Block(goVersion string) string {
 		lines = append(lines, badge(g.Alt, image, link))
 	}
 	lines = append(lines,
-		badge("license", staticImage("license", licenseText, "lightgrey"), mainRunsURL),
+		badge("license", staticImage("license", licenseText, "blue"), mainRunsURL),
 		badge("Go version", staticImage("go", goVersion, "00ADD8"), mainRunsURL),
 		badge("report", staticImage("report", "Allure", "blue"), pagesURL),
 		EndMarker)
