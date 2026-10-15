@@ -70,6 +70,25 @@ and the `report` job drops the `GITHUB_TOKEN` extraheader from
 `pages-pr-publish.yml`, a separate `workflow_run`-triggered workflow, is
 described under "Publishing a PR's own report" below.
 
+## Working practice
+
+Work lands on a branch and goes through a pull request, not straight to
+`main`:
+
+1. Open the PR as a **draft** while it is in progress. A draft starts no
+   `ci.yml` run (the `draft == false` guard on `lint`, `suite`, `report`,
+   `pr-comment` and `notify`), so it spends no self-hosted slot.
+2. Mark it **ready for review** when the work is complete. That starts one
+   run (`ready_for_review`); each later push to the branch (`synchronize`)
+   supersedes the previous run of that PR (one concurrency group per ref).
+3. Merge when `lint` and `suite` are green. A push to `main` always runs,
+   whatever it touched: there is no docs-only filter.
+4. Moving a PR back to draft stops new runs, it does not cancel the one in
+   flight.
+
+Applying GitHub branch protection that requires these checks is an operator
+step (see "The required-check rule on `main`"), never done by a job.
+
 ## Triggers
 
 `ci.yml` itself runs for four events (`on:` in the workflow file); a fifth
@@ -77,7 +96,8 @@ run -- `pages-pr-publish.yml` -- is a *second, separate* workflow reacting to
 a `ci` run's own completion, described in full under "Publishing a PR's own
 report" below.
 
-- `pull_request` -- every `ci.yml` job above still runs, but every
+- `pull_request` -- (opened, synchronize, reopened and ready_for_review only;
+  a draft PR starts no run, see "Working practice") every `ci.yml` job above still runs, but every
   self-hosted job carries the fork guard (next section); `publish (Pages)`
   still never runs (gated to `push`/`schedule`/`workflow_dispatch` only).
   On completion of this run, `pages-pr-publish.yml` fires (its
@@ -139,12 +159,12 @@ A superseded push run is not a red main. When `lint` or `suite` ends
 `cancelled` on a `push`, `report` and `notify` skip: no self-hosted slot is
 spent on the stale run and no notification is sent. `notify` still fires for
 a `failure` on a `push` to `main`, and for a `failure` or `cancelled`
-result on `schedule` and `workflow_dispatch`. A push that changes only
-documentation starts no run: the `push` trigger alone carries
-`paths-ignore: ['**.md', 'prds/**', 'docs/**']`, while `pull_request`,
-`schedule` and `workflow_dispatch` carry no path filter, and a change under
-`ci/`, `cmd/`, `internal/`, `features/`, `.github/` or `badges/`, or to
-`go.mod`, always starts a run. `ci/workflowcheck/concurrencygroups_test.go`
+result on `schedule` and `workflow_dispatch`. A push to `main` always starts
+a run: the `push` trigger carries no `paths-ignore`. A draft pull request
+starts no run: `pull_request` has `types: [opened, synchronize, reopened,
+ready_for_review]` and `lint`, `suite`, `report`, `pr-comment` and `notify`
+carry `github.event.pull_request.draft == false` beside the fork guard, so
+marking a PR ready starts its run. `ci/workflowcheck/concurrencygroups_test.go`
 and `ci/workflowcheck/cihygiene_test.go` pin all of this by parsing
 `ci.yml`.
 

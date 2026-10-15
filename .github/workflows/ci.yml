@@ -6,16 +6,11 @@ name: ci
 # full design (GH #35).
 on:
   pull_request:
+    # R332: a draft PR starts no run (the jobs below carry a draft guard);
+    # marking it ready starts one, hence ready_for_review.
+    types: [opened, synchronize, reopened, ready_for_review]
   push:
     branches: [main]
-    # A push that touches only documentation starts no run (no code to
-    # test). Only `push` carries the filter: pull_request, schedule and
-    # workflow_dispatch always run, and anything under ci/, cmd/,
-    # internal/, features/, .github/ or badges/, or go.mod, is code.
-    paths-ignore:
-      - '**.md'
-      - 'prds/**'
-      - 'docs/**'
   schedule:
     # nightly: 03:17 UTC, an arbitrary off-hour slot so it doesn't collide
     # with GitHub's own top-of-hour cron thundering herd.
@@ -64,7 +59,7 @@ jobs:
   lint:
     name: lint
     runs-on: [self-hosted, linux, x64, deck]
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    if: github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false)
     timeout-minutes: 30
     steps:
       - name: Checkout
@@ -80,7 +75,7 @@ jobs:
     name: suite
     needs: lint
     runs-on: [self-hosted, linux, x64, deck]
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    if: github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false)
     timeout-minutes: ${{ (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && 180 || 30 }}
     env:
       # Relative, not github.workspace-absolute: ci/run.sh's sibling mounts
@@ -223,7 +218,7 @@ jobs:
     runs-on: [self-hosted, linux, x64, deck]
     if: >-
       always()
-      && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+      && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false))
       && !(github.event_name == 'push' && (needs.lint.result == 'cancelled' || needs.suite.result == 'cancelled'))
       && (needs.suite.result != 'skipped'
           || ((github.event_name == 'push' || github.event_name == 'workflow_dispatch')
@@ -574,6 +569,7 @@ jobs:
       always()
       && github.event_name == 'pull_request'
       && github.event.pull_request.head.repo.full_name == github.repository
+      && github.event.pull_request.draft == false
       && needs.report.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -626,7 +622,7 @@ jobs:
     runs-on: [self-hosted, linux, x64, deck]
     if: >-
       always()
-      && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+      && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false))
       && (github.ref == 'refs/heads/main' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
       && (contains(needs.*.result, 'failure') || (github.event_name != 'push' && contains(needs.*.result, 'cancelled')))
     timeout-minutes: 5

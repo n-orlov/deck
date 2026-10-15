@@ -4219,8 +4219,8 @@ in the help view.
   is broken. A newer push to `main` cancels the superseded push run
   (one concurrency group per ref), and a cancelled push run reports nothing and notifies no one; a
   dispatch or nightly run always runs to completion, because it never shares a concurrency group
-  with pushes, so a push cannot cancel it; a push that changes only documentation (`**.md`,
-  `prds/**`, `docs/**`) starts no run; the PR-preview publisher never starts for a `main` run, so it leaves no skipped run behind;
+  with pushes, so a push cannot cancel it; every push to `main` runs, whatever it changes (no `paths-ignore`);
+  a draft pull request starts no run (`pull_request` types `opened`, `synchronize`, `reopened`, `ready_for_review`; the `lint`, `suite`, `report`, `pr-comment` and `notify` jobs also require `github.event.pull_request.draft == false`), and the branch/draft-PR working practice is in `docs/ci.md`, "Working practice"; the PR-preview publisher never starts for a `main` run, so it leaves no skipped run behind;
   and a wall-clock budget (such as `_hook`'s 20 ms, §3.1) is asserted on normal builds only, never on
   the `-race` build. A transient failure of the hosted Pages deploy is retried, not reported as
   red. Only a superseded push or pull-request run is ever cancelled.

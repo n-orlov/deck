@@ -1,11 +1,12 @@
 // cihygiene_test.go pins the ci-hygiene behaviour of ci.yml (task 022):
 // the self-hosted runners are a scarce queue, so a push run that a newer
-// push superseded, and a push that touches only documentation, must not
+// push superseded, and a draft PR, must not
 // occupy them. The tests PARSE ci.yml and EVALUATE its expressions with the
 // evaluator in concurrencygroups_test.go; none greps raw expression text.
 //
-//   - TestCIWorkflowPushTriggerIgnoresOnlyDocsPaths: `paths-ignore` is on
-//     the `push` trigger alone and lists exactly the docs paths.
+//   - TestCIWorkflowSkipsDraftPRsAndPushHasNoPathsIgnore: pull_request
+//     types, the draft guard on the five fork-guarded jobs, and no
+//     `paths-ignore` on push.
 //   - TestCIWorkflowSelfHostedJobsAfterSuiteSkipASupersededPush: every
 //     self-hosted job after `suite` skips for a cancelled push, and
 //     `notify` still fires for the red cases that matter.
@@ -22,7 +23,11 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-func TestCIWorkflowPushTriggerIgnoresOnlyDocsPaths(t *testing.T) {
+// TestCIWorkflowSkipsDraftPRsAndPushHasNoPathsIgnore pins R332: a draft PR
+// starts no run, marking it ready starts one, and a push to main always
+// runs (no paths-ignore). It replaces TestCIWorkflowPushTriggerIgnoresOnlyDocsPaths,
+// which pinned the docs-only push filter this phase removes.
+func TestCIWorkflowSkipsDraftPRsAndPushHasNoPathsIgnore(t *testing.T) {
 	root, err := repositoryRoot()
 	if err != nil {
 		t.Fatalf("repositoryRoot: %v", err)
@@ -32,13 +37,13 @@ func TestCIWorkflowPushTriggerIgnoresOnlyDocsPaths(t *testing.T) {
 		t.Fatalf("read ci.yml: %v", err)
 	}
 	var wf struct {
-		On map[string]yaml.Node `yaml:"on"`
+		On   map[string]yaml.Node `yaml:"on"`
+		Jobs map[string]struct {
+			If string `yaml:"if"`
+		} `yaml:"jobs"`
 	}
 	if err := yaml.Unmarshal(raw, &wf); err != nil {
 		t.Fatalf("parse ci.yml: %v", err)
-	}
-	if _, ok := wf.On["push"]; !ok {
-		t.Fatalf("ci.yml: no push trigger")
 	}
 	triggerCfg := func(name string) map[string]any {
 		cfg := map[string]any{}
@@ -50,44 +55,62 @@ func TestCIWorkflowPushTriggerIgnoresOnlyDocsPaths(t *testing.T) {
 		}
 		return cfg
 	}
-	for name := range wf.On {
-		if name == "push" {
-			continue
-		}
-		cfg := triggerCfg(name)
-		for _, key := range []string{"paths", "paths-ignore"} {
-			if _, has := cfg[key]; has {
-				t.Errorf("ci.yml: trigger %q carries %q; only push may filter paths (pull_request, schedule and workflow_dispatch always run)", name, key)
-			}
-		}
+
+	if _, ok := wf.On["push"]; !ok {
+		t.Fatalf("ci.yml: no push trigger")
 	}
 	push := triggerCfg("push")
-	if _, has := push["paths"]; has {
-		t.Errorf("ci.yml: push carries `paths`; it must use `paths-ignore` with the docs globs only")
-	}
-	rawList, ok := push["paths-ignore"].([]any)
-	if !ok {
-		t.Fatalf("ci.yml: push.paths-ignore missing or not a list: %v", push["paths-ignore"])
-	}
-	var got []string
-	for _, v := range rawList {
-		s, _ := v.(string)
-		got = append(got, s)
-	}
-	want := []string{"**.md", "docs/**", "prds/**"}
-	sorted := append([]string(nil), got...)
-	sort.Strings(sorted)
-	if !reflect.DeepEqual(sorted, want) {
-		t.Errorf("push.paths-ignore = %q, want exactly %q", got, want)
-	}
-	for _, g := range got {
-		for _, code := range []string{"ci/", "cmd/", "internal/", "features/", ".github/", "badges/"} {
-			if strings.HasPrefix(g, code) {
-				t.Errorf("push.paths-ignore entry %q starts with %q: code paths must start a run", g, code)
-			}
+	for _, key := range []string{"paths-ignore", "paths"} {
+		if _, has := push[key]; has {
+			t.Errorf("ci.yml: push carries %q; a push to main must always run", key)
 		}
-		if strings.Contains(g, "go.mod") {
-			t.Errorf("push.paths-ignore entry %q names go.mod: dependency changes must start a run", g)
+	}
+
+	rawTypes, ok := triggerCfg("pull_request")["types"].([]any)
+	if !ok {
+		t.Fatalf("ci.yml: pull_request.types missing or not a list")
+	}
+	var types []string
+	for _, v := range rawTypes {
+		s, _ := v.(string)
+		types = append(types, s)
+	}
+	wantTypes := []string{"opened", "synchronize", "reopened", "ready_for_review"}
+	if !reflect.DeepEqual(types, wantTypes) {
+		t.Errorf("pull_request.types = %q, want %q", types, wantTypes)
+	}
+
+	const draftGuard = "github.event.pull_request.draft == false"
+	const forkGuard = "github.event.pull_request.head.repo.full_name == github.repository"
+	for _, id := range []string{"lint", "suite", "report", "pr-comment", "notify"} {
+		job, ok := wf.Jobs[id]
+		if !ok {
+			t.Errorf("ci.yml: no job %q", id)
+			continue
+		}
+		if !strings.Contains(job.If, forkGuard) {
+			t.Errorf("job %q: if: lost the fork guard %q", id, forkGuard)
+		}
+		if !strings.Contains(job.If, draftGuard) {
+			t.Errorf("job %q: if: lacks the draft guard %q", id, draftGuard)
+		}
+		eval := func(event string, draft string) bool {
+			return evalGhBoolTemplate(job.If, map[string]string{
+				"github.event_name": event,
+				"github.ref":        "refs/heads/main",
+				"github.repository": "n-orlov/deck",
+				"github.event.pull_request.head.repo.full_name": "n-orlov/deck",
+				"github.event.pull_request.draft":               draft,
+				"needs.lint.result":                             "success",
+				"needs.suite.result":                            "failure",
+				"needs.report.result":                           "success",
+			})
+		}
+		if eval("pull_request", "true") {
+			t.Errorf("job %q runs for a draft same-repo pull_request", id)
+		}
+		if id != "pr-comment" && id != "notify" && !eval("push", "") {
+			t.Errorf("job %q does not run for a push", id)
 		}
 	}
 }
