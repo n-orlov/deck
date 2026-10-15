@@ -16,6 +16,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/n-orlov/deck/internal/update"
 )
@@ -573,20 +574,39 @@ func TestUpdateVerbRedactsMirrorCredentials(t *testing.T) {
 	}
 }
 
+// stderrHasControl reports a C0, DEL or C1 rune, or a raw byte 0x80-0x9F
+// outside a valid UTF-8 sequence (a C1 control to an 8-bit terminal), in s.
+func stderrHasControl(s string) bool {
+	for i := 0; i < len(s); {
+		r, size := utf8.DecodeRuneInString(s[i:])
+		if r == utf8.RuneError && size == 1 {
+			if s[i] >= 0x80 && s[i] <= 0x9f {
+				return true
+			}
+		} else if r <= 0x1f || r >= 0x7f && r <= 0x9f {
+			return true
+		}
+		i += size
+	}
+	return false
+}
+
 // TestUpdateVerbStderrStripsControlCharacters: a release server whose redirect
-// path holds an ESC, a BEL, a C1 CSI byte, an OSC title sequence or a newline
-// (percent-encoded in the Location header) gets none of them onto `deck
-// update`'s stderr; printable and multi-byte text stays.
+// path holds an ESC, a BEL, a C1 CSI byte (raw 0x9B, sent as %9B, and UTF-8
+// encoded), an OSC title sequence or a newline (percent-encoded in the
+// Location header) gets none of them onto `deck update`'s stderr; printable
+// and multi-byte text stays.
 func TestUpdateVerbStderrStripsControlCharacters(t *testing.T) {
 	withVersion(t, "v1.0.0")
 	for _, c := range []struct{ name, raw, want string }{
 		{"ESC", "ok\x1b[31mred", "ok[31mred"},
 		{"BEL", "a\x07b", "ab"},
-		{"C1 CSI byte", "a\u009b31mb", "a31mb"},
+		{"C1 CSI byte", "a\x9b31mb", "a31mb"},
+		{"C1 CSI UTF-8 encoded", "a\u009b31mb", "a31mb"},
 		{"OSC title sequence", "x\x1b]0;pwned\x07y", "x]0;pwnedy"},
 		{"newline", "line1\nline2", "line1line2"},
 		{"normal string", "not-a-tag", "not-a-tag"},
-		{"multi-byte string", "ошибка-配信-é", "ошибка-配信-é"},
+		{"multi-byte string", "ошибка-配信-é-ě", "ошибка-配信-é-ě"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -607,7 +627,7 @@ func TestUpdateVerbStderrStripsControlCharacters(t *testing.T) {
 				if !strings.Contains(got, "/releases/tag/"+c.want+" does not name") {
 					t.Errorf("%v: stderr %q lacks the stripped text %q", args, got, c.want)
 				}
-				if strings.ContainsFunc(strings.TrimSuffix(got, "\n"), func(r rune) bool { return r <= 0x1f || (r >= 0x7f && r <= 0x9f) }) {
+				if stderrHasControl(strings.TrimSuffix(got, "\n")) {
 					t.Errorf("%v: stderr %q holds a control character", args, got)
 				}
 			}

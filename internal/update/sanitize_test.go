@@ -5,21 +5,40 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"unicode/utf8"
 )
 
-// controlCorpus is R330's seven inputs: what each is before and after the
-// control characters are removed.
+// controlCorpus is R330's seven inputs, the C1 CSI byte both raw (0x9B, the
+// form an 8-bit terminal acts on) and UTF-8 encoded (C2 9B): what each is
+// before and after the control characters are removed. "ě" is C4 9B, so the
+// multi-byte row also holds a 0x9B byte that is part of a valid character.
 var controlCorpus = []struct{ name, raw, want string }{
 	{"ESC", "ok\x1b[31mred", "ok[31mred"},
 	{"BEL", "a\x07b", "ab"},
-	{"C1 CSI byte", "a\u009b31mb", "a31mb"},
+	{"C1 CSI byte", "a\x9b31mb", "a31mb"},
+	{"C1 CSI UTF-8 encoded", "a\u009b31mb", "a31mb"},
 	{"OSC title sequence", "x\x1b]0;pwned\x07y", "x]0;pwnedy"},
 	{"newline", "line1\nline2", "line1line2"},
 	{"normal string", "503 Service Unavailable", "503 Service Unavailable"},
-	{"multi-byte string", "ошибка 配信 ✓ é", "ошибка 配信 ✓ é"},
+	{"multi-byte string", "ошибка 配信 ✓ é ě", "ошибка 配信 ✓ é ě"},
 }
 
-func hasControl(s string) bool { return strings.ContainsFunc(s, isControl) }
+// hasControl reports a C0, DEL or C1 rune, or a raw byte 0x80-0x9F outside a
+// valid UTF-8 sequence, anywhere in s.
+func hasControl(s string) bool {
+	for i := 0; i < len(s); {
+		r, size := utf8.DecodeRuneInString(s[i:])
+		if r == utf8.RuneError && size == 1 {
+			if s[i] >= 0x80 && s[i] <= 0x9f {
+				return true
+			}
+		} else if r <= 0x1f || r >= 0x7f && r <= 0x9f {
+			return true
+		}
+		i += size
+	}
+	return false
+}
 
 func TestStripControl(t *testing.T) {
 	for _, c := range controlCorpus {
@@ -38,6 +57,31 @@ func TestStripControl(t *testing.T) {
 		}
 		if got != want {
 			t.Errorf("U+%04X: got %q, want %q", r, got, want)
+		}
+	}
+	// A lone byte 0x80-0x9F (not part of a valid UTF-8 sequence) is a C1
+	// control to an 8-bit terminal and is removed; any other lone byte stays.
+	for c := 0x80; c <= 0xff; c++ {
+		in := "a" + string([]byte{byte(c)}) + "b"
+		want := "ab"
+		if c > 0x9f {
+			want = in
+		}
+		if got := StripControl(in); got != want {
+			t.Errorf("raw byte 0x%02X: got %q, want %q", c, got, want)
+		}
+	}
+	// After an invalid lead byte the C1 byte is still removed; inside a valid
+	// sequence the same byte is kept.
+	for in, want := range map[string]string{
+		"x\xe0\x9by":       "x\xe0y",
+		"x\x9b\x9b[2Jy":    "x[2Jy",
+		"x\u011b\x9by":     "x\u011by",
+		"\x9b":             "",
+		"\xc2\x9b\x1b\x9b": "",
+	} {
+		if got := StripControl(in); got != want {
+			t.Errorf("StripControl(%q) = %q, want %q", in, got, want)
 		}
 	}
 }
@@ -76,6 +120,7 @@ func TestRedactionStillAppliesToSanitisedText(t *testing.T) {
 		"ESC inside":     "s3cr\x1betvalue",
 		"newline inside": "s3cret\nvalue",
 		"C1 inside":      "s3\u009bcretvalue",
+		"raw C1 inside":  "s3\x9bcretvalue",
 		"whole":          secret,
 	} {
 		err := redactErr(fmt.Errorf("checksums.txt says %w", serverString("x"+echoed+"y")), cfg)
