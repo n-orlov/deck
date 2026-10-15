@@ -1090,6 +1090,21 @@ Rules:
   answered `Do you want to proceed?` above a live composer is not `waiting`. A live dialog is `waiting` and a live
   error is `error`. A pane with no transcript line is live throughout. Only these two rules are anchored; the
   working indicator and the idle footer are read from the whole capture as before.
+- **Claude waiting shapes (R312, probe half of R309).** The Claude probe reads these dialog markers as `waiting`,
+  each in the live region (R311) and each with `Yes` on screen; the marker is the first text, the reason follows,
+  and the golden under `internal/agent/testdata/probes/claude/` is named:
+  `Do you want to proceed?` (`permission prompt`, `waiting.txt`);
+  `Do you want to make this edit` (`file edit confirmation`, `waiting-edit.txt`);
+  `Do you want to create` (`file create confirmation`, `waiting-create.txt`);
+  `Do you trust the files in this folder` (`folder trust`, `waiting-trust.txt`).
+  The edit, create and trust markers are the ones `claude_gate.go` already lists; the goldens are hand-written
+  reproductions, not captures (`claude-PROVENANCE.md`). **Petitioned, no golden and no rule:** an
+  **AskUserQuestion** choice list (question/elicitation), **plan approval**, and a **write**-file confirmation
+  wording. The repository holds no capture, fixture, report or code that states any of their texts (searched: the
+  Claude and Copilot probe corpora, `claude_gate.go`, `docs/reports/`, `docs/spikes/`, `prds/`, `cmd/fake-*`,
+  and the phase 2 real-Claude logs), so none is guessed; until one is established the hook side
+  (`permission_prompt`, `elicitation_dialog`) is the only source for those shapes. The idle, running, starting
+  and error goldens never probe `waiting`.
 - Probe heuristics live in one table-driven file with golden-file tests over captured pane
   text — a fixture corpus per agent, so a spinner or prompt redesign upstream is a
   one-fixture fix.

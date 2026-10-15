@@ -1,0 +1,8 @@
+● Write(internal/agent/notes.go)
+
+ Create file
+ internal/agent/notes.go
+
+ Do you want to create notes.go?
+ ❯ 1. Yes
+   2. No

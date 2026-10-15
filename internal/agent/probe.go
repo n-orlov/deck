@@ -34,6 +34,14 @@ var probeRules = []probeRule{
 	// error or a dialog that scrolled up into the transcript is history.
 	{kind: "claude", contains: []string{"API Error:"}, live: true, status: "error", reason: "api error"},
 	{kind: "claude", contains: []string{"Do you want to proceed?", "Yes"}, live: true, status: "waiting", reason: "permission prompt"},
+	// R312: the other dialog shapes whose markers repo evidence establishes
+	// (claude_gate.go's dialog list; testdata/probes/claude-PROVENANCE.md). All
+	// are live-region rules, like the permission dialog. AskUserQuestion, plan
+	// approval and a write-file wording have no repo evidence and are petitioned,
+	// so there is deliberately no rule for them.
+	{kind: "claude", contains: []string{"Do you want to make this edit", "Yes"}, live: true, status: "waiting", reason: "file edit confirmation"},
+	{kind: "claude", contains: []string{"Do you want to create", "Yes"}, live: true, status: "waiting", reason: "file create confirmation"},
+	{kind: "claude", contains: []string{"Do you trust the files in this folder", "Yes"}, live: true, status: "waiting", reason: "folder trust"},
 	{kind: "claude", contains: []string{"esc to interrupt"}, status: "running", reason: "working indicator"},
 	// R310 (testdata/probes/claude-PROVENANCE.md says which footer texts were
 	// verified): idle is the footer being present with no working indicator above it

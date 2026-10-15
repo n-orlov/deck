@@ -17,6 +17,9 @@ var probeGoldens = []struct {
 	{"claude", "starting.txt", "starting", "startup"},
 	{"claude", "running.txt", "running", "working indicator"},
 	{"claude", "waiting.txt", "waiting", "permission prompt"},
+	{"claude", "waiting-edit.txt", "waiting", "file edit confirmation"},
+	{"claude", "waiting-create.txt", "waiting", "file create confirmation"},
+	{"claude", "waiting-trust.txt", "waiting", "folder trust"},
 	{"claude", "idle-scrolled.txt", "idle", "idle footer"},
 	{"claude", "idle-draft.txt", "idle", "idle footer"},
 	{"claude", "idle-altscreen.txt", "idle", "idle footer"},
@@ -155,7 +158,9 @@ func TestPiIdleRuleDoesNotChangeExistingVerdicts(t *testing.T) {
 func TestProbeRuleTableHasOneRulePerGolden(t *testing.T) {
 	got := make(map[string]bool)
 	for _, rule := range probeRules {
-		key := rule.kind + "/" + rule.status
+		// R312: Claude has several waiting shapes, each with its own reason, so a
+		// rule is unique by kind, status and reason.
+		key := rule.kind + "/" + rule.status + "/" + rule.reason
 		if got[key] {
 			t.Fatalf("duplicate probe rule for %s", key)
 		}
@@ -165,7 +170,7 @@ func TestProbeRuleTableHasOneRulePerGolden(t *testing.T) {
 		}
 	}
 	for _, golden := range probeGoldens {
-		key := golden.kind + "/" + golden.status
+		key := golden.kind + "/" + golden.status + "/" + golden.reason
 		if !got[key] {
 			t.Errorf("golden %s has no table rule", key)
 		}
