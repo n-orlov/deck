@@ -1021,6 +1021,15 @@ Rules:
   sparse check for a turn begun without a hook: a probe that sees the working indicator moves the row to
   `running` with source `probe`; a probe that matches nothing leaves it `idle` (`last_probe_at` only). An
   `error` or `stopped` row is never probed.
+- **Unverified running row (R315).** A `running` row whose `status_at` is at least **3 × `stale_after`**
+  old and whose probe has matched no rule on **3 consecutive** passes is shown as *unverified*: its status
+  glyph is `◔` (ASCII `-`) instead of `◐` (ASCII `~`), in the same one column (§11). The miss streak is the
+  column `sessions.probe_miss_streak` (schema v16): `RecordProbeMiss` adds one with a plain `UPDATE`, never
+  an event, and any probe verdict (even one that lost precedence), any hook verdict and any status write
+  sets it back to 0, which clears the marker at once. The marker is derived at render time and stored
+  nowhere: the status stays `running`, the status word reads `running`, no text is added, and the row keeps
+  its sort position in every order. It never applies with `stale_after` 0 (probing off) and never to a
+  `starting`, `waiting`, `idle`, `error` or `stopped` row.
 - **Precedence:** `user-terminal` > `hook` > `probe` > `tmux`. A user kill sets
   `killed_by_user`, which an in-flight hook arriving milliseconds later cannot undo —
   explicit human action outranks automation. Below that, a probe never overwrites a fresher
@@ -2721,7 +2730,10 @@ always did), and the permission badge for non-`safe` **last**. The
   `NO_COLOR` the glyph alone carries it, as the status glyphs do. `i` shows `pinned: yes`/`no`
   and also toggles it with `p`.
 - Status glyphs `●` waiting · `◐` running · `○` idle · `◌` starting · `■` stopped ·
-  `✗` error · `▣` archived. One column, always in the same column, so the shape of the
+  `✗` error · `▣` archived. Under `DECK_ASCII=1` / `[ui] ascii` each is one ASCII column: `?` waiting,
+  `~` running, `o` idle, `.` starting, `#` stopped, `x` error. An **unverified** `running` row (§7, R315:
+  3 × `stale_after` without an event and 3 consecutive probe misses) draws `◔` (ASCII `-`) in the running
+  glyph's column, in the running token; the status word and the sort position do not change. One column, always in the same column, so the shape of the
   list is readable before any text is. **No glyph deck renders may have East Asian Width
   `Wide` or `Fullwidth`** (`⏸` U+23F8, `⚡` U+26A1 and most emoji): those occupy two cells
   in some terminals and one in others, so a column-aligned list built on one silently

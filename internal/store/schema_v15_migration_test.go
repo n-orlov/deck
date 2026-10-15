@@ -50,8 +50,8 @@ func TestOutputClockMigrationUpgradesAV14Database(t *testing.T) {
 		t.Fatalf("open v14 fixture for migration: %v", err)
 	}
 	defer st.Close()
-	if SchemaVersion != 15 {
-		t.Fatalf("SchemaVersion = %d, want 15", SchemaVersion)
+	if SchemaVersion < 15 {
+		t.Fatalf("SchemaVersion = %d, want at least 15", SchemaVersion)
 	}
 	var version int
 	if err := st.DB().QueryRow(`SELECT version FROM meta WHERE key = 'schema_version'`).Scan(&version); err != nil || version != SchemaVersion {

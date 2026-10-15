@@ -6343,7 +6343,7 @@ func (m Model) sidebarRowLines(index int, session store.Session, stripe bool) ([
 	// it and the name.
 	statusTok := statusTokenOrText(session.Status)
 	segs := make([]settingsRowSegment, 0, 4)
-	segs = append(segs, settingsRowSegment{Text: m.sidebarStatusGlyph(session.Status) + " ", Tok: statusTok})
+	segs = append(segs, settingsRowSegment{Text: m.sidebarRowGlyph(session) + " ", Tok: statusTok})
 	if session.PinnedAt != 0 {
 		segs = append(segs, settingsRowSegment{Text: m.glyph("\u2726", "*") + " ", Tok: theme.Accent})
 	}
@@ -6420,6 +6420,23 @@ func (m Model) sidebarRowLine2Segments(session store.Session) []settingsRowSegme
 		line2Segs = append(line2Segs, settingsRowSegment{Text: " ", Tok: theme.Text}, settingsRowSegment{Text: text, Tok: tok})
 	}
 	return line2Segs
+}
+
+// sidebarRowGlyph is a row's line-1 status glyph: sidebarStatusGlyph, except
+// that a `running` row the store marks unverified (R315: no event for
+// 3 x stale_after and three consecutive probe misses) carries the decorated
+// `◔` (ASCII `-`) in the running glyph's one column. The decoration is the
+// only change: the status word, its token, the sort position and the stored
+// status are those of an ordinary running row.
+func (m Model) sidebarRowGlyph(session store.Session) string {
+	now := time.Now()
+	if m.settings.Clock != nil {
+		now = m.settings.Clock.Now()
+	}
+	if session.Unverified(now, m.settings.StaleAfter) {
+		return m.glyph("\u25d4", "-")
+	}
+	return m.sidebarStatusGlyph(session.Status)
 }
 
 // sidebarStatusGlyph is SPEC §11's one-column status glyph for a row's

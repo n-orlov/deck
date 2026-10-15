@@ -25,7 +25,7 @@ import (
 const busyTimeoutMillis = 5000
 
 // SchemaVersion is the newest schema understood by this binary.
-const SchemaVersion = 15
+const SchemaVersion = 16
 
 // SupportedSchemaVersion is the newest schema this binary opens: SchemaVersion
 // in every shipped build. A test build (-tags deckoldschema, see
@@ -428,6 +428,10 @@ type Session struct {
 	// the moment any later verdict — probe or otherwise — updates the row,
 	// so a stale miss can never be shown once fresher evidence exists.
 	LastProbeAt int64
+	// ProbeMissStreak counts the consecutive probe total misses since the
+	// last verdict (R315): RecordProbeMiss adds one, any probe or hook verdict
+	// (and any status write) resets it to 0. A column, never an event.
+	ProbeMissStreak int
 	// LastOutputAt is the wall-clock millisecond time of the newest
 	// transcript-region output confirmed at reconcile (R304), 0 when none has
 	// been. It is the output clock: footer/statusline churn never advances it,
@@ -829,7 +833,7 @@ func scanSession(row interface {
 		&session.StatusAt, &session.CreatedAt, &killedByUser, &paneExitStatus, &crashTail,
 		&session.NotifyEpoch, &lastMessage, &acknowledged, &launchArgsJSON, &envJSON, &preLaunch, &postDestroy,
 		&loginShell, &session.PermissionProfile, &permissionProfileReason, &conversationID, &resumePin, &session.ResumeState,
-		&groupID, &groupName, &session.LastProbeAt, &session.LastOutputAt, &envDirty, &session.DeletedAt, &session.ArchivedAt, &launchDirty,
+		&groupID, &groupName, &session.LastProbeAt, &session.LastOutputAt, &session.ProbeMissStreak, &envDirty, &session.DeletedAt, &session.ArchivedAt, &launchDirty,
 		&leaseOwner, &session.PinnedAt, &session.HookExecutable, &eventHookEnabled, &eventHookEvents, &session.NameSource, &pendingName, &pendingAt, &nameAdopt, &nameAdopted); err != nil {
 		return Session{}, err
 	}
@@ -880,7 +884,7 @@ const sessionColumns = `sessions.id, sessions.name, slug, cwd, agent, captured_p
 		COALESCE(status_reason, ''), status_source, status_at, created_at,
 		killed_by_user, pane_exit_status, crash_tail, notify_epoch, last_message, acknowledged,
 		launch_args, env, pre_launch, post_destroy, login_shell, permission_profile, permission_profile_reason, conversation_id, resume_pin, resume_state,
-		sessions.group_id, groups.name, last_probe_at, last_output_at, env_dirty, deleted_at, archived_at, launch_dirty,
+		sessions.group_id, groups.name, last_probe_at, last_output_at, probe_miss_streak, env_dirty, deleted_at, archived_at, launch_dirty,
 		COALESCE(launch_lease_owner, ''), pinned_at, COALESCE(hook_executable, ''),
 		event_hook_enabled, event_hook_events, name_source, pending_harness_name, pending_harness_name_at, harness_name_adopt, name_adopted`
 
@@ -1160,7 +1164,8 @@ func writeStatusUpdate(ctx context.Context, tx *sql.Tx, input StatusUpdateInput,
 		hook_fired = CASE WHEN ? THEN NULL ELSE hook_fired END,
 		pane_exit_status = CASE WHEN ? = 1 THEN NULL ELSE COALESCE(?, pane_exit_status) END,
 		crash_tail = CASE WHEN ? = 1 THEN NULL WHEN ? IS NULL THEN crash_tail ELSE ? END,
-		last_message = CASE WHEN ? = '' THEN last_message ELSE ? END
+		last_message = CASE WHEN ? = '' THEN last_message ELSE ? END,
+		probe_miss_streak = 0
 		WHERE id = ?`, input.Status, input.Reason, input.Source, statusAt,
 		newKilled, acknowledged, notifyEpoch, notifyEpoch != cur.notifyEpoch, clearCrash, input.PaneExitStatus,
 		clearCrash, input.PaneExitStatus, input.CrashTail, lastMessage, lastMessage, input.SessionID)
@@ -1201,9 +1206,24 @@ func (s *Store) UpdateSessionStatus(ctx context.Context, input StatusUpdateInput
 		if err := writeStatusUpdate(ctx, tx, input, cur); err != nil {
 			return err
 		}
+	} else if input.Source == "probe" || input.Source == "hook" {
+		// A verdict that lost precedence is still proof the pane matched a
+		// probe rule or the agent spoke, so the miss streak (R315) ends.
+		if err := clearProbeMissStreakTx(ctx, tx, input.SessionID); err != nil {
+			return err
+		}
 	}
 
 	return recordStatusEventTx(ctx, tx, input)
+}
+
+// clearProbeMissStreakTx zeroes sessions.probe_miss_streak (R315) with a plain
+// UPDATE: the streak is a column, never an event.
+func clearProbeMissStreakTx(ctx context.Context, tx *sql.Tx, sessionID string) error {
+	if _, err := tx.ExecContext(ctx, `UPDATE sessions SET probe_miss_streak = 0 WHERE id = ?`, sessionID); err != nil {
+		return fmt.Errorf("clear probe_miss_streak: %w", err)
+	}
+	return nil
 }
 
 // recordStatusEventTx appends the status update's source event and commits
@@ -1416,6 +1436,28 @@ func truncateUTF8(value string, limit int) string {
 	return value
 }
 
+// UnverifiedMissStreak and UnverifiedAgeFactor are R315's thresholds: a row is
+// unverified after this many consecutive probe misses and this multiple of
+// stale_after with no event.
+const (
+	UnverifiedMissStreak = 3
+	UnverifiedAgeFactor  = 3
+)
+
+// Unverified reports whether a `running` row has gone unconfirmed (R315): its
+// status_at (the last event that changed what the row says; a repeat verdict
+// ends the streak instead) is at least UnverifiedAgeFactor x staleAfter old
+// and its probe has missed UnverifiedMissStreak times in a row. It is derived
+// for display only: it reads no stored flag, writes nothing, and changes
+// neither the status, its text nor the sort position. staleAfter <= 0 means
+// probing is off, so nothing is ever unverified.
+func (s Session) Unverified(now time.Time, staleAfter time.Duration) bool {
+	if staleAfter <= 0 || s.Status != "running" || s.ProbeMissStreak < UnverifiedMissStreak {
+		return false
+	}
+	return now.UnixMilli()-s.StatusAt >= UnverifiedAgeFactor*staleAfter.Milliseconds()
+}
+
 // RecordProbeMiss notes that a stale-eligible pane was sampled but matched
 // no probe.go rule at all, without changing the row's status, status_source,
 // or status_at — SPEC §7 precedence and every existing transition are
@@ -1437,7 +1479,7 @@ func (s *Store) RecordProbeMiss(ctx context.Context, sessionID string, at int64)
 	if at == 0 {
 		return errors.New("event timestamp is required")
 	}
-	result, err := s.db.ExecContext(ctx, `UPDATE sessions SET last_probe_at = ? WHERE id = ?`, at, sessionID)
+	result, err := s.db.ExecContext(ctx, `UPDATE sessions SET last_probe_at = ?, probe_miss_streak = probe_miss_streak + 1 WHERE id = ?`, at, sessionID)
 	if err != nil {
 		return fmt.Errorf("set last_probe_at: %w", err)
 	}
@@ -2973,7 +3015,7 @@ func (s *Store) migrate(version int) error {
 // the schemaVN variables at call time (tests substitute them); a version
 // outside 0..SchemaVersion-1 has no migration path.
 func applySchemaLadder(tx *sql.Tx, version int) error {
-	rungs := [][]string{schemaV1, schemaV2, schemaV3, schemaV4, schemaV5, schemaV6, schemaV7, schemaV8, schemaV9, schemaV10, schemaV11, schemaV12, schemaV13, schemaV14, schemaV15}
+	rungs := [][]string{schemaV1, schemaV2, schemaV3, schemaV4, schemaV5, schemaV6, schemaV7, schemaV8, schemaV9, schemaV10, schemaV11, schemaV12, schemaV13, schemaV14, schemaV15, schemaV16}
 	if version < 0 || version >= len(rungs) {
 		return fmt.Errorf("no migration path from schema version %d", version)
 	}
@@ -3243,6 +3285,14 @@ var schemaV14 = []string{
 // upgrade from v14 recreates no session.
 var schemaV15 = []string{
 	`ALTER TABLE sessions ADD COLUMN last_output_at INTEGER NOT NULL DEFAULT 0`,
+}
+
+// schemaV16 adds sessions.probe_miss_streak (R315): the number of consecutive
+// stale-eligible probes that matched no rule, 0 until the first. It is a
+// counter written by plain UPDATEs (RecordProbeMiss adds one; every verdict
+// resets it), never an event, and nothing in SPEC §7 precedence reads it.
+var schemaV16 = []string{
+	`ALTER TABLE sessions ADD COLUMN probe_miss_streak INTEGER NOT NULL DEFAULT 0`,
 }
 
 // getUIState returns the persisted value for key, or def when no row exists
