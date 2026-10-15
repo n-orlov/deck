@@ -8,6 +8,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/n-orlov/deck/internal/interactive"
+	"github.com/n-orlov/deck/internal/service"
 	"github.com/n-orlov/deck/internal/store"
 	"github.com/n-orlov/deck/internal/tmux"
 )
@@ -95,6 +96,9 @@ func (m Model) enterInteractiveBody(force bool) (tea.Model, tea.Cmd) {
 		}
 	}
 
+	// R305: the entry fit (and the pin, and later the restore) resized the
+	// window, so the pane redraws.
+	m.discountOutput(session.ID, service.DiscountResize)
 	m.interactive = true
 	m.interactiveWindowTarget = windowTarget
 	m.interactiveGeometry = claim.geometry
@@ -564,6 +568,9 @@ func (m Model) exitInteractive() (tea.Model, tea.Cmd) {
 		m.sidebarScrollDrifted = false
 	}
 	m.teardownInteractive(context.Background())
+	if session, ok := m.interactiveTargetSession(); ok {
+		m.discountOutput(session.ID, service.DiscountResize)
+	}
 	m.interactive = false
 	m.interactiveWindowTarget = ""
 	m.interactiveGeometry = tmux.WindowGeometry{}
@@ -651,6 +658,7 @@ func (m Model) updateInteractive(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.sidebarScrollDrifted = false
 		}
 		m.setInteractiveScrollOffset(0)
+		m.discountForwardedKey()
 		_ = m.interactiveDispatcher.SendNamedKey(ctx, named)
 		return m, nil
 	}
@@ -660,9 +668,18 @@ func (m Model) updateInteractive(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.sidebarScrollDrifted = false
 		}
 		m.setInteractiveScrollOffset(0)
+		m.discountForwardedKey()
 		_ = interactive.SendKeyRun(ctx, m.interactiveDispatcher, payload)
 	}
 	return m, nil
+}
+
+// discountForwardedKey (R305) tells the output clock that the pane is about
+// to print the echo of a key deck forwards to it.
+func (m Model) discountForwardedKey() {
+	if session, ok := m.interactiveTargetSession(); ok {
+		m.discountOutput(session.ID, service.DiscountKey)
+	}
 }
 
 // revealInteractiveDriftTarget ends a sidebar-wheel drift armed while

@@ -1152,6 +1152,20 @@ nothing, so a restart does not make every row look freshly active; the in-memory
 persisted. The write is a plain `UPDATE` of that one column, never an `events` row (the same rule
 as `last_probe_at` above), and it leaves `status`, `status_source` and `status_at` untouched.
 
+**Deck-caused output is discounted (R305).** Output deck itself provokes is not the agent's activity,
+so a transcript change the pane shows inside a *discount window* does not advance `last_output_at`
+(the change is still hashed and remembered, so the same text never counts later). The window is
+**5 seconds, and never more than one output bucket** (`min(bucket, 5 s)`), and it starts at each of:
+a deck-caused resize (a preview fit that issued a `resize-window`, and interactive entry and exit,
+which resize the window and make the pane redraw on SIGWINCH), a key deck forwards to the pane in
+interactive mode (each forwarded key restarts the window; a key deck does not forward does not), and
+an attach. An attach is open-ended: it discounts from the moment `a` hands the terminal to the
+tmux client until the client detaches, plus one window for the detach repaint, because deck cannot
+see what is typed meanwhile. A window is compared with the pane's `window_activity`, not with the
+tick that reads it, so a tick that lands late still discounts output that happened inside the
+window. Output whose `window_activity` falls after the window ends counts as before. The windows
+are in memory, like the baseline.
+
 ---
 
 ## 8. Agent adapters

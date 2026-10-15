@@ -198,6 +198,9 @@ func runTUI(settings config.Settings, stderr io.Writer) int {
 	// an hour -- settings is captured once here, so a sort_order-shaped
 	// restart-to-apply: a save changes config.toml immediately, but this already
 	// running client keeps enforcing the OLD window until deck restarts.
+	if sessions.Output == nil {
+		sessions.Output = service.NewOutputClock(service.DefaultOutputBucket)
+	}
 	tuiReconcile := newTUIReconcile(db, sessions, settings)
 	model := newDeckModel(db, settings, sessions, client, registry, tuiReconcile).WithEventHookLive(eventHook).WithUpdateSource(updateIndicatorSource(settings)).WithUpdateInstaller(updateInstallSource())
 	// wrapForInteractiveShutdownOnPanic is deliberately the OUTERMOST wrap
@@ -303,6 +306,11 @@ func newDeckModel(db *store.Store, settings config.Settings, sessions service.Se
 	// parameter list from growing a 22nd entry for a dependency of a
 	// genuinely different shape.
 	model = model.WithTmuxClient(client)
+	// R305: deck-caused resizes, attaches and forwarded keys are discounted
+	// by the same output clock the reconcile callback feeds.
+	if sessions.Output != nil {
+		model = model.WithOutputDiscounter(sessions.Output)
+	}
 	// The `i` detail dialog's launch-inputs editor (task 023, SPEC §6.2/§11.4,
 	// PRD R108) is wired the same way and for the same reason: one narrow
 	// dependency, added without growing the positional chain above any

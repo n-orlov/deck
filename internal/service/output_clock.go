@@ -16,6 +16,22 @@ import (
 // prints constantly costs one UPDATE per bucket, not one per tick.
 const DefaultOutputBucket = 10 * time.Second
 
+// MaxDiscountWindow caps the discount window (R305). The window is
+// min(Bucket, MaxDiscountWindow): never longer than one output bucket.
+const MaxDiscountWindow = 5 * time.Second
+
+// DiscountCause names what deck did to a session's pane that makes the
+// output it provokes deck's own doing and not the agent's (R305).
+type DiscountCause string
+
+const (
+	// DiscountResize is a deck-caused resize: preview fit or interactive
+	// entry/exit geometry, each of which makes the pane's program redraw.
+	DiscountResize DiscountCause = "resize"
+	// DiscountKey is a key deck forwarded into the pane (interactive mode).
+	DiscountKey DiscountCause = "key"
+)
+
 // OutputStore is the one store write the output clock makes.
 type OutputStore interface {
 	RecordOutput(ctx context.Context, sessionID string, at int64) error
@@ -35,10 +51,22 @@ type OutputStore interface {
 // freshly active. It is safe for concurrent use.
 type OutputClock struct {
 	Bucket time.Duration
+	// Now reads the wall clock for discount windows; nil means time.Now.
+	Now func() time.Time
 
-	mu    sync.Mutex
-	state map[string]outputState
+	mu       sync.Mutex
+	state    map[string]outputState
+	discount map[string][]discountSpan
 }
+
+// discountSpan is one stretch of Unix milliseconds in which output on a
+// session is deck-caused. until is openEnded while an attach holds it.
+type discountSpan struct{ from, until int64 }
+
+const (
+	openEnded        = int64(1<<63 - 1)
+	maxDiscountSpans = 32
+)
 
 type outputState struct {
 	bucket int64 // the window_activity bucket last examined
@@ -51,7 +79,120 @@ func NewOutputClock(bucket time.Duration) *OutputClock {
 	if bucket <= 0 {
 		bucket = DefaultOutputBucket
 	}
-	return &OutputClock{Bucket: bucket, state: map[string]outputState{}}
+	return &OutputClock{Bucket: bucket, state: map[string]outputState{}, discount: map[string][]discountSpan{}}
+}
+
+// DiscountWindow is how long output stays deck-caused after a deck-caused
+// resize or forwarded key (R305): MaxDiscountWindow, and never more than one
+// output bucket.
+func (c *OutputClock) DiscountWindow() time.Duration {
+	window := MaxDiscountWindow
+	if c != nil && c.Bucket > 0 && c.Bucket < window {
+		window = c.Bucket
+	}
+	return window
+}
+
+func (c *OutputClock) nowMillis() int64 {
+	if c.Now != nil {
+		return c.Now().UnixMilli()
+	}
+	return time.Now().UnixMilli()
+}
+
+// Discount marks the DiscountWindow after now as deck-caused for a session
+// (a deck-caused resize or a forwarded key); any other cause is ignored. Output the pane window_activity
+// places inside it does not advance last_output_at. Safe on a nil clock.
+func (c *OutputClock) Discount(sessionID string, cause DiscountCause) {
+	if c == nil || (cause != DiscountResize && cause != DiscountKey) {
+		return
+	}
+	now := c.nowMillis()
+	c.addSpan(sessionID, discountSpan{from: now, until: now + c.DiscountWindow().Milliseconds()})
+}
+
+// AttachStarted opens a discount that lasts until AttachEnded: while a real
+// tmux client is attached every byte of output is typed or redrawn through
+// deck's hand-off, and deck cannot see which.
+func (c *OutputClock) AttachStarted(sessionID string) {
+	if c == nil {
+		return
+	}
+	c.addSpan(sessionID, discountSpan{from: c.nowMillis(), until: openEnded})
+}
+
+// AttachEnded closes the attach discount and gives the detach redraw its own
+// DiscountWindow.
+func (c *OutputClock) AttachEnded(sessionID string) {
+	if c == nil {
+		return
+	}
+	now := c.nowMillis()
+	end := now + c.DiscountWindow().Milliseconds()
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	spans := c.discount[sessionID]
+	if n := len(spans); n > 0 && spans[n-1].until == openEnded {
+		spans[n-1].until = end
+		return
+	}
+	c.addSpanLocked(sessionID, discountSpan{from: now, until: end})
+}
+
+func (c *OutputClock) addSpan(sessionID string, span discountSpan) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.addSpanLocked(sessionID, span)
+}
+
+// addSpanLocked merges the new span into the newest one when they touch, so a
+// run of keystrokes is one span, and keeps the list short.
+func (c *OutputClock) addSpanLocked(sessionID string, span discountSpan) {
+	if c.discount == nil {
+		c.discount = map[string][]discountSpan{}
+	}
+	spans := c.discount[sessionID]
+	if n := len(spans); n > 0 && span.from <= spans[n-1].until {
+		if span.until > spans[n-1].until {
+			spans[n-1].until = span.until
+		}
+		return
+	}
+	spans = append(spans, span)
+	if len(spans) > maxDiscountSpans {
+		spans = spans[len(spans)-maxDiscountSpans:]
+	}
+	c.discount[sessionID] = spans
+}
+
+// discounted reports whether tmux's window_activity second (which may lie
+// anywhere in [at, at+999] ms) falls in a deck-caused span, and drops spans
+// that ended before it: window_activity only moves forward.
+func (c *OutputClock) discounted(sessionID string, windowActivity int64) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	spans := c.discount[sessionID]
+	if len(spans) == 0 {
+		return false
+	}
+	atMs := windowActivity * 1000
+	kept := spans[:0]
+	hit := false
+	for _, span := range spans {
+		if span.until < atMs {
+			continue
+		}
+		kept = append(kept, span)
+		if span.from <= atMs+999 {
+			hit = true
+		}
+	}
+	if len(kept) == 0 {
+		delete(c.discount, sessionID)
+	} else {
+		c.discount[sessionID] = kept
+	}
+	return hit
 }
 
 // Observe takes one reconcile tick's reading for a session: windowActivity is
@@ -83,6 +224,12 @@ func (c *OutputClock) Observe(ctx context.Context, store OutputStore, sessionID 
 	}
 	hash := sha256.Sum256([]byte(agent.TranscriptRegion(pane)))
 	changed := seen && hash != previous.hash
+	// R305: a transcript change the pane shows inside a deck-caused window
+	// is deck's own doing. The new hash is still remembered below, so the
+	// same text never counts later.
+	if c.discounted(sessionID, windowActivity) {
+		changed = false
+	}
 	if changed {
 		if err := store.RecordOutput(ctx, sessionID, windowActivity*1000); err != nil {
 			return false, fmt.Errorf("record output for session %q: %w", sessionID, err)

@@ -1155,6 +1155,12 @@ type Model struct {
 	// clearing of previewFitSessionID must not license a second concurrent
 	// fit for a session whose first attempt is still outstanding.
 	previewFitInFlight string
+	// outputDiscount (R305) is told about every deck-caused resize, attach
+	// and forwarded key so the output clock does not count the output they
+	// provoke. Nil (a Model built without it) discounts nothing.
+	// attachingSessionID is the session a full attach is currently holding.
+	outputDiscount     OutputDiscounter
+	attachingSessionID string
 	// sidebarScroll is the wheel-scroll offset into the sidebar's own
 	// content lines (SPEC §11.8, task 028): it moves which lines the
 	// panel shows without ever touching m.selected, and is clamped at
@@ -1300,6 +1306,29 @@ type Model struct {
 	// eventHookLive carries the running event-hook settings to the service
 	// that dispatches probe, process-death and kill events (WithEventHookLive).
 	eventHookLive *service.LiveEventHook
+}
+
+// OutputDiscounter is the slice of service.OutputClock the TUI drives (R305):
+// deck-caused resizes, attaches and forwarded keys, each of which makes the
+// pane print without the agent having done anything.
+type OutputDiscounter interface {
+	Discount(sessionID string, cause service.DiscountCause)
+	AttachStarted(sessionID string)
+	AttachEnded(sessionID string)
+}
+
+// WithOutputDiscounter wires the output clock's discount (R305).
+func (m Model) WithOutputDiscounter(d OutputDiscounter) Model {
+	m.outputDiscount = d
+	return m
+}
+
+// discountOutput tells the output clock that deck just did something to the
+// session's pane that makes it print (R305).
+func (m Model) discountOutput(sessionID string, cause service.DiscountCause) {
+	if m.outputDiscount != nil && sessionID != "" {
+		m.outputDiscount.Discount(sessionID, cause)
+	}
 }
 
 // WithTmuxClient attaches the tmux.Client §11.9 interactive mode (task
@@ -2490,6 +2519,7 @@ func (m *Model) previewFit() tea.Cmd {
 	client := m.tmuxClient
 	slug := session.Slug
 	sessionID := session.ID
+	discounter := m.outputDiscount
 	// Marked here, at SCHEDULING time, so a tick that fires while this
 	// command is still running finds the guard closed. EVERY early return
 	// inside the closure below therefore OWES a previewFitDone for this
@@ -2564,7 +2594,12 @@ func (m *Model) previewFit() tea.Cmd {
 		// The Unpinned variant is what makes passive fit's "owning and
 		// restoring nothing" true rather than merely intended -- see its
 		// own doc comment, and the paragraph on the crop it removes above.
-		_, _ = client.FitWindowToPaneUnpinned(ctx, windowTarget, pane.ID, width, height)
+		resizes, _ := client.FitWindowToPaneUnpinned(ctx, windowTarget, pane.ID, width, height)
+		if resizes > 0 && discounter != nil {
+			// R305: the resize makes the pane's program redraw (SIGWINCH);
+			// that output is deck's, not the agent's.
+			discounter.Discount(sessionID, service.DiscountResize)
+		}
 		return previewFitDone{sessionID: sessionID}
 	}
 }
@@ -3364,6 +3399,10 @@ func (m Model) onShellCreated(msg shellCreated) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) onAttachFinished(msg attachFinished) (tea.Model, tea.Cmd) {
+	if m.outputDiscount != nil && m.attachingSessionID != "" {
+		m.outputDiscount.AttachEnded(m.attachingSessionID)
+	}
+	m.attachingSessionID = ""
 	if msg.err != nil {
 		m.setAttachError("Cannot attach: " + msg.err.Error())
 	}
@@ -4291,6 +4330,12 @@ func (m Model) attachSelected() (tea.Model, tea.Cmd) {
 	// m.clearEntryRefusal(); this is the same clearing for the full attach.
 	m.clearEntryRefusal()
 	m.releaseForeignPreviewPin(session.Slug)
+	if m.outputDiscount != nil {
+		// R305: everything printed while the real client is attached, and
+		// the repaint at its detach, is deck-mediated.
+		m.outputDiscount.AttachStarted(session.ID)
+	}
+	m.attachingSessionID = session.ID
 	return m, tea.ExecProcess(command, func(err error) tea.Msg { return attachFinished{err: err} })
 }
 
