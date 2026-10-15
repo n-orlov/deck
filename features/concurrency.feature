@@ -34,9 +34,9 @@ Feature: Multi-client session refresh
     And within one configured reconcile interval deck client "C" screen contains "hook shared"
     When fake Claude session "hook shared" fires "SessionStart" for itself using conversation identity:
       | source | propagation |
-    Then within one configured reconcile interval deck client "A" row "hook shared" contains "running"
-    And within one configured reconcile interval deck client "B" row "hook shared" contains "running"
-    And within one configured reconcile interval deck client "C" row "hook shared" contains "running"
+    Then within one configured reconcile interval deck client "A" row "hook shared" contains "idle"
+    And within one configured reconcile interval deck client "B" row "hook shared" contains "idle"
+    And within one configured reconcile interval deck client "C" row "hook shared" contains "idle"
     And session "hook shared" has one "session_start" event with payload field "source" equal to "propagation"
     When deck client "A" exits cleanly
     And deck client "B" exits cleanly

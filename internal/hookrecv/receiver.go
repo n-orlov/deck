@@ -69,7 +69,11 @@ type Mapping struct {
 // codex-only payload struct: the receiver has no notion of which agent kind
 // sent a hook, only of which event name arrived.
 var Mappings = map[string]Mapping{
-	"SessionStart":      {Status: "running", Kind: "session_start", ReasonField: "source"},
+	// SessionStart (startup, --resume, --continue, clear, compact) lands on
+	// idle for Claude and Codex (R307): a session that has only started has
+	// not been asked anything. UserPromptSubmit, or a working indicator the
+	// probe sees, is what enters running. Pi keeps running (piSessionStartStatus).
+	"SessionStart":      {Status: "idle", Kind: "session_start", ReasonField: "source"},
 	"UserPromptSubmit":  {Status: "running", Kind: "user_prompt_submitted"},
 	"Notification":      {Status: "waiting", Kind: "notification", ReasonField: "notification_type"},
 	"PermissionRequest": {Status: "waiting", Kind: "permission_request", ReasonField: "tool_name"},
@@ -81,6 +85,11 @@ var Mappings = map[string]Mapping{
 	// triggers a name adoption.
 	"session_info_changed": {Kind: "session_info_changed"},
 }
+
+// piSessionStartStatus is the status Pi's SessionStart keeps: R307 moves
+// Claude, Codex and Copilot onto idle, and the shared SessionStart mapping
+// follows them, so Pi's own extension event (SPEC §8.3) is held at running here.
+const piSessionStartStatus = "running"
 
 // adoptionTriggers are the hook events after which deck reads the harness's
 // name for the row (SPEC §8): Stop, UserPromptSubmit, Copilot's agentStop and
@@ -281,6 +290,10 @@ func ReceiveFrom(ctx context.Context, db Store, raw []byte, origin Origin, at in
 	}
 
 	result.SessionID = session.ID
+	if p.EventName == "SessionStart" && session.Agent == "pi" {
+		mapping.Status = piSessionStartStatus
+		result.Status = piSessionStartStatus
+	}
 	if copilotMismatch(p, session.ConversationID) {
 		return receiveMismatch(ctx, db, p, mapping, session, raw, at, result)
 	}

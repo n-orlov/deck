@@ -726,7 +726,8 @@ func raceFreshHookAgainstProbe(ctx context.Context, victim, emitter string) erro
 	if _, err := tmuxOutput(ctx, h, "send-keys", "-t", "deck_"+emitterSlug, "Enter"); err != nil {
 		return err
 	}
-	if err := waitForDatabaseVerdict(ctx, victim, "running", "hook", "", false); err != nil {
+	// R307: the SessionStart this step fires lands on idle.
+	if err := waitForDatabaseVerdict(ctx, victim, "idle", "hook", "", false); err != nil {
 		return err
 	}
 	if err := os.WriteFile(release, []byte("release\n"), 0o600); err != nil {

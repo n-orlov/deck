@@ -540,7 +540,8 @@ func databaseSessionTerminalFields(ctx context.Context, name, wantStatus, wantSo
 // user-kill assertion and this process. Using the injected durable row ID
 // exercises the same fallback identity that deck supplies to a real pane.
 func releasedRunningHookForSession(ctx context.Context, name string) error {
-	return releasedHookForSession(ctx, name, `{"hook_event_name":"SessionStart","source":"resume"}`)
+	// UserPromptSubmit is what enters running; SessionStart lands on idle (R307).
+	return releasedHookForSession(ctx, name, `{"hook_event_name":"UserPromptSubmit"}`)
 }
 
 func releasedWaitingHookForSession(ctx context.Context, name string) error {

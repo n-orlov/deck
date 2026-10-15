@@ -50,8 +50,8 @@ func TestReceiveResolvesAnArchivedRowByBothKeys(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if row.Status != "running" || row.StatusSource != "hook" {
-		t.Fatalf("archived row after SessionStart = %#v, want running/hook", row)
+	if row.Status != "idle" || row.StatusSource != "hook" {
+		t.Fatalf("archived row after SessionStart = %#v, want idle/hook (R307)", row)
 	}
 	if row.ArchivedAt == 0 {
 		t.Fatal("resolution cleared archived_at; the flag must be untouched")

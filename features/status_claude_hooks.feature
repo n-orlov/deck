@@ -12,7 +12,10 @@ Feature: Claude hook status truth
 
     When fake Claude session "hook truth" fires "SessionStart" for itself using injected identity:
       | source | fresh |
-    Then the state database session "hook truth" has hook status "running", reason "fresh", message "", acknowledged 1, and notify_epoch 0
+    # R307: SessionStart lands on idle, never running; the UserPromptSubmit
+    # below is what enters running. Covered by
+    # internal/hookrecv TestSessionStartLandsOnIdleForClaude.
+    Then the state database session "hook truth" has hook status "idle", reason "fresh", message "", acknowledged 1, and notify_epoch 0
     And session "hook truth" has one "session_start" event with payload field "source" equal to "fresh"
 
     When fake Claude session "hook truth" fires "Notification" for itself using injected identity:

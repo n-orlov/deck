@@ -49,7 +49,7 @@ Feature: Sampled probe status truth
     And the state database session "sampled pi" has status "starting" from "tmux"
 
     When the frozen clock advances across stale_after while a fresh hook races the next probe of "raced claude" from "hook emitter"
-    Then the state database session "raced claude" has status "running" from "hook"
+    Then the state database session "raced claude" has status "idle" from "hook"
     And session "raced claude" has one losing "probe.waiting" event
     And within one configured reconcile interval deck client "A" row "raced claude" contains "live"
     And the state database session "stale claude" has probe status "running" with reason "working indicator"

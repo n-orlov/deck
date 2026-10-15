@@ -21,9 +21,9 @@ func TestReceiveMappingTable(t *testing.T) {
 		wantReason  string
 		wantMessage string
 	}{
-		{name: "session start fresh", event: "SessionStart", extra: `,"source":"startup"`, current: "starting", wantStatus: "running", wantReason: "startup"},
-		{name: "session start resumed", event: "SessionStart", extra: `,"source":"resume"`, current: "starting", wantStatus: "running", wantReason: "resume"},
-		{name: "session start compacted", event: "SessionStart", extra: `,"source":"compact"`, current: "starting", wantStatus: "running", wantReason: "compact"},
+		{name: "session start fresh", event: "SessionStart", extra: `,"source":"startup"`, current: "starting", wantStatus: "idle", wantReason: "startup"},
+		{name: "session start resumed", event: "SessionStart", extra: `,"source":"resume"`, current: "starting", wantStatus: "idle", wantReason: "resume"},
+		{name: "session start compacted", event: "SessionStart", extra: `,"source":"compact"`, current: "starting", wantStatus: "idle", wantReason: "compact"},
 		{name: "user prompt", event: "UserPromptSubmit", current: "idle", wantStatus: "running"},
 		{name: "permission notification", event: "Notification", extra: `,"notification_type":"permission_prompt"`, current: "running", wantStatus: "waiting", wantReason: "permission_prompt"},
 		{name: "question notification", event: "Notification", extra: `,"notification_type":"question"`, current: "running", wantStatus: "waiting", wantReason: "question"},
@@ -114,12 +114,21 @@ func TestReceiveHookAppliesOverAnyStaleSourceExceptStopped(t *testing.T) {
 						// nothing: the status stays stopped, and the hook's own
 						// verdict outranks tmux's bare liveness fact (SPEC §7
 						// precedence; internal/store hookRefinesTmuxStop).
-						if got.Status != "stopped" || got.StatusSource != "hook" || got.StatusReason != "logout" || got.StatusAt != 20 || got.NotifyEpoch != 3 || !got.Acknowledged || got.LastMessage != "before message" {
+						// The row was already stopped, so the write repeats the status
+						// (R303) and keeps status_at.
+						if got.Status != "stopped" || got.StatusSource != "hook" || got.StatusReason != "logout" || got.StatusAt != 7 || got.NotifyEpoch != 3 || !got.Acknowledged || got.LastMessage != "before message" {
 							t.Fatalf("SessionEnd did not refine a tmux-sourced stop: %#v", got)
 						}
 					case current == "stopped":
 						if got.Status != current || got.StatusReason != "before" || got.StatusSource != currentSource || got.StatusAt != 7 || got.NotifyEpoch != 3 || !got.Acknowledged || got.LastMessage != "before message" {
 							t.Fatalf("hook resurrected a stopped row: %#v", got)
+						}
+					case current == mapping.Status:
+						// A hook repeating the row's status is inert (R303): the
+						// verdict's source is recorded, but status_at, the notify
+						// epoch and the acknowledged flag keep their values.
+						if got.Status != current || got.StatusSource != "hook" || got.StatusAt != 7 || got.NotifyEpoch != 3 || !got.Acknowledged {
+							t.Fatalf("a repeated %s hook over a stale %s verdict was not inert: %#v", current, currentSource, got)
 						}
 					case got.Status != mapping.Status || got.StatusSource != "hook" || got.StatusAt != 20:
 						t.Fatalf("hook did not apply over stale %s verdict: %#v", currentSource, got)
@@ -362,10 +371,10 @@ func TestReceiveSessionStartFollowsLiveConversation(t *testing.T) {
 	if row.ConversationID != "new-conversation" {
 		t.Fatalf("conversation_id = %q, want new-conversation", row.ConversationID)
 	}
-	// The status transition itself (SessionStart's AllowedFrom is "starting"
-	// only) is correctly a no-op from "running" -- the row was never stopped.
-	if row.Status != "running" {
-		t.Fatalf("status = %q, want running (unaffected)", row.Status)
+	// SessionStart lands on idle (R307, see TestSessionStartLandsOnIdleForClaude):
+	// the new conversation has been given no prompt yet.
+	if row.Status != "idle" {
+		t.Fatalf("status = %q, want idle", row.Status)
 	}
 	var kind, reason, payload string
 	if err := reopened.DB().QueryRow(`SELECT kind, reason, payload FROM events WHERE session_id = ? AND kind = 'set_conversation_id' ORDER BY at DESC LIMIT 1`, "resumed-row").Scan(&kind, &reason, &payload); err != nil {

@@ -1030,9 +1030,13 @@ func vetoTmuxStopOverStopped(in StatusUpdateInput, cur statusRow) bool {
 }
 
 // vetoHookRunningAfterCrash: an error carrying a pane exit status is a terminal process-crash verdict,
-// not the recoverable turn/API failure represented by error -> running.
+// not the recoverable turn/API failure represented by error -> running. A
+// SessionStart lands on idle (R307) but is vetoed the same way: it is the
+// event a replaced pane's agent still sends, and an idle landing would
+// revive the crashed row exactly as the running one did.
 func vetoHookRunningAfterCrash(in StatusUpdateInput, cur statusRow) bool {
-	return in.Source == "hook" && in.Status == "running" && cur.paneExitStatus.Valid
+	revives := in.Status == "running" || in.EventKind == "session_start"
+	return in.Source == "hook" && revives && cur.paneExitStatus.Valid
 }
 
 // vetoFreshHookOverProbe: a probe never replaces a hook verdict that is still fresh.

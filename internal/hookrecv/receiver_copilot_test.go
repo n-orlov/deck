@@ -56,8 +56,8 @@ func TestCopilotHookTable(t *testing.T) {
 		wantKind   string
 	}{
 		{name: "userPromptSubmitted", event: "userPromptSubmitted", extra: `,"prompt":"hi"`, current: "idle", wantStatus: "running", wantReason: "prompt", wantKind: "user_prompt_submitted"},
-		{name: "sessionStart new", event: "sessionStart", extra: `,"source":"new"`, current: "starting", wantStatus: "running", wantReason: "new", wantKind: "session_start"},
-		{name: "sessionStart resume", event: "sessionStart", extra: `,"source":"resume"`, current: "starting", wantStatus: "running", wantReason: "resume", wantKind: "session_start"},
+		{name: "sessionStart new", event: "sessionStart", extra: `,"source":"new"`, current: "starting", wantStatus: "idle", wantReason: "new", wantKind: "session_start"},
+		{name: "sessionStart resume", event: "sessionStart", extra: `,"source":"resume"`, current: "starting", wantStatus: "idle", wantReason: "resume", wantKind: "session_start"},
 		{name: "notification permission_prompt", event: "notification", extra: `,"notification_type":"permission_prompt"`, current: "running", wantStatus: "waiting", wantReason: "permission_prompt", wantKind: "notification"},
 		{name: "notification elicitation_dialog", event: "notification", extra: `,"notification_type":"elicitation_dialog"`, current: "running", wantStatus: "waiting", wantReason: "elicitation_dialog", wantKind: "notification"},
 		{name: "notification other type", event: "notification", extra: `,"notification_type":"idle_prompt"`, current: "running", wantStatus: "running", wantKind: "notification"},

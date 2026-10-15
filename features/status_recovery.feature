@@ -8,14 +8,14 @@ Feature: Status recovery chain (requirements 43-47)
   masquerade as a launch failure; and none of that may let a hook resurrect a
   row the user explicitly killed. Each scenario below is one link.
 
-  Scenario: An in-session resume pair leaves the row running and moves conversation_id
+  Scenario: An in-session resume pair leaves the row idle and moves conversation_id
     Given a long-running fake "claude" binary is on PATH for future deck clients
     And deck client "A" is started
     When deck client "A" creates claude session "resume pair" with permission profile "safe"
     Then the state database session "resume pair" has a non-empty conversation id
     When fake Claude session "resume pair" resumes in-session into a new conversation
     Then the state database session "resume pair" now has a different, non-empty conversation id than before the resume
-    And the state database session "resume pair" is "running" from "hook" with killed_by_user=0
+    And the state database session "resume pair" is "idle" from "hook" with killed_by_user=0
     And session "resume pair" has one "session_end" event with payload field "reason" equal to "resume"
     And session "resume pair" has an audited "session_start" event with payload field "reason" equal to "resume"
     When deck client "A" exits cleanly

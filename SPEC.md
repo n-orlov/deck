@@ -973,7 +973,9 @@ other section restates a transition, they only refer here:
 | from | trigger | to |
 |---|---|---|
 | `stopped` | `r` — start or resume (§9.1) | `starting` |
-| `starting` | first agent signal | `running` |
+| `starting` | first agent signal: `UserPromptSubmit` or a working indicator the probe sees | `running` |
+| `starting` | `SessionStart` (startup, `--resume`, `--continue`, `clear`, `compact`; Claude, Codex, Copilot) | `idle` |
+| `idle` | `SessionStart` | stays `idle` |
 | `starting` | no signal for `stale_after` | stays `starting`, becomes probe-eligible |
 | `starting` | pane is alive, **`shell` rows only** | `running` — see the shell rule below |
 | `running` | needs input: permission prompt, question, idle prompt | `waiting` |
@@ -1002,6 +1004,16 @@ clearable by unarchiving (§9.2).
 | `archived` | hidden from the default list, retained; **not startable** — unarchive (`U`) to resume | hidden behind a filter |
 
 Rules:
+- **`SessionStart` lands on `idle` (R307).** For Claude, Codex and Copilot, a `SessionStart` hook
+  (`sessionStart` for Copilot) — startup, `--resume`, `--continue`, `clear` or `compact` — sets `idle`,
+  never `running`. Only a `UserPromptSubmit` (`userPromptSubmitted`) hook, or a working indicator the
+  probe sees, enters `running`. A resumed session that has been given no prompt therefore stays
+  `idle`: `idle` is not probe-eligible, so a probe tick that matches no rule leaves it untouched. Pi's
+  own `session_start` extension event keeps `running` (§8.3).
+  A `SessionStart` never revives a process-crash row (an `error` carrying a pane exit status), the
+  same veto a `running` hook has. Copilot fires `userPromptSubmitted` and then `sessionStart` on its
+  first prompt, so that first turn reads `idle` until the next hook or a probe that sees the working
+  indicator; the next prompt's `userPromptSubmitted` enters `running`.
 - **Precedence:** `user-terminal` > `hook` > `probe` > `tmux`. A user kill sets
   `killed_by_user`, which an in-flight hook arriving milliseconds later cannot undo —
   explicit human action outranks automation. Below that, a probe never overwrites a fresher
@@ -1041,7 +1053,7 @@ Rules:
   is probe-eligible, the hook verdict it would override is at least `stale_after` old, and
   "a probe never overwrites a *fresher* hook verdict" is unchanged.
 - **Copilot rows.** A `copilot` row's hook statuses are the table in §8.4: `userPromptSubmitted`
-  → `running` (`prompt`), `sessionStart` → `running` (the payload's `source`), `notification`
+  → `running` (`prompt`), `sessionStart` → `idle` (the payload's `source`), `notification`
   of type `permission_prompt` or `elicitation_dialog` → `waiting` (that type), `agentStop` →
   `idle` (`end_turn` or the payload's `stopReason`), `sessionEnd` → `stopped` (the payload's
   `reason`). `errorOccurred` and a `notification` of any other type change nothing: errors are
@@ -1466,8 +1478,8 @@ Subscribed events — a handful per turn, never per tool call:
 
 | event | → status | notes |
 |---|---|---|
-| session start | `running` | confirms the assigned id; the source field distinguishes fresh vs resumed vs compacted |
-| user prompt submitted | `running` | also feeds prompt count |
+| session start | `idle` | confirms the assigned id; the source field distinguishes fresh vs resumed vs compacted. **`SessionStart` lands on `idle`, never `running` (R307)**, including `--resume` and `--continue`: a session that has started has not been asked anything. The `UserPromptSubmit` below, or a working indicator the probe sees, is what enters `running` |
+| user prompt submitted | `running` | also feeds prompt count; **enters `running`** |
 | notification (permission prompt / question / needs-input / idle prompt) | `waiting` | **the golden signal**; the notification type becomes `status_reason` |
 | stop | `idle` | carries the last assistant message — use it; the transcript file lags |
 | stop-failure | `error` | error type becomes `status_reason` |
@@ -1542,8 +1554,8 @@ Subscribed events — the same shape as §8.1, and deliberately **not**
 
 | event | → status | notes |
 |---|---|---|
-| `SessionStart` | `running` | carries `session_id` — the id deck adopts — and `source` (`startup` \| `resume` \| `clear` \| `compact`) |
-| `UserPromptSubmit` | `running` | also feeds prompt count |
+| `SessionStart` | `idle` | **lands on `idle`, never `running` (R307)**; carries `session_id` — the id deck adopts — and `source` (`startup` \| `resume` \| `clear` \| `compact`). Codex fires it at the first prompt, immediately followed by `UserPromptSubmit` |
+| `UserPromptSubmit` | `running` | also feeds prompt count; **enters `running`** |
 | `PermissionRequest` | `waiting` | **the golden signal**, codex's analogue of Claude's notification: `tool_name` (`Bash` for a command approval, `apply_patch` for a file edit) plus `tool_input.command`, and `tool_input.description` when the model supplied a justification |
 | `Stop` | `idle` | carries the final assistant text under `last_assistant_message` — the same field name Claude uses; nullable when the turn produced no text |
 | `SessionEnd` | `stopped` | `reason` observed only as `other`, on both `/quit` and a double `Ctrl+C`. The one event with no output schema: fire-and-forget, it cannot influence codex |
@@ -1876,7 +1888,7 @@ Every other call keeps the payload's own `hook_event_name` and `session_id`. The
 | event | status | reason |
 |---|---|---|
 | `userPromptSubmitted` | `running` | `prompt` |
-| `sessionStart` | `running` | the payload's `source` (`new` or `resume`) |
+| `sessionStart` | `idle` | the payload's `source` (`new` or `resume`); **lands on `idle`, never `running` (R307)**, and `userPromptSubmitted` enters `running` |
 | `notification`, `notification_type` `permission_prompt` | `waiting` | `permission_prompt` |
 | `notification`, `notification_type` `elicitation_dialog` | `waiting` | `elicitation_dialog` |
 | `notification`, any other `notification_type` | no change | none |

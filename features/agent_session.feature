@@ -64,7 +64,7 @@ Feature: Real agent session creation and resume through the TUI
     # transcript exists. No message is ever sent here. Each launch is
     # followed by its ready verdict (starting, from tmux) and then by the
     # SessionStart signal a real Claude sends on startup, which is what
-    # moves a Claude row to running (SPEC.md §7); the conversation id
+    # lands a Claude row on idle, never running (R307; SPEC.md §7); the conversation id
     # remembered at creation must survive both restarts unchanged.
     Given a long-running fake "claude" binary is on PATH for future deck clients
     And deck client "A" is started
@@ -75,7 +75,7 @@ Feature: Real agent session creation and resume through the TUI
     And the conversation id of session "early restart" is remembered
     When fake Claude session "early restart" fires "SessionStart" for itself using conversation identity:
       | source | startup |
-    Then the state database contains session "early restart" with status "running"
+    Then the state database contains session "early restart" with status "idle"
     When deck client "A" presses R on session "early restart"
     Then within one configured reconcile interval the audit log has 2 launch records for session "early restart"
     And the audit log's most recent launch argv for session "early restart" contains "--session-id"
@@ -86,7 +86,7 @@ Feature: Real agent session creation and resume through the TUI
     And exactly 1 private tmux sessions match slug "deck_early-restart"
     When fake Claude session "early restart" fires "SessionStart" for itself using conversation identity:
       | source | startup |
-    Then the state database contains session "early restart" with status "running"
+    Then the state database contains session "early restart" with status "idle"
     And the state database session "early restart" still has its remembered conversation id
     And deck client "A" screen does not contain "Cannot resume"
     When deck client "A" presses R on session "early restart"
@@ -97,7 +97,7 @@ Feature: Real agent session creation and resume through the TUI
     And the state database session "early restart" has status "starting" from "tmux"
     When fake Claude session "early restart" fires "SessionStart" for itself using conversation identity:
       | source | startup |
-    Then the state database contains session "early restart" with status "running"
+    Then the state database contains session "early restart" with status "idle"
     And the state database session "early restart" still has its remembered conversation id
     When deck client "A" exits cleanly
 

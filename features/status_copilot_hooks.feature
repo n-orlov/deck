@@ -12,8 +12,10 @@ Feature: Copilot hook status truth
 
     When fake Copilot session "copilot truth" starts working on "write the file"
     # The first prompt fires userPromptSubmitted and then sessionStart, whose
-    # reason is the payload's source.
-    Then the state database session "copilot truth" has hook status "running" with reason "new"
+    # reason is the payload's source. R307: sessionStart lands on idle, never
+    # running (covered by internal/hookrecv TestSessionStartLandsOnIdleForCopilot);
+    # the next userPromptSubmitted is what enters running.
+    Then the state database session "copilot truth" has hook status "idle" with reason "new"
     And session "copilot truth" has a "session_start" event
 
     When fake Copilot session "copilot truth" raises a "permission_prompt" notification
@@ -48,8 +50,10 @@ Feature: Copilot hook status truth
     And a long-running fake "copilot" binary rendering its screen is on PATH for future deck clients
     And deck client "A" is started
     When deck client "A" creates copilot session "aborted turn" with permission profile "safe"
+    And fake Copilot session "aborted turn" starts working on "warm up"
+    Then the state database session "aborted turn" has hook status "idle" with reason "new"
     And fake Copilot session "aborted turn" starts working on "a very long job"
-    Then the state database session "aborted turn" has hook status "running" with reason "new"
+    Then the state database session "aborted turn" has hook status "running" with reason "prompt"
 
     When fake Copilot session "aborted turn" is interrupted with Ctrl-C
     Then the state database session "aborted turn" has probe status "idle" with reason "ready"
