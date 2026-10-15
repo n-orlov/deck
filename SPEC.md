@@ -1009,12 +1009,18 @@ Rules:
   (`sessionStart` for Copilot) — startup, `--resume`, `--continue`, `clear` or `compact` — sets `idle`,
   never `running`. Only a `UserPromptSubmit` (`userPromptSubmitted`) hook, or a working indicator the
   probe sees, enters `running`. A resumed session that has been given no prompt therefore stays
-  `idle`: `idle` is not probe-eligible, so a probe tick that matches no rule leaves it untouched. Pi's
+  `idle`: a probe tick that matches no rule leaves it untouched (`idle` is probe-eligible only at the sparse cadence below). Pi's
   own `session_start` extension event keeps `running` (§8.3).
   A `SessionStart` never revives a process-crash row (an `error` carrying a pane exit status), the
   same veto a `running` hook has. Copilot fires `userPromptSubmitted` and then `sessionStart` on its
   first prompt, so that first turn reads `idle` until the next hook or a probe that sees the working
   indicator; the next prompt's `userPromptSubmitted` enters `running`.
+- **Idle probe cadence (R314).** An `idle` row is probe-eligible once its `status_at` is at least
+  **4 × `stale_after`** old (`starting`, `running` and `waiting` stay at 1 × `stale_after`). The multiple is
+  fixed, not a setting, and it applies only on the TUI's probing path, never in `deck _hook`. This is the
+  sparse check for a turn begun without a hook: a probe that sees the working indicator moves the row to
+  `running` with source `probe`; a probe that matches nothing leaves it `idle` (`last_probe_at` only). An
+  `error` or `stopped` row is never probed.
 - **Precedence:** `user-terminal` > `hook` > `probe` > `tmux`. A user kill sets
   `killed_by_user`, which an in-flight hook arriving milliseconds later cannot undo —
   explicit human action outranks automation. Below that, a probe never overwrites a fresher

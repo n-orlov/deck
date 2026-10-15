@@ -14,7 +14,9 @@ Feature: Sampled probe status truth
       | claude/starting.txt |
       | claude/running.txt  |
       | claude/waiting.txt  |
-      | claude/idle.txt     |
+      | claude/idle-scrolled.txt  |
+      | claude/idle-draft.txt     |
+      | claude/idle-altscreen.txt |
       | claude/error.txt    |
     # pi's "starting" and "waiting" still have no golden fixture: SPEC
     # requirement 38's refit found no capturable, durable marker for them

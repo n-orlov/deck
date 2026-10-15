@@ -414,10 +414,21 @@ func (s Service) repairTerminalRowWithLivePane(ctx context.Context, session stor
 	return nil
 }
 
+// idleProbeFactor is the multiple of stale_after an idle row waits before it is
+// probe-eligible (R314). It is a fixed multiple of the configured window, not a
+// setting of its own.
+const idleProbeFactor = 4
+
+// probeEligible reports whether a row is sampled on this pass: starting,
+// running and waiting rows after stale_after, idle rows after
+// idleProbeFactor x stale_after (a sparse check for a turn begun without a
+// hook, R314). error and stopped rows are never probed.
 func probeEligible(session store.Session, now time.Time, staleAfter time.Duration) bool {
 	switch session.Status {
 	case "starting", "running", "waiting":
 		return now.UnixMilli()-session.StatusAt >= staleAfter.Milliseconds()
+	case "idle":
+		return now.UnixMilli()-session.StatusAt >= idleProbeFactor*staleAfter.Milliseconds()
 	default:
 		return false
 	}

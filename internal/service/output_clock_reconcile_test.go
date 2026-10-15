@@ -38,9 +38,11 @@ func TestReconcileFeedsTheOutputClockFromWindowActivityAndThePane(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
+	// A fresh idle row: this test is about the output clock, so the row must
+	// not be due for a status probe (idle is probe-eligible at 4 x stale_after, R314).
 	session, err := db.CreateSession(context.Background(), store.CreateSessionInput{
 		ID: "00000000-0000-4000-8000-0000000000b1", Name: "feed", CWD: t.TempDir(), Agent: "claude",
-		CapturedPath: "/bin", Status: "idle", StatusSource: "hook", StatusAt: 1, CreatedAt: 1,
+		CapturedPath: "/bin", Status: "idle", StatusSource: "hook", StatusAt: clock.Now().UnixMilli(), CreatedAt: 1,
 	})
 	if err != nil {
 		t.Fatal(err)
