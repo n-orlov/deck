@@ -3,7 +3,9 @@ package tui
 import (
 	"sort"
 	"strings"
+	"time"
 
+	"github.com/n-orlov/deck/internal/config"
 	"github.com/n-orlov/deck/internal/store"
 )
 
@@ -30,12 +32,12 @@ const (
 // see attentionLessStable's doc comment for why that matters (the same
 // 3-cycle hazard, the same fix, in every one of the four comparators
 // below).
-func sortSessionsByOrder(previous, incoming []store.Session, order string) []store.Session {
+func sortSessionsByOrder(previous, incoming []store.Session, order string, outputBucket time.Duration) []store.Session {
 	switch order {
 	case SortOrderCreated:
 		return sortSessionsStable(previous, incoming, pinnedFirst(lessByCreatedStable(previous)))
 	case SortOrderActivity:
-		return sortSessionsStable(previous, incoming, pinnedFirst(lessByActivityStable(previous)))
+		return sortSessionsStable(previous, incoming, pinnedFirst(lessByActivityStable(outputBucket)))
 	case SortOrderName:
 		return sortSessionsStable(previous, incoming, pinnedFirst(lessByNameStable(previous)))
 	case SortOrderAttention:
@@ -136,18 +138,31 @@ func lessByCreatedStable(previous []store.Session) func(a, b store.Session) bool
 	}
 }
 
-// lessByActivityStable orders by StatusAt descending -- a status CHANGE
-// (§7's own timestamp), never last pane output, which deck does not
-// record; see the schema key's own doc comment. Same tie-break shape as
-// lessByCreatedStable.
-func lessByActivityStable(previous []store.Session) func(a, b store.Session) bool {
-	posKey := previousPositionKey(previous)
+// outputBucketOf is the output-clock bucket a session's last_output_at falls
+// in (R306): its wall-clock milliseconds in whole seconds, divided by the
+// bucket width. A session with no output yet (0) is bucket 0, the oldest.
+// A width that is not positive means the default, so a Settings built without
+// config.Load sorts on the documented 10 s.
+func outputBucketOf(s store.Session, width time.Duration) int64 {
+	seconds := int64(width / time.Second)
+	if seconds < 1 {
+		seconds = int64(config.DefaultOutputBucket / time.Second)
+	}
+	return (s.LastOutputAt / 1000) / seconds
+}
+
+// lessByActivityStable orders by the output bucket of last_output_at
+// descending (R306): the transcript-region output clock of R304, never a
+// status change. Inside one bucket the session id breaks the tie, ascending.
+// The id is the whole tie-break, not the previous frame's position, because
+// a bucket is exactly the window in which output is "the same time": ordering
+// by anything that moves with each tick would let the list reshuffle inside
+// it, and the id never moves. The key is an integer and its equality a true
+// equivalence, so the composite is a strict weak ordering.
+func lessByActivityStable(outputBucket time.Duration) func(a, b store.Session) bool {
 	return func(a, b store.Session) bool {
-		if a.StatusAt != b.StatusAt {
-			return a.StatusAt > b.StatusAt
-		}
-		if ka, kb := posKey(a), posKey(b); ka != kb {
-			return ka < kb
+		if ba, bb := outputBucketOf(a, outputBucket), outputBucketOf(b, outputBucket); ba != bb {
+			return ba > bb
 		}
 		return a.ID < b.ID
 	}

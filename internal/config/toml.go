@@ -53,6 +53,7 @@ type FileConfig struct {
 	EventHookEvents      []string
 	EventHookTimeout     time.Duration
 	NoteTimeout          time.Duration
+	OutputBucket         time.Duration
 	Env                  map[string]string
 }
 
@@ -219,6 +220,7 @@ var integerSetters = map[string]func(*FileConfig, int){
 	"interactive_ms":       func(c *FileConfig, v int) { c.InteractiveInterval = time.Duration(v) * time.Millisecond },
 	"ui.recent_cwd_limit":  func(c *FileConfig, v int) { c.RecentCwdLimit = v },
 	"ui.note_timeout":      func(c *FileConfig, v int) { c.NoteTimeout = time.Duration(v) * time.Second },
+	"ui.output_bucket":     func(c *FileConfig, v int) { c.OutputBucket = time.Duration(v) * time.Second },
 	"event_retention_days": func(c *FileConfig, v int) { c.EventRetentionDays = v },
 	"event_hook_timeout":   func(c *FileConfig, v int) { c.EventHookTimeout = time.Duration(v) * time.Second },
 }

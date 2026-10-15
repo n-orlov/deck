@@ -547,9 +547,9 @@ var Schema = []Field{
 			"starting/idle/stopped tier order -- the order every earlier phase " +
 			"shipped, kept default because it answers \"which session needs " +
 			"me\". \"created\" is sessions.created_at descending (newest " +
-			"first). \"activity\" is sessions.status_at descending -- a status " +
-			"CHANGE (§7's own timestamp), never last pane output, which deck " +
-			"does not record. \"name\" is case-insensitive ascending. Every " +
+			"first). \"activity\" is sessions.last_output_at descending, " +
+			"bucketed by output_bucket (R306): the last time the agent printed, " +
+			"never a status change. \"name\" is case-insensitive ascending. Every " +
 			"order falls back to id ascending on a tie (a total order, so a " +
 			"re-sort can never swap two rows out from under an in-flight " +
 			"keyboard idiom), and a non-attention order never secretly re-ranks " +
@@ -692,6 +692,29 @@ var Schema = []Field{
 		// requirement 19: footerNoteExpiryCmd reads m.settings.NoteTimeout when
 		// a note is set, and settingsApplyLiveScalars copies a saved change
 		// into it, so the next note already follows a ctrl+s with no restart.
+		Scope: ScopeGlobal,
+	},
+	{
+		Section: "ui",
+		Key:     "output_bucket",
+		Kind:    KindInteger,
+		Default: int(DefaultOutputBucket.Seconds()),
+		Unit:    "seconds",
+		IntBounds: Bounds{
+			Min: 1, // a non-positive bucket is a load error naming the key.
+		},
+		Description: "The width of one pane-output bucket (SPEC \u00a76, \u00a711): " +
+			"the output clock records a session's last_output_at only when " +
+			"its transcript region changed in a different bucket than the " +
+			"last recorded one, and the activity sort orders by that bucket, " +
+			"newest first, with the session id breaking a tie inside one " +
+			"bucket. 10 seconds by default, so a chatty pane does not " +
+			"reshuffle the list every tick. A whole number of seconds or a " +
+			"quoted duration, at least 1. DECK_OUTPUT_BUCKET overrides the " +
+			"file when set (whole seconds, at least 1). Applies immediately.",
+		// requirement 19: the activity sort reads m.settings.OutputBucket on
+		// every sort and settingsApplyLiveScalars copies a saved change into
+		// it, so the next reorder already follows a ctrl+s with no restart.
 		Scope: ScopeGlobal,
 	},
 	{

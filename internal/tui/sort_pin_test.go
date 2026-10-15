@@ -29,7 +29,7 @@ func TestSortPinnedFirstAllOrders(t *testing.T) {
 			{ID: "pin-b", Status: "waiting", StatusAt: 300, PinnedAt: 1},
 			{ID: "pin-a", Status: "waiting", StatusAt: 300, PinnedAt: 1},
 		}
-		got := sortSessionsByOrder(nil, sessions, SortOrderAttention)
+		got := sortSessionsByOrder(nil, sessions, SortOrderAttention, 0)
 		want := []string{"pin-a", "pin-b", "pin-idle", "un-a", "un-b"}
 		assertIDOrder(t, got, want)
 	})
@@ -42,20 +42,20 @@ func TestSortPinnedFirstAllOrders(t *testing.T) {
 			{ID: "pin-b", CreatedAt: 600, PinnedAt: 1},
 			{ID: "pin-a", CreatedAt: 600, PinnedAt: 1},
 		}
-		got := sortSessionsByOrder(nil, sessions, SortOrderCreated)
+		got := sortSessionsByOrder(nil, sessions, SortOrderCreated, 0)
 		want := []string{"pin-a", "pin-b", "pin-low", "un-a", "un-b"}
 		assertIDOrder(t, got, want)
 	})
 
 	t.Run("activity", func(t *testing.T) {
 		sessions := []store.Session{
-			{ID: "un-b", StatusAt: 500},
-			{ID: "un-a", StatusAt: 500},
-			{ID: "pin-low", StatusAt: 10, PinnedAt: 1}, // pinned, least recent -- must still lead
-			{ID: "pin-b", StatusAt: 600, PinnedAt: 1},
-			{ID: "pin-a", StatusAt: 600, PinnedAt: 1},
+			{ID: "un-b", LastOutputAt: 500_000},
+			{ID: "un-a", LastOutputAt: 500_000},
+			{ID: "pin-low", LastOutputAt: 10_000, PinnedAt: 1}, // pinned, least recent -- must still lead
+			{ID: "pin-b", LastOutputAt: 600_000, PinnedAt: 1},
+			{ID: "pin-a", LastOutputAt: 600_000, PinnedAt: 1},
 		}
-		got := sortSessionsByOrder(nil, sessions, SortOrderActivity)
+		got := sortSessionsByOrder(nil, sessions, SortOrderActivity, 0)
 		want := []string{"pin-a", "pin-b", "pin-low", "un-a", "un-b"}
 		assertIDOrder(t, got, want)
 	})
@@ -68,7 +68,7 @@ func TestSortPinnedFirstAllOrders(t *testing.T) {
 			{ID: "pin-b", Name: "apple", PinnedAt: 1},
 			{ID: "pin-a", Name: "apple", PinnedAt: 1},
 		}
-		got := sortSessionsByOrder(nil, sessions, SortOrderName)
+		got := sortSessionsByOrder(nil, sessions, SortOrderName, 0)
 		want := []string{"pin-a", "pin-b", "pin-low", "un-a", "un-b"}
 		assertIDOrder(t, got, want)
 	})
@@ -103,7 +103,7 @@ func TestSortFreshPinMovesDespitePreviousFrame(t *testing.T) {
 	}{
 		{SortOrderAttention, func(id string) store.Session { return store.Session{ID: id, Status: "idle", StatusAt: 500} }},
 		{SortOrderCreated, func(id string) store.Session { return store.Session{ID: id, CreatedAt: 500} }},
-		{SortOrderActivity, func(id string) store.Session { return store.Session{ID: id, StatusAt: 500} }},
+		{SortOrderActivity, func(id string) store.Session { return store.Session{ID: id, LastOutputAt: 500_000} }},
 		{SortOrderName, func(id string) store.Session { return store.Session{ID: id, Name: "same-name"} }},
 	}
 	for _, tc := range cases {
@@ -117,7 +117,7 @@ func TestSortFreshPinMovesDespitePreviousFrame(t *testing.T) {
 			xPinned := x
 			xPinned.PinnedAt = 42
 			incoming := []store.Session{a, xPinned, b}
-			got := sortSessionsByOrder(previous, incoming, tc.order)
+			got := sortSessionsByOrder(previous, incoming, tc.order, 0)
 			if got[0].ID != "x" {
 				t.Fatalf("%s: freshly pinned row did not move to the top on the very next sort, got %v", tc.order, idsOf(got))
 			}
@@ -137,7 +137,7 @@ func TestSortPinnedTierPerGroupKeepsGroupOrder(t *testing.T) {
 		{ID: "b1", GroupName: "teamB", Status: "error", StatusAt: 80},
 		{ID: "b2", GroupName: "teamB", Status: "stopped", StatusAt: 20, PinnedAt: 1},
 	}
-	sorted := sortSessionsByOrder(nil, raw, SortOrderAttention)
+	sorted := sortSessionsByOrder(nil, raw, SortOrderAttention, 0)
 	m := groupTestModel(sorted)
 	groups := m.groupSessions()
 

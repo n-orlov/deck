@@ -9,9 +9,10 @@ import (
 )
 
 // R303: a row cleared with Y and then re-probed waiting keeps its position in
-// the attention and activity orders. The re-probe repeats "waiting", so it
-// neither re-dates the row (status_at drives both orders) nor marks it unseen
-// again.
+// the attention order, and in the activity order (which reads last_output_at,
+// R306, and so cannot be moved by a status write at all). The re-probe repeats
+// "waiting", so it neither re-dates the row (status_at drives attention) nor
+// marks it unseen again.
 func TestClearedWaitingRowReprobedWaitingKeepsItsSortPosition(t *testing.T) {
 	home := t.TempDir()
 	db, err := store.OpenPath(home, filepath.Join(home, "state.db"))
@@ -35,6 +36,13 @@ func TestClearedWaitingRowReprobedWaitingKeepsItsSortPosition(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	// The older row printed more recently, so the activity order puts it first
+	// -- the opposite of the id order, so the check cannot pass by accident.
+	for id, at := range map[string]int64{"older": 500_000, "newer": 100_000} {
+		if err := db.RecordOutput(ctx, id, at); err != nil {
+			t.Fatal(err)
+		}
+	}
 	order := func(sorter func([]store.Session) []store.Session) []string {
 		t.Helper()
 		rows, err := db.ListSessions(ctx)
@@ -49,9 +57,9 @@ func TestClearedWaitingRowReprobedWaitingKeepsItsSortPosition(t *testing.T) {
 	}
 	attention := func(rows []store.Session) []store.Session { return sortSessionsByAttentionStable(nil, rows) }
 	activity := func(rows []store.Session) []store.Session {
-		return sortSessionsByOrder(nil, rows, SortOrderActivity)
+		return sortSessionsByOrder(nil, rows, SortOrderActivity, 0)
 	}
-	wantAttention, wantActivity := []string{"older", "newer"}, []string{"newer", "older"}
+	wantAttention, wantActivity := []string{"older", "newer"}, []string{"older", "newer"}
 	if got := order(attention); !equalIDs(got, wantAttention) {
 		t.Fatalf("attention order before clearing = %v, want %v", got, wantAttention)
 	}

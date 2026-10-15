@@ -98,7 +98,7 @@ func TestBookmarkJumpRevealsAHiddenTarget(t *testing.T) {
 		}},
 		{"the target is in the pin section", "s3", func(m *Model) {
 			m.baseSessions[3].PinnedAt = 5
-			m.baseSessions = sortSessionsByOrder(m.baseSessions, m.baseSessions, SortOrderCreated)
+			m.baseSessions = sortSessionsByOrder(m.baseSessions, m.baseSessions, SortOrderCreated, 0)
 			m.sessions = m.filteredSessions()
 		}, nil},
 		{"the target is already visible", "s1", nil, nil},

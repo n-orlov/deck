@@ -3,6 +3,7 @@ package tui
 import (
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/n-orlov/deck/internal/store"
 )
@@ -78,16 +79,19 @@ func TestLessByCreatedStableOrdersNewestFirst(t *testing.T) {
 	}
 }
 
-// TestLessByActivityStableOrdersMostRecentFirst proves the primary key: a
-// later StatusAt (more recent status CHANGE) sorts before an earlier one.
+// TestLessByActivityStableOrdersMostRecentFirst proves the primary key
+// (R306): a later last_output_at bucket sorts before an earlier one, and a
+// status change (StatusAt) plays no part -- the oldest output has the newest
+// StatusAt here and still sorts last. Milliseconds in, 10 s buckets.
 func TestLessByActivityStableOrdersMostRecentFirst(t *testing.T) {
 	sessions := []store.Session{
-		{ID: "old", StatusAt: 100},
-		{ID: "new", StatusAt: 300},
-		{ID: "mid", StatusAt: 200},
+		{ID: "old", LastOutputAt: 100_000, StatusAt: 900},
+		{ID: "new", LastOutputAt: 300_000, StatusAt: 100},
+		{ID: "mid", LastOutputAt: 200_000, StatusAt: 500},
+		{ID: "never", LastOutputAt: 0, StatusAt: 999},
 	}
-	got := sortSessionsStable(nil, sessions, lessByActivityStable(nil))
-	want := []string{"new", "mid", "old"}
+	got := sortSessionsStable(nil, sessions, lessByActivityStable(10*time.Second))
+	want := []string{"new", "mid", "old", "never"}
 	for i, id := range want {
 		if got[i].ID != id {
 			t.Fatalf("position %d: got %q, want %q (full: %v)", i, got[i].ID, id, idsOf(got))
@@ -125,7 +129,7 @@ func TestSortComparatorsBreakTiesByIDWhenNoPreviousFrame(t *testing.T) {
 		make func(id string) store.Session
 	}{
 		{"created", lessByCreatedStable, func(id string) store.Session { return store.Session{ID: id, CreatedAt: 500} }},
-		{"activity", lessByActivityStable, func(id string) store.Session { return store.Session{ID: id, StatusAt: 500} }},
+		{"activity", func([]store.Session) func(a, b store.Session) bool { return lessByActivityStable(10 * time.Second) }, func(id string) store.Session { return store.Session{ID: id, LastOutputAt: 500_000} }},
 		{"name", lessByNameStable, func(id string) store.Session { return store.Session{ID: id, Name: "same-name"} }},
 	}
 	for _, tc := range cases {
@@ -143,7 +147,9 @@ func TestSortComparatorsBreakTiesByIDWhenNoPreviousFrame(t *testing.T) {
 }
 
 // TestSortComparatorsPreservePreviousRelativeOrderOnTie proves the middle
-// tie-break level for all three new comparators, matching
+// tie-break level for the created and name comparators (the activity order
+// dropped it in R306: inside an output bucket the id alone breaks a tie, see
+// TestActivitySortTieBreakIsTheIDAndStableAcrossTicks), matching
 // sortSessionsByAttentionStable's own behaviour: two rows tied on the
 // primary key that already appeared together in the previous frame keep
 // THEIR order from that frame, even when the ID order disagrees with it.
@@ -154,7 +160,6 @@ func TestSortComparatorsPreservePreviousRelativeOrderOnTie(t *testing.T) {
 		make func(id string) store.Session
 	}{
 		{"created", lessByCreatedStable, func(id string) store.Session { return store.Session{ID: id, CreatedAt: 500} }},
-		{"activity", lessByActivityStable, func(id string) store.Session { return store.Session{ID: id, StatusAt: 500} }},
 		{"name", lessByNameStable, func(id string) store.Session { return store.Session{ID: id, Name: "same-name"} }},
 	}
 	for _, tc := range cases {
@@ -189,7 +194,7 @@ func TestSortComparatorsThreeWayTieIsTransitive(t *testing.T) {
 			return store.Session{ID: id, Status: "waiting", StatusAt: 500}
 		}},
 		{"created", lessByCreatedStable, func(id string) store.Session { return store.Session{ID: id, CreatedAt: 500} }},
-		{"activity", lessByActivityStable, func(id string) store.Session { return store.Session{ID: id, StatusAt: 500} }},
+		{"activity", func([]store.Session) func(a, b store.Session) bool { return lessByActivityStable(10 * time.Second) }, func(id string) store.Session { return store.Session{ID: id, LastOutputAt: 500_000} }},
 		{"name", lessByNameStable, func(id string) store.Session { return store.Session{ID: id, Name: "same-name"} }},
 	}
 	for _, tc := range cases {
@@ -206,9 +211,9 @@ func TestSortComparatorsThreeWayTieIsTransitive(t *testing.T) {
 // incoming.
 func TestSortSessionsByOrderDispatchesOnConfiguredOrder(t *testing.T) {
 	sessions := []store.Session{
-		{ID: "b", Name: "bravo", CreatedAt: 100, StatusAt: 100, Status: "idle"},
-		{ID: "a", Name: "alpha", CreatedAt: 300, StatusAt: 300, Status: "waiting"},
-		{ID: "c", Name: "charlie", CreatedAt: 200, StatusAt: 200, Status: "running"},
+		{ID: "b", Name: "bravo", CreatedAt: 100, StatusAt: 100, LastOutputAt: 100_000, Status: "idle"},
+		{ID: "a", Name: "alpha", CreatedAt: 300, StatusAt: 300, LastOutputAt: 300_000, Status: "waiting"},
+		{ID: "c", Name: "charlie", CreatedAt: 200, StatusAt: 200, LastOutputAt: 200_000, Status: "running"},
 	}
 	original := make([]store.Session, len(sessions))
 	copy(original, sessions)
@@ -224,7 +229,7 @@ func TestSortSessionsByOrderDispatchesOnConfiguredOrder(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.order, func(t *testing.T) {
-			got := sortSessionsByOrder(nil, sessions, tc.order)
+			got := sortSessionsByOrder(nil, sessions, tc.order, 0)
 			for i, id := range tc.want {
 				if got[i].ID != id {
 					t.Fatalf("order %q: position %d: got %q, want %q (full: %v)", tc.order, i, got[i].ID, id, idsOf(got))
@@ -249,7 +254,7 @@ func TestSortSessionsByOrderUnknownValueFallsBackToAttention(t *testing.T) {
 		{ID: "w", Status: "waiting", StatusAt: 100},
 		{ID: "s", Status: "stopped", StatusAt: 200},
 	}
-	got := sortSessionsByOrder(nil, sessions, "bogus-value")
+	got := sortSessionsByOrder(nil, sessions, "bogus-value", 0)
 	want := sortSessionsByAttentionStable(nil, sessions)
 	for i := range want {
 		if got[i].ID != want[i].ID {

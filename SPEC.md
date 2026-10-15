@@ -800,7 +800,7 @@ schema:
 |---|---|
 | top level | `allow_yolo` (default false, §5), `yolo_default` (default false, §5 — inert unless `allow_yolo`), `stale_after` (default 45 s, §7), `capture_min_interval` (§9.4), `tmux_mouse` (default true, §3.2 — `false` restores tmux's own default and with it the arrow-key behaviour), `event_retention_days` (default 30, §12), `pre_launch` (empty by default, §6.4 — the global launch hook), `agent` (empty by default, §3.4 — the kind `deck new` creates when `--agent` is absent; it is a string stored verbatim and checked against the registered kinds only when `deck new` uses it, so a kind deck does not know fails there with `unknown agent kind`; the create dialog ignores it), `post_destroy` (empty by default, §9.2 — the global teardown hook), `event_hook` (empty by default, §10.1 — the one event script; empty makes §10 inert), `event_hook_default` (default false, §10.2), `adopt_harness_names` (default true, §11.4), `bookmarks` (default false, `DECK_BOOKMARKS`, §11.5 — the numbered session bookmarks), `update_check` (default true, `DECK_UPDATE_CHECK` — the daily check for a newer release, below), `auto_update` (default false, `DECK_AUTO_UPDATE` — true implies the check), `event_hook_events` (default `["waiting","error","ended"]`, §10.2), `event_hook_timeout` (default 3 s, §10.3) |
 | `[env]` | the middle PATH/env layer (§6.1) |
-| `[ui]` | `theme` (§11.6), `ascii` (§11), `mouse` (default true, §11.8), `preview_fit` (default true, §11), `preview_paint` (default `"fit"`, one of `fit`/`nofit`/`bg`/`off`, §11.3), `sort_order` (default `"attention"`, one of `attention`/`created`/`activity`/`name`, §11), `default_group_first` (default false, §11), `attach_on_new` (default true, §11), `attach_on_click` (default true, §11.8), `select_on_drag` (default true, §11.8), `attach_on_resume` (default false, §9.1), `recent_cwd_limit` (default 5, §11.7). **Not** `layout_mode`, `sidebar_width` or the recent-directory list itself — those are machine-local UI state/history and live in `state.db` (§11.2, §11.7), so a keypress never rewrites this file, `note_timeout` (whole seconds or a quoted duration, at least 1; default 10, `DECK_NOTE_TIMEOUT` in whole seconds overrides it, §11.3 — how long a transient footer note stays up) |
+| `[ui]` | `theme` (§11.6), `ascii` (§11), `mouse` (default true, §11.8), `preview_fit` (default true, §11), `preview_paint` (default `"fit"`, one of `fit`/`nofit`/`bg`/`off`, §11.3), `sort_order` (default `"attention"`, one of `attention`/`created`/`activity`/`name`, §11), `default_group_first` (default false, §11), `attach_on_new` (default true, §11), `attach_on_click` (default true, §11.8), `select_on_drag` (default true, §11.8), `attach_on_resume` (default false, §9.1), `recent_cwd_limit` (default 5, §11.7). **Not** `layout_mode`, `sidebar_width` or the recent-directory list itself — those are machine-local UI state/history and live in `state.db` (§11.2, §11.7), so a keypress never rewrites this file, `note_timeout` (whole seconds or a quoted duration, at least 1; default 10, `DECK_NOTE_TIMEOUT` in whole seconds overrides it, §11.3 — how long a transient footer note stays up), `output_bucket` (whole seconds or a quoted duration, at least 1; default 10, `DECK_OUTPUT_BUCKET` in whole seconds overrides it, §7, §11 — the width of one `last_output_at` bucket, which the output clock writes at and the `activity` sort orders by) |
 
 The settings view (§11.5) edits this file: `,` opens it and `,` or `esc` closes it (§11.5
 spells out the discard prompt and the text-entry modes where `,` is a literal character).
@@ -832,7 +832,7 @@ view (§11.5) uses: `allow_yolo`, `yolo_default`, `ui.theme`, `ui.ascii`, `ui.mo
 terminal's mouse reporting is switched on or off with it), `ui.preview_fit`, `ui.preview_paint`,
 `ui.sort_order` (the loaded sessions are re-sorted, the selection stays on its session),
 `ui.default_group_first`, `ui.attach_on_new`, `ui.attach_on_click`, `ui.select_on_drag`,
-`ui.attach_on_resume`, `ui.note_timeout` (the next note follows it), `event_hook`, `event_hook_default`, `adopt_harness_names` (the next adoption or
+`ui.attach_on_resume`, `ui.note_timeout` (the next note follows it), `ui.output_bucket` (the output clock writes at the new width from its next read, and an `activity` list re-sorts at once), `event_hook`, `event_hook_default`, `adopt_harness_names` (the next adoption or
 push follows it), `bookmarks`, `update_check`, `auto_update` (a save or reload that turns the check on runs it at once, one that turns `auto_update` on installs an offered release at once, and one that turns them off stops every later automatic request or install), `event_hook_events` and
 `event_hook_timeout` (the dispatcher reads them from the running settings when an event fires,
 so the next event follows them). A key the file did not change is left as it is, and a key a `DECK_*`
@@ -1011,8 +1011,8 @@ Rules:
   changes the reason and not `status_at`), and `last_probe_at` may still advance. The event
   is still recorded. Only a change of status dates the row, opens an attention episode and
   marks it unseen, so a row cleared with `Y` and then re-probed `waiting` stays cleared and
-  keeps its position in the `attention` and `activity` sort orders (both order by
-  `status_at`). A hook repeating the current status therefore does not extend a hook verdict's
+  keeps its position in the `attention` sort order (which orders by `status_at`); the
+  `activity` order reads `last_output_at` (§7, §11) and no status write can move it. A hook repeating the current status therefore does not extend a hook verdict's
   freshness window: staleness (§7, below) is measured from the last change of status.
 - **Attaching to a `waiting` row also clears the status to `running`** (not only the
   acknowledgement): answering the prompt is why you attached, deck watched you do it, and
@@ -1140,7 +1140,7 @@ answers "when did the agent last print something", not "what is its status": not
 precedence above reads it. tmux's `window_activity` (whole seconds) only *nominates* a moment,
 because it also moves for footer and statusline churn (`ctx:%`, branch, model). Each probing
 reconcile tick (the TUI's, never the hook-critical `Reconcile`) compares the window's activity bucket
-(`window_activity` divided by the bucket width, 10 s) with the last one examined for that session. A
+(`window_activity` divided by the bucket width, `[ui] output_bucket`, 10 s by default, applied live) with the last one examined for that session. A
 tick in the same bucket reads and writes nothing (except inside a discount window, below). When the bucket has advanced, deck captures the
 pane, cuts it at the boundary the probe's `lastContentLine` uses, **the earlier of the last two
 separator lines**, and hashes the **transcript region** above it (trailing blanks ignored). Only a
@@ -2532,9 +2532,13 @@ hold them side by side.
     exists to provide; it stays the default precisely because it is the order that answers
     "which session needs me".
   - `created` — newest first, by `sessions.created_at` descending.
-  - `activity` — most recent first, by `sessions.status_at` descending. "Activity" is a
-    **status change** (§7's own timestamp), not last pane output: deck records no
-    per-session output clock, and inventing one is a schema change, not a sort option.
+  - `activity` — most recent output first, by `sessions.last_output_at` (§7's output clock)
+    bucketed by `[ui] output_bucket` (10 s by default), newest bucket first, the session `id`
+    ascending breaking a tie inside one bucket. Two sessions that printed within the same
+    bucket therefore keep a fixed relative order from tick to tick, and a chatty pane moves
+    its row at most once per bucket. A session that has not printed since deck began
+    recording (`last_output_at` 0) sorts last. A status change does not move a row in this
+    order. The order follows `output_bucket` live.
   - `name` — `name` ascending, case-insensitively, so `Api` and `api` sort together.
 
   **Pinned sessions come first within their group, in every order.** `p` pins or unpins

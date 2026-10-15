@@ -179,3 +179,21 @@ func TestOutputClockLeavesStatusAlone(t *testing.T) {
 		t.Fatalf("the output clock changed the status: %+v", got)
 	}
 }
+
+// R306: SetBucket changes the width the clock buckets by while it runs; a
+// non-positive width is ignored.
+func TestOutputClockSetBucketAppliesLive(t *testing.T) {
+	c := NewOutputClock(10 * time.Second)
+	c.SetBucket(2 * time.Second)
+	if got := c.bucketWidth(); got != 2*time.Second {
+		t.Fatalf("bucket after SetBucket(2s) = %v", got)
+	}
+	if got := c.DiscountWindow(); got != 2*time.Second {
+		t.Fatalf("discount window = %v, want it capped at the 2s bucket", got)
+	}
+	c.SetBucket(0)
+	c.SetBucket(-time.Second)
+	if got := c.bucketWidth(); got != 2*time.Second {
+		t.Fatalf("a non-positive width changed the bucket to %v", got)
+	}
+}

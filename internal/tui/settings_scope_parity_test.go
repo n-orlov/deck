@@ -51,6 +51,7 @@ type settingsResolvedSnapshot struct {
 	SelectOnDrag       bool
 	AttachOnResume     bool
 	NoteTimeout        string
+	OutputBucket       string
 	PreviewPaint       string
 	RecentCwdLimit     int
 	SortOrder          string
@@ -90,6 +91,7 @@ func snapshotResolvedSettings(s config.Settings) settingsResolvedSnapshot {
 		SelectOnDrag:       s.SelectOnDrag,
 		AttachOnResume:     s.AttachOnResume,
 		NoteTimeout:        s.NoteTimeout.String(),
+		OutputBucket:       s.OutputBucket.String(),
 		PreviewPaint:       s.PreviewPaint,
 		RecentCwdLimit:     s.RecentCwdLimit,
 		SortOrder:          s.SortOrder,

@@ -83,13 +83,33 @@ func NewOutputClock(bucket time.Duration) *OutputClock {
 	return &OutputClock{Bucket: bucket, state: map[string]outputState{}, discount: map[string][]discountSpan{}}
 }
 
+// SetBucket changes the bucket width while the clock runs (R306: [ui]
+// output_bucket applies live). A non-positive width is ignored. The next
+// Observe reads the new width; the baselines already held stay as they are.
+func (c *OutputClock) SetBucket(bucket time.Duration) {
+	if c == nil || bucket <= 0 {
+		return
+	}
+	c.mu.Lock()
+	c.Bucket = bucket
+	c.mu.Unlock()
+}
+
+func (c *OutputClock) bucketWidth() time.Duration {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.Bucket
+}
+
 // DiscountWindow is how long output stays deck-caused after a deck-caused
 // resize or forwarded key (R305): MaxDiscountWindow, and never more than one
 // output bucket.
 func (c *OutputClock) DiscountWindow() time.Duration {
 	window := MaxDiscountWindow
-	if c != nil && c.Bucket > 0 && c.Bucket < window {
-		window = c.Bucket
+	if c != nil {
+		if bucket := c.bucketWidth(); bucket > 0 && bucket < window {
+			window = bucket
+		}
 	}
 	return window
 }
@@ -205,10 +225,11 @@ func (c *OutputClock) Observe(ctx context.Context, store OutputStore, sessionID 
 	if c == nil || windowActivity <= 0 {
 		return false, nil
 	}
-	if c.Bucket <= 0 {
+	bucketWidth := c.bucketWidth()
+	if bucketWidth <= 0 {
 		return false, errors.New("output clock bucket must be positive")
 	}
-	width := int64(c.Bucket / time.Second)
+	width := int64(bucketWidth / time.Second)
 	if width < 1 {
 		width = 1
 	}

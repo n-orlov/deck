@@ -3206,7 +3206,7 @@ func (m *Model) sortReloaded(loaded []store.Session) []store.Session {
 	case SortOrderAttention:
 		return sortSessionsByAttentionStable(m.baseSessions, loaded)
 	default:
-		return sortSessionsByOrder(m.baseSessions, loaded, order)
+		return sortSessionsByOrder(m.baseSessions, loaded, order, m.settings.OutputBucket)
 	}
 }
 
@@ -5835,7 +5835,7 @@ func (m *Model) resortSessionsLive() {
 	case SortOrderAttention:
 		m.baseSessions = sortSessionsByAttentionStable(m.baseSessions, m.baseSessions)
 	default:
-		m.baseSessions = sortSessionsByOrder(m.baseSessions, m.baseSessions, order)
+		m.baseSessions = sortSessionsByOrder(m.baseSessions, m.baseSessions, order, m.settings.OutputBucket)
 	}
 	m.sessions = m.filteredSessions()
 	// A header cursor (task 012/D.1) is untouched here -- its own identity

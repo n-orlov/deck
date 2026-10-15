@@ -36,6 +36,10 @@ const (
 	// DefaultNoteTimeout is how long a transient footer note stays up when
 	// neither config.toml's [ui] note_timeout nor DECK_NOTE_TIMEOUT sets it.
 	DefaultNoteTimeout = 10 * time.Second
+
+	// DefaultOutputBucket is the width of one output-clock bucket when neither
+	// config.toml's [ui] output_bucket nor DECK_OUTPUT_BUCKET sets it (R306).
+	DefaultOutputBucket = 10 * time.Second
 	// DefaultProfile is the flat, unnamed layout and socket "deck" (SPEC
 	// §3.4): the profile `deck`/`deck default`/an unset DECK_PROFILE all
 	// resolve to, byte-for-byte, with no migration and profiles/default/
@@ -188,6 +192,11 @@ type Settings struct {
 	// \u00a711): how long a transient footer note stays up before it clears
 	// on its own. DECK_NOTE_TIMEOUT (whole seconds) overrides the file.
 	NoteTimeout time.Duration
+	// OutputBucket mirrors config.toml's [ui] output_bucket key (R306, SPEC
+	// §6, §11): the width of one last_output_at bucket, which the output clock
+	// writes at and the activity sort orders by. DECK_OUTPUT_BUCKET (whole
+	// seconds) overrides the file.
+	OutputBucket time.Duration
 	// EventHookEvents mirrors event_hook_events (SPEC §10.2): the offered
 	// kinds the hook fires for by default. Defaults to waiting, error, ended.
 	EventHookEvents []string
@@ -460,6 +469,7 @@ func applyFileConfig(settings *Settings, fileCfg FileConfig) {
 	settings.UpdateCheck = fileCfg.UpdateCheck
 	settings.AutoUpdate = fileCfg.AutoUpdate
 	settings.NoteTimeout = fileCfg.NoteTimeout
+	settings.OutputBucket = fileCfg.OutputBucket
 	settings.EventHookEvents = slices.Clone(fileCfg.EventHookEvents)
 	settings.EventHookTimeout = fileCfg.EventHookTimeout
 	settings.SortOrder = fileCfg.SortOrder
@@ -546,6 +556,7 @@ var envOverrideSteps = []envOverrideStep{
 	interactiveIntervalOverride,
 	interactiveTransportOverride,
 	noteTimeoutOverride,
+	outputBucketOverride,
 }
 
 func noteTimeoutOverride(getenv func(string) string, settings *Settings, overrides map[string]string) error {
@@ -559,6 +570,20 @@ func noteTimeoutOverride(getenv func(string) string, settings *Settings, overrid
 	}
 	settings.NoteTimeout = time.Duration(value) * time.Second
 	overrides["ui.note_timeout"] = "DECK_NOTE_TIMEOUT"
+	return nil
+}
+
+func outputBucketOverride(getenv func(string) string, settings *Settings, overrides map[string]string) error {
+	raw := getenv("DECK_OUTPUT_BUCKET")
+	if raw == "" {
+		return nil
+	}
+	value, err := strconv.Atoi(raw)
+	if err != nil || value <= 0 {
+		return fmt.Errorf("DECK_OUTPUT_BUCKET must be a positive integer in seconds")
+	}
+	settings.OutputBucket = time.Duration(value) * time.Second
+	overrides["ui.output_bucket"] = "DECK_OUTPUT_BUCKET"
 	return nil
 }
 
