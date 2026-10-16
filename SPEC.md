@@ -1407,13 +1407,16 @@ What only the transcript draws rules a candidate out: claude and copilot lead th
 prompt, so a rule no column-0 `❯` line follows is transcript, as is one with a `●` turn bullet drawn in column
 0 or 1 (claude's flush-left bullet, copilot's ` ●`) between it and the bottom rule, since a draft's
 continuation lines are indented by the prompt's width; pi (no prompt glyph; its frame is recognised by the cwd
-line, a path at column 0, under the bottom rule) pads every transcript line by one column, while a draft is
-free text that starts at column 0 unless the user indents it. The identical rules cut the pane above the
-bottom rule into stretches; the one straight above the bottom rule is always draft, and any other stretch
-whose text is all indented with at least one line padded by exactly one column is transcript, which rules out
-the rule above it and every rule higher up. A draft's own indentation is not that evidence when its stretch
-also holds a column-0 line or is indented by more than pi's one-column pad (pasted code, an indented
-paragraph), so the frame's real top stays a candidate. If
+line, a path at column 0, under the bottom rule) pads every transcript line by at least one column (its own
+text by exactly one, a code block or tool output under it by more), while a draft is free text that starts at
+column 0 unless the user indents it. The identical rules cut the pane above the bottom rule into stretches; the
+one straight above the bottom rule is always draft, and so is any stretch holding a line of text at column 0,
+which only a draft draws (pi prints its startup warnings from column 0 above its whole UI, never between two
+rules): that stretch and every stretch under it lie inside the composer, so the top is at or above the topmost
+such stretch, and a draft's own indented lines (pasted code, an indented paragraph) under a column-0 line keep
+the frame's real top a candidate. Above the topmost draft stretch, the nearest stretch whose text is all
+indented, at any depth, is transcript, which rules out the rule above it and every rule higher up; a stretch
+of blank lines only is no evidence. If
 no rule passes, all stay candidates. Of the remaining candidates, claude and copilot take the topmost one a
 column-0 `❯` line follows (a draft can quote `❯` too, but never above the frame's own); in pi a `❯` line is
 draft text and no evidence, and pi leaves a blank line above its frame, so its top is the topmost candidate a
@@ -1421,9 +1424,10 @@ blank line (or the pane's top) precedes. With neither evidence the nearest ident
 left is a genuinely ambiguous pane: a frame-identical transcript line with nothing under it but blank lines
 (the divider is the last transcript line), in pi a draft that adds a blank line and a frame-identical rule
 when the transcript runs up to the frame with no blank line (the clock below covers that draft case), and in pi
-a draft holding a frame-identical rule with, between it and the line drawn above it, text that is all indented
-and partly by exactly one column, drawn the way pi draws its transcript: that stretch reads as transcript, so
-an edit inside it counts as output. A pane with no identical pair is cut at the earlier of its last two
+a draft holding frame-identical rules with no column-0 line anywhere between the frame's top and the
+draft's lowest such rule: that stretch is drawn exactly the way pi draws its transcript and reads as transcript, so an edit
+inside it counts as output (pi's editor wraps draft text one column short of the pane's width, so a real pi
+draft never draws a frame-identical rule for such a stretch to sit on). A pane with no identical pair is cut at the earlier of its last two
 separator lines. For a pane that draws no
 separators, **codex's `›` composer line**: codex draws every transcript cell from column 0 and
 indents continuation lines, so the composer is the pane's last column-0 line when that line is a

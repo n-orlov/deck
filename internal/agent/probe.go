@@ -348,9 +348,10 @@ func frameCuts(lines []string) ([]int, int) {
 //     rule the composer's first line does not follow, or one with a "●" turn
 //     bullet drawn in column 0 or 1 between it and the bottom rule (claude
 //     draws it flush left, copilot after one space), is transcript.
-//   - pi draws no glyph; it pads every transcript line by one column, so a
-//     stretch of text between two of the rules that is padded that way, with
-//     no line at column 0, is transcript (piTops).
+//   - pi draws no glyph; it pads every transcript line by at least one
+//     column, so a stretch of text between two of the rules with no line at
+//     column 0 is transcript, unless a stretch below it holds a column-0 line,
+//     which only a draft draws (piTops).
 //
 // A pane none of whose rules passes keeps all of them: the evidence ranks, it
 // never leaves the frame without a top. What remains is genuine ambiguity (a
@@ -396,19 +397,32 @@ func bulletBetween(lines []string, top, bottom int) bool {
 // below the transcript's end. The rules cut the pane above the bottom rule
 // into stretches; the composer is the lowest few of them (its top rule, then
 // any rule a draft drew, down to the bottom rule), the transcript everything
-// above. The stretch straight above the bottom rule is always draft. Any other
-// stretch whose text is all indented with at least one line padded by exactly
-// one column, pi's transcript pad, is transcript, and so is every rule above
-// it. A stretch with a line at column 0 (what a draft line starts at unless
-// the user indents it), or with blank lines only, is no evidence: a draft's
-// own indented lines leave the rule above them a candidate as long as the
-// stretch they sit in has a column-0 line or is indented by more than pi's
-// pad. With no transcript stretch every rule stays a candidate.
+// above. pi pads every transcript line by at least one column (its own text by
+// exactly one, a code block or tool output under it by more), so:
+//   - a stretch with a line of text at column 0 is draft: the transcript never
+//     draws there, so that stretch and every stretch under it lie inside the
+//     composer, and the top rule is at or above the topmost such stretch. (pi
+//     prints startup warnings from column 0 above its whole UI, never between
+//     two rules.) The stretch straight above the bottom rule is always draft.
+//   - above the topmost draft stretch, the nearest stretch holding text that is
+//     all indented, at any depth, is transcript, and so is every rule above it.
+//   - a stretch with blank lines only is no evidence either way.
+//
+// A draft stretch whose every line the user indented, with no column-0 line
+// under it either, reads exactly like transcript and is taken as transcript;
+// pi's editor wraps draft text one column short of the pane's width, so a real
+// pi draft never draws a frame-identical rule for such a stretch to sit on.
+// With no transcript stretch every rule stays a candidate.
 func piTops(lines []string, identical []int) []int {
 	// identical is nearest first: identical[k] sits above identical[k-1], and
-	// the stretch under identical[k] ends at identical[k-1]. The nearest
-	// transcript stretch decides.
+	// the stretch under identical[k] ends at identical[k-1].
+	draft := 0
 	for k := 1; k < len(identical); k++ {
+		if piStretchHasColumnZero(lines[identical[k]+1 : identical[k-1]]) {
+			draft = k
+		}
+	}
+	for k := draft + 1; k < len(identical); k++ {
 		if piTranscriptStretch(lines[identical[k]+1 : identical[k-1]]) {
 			return identical[:k]
 		}
@@ -416,25 +430,33 @@ func piTops(lines []string, identical []int) []int {
 	return identical
 }
 
+// piStretchHasColumnZero reports a line of text (not a rule) drawn from column
+// 0 in a stretch of pane lines, which only a pi draft can draw.
+func piStretchHasColumnZero(stretch []string) bool {
+	for _, line := range stretch {
+		trimmed := strings.TrimSpace(line)
+		if trimmed != "" && !isSeparatorLine(trimmed) && line[0] != ' ' && line[0] != '\t' {
+			return true
+		}
+	}
+	return false
+}
+
 // piTranscriptStretch reports a stretch of pane lines drawn the way pi draws
-// its transcript: some text, none of it at column 0, at least one line padded
-// by exactly one column.
+// its transcript: some text, none of it at column 0.
 func piTranscriptStretch(stretch []string) bool {
-	padded := false
+	text := false
 	for _, line := range stretch {
 		trimmed := strings.TrimSpace(line)
 		if trimmed == "" || isSeparatorLine(trimmed) {
 			continue
 		}
-		indent := line[:len(line)-len(strings.TrimLeft(line, " \t"))]
-		if indent == "" {
+		if line[0] != ' ' && line[0] != '\t' {
 			return false
 		}
-		if indent == " " {
-			padded = true
-		}
+		text = true
 	}
-	return padded
+	return text
 }
 
 // pickTopRule is the index into identical (nearest first) of the frame's top

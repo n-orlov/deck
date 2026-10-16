@@ -12,7 +12,7 @@ import (
 // shape review found; the others are the same rule in shapes it did not list.
 var piIndentedDraftShapes = map[string][]string{
 	"finding":          {"%s", "  preserve this indentation", "", "@", "appendix"},
-	"indented-head":    {"  %s", "", "@", "tail"},
+	"indented-head":    {"  %s", "a line from column 0", "", "@", "tail"},
 	"pasted-code":      {"%s", "    for x in items:", "\tprint(x)", "@", "  more code", "", "@", "end"},
 	"indent-under-at":  {"%s", "@", "   indented under a drawn rule", "end"},
 	"one-col-and-col0": {"%s", " one column, but under a column-0 line", "@", "end"},
