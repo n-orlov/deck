@@ -4,6 +4,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/n-orlov/deck/internal/store"
+	"github.com/n-orlov/deck/internal/tmux"
 )
 
 // R326: Alt+U / Alt+Shift+U in the list. Alt+U jumps to the next unseen
@@ -47,4 +48,58 @@ func (m Model) jumpToUnseen(dir int) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	return m, m.issueViewWrite(session)
+}
+
+// R327: the same two chords while a session is attached (interactive mode).
+// They are intercepted next to Ctrl+Q and the bookmark keys, so no byte of
+// them reaches a pane, and they switch the attached view to the next / previous
+// unseen session exactly as a bookmark jump switches it: interactive mode
+// leaves the current window and enters the target's, without a list round
+// trip. They are not gated by the bookmarks setting. A stopped session cannot
+// be attached, so it is not a candidate. With nothing else to switch to the
+// view stays and the footer's note slot shows noUnseenNote until the next key.
+
+// handleInteractiveUnseenKey is the attached-mode layer of the unseen jumps.
+func (m Model) handleInteractiveUnseenKey(msg tea.KeyMsg) (next Model, cmd tea.Cmd, handled bool) {
+	if m.fieldCopyNote == noUnseenNote {
+		m.setFieldCopyNote("")
+	}
+	var dir int
+	switch msg.String() {
+	case unseenNextKey:
+		dir = 1
+	case unseenPreviousKey:
+		dir = -1
+	default:
+		return m, nil, false
+	}
+	next, cmd = m.jumpInteractiveUnseen(dir)
+	return next, cmd, true
+}
+
+// jumpInteractiveUnseen switches the attached view to the nearest unseen
+// attachable session in direction dir, counted from the session the view is
+// bound to (not from the list selection, which a sidebar wheel drift or a
+// header click can leave elsewhere).
+func (m Model) jumpInteractiveUnseen(dir int) (Model, tea.Cmd) {
+	from := m.selected
+	if idx, ok := m.interactiveTargetIndex(); ok {
+		from = rowCursor(idx)
+	}
+	found, ok := m.stepSelection(from, dir, func(s store.Session) bool {
+		return s.Unseen() && canReachPane(s)
+	})
+	if !ok {
+		m.setFieldCopyNote(noUnseenNote)
+		return m, nil
+	}
+	idx, _ := found.SessionIndex()
+	if name, err := tmux.SessionName(m.sessions[idx].Slug); err == nil && name == m.interactiveWindowTarget {
+		return m, nil
+	}
+	left, _ := m.exitInteractive()
+	next := left.(Model)
+	next.setSelection(found)
+	entered, cmd := next.enterInteractive()
+	return entered.(Model), cmd
 }

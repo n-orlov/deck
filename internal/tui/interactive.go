@@ -608,6 +608,9 @@ func (m Model) updateInteractive(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if handled {
 		return m, nil
 	}
+	if next, cmd, handled := m.handleInteractiveUnseenKey(msg); handled {
+		return next, cmd
+	}
 	ctx := context.Background()
 	if named, ok := interactiveNamedKey(msg); ok {
 		// Any keystroke forwarded to the target snaps the view back to

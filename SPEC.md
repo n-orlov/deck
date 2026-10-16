@@ -2876,7 +2876,7 @@ always did), and the permission badge for non-`safe` **last**. The
   `TestAltShiftUJumpsToThePreviousUnseenSession`, `TestAltUAndAltShiftUWrapThroughTheList`,
   `TestAltUWithNothingUnseenShowsAOneLineMessageAndMovesNothing`,
   `TestASeenErrorIsReachableByAltUUntilItIsViewed`, `TestSpaceIsUnaffectedByTheUnseenJumps`,
-  `TestAltShiftUIsDistinguishableFromAltUThroughTmux`. The interactive-mode form is R327.
+  `TestAltShiftUIsDistinguishableFromAltUThroughTmux`. The interactive-mode form is R327 (§11, bookmarks paragraph; §11.9).
 - Status glyphs `●` waiting · `◐` running · `○` idle · `◌` starting · `■` stopped ·
   `✗` error · `▣` archived. Under `DECK_ASCII=1` / `[ui] ascii` each is one ASCII column: `?` waiting,
   `~` running, `o` idle, `.` starting, `#` stopped, `x` error. An **unverified** `running` row (§7, R315:
@@ -2997,7 +2997,7 @@ always did), and the permission badge for non-`safe` **last**. The
   with the full keymap. A capability that can only be reached by editing a file by hand is
   a defect against R7, not a documentation gap.
 
-Keymap: `↵` attach · `space` next needing attention (a `waiting` row or an unseen `error` row, §7) · `Alt+U` / `Alt+Shift+U` next / previous unseen session (R326, below) · `Y` mark seen (acknowledge; only where something is unseen) · `n` new · `r`
+Keymap: `↵` attach · `space` next needing attention (a `waiting` row or an unseen `error` row, §7) · `Alt+U` / `Alt+Shift+U` next / previous unseen session (R326, below; also while attached, R327) · `Y` mark seen (acknowledge; only where something is unseen) · `n` new · `r`
 resume/start · `R` restart preserving conversation · `x` kill (undo toast) · `dd` delete ·
 `s` send message (§11.1) · `i` session detail (§11.4 — **rename, the launch-inputs editor, the
 group move, the permission profile `P` and the conversation lock `c` are actions inside it**,
@@ -3060,6 +3060,17 @@ cancels it too; leaving any other way drops it). With the setting off every one 
 these keys is forwarded to the pane exactly as before. **`Ctrl+digit` is deliberately not bound:** a terminal only delivers it with user tmux
 configuration, and for `2`…`8` it collides with legacy control keys (`Ctrl+2` is NUL,
 `Ctrl+3`…`Ctrl+7` are ESC, FS, GS, RS, US and `Ctrl+8` is DEL).
+
+**Unseen jumps while attached (R327).** In interactive mode (§11.9) `Alt+U` and `Alt+Shift+U` are
+intercepted next to `Ctrl+Q` and the bookmark keys and send zero bytes to the pane, whatever the
+`bookmarks` setting says. They switch the attached view to the next / previous unseen session (the
+same predicate and list order as the list's R326 jump, counted from the session the view is bound
+to and wrapping) and stay in interactive mode, without returning to the list, exactly as a bookmark
+jump does. A stopped session cannot be attached and is skipped. With no other unseen session the
+view stays and the footer's note slot shows `No unseen sessions` until the next key. The new view is
+viewed on entry (R325). Tests: `TestInteractiveUnseenJumpForward`, `TestInteractiveUnseenJumpBackward`,
+`TestInteractiveUnseenJumpWithNoneUnseenKeepsTheView`, `TestInteractiveUnseenKeysForwardZeroBytes`,
+`TestInteractiveUnseenJumpStaysInteractive`, `TestInteractiveForwardCorpusIsUnchangedByTheUnseenKeys`.
 
 **Every capability in this section has a key or a documented entry point here, and every
 key here has a scenario (§13.5).** A capability listed above with nowhere to reach it is an
@@ -3284,6 +3295,9 @@ truncated-but-honest frame beats an unpredictable one.
   §11's keymap plus the `?` overlay remain the complete list. With the `bookmarks` setting on,
   two more entries, `alt+0-9/m bookmarks` and `alt+m del clear bookmark`, trail the fixed set and are
   the first to be elided on a narrow frame; with the setting off the footer never mentions bookmarks.
+  The **interactive** footer (§11.9) names the unseen jumps as `Alt+U/Alt+Shift+U unseen` (R327): it trails
+  the optional segments and is the first dropped on a narrow frame, and it is shown whatever the
+  `bookmarks` setting is.
 - **The footer also carries the selected row's status reason**, on its left, separated from
   the keys. §7's reasons are prose — `awaiting signal`, `resumable`, `pane failed after the
   stale frame` — and a sidebar with 31 content columns cannot hold a name and a reason on the
@@ -4018,6 +4032,11 @@ footer (it is a hint line, not a toolbar, and §11.3 already binds it to what is
 `Enter` hands the keyboard to the selected session without leaving the list. deck fits the
 session's window to the preview panel, streams the pane into an in-process cell grid, and
 forwards keystrokes to it. `Ctrl+Q` returns. `a` remains the escalation to a real terminal.
+**Intercepted keys (never forwarded).** `Ctrl+Q`; with the `bookmarks` setting on, `Alt+0`…`Alt+9`,
+`Alt+M` (and the digit or `Delete` that completes its chord) and the ten `Alt+Shift+digit` keys (§11);
+and, always, `Alt+U` and `Alt+Shift+U` (R327), which switch the attached view to the next / previous
+unseen session and stay interactive (§11, "Unseen jumps while attached"). Every other key, `u`, `U`, `Alt+I`, `Alt+Y`,
+`Alt+A`, `Ctrl+U`, `Alt+Up`, `Enter` and `Esc` included, reaches the pane exactly as before.
 `Ctrl+U` is among the forwarded keys: deck never handles it here, so the update confirmation (§11.4) is
 not offered and the pane receives the single byte 0x15 whatever the update indicator reads.
 Entering is an attachment in §7's sense, and an attachment is inert (R320): it writes no status, no seen

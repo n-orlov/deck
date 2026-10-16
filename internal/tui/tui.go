@@ -5109,6 +5109,9 @@ func (m Model) interactiveFooterLineWithin(width int) string {
 	wheelPlain := interactiveSidebarWheelKey + " " + interactiveSidebarWheelHint
 	wheelNote := m.colorToken(theme.Key, interactiveSidebarWheelKey) + " " + m.colorToken(theme.Hint, interactiveSidebarWheelHint)
 
+	unseenPlain := interactiveUnseenKey + " " + interactiveUnseenHint
+	unseenNote := m.colorToken(theme.Key, interactiveUnseenKey) + " " + m.colorToken(theme.Hint, interactiveUnseenHint)
+
 	cue := m.interactiveScrollCue()
 	if cue == "" {
 		if stringWidth("keystrokes forward to the live pane")+sepWidth+quitWidth > width {
@@ -5120,11 +5123,14 @@ func (m Model) interactiveFooterLineWithin(width int) string {
 			}
 			return quit
 		}
-		line := forwardNote + sep + quit
-		if m.settings.Mouse && stringWidth("keystrokes forward to the live pane")+sepWidth+stringWidth(wheelPlain)+sepWidth+quitWidth <= width {
-			line = forwardNote + sep + wheelNote + sep + quit
+		// R327: the unseen jumps trail the optional segments and drop
+		// first, so a narrow footer keeps every older entry whole.
+		optional := []footerSegment{}
+		if m.settings.Mouse {
+			optional = append(optional, footerSegment{wheelNote, stringWidth(wheelPlain)})
 		}
-		return line
+		optional = append(optional, footerSegment{unseenNote, stringWidth(unseenPlain)})
+		return liveFooterLine(width, footerSegment{forwardNote, stringWidth("keystrokes forward to the live pane")}, optional, sep, quit, quitWidth)
 	}
 
 	scrollKey := m.colorToken(theme.Key, "Shift+PgUp/PgDn")
@@ -5139,6 +5145,7 @@ func (m Model) interactiveFooterLineWithin(width int) string {
 	if m.settings.Mouse {
 		segments = append(segments, footerSegment{wheelNote, stringWidth(wheelPlain)})
 	}
+	segments = append(segments, footerSegment{unseenNote, stringWidth(unseenPlain)})
 
 	budget := width - quitWidth
 	if budget < 0 {
@@ -5157,10 +5164,28 @@ func (m Model) interactiveFooterLineWithin(width int) string {
 	return strings.Join(parts, sep) + sep + quit
 }
 
+// liveFooterLine joins the forward note, as many of the optional segments as
+// fit in order (stopping at the first that does not), and the Ctrl+Q hint.
+func liveFooterLine(width int, forward footerSegment, optional []footerSegment, sep, quit string, quitWidth int) string {
+	line, used := forward.styled, forward.width
+	for _, seg := range optional {
+		if used+stringWidth(sep)+seg.width+stringWidth(sep)+quitWidth > width {
+			break
+		}
+		line += sep + seg.styled
+		used += stringWidth(sep) + seg.width
+	}
+	return line + sep + quit
+}
+
 // interactiveSidebarWheelKey/Hint are the interactive footer's R157
 // segment naming the wheel over the sidebar (SPEC §11.8/§11.9): it scrolls
 // the list, as it does in list mode, while interactive mode stays active.
 const (
+	// R327: the unseen jumps are intercepted while interactive too.
+	interactiveUnseenKey  = "Alt+U/Alt+Shift+U"
+	interactiveUnseenHint = "unseen"
+
 	interactiveSidebarWheelKey  = "sidebar wheel"
 	interactiveSidebarWheelHint = "scrolls the list"
 )
@@ -9872,7 +9897,8 @@ Keys
     below), exactly as it does outside interactive mode;
     a full-screen app (editor, pager, agent TUI) sits on the
     alternate screen, which keeps no history, so its preview starts
-    with none; typing snaps the view back to the live bottom
+    with none; typing snaps the view back to the live bottom;
+    alt+u / alt+Shift+U here switch to the next / previous unseen one
   F force-enter interactive mode on the selected session, stealing it from
     any client already attached to it and claiming ownership over a
     live holder of the window's claim instead of standing down for one --
