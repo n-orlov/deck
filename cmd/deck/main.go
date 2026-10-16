@@ -312,7 +312,7 @@ func newDeckModel(db *store.Store, settings config.Settings, sessions service.Se
 	// R305: deck-caused resizes, attaches and forwarded keys are discounted
 	// by the same output clock the reconcile callback feeds.
 	if sessions.Output != nil {
-		model = model.WithOutputDiscounter(sessions.Output)
+		model = model.WithOutputDiscounter(sessions.Output).WithAttachOutputObserver(sessions.ObserveAttachedOutput)
 	}
 	// The `i` detail dialog's launch-inputs editor (task 023, SPEC §6.2/§11.4,
 	// PRD R108) is wired the same way and for the same reason: one narrow

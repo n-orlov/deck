@@ -1475,7 +1475,11 @@ an attach. An attach is bounded like the rest: the hand-off from `a` to the tmux
 window (the client's attach resizes the window and the pane redraws), and the client's detach opens
 one more for the detach repaint. Nothing discounts the stretch in between: what the agent prints
 while a client stays attached is autonomous and counts, however long the attach lasts, because
-no discount ever outlasts one window. Output caused by a resize or a forwarded key stays
+no discount ever outlasts one window. Deck's reconcile ticks do not run for the length of a full attach
+(the tmux client has the terminal), so the attach watcher feeds the clock itself, once a second, for as
+long as the client is attached (`Service.ObserveAttachedOutput`: it writes `last_output_at` only, never a
+status); without that read the detach window would swallow everything the agent printed during the
+attach. Output caused by a resize or a forwarded key stays
 discounted for its own window. A window is compared with the pane's `window_activity`, not with the
 tick that reads it, so a tick that lands late still discounts output that happened inside the
 window. Output whose `window_activity` falls after the window ends counts as before. The windows
@@ -1483,7 +1487,10 @@ are in memory, like the baseline.
 Tests: `TestOutputInsideTheAttachStartWindowDoesNotAdvanceLastOutputAt`,
 `TestAutonomousOutputLongAfterAnAttachStartCountsWhileStillAttached`, `TestAttachDiscountNeverOutlastsOneBucket`,
 `TestDetachRepaintIsDiscountedButTheAttachedStretchIsNot`, `TestKeyAfterAnExpiredAttachWindowIsStillDiscounted`,
-`TestAttachDiscountsTheHandOffAndTheDetachRepaint`.
+`TestAttachDiscountsTheHandOffAndTheDetachRepaint`,
+`TestAutonomousOutputReadMidAttachCountsAndSurvivesTheDetachRepaint`,
+`TestMidAttachOutputCountsPerBucketButAResizeInsideItStaysDiscounted`, `TestAttachWatcherFeedsTheOutputClockWhileAttached`,
+`TestFullAttachReadsTheOutputClockWhileAttachedAndStopsAtDetach`.
 
 ---
 

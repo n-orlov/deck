@@ -234,6 +234,9 @@ type Model struct {
 	// attachSample is the full-attach engagement watcher's read (R321,
 	// attach_engagement.go); WithTmuxClient wires it. Nil runs `a` unwatched.
 	attachSample attachSampler
+	// attachOutput feeds the output clock during a full attach
+	// (WithAttachOutputObserver).
+	attachOutput func(context.Context, store.Session) error
 	engagement   *engagementState
 	reconcile    func(context.Context) error
 	resume       func(context.Context, string) (store.Session, service.ResumeOutcome, error)
@@ -1326,6 +1329,13 @@ type OutputDiscounter interface {
 	Discount(sessionID string, cause service.DiscountCause)
 	AttachStarted(sessionID string)
 	AttachEnded(sessionID string)
+}
+
+// WithAttachOutputObserver wires the read of the output clock the full-attach
+// watcher runs while the client is attached (R305), for the session it holds.
+func (m Model) WithAttachOutputObserver(observe func(context.Context, store.Session) error) Model {
+	m.attachOutput = observe
+	return m
 }
 
 // WithOutputDiscounter wires the output clock's discount (R305).
@@ -4409,12 +4419,23 @@ func (m Model) attachSelected() (tea.Model, tea.Cmd) {
 		// Model that comes back from the attach share one record.
 		m.engagementCell()
 		engage := m.engageRow
-		watched := &watchedAttach{cmd: command, slug: session.Slug, sample: m.attachSample, interval: attachWatchInterval, settle: attachWatchSettle, session: session, read: m.attachRowReader(session.ID), engage: engage}
+		watched := &watchedAttach{cmd: command, slug: session.Slug, sample: m.attachSample, interval: attachWatchInterval, settle: attachWatchSettle, session: session, read: m.attachRowReader(session.ID), engage: engage, observeOutput: m.attachOutputObserver(session)}
 		return m, tea.Exec(watched, func(err error) tea.Msg {
 			return attachFinished{err: err, engaged: watched.Trigger, observed: watched.Observed, writes: watched.Engaged}
 		})
 	}
 	return m, tea.ExecProcess(command, func(err error) tea.Msg { return attachFinished{err: err} })
+}
+
+// attachOutputObserver is the watcher's output-clock read for the attached
+// session, nil when none is wired. A failed read is dropped: the next tick
+// reads again, and the reconcile after the detach reports real faults.
+func (m Model) attachOutputObserver(session store.Session) func(context.Context) {
+	if m.attachOutput == nil {
+		return nil
+	}
+	observe := m.attachOutput
+	return func(ctx context.Context) { _ = observe(ctx, session) }
 }
 
 // releaseForeignPreviewPin is `a`'s last act before it hands the terminal

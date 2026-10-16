@@ -64,6 +64,10 @@ import (
 const (
 	attachWatchInterval = 200 * time.Millisecond
 	attachWatchSettle   = time.Second
+	// attachOutputInterval is how often the attach watcher feeds the output
+	// clock while the client is attached (R305): the reconcile ticks do not
+	// run for the length of an attach.
+	attachOutputInterval = time.Second
 )
 
 // attachEngagementDetector is the watcher's pure decision: one observe per
@@ -363,6 +367,12 @@ type watchedAttach struct {
 	// that arrives after the attach began is marked seen by the key, scroll
 	// or screen change that observed it, not at detach.
 	engage func(engagementTrigger, store.Session) tea.Cmd
+	// observeOutput, when set, feeds the output clock (R305) every
+	// outputEvery while the client is attached: the TUI's reconcile ticks do
+	// not run during an attach, so without it an agent's own output in a
+	// long attach would only be read once the detach window had begun.
+	observeOutput func(context.Context)
+	outputEvery   time.Duration
 
 	stdin  io.Reader
 	stdout io.Writer
@@ -490,6 +500,7 @@ func (w *watchedAttach) Run() error {
 		}
 		found <- w.watch(ctx, w.cmd.Process.Pid, first, &proxy.keys, bracket)
 	}()
+	outputDone := w.startOutputObserver(ctx)
 	err = w.cmd.Wait()
 	select {
 	case <-outDone:
@@ -497,9 +508,39 @@ func (w *watchedAttach) Run() error {
 	}
 	stopInputProxy(inDone, input)
 	cancel()
+	<-outputDone
 	engaged := <-found
 	w.Trigger, w.Observed = engaged.trigger, engaged.observed
 	return err
+}
+
+// startOutputObserver runs observeOutput every outputEvery until ctx ends and
+// returns a channel closed once it has stopped. Without an observer the
+// channel is already closed.
+func (w *watchedAttach) startOutputObserver(ctx context.Context) <-chan struct{} {
+	done := make(chan struct{})
+	if w.observeOutput == nil {
+		close(done)
+		return done
+	}
+	every := w.outputEvery
+	if every <= 0 {
+		every = attachOutputInterval
+	}
+	go func() {
+		defer close(done)
+		ticker := time.NewTicker(every)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				w.observeOutput(ctx)
+			}
+		}
+	}()
+	return done
 }
 
 // resizePty gives the attach client's pty the size of the first of the user's

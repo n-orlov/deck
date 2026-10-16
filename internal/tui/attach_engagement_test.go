@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"reflect"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -212,6 +213,13 @@ func startLiveAttach(t *testing.T) *liveAttach {
 // the attach (tmux's status line takes a row) and a 23-row one is not.
 func startLiveAttachSized(t *testing.T, paneHeight int) *liveAttach {
 	t.Helper()
+	return startLiveAttachWith(t, paneHeight, nil)
+}
+
+// startLiveAttachWith is startLiveAttachSized with the watcher's output-clock
+// read (R305) set to observe when it is not nil.
+func startLiveAttachWith(t *testing.T, paneHeight int, observe func(context.Context)) *liveAttach {
+	t.Helper()
 	socket := selectionTestSocket("engage")
 	slug := "engage-attach"
 	name, err := tmux.SessionName(slug)
@@ -236,7 +244,7 @@ func startLiveAttachSized(t *testing.T, paneHeight int) *liveAttach {
 	cmd.Env = append(cmd.Env, "TERM=xterm-256color")
 	// The test's pty plays the user's terminal; watchedAttach runs the
 	// client on a pty of its own and proxies this one to it.
-	w := &watchedAttach{cmd: cmd, slug: slug, sample: client.AttachSample, interval: attachWatchInterval, settle: attachWatchSettle, stdin: tty, stdout: tty}
+	w := &watchedAttach{cmd: cmd, slug: slug, sample: client.AttachSample, interval: attachWatchInterval, settle: attachWatchSettle, stdin: tty, stdout: tty, observeOutput: observe, outputEvery: 50 * time.Millisecond}
 	live := &liveAttach{socket: socket, name: name, terminal: ptmx, done: make(chan error, 1), watched: w}
 	go func() { live.done <- w.Run() }()
 	t.Cleanup(func() { live.detach(t) })
@@ -276,6 +284,26 @@ func (l *liveAttach) detach(t *testing.T) engagementTrigger {
 	}
 	l.done = nil
 	return l.watched.Trigger
+}
+
+// R305: the output clock is read while the client is attached, and reads stop
+// once the attach has ended.
+func TestFullAttachReadsTheOutputClockWhileAttachedAndStopsAtDetach(t *testing.T) {
+	var reads atomic.Int64
+	live := startLiveAttachWith(t, 24, func(context.Context) { reads.Add(1) })
+	deadline := time.Now().Add(5 * time.Second)
+	for reads.Load() < 3 && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if reads.Load() < 3 {
+		t.Fatalf("the clock was read %d times during a live attach", reads.Load())
+	}
+	live.detach(t)
+	after := reads.Load()
+	time.Sleep(200 * time.Millisecond)
+	if reads.Load() != after {
+		t.Fatal("the clock kept being read after the attach ended")
+	}
 }
 
 func TestFullAttachWithoutEngagementReportsNothing(t *testing.T) {

@@ -261,7 +261,10 @@ func (s Service) observeOutput(ctx context.Context, session store.Session, obser
 	if s.Output == nil || len(observed.Panes) == 0 {
 		return nil
 	}
-	pane := observed.Panes[0]
+	return s.observePaneOutput(ctx, session, observed.Panes[0])
+}
+
+func (s Service) observePaneOutput(ctx context.Context, session store.Session, pane tmux.Pane) error {
 	_, err := s.Output.Observe(ctx, s.Store, session.ID, pane.WindowActivity, func(ctx context.Context) (string, error) {
 		captured, err := s.TMux.CapturePane(ctx, pane.ID, tmux.CaptureOptions{StartLine: "-200", EndLine: "-"})
 		return string(captured), err
@@ -270,6 +273,24 @@ func (s Service) observeOutput(ctx context.Context, session store.Session, obser
 		return nil
 	}
 	return err
+}
+
+// ObserveAttachedOutput feeds the output clock for one session outside a
+// reconcile tick (R305): a full attach hands the terminal to the tmux client
+// and the TUI's own ticks stop for as long as it lasts, so the attach watcher
+// reads the clock through this while the client is attached. What the agent
+// prints during a long attach is then counted bucket by bucket like any other
+// output, and only the attach's own bounded windows are discounted. It writes
+// last_output_at only, never a status.
+func (s Service) ObserveAttachedOutput(ctx context.Context, session store.Session) error {
+	if s.Output == nil || session.Slug == "" {
+		return nil
+	}
+	pane, ok, err := s.TMux.PreviewPane(ctx, session.Slug)
+	if err != nil || !ok {
+		return err
+	}
+	return s.observePaneOutput(ctx, session, pane)
 }
 
 // applyMovement is the output-movement fallback (R316). Output counted in two
