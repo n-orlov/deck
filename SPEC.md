@@ -1418,10 +1418,15 @@ however many indented lines it spans, together with the status line under it. A 
 non-blank line is a codex dialog's `Press enter to …` line has no composer: the dialog, its `›`
 cursor option included, is transcript. Otherwise the cut is a bare
 trailing claude prompt line. A draft, spinner or statusline change below the cut is never output. The agent's
-working indicator above the cut is statusline too: a region's last two lines that read `Working…`, `Thinking…`,
-`Reconnecting…` or carry `esc to interrupt` (pi, claude, codex) are hashed with their spinner frame dropped and
-their numbers (elapsed seconds, retry counts) masked, as is pi's tool `Elapsed N s` line, so a ticking timer or a
-turning spinner is not output; the indicator appearing or vanishing, or its words changing, still is. Only a
+working indicator above the cut is statusline too, recognised by its exact drawn shape only: claude's and
+codex's lowest region line of the form `<glyph> <phrase> (… esc to interrupt)` is hashed with its glyph dropped
+and the numbers inside the parenthesis (elapsed seconds, token counts) and codex's `Reconnecting... n/m`
+counter masked; when the region ends in pi's braille spinner line, that line's frame is dropped and the
+lowest line reading exactly `Elapsed N.Ns` above it (the running tool's timer) is digit-masked. A ticking
+timer or a turning spinner is therefore not output, while transcript prose that merely reads like an
+indicator (`• Working on ticket 41.`, `Elapsed 41 seconds …`, a codex `• Running …` cell, an idle pane's
+`Elapsed 4.0s`) is hashed as written, so its numbers changing is output; the indicator appearing or
+vanishing, or its words changing, still is. Only a
 changed hash counts: it writes `last_output_at` as `window_activity` in milliseconds. A bucket
 whose transcript hash did not change, such as a footer-only update, writes nothing. When a framed draft
 holds frame-identical rules, the bucket counts only if **no** candidate top leaves exactly the baseline

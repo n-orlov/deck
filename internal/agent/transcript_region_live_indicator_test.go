@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -45,5 +46,34 @@ func TestTranscriptRegionIgnoresWorkingIndicatorChurn(t *testing.T) {
 	}
 	if TranscriptRegion(strings.Replace(pane, "⠧ Working...", "⠧ Working... and done", 1)) == region {
 		t.Error("new text on the indicator line did not alter the region")
+	}
+}
+
+// R304: prose that only reads like an indicator is transcript; its numbers
+// changing changes the region. Only the exact indicator shapes are masked.
+func TestTranscriptRegionCountsIndicatorLikeProse(t *testing.T) {
+	cases := []struct {
+		golden, from, line string
+	}{
+		{"codex/idle.txt", "• I listed the directory: hello.txt is the only file.", "• Working on ticket %d."},
+		{"codex/idle.txt", "• I listed the directory: hello.txt is the only file.", "• Running migration step %d of 9"},
+		{"pi/idle.txt", " Ten.", " Elapsed %d seconds during the completed benchmark."},
+		{"pi/idle.txt", " Ten.", " Elapsed %d.0s"},
+		{"claude/idle-draft.txt", "  Ran 14 tests, all passed.", "  Thinking about test %d next."},
+		{"pi/running.txt", "run: echo hello-from-tool", "Working... step %d"},
+		{"codex/running.txt", "summarise this directory", "Reconnecting... %d/5"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.golden+"/"+tc.line, func(t *testing.T) {
+			pane := probeGolden(t, tc.golden)
+			if !strings.Contains(pane, tc.from) {
+				t.Fatalf("golden has no %q", tc.from)
+			}
+			a := TranscriptRegion(strings.Replace(pane, tc.from, fmt.Sprintf(tc.line, 41), 1))
+			b := TranscriptRegion(strings.Replace(pane, tc.from, fmt.Sprintf(tc.line, 42), 1))
+			if a == b {
+				t.Errorf("a transcript number change left the region unchanged:\n%s", a)
+			}
+		})
 	}
 }

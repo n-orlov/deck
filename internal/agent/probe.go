@@ -431,34 +431,63 @@ func TranscriptRegion(pane string) string {
 }
 
 var (
-	// liveIndicatorLine is an agent's working indicator, led by a braille
-	// spinner frame (pi, claude), claude's asterisk family or codex's bullet.
-	liveIndicatorLine = regexp.MustCompile(`^\s*(?:[\x{2800}-\x{28FF}✳✶✻✢✽·*•○◎●◉]\s+)?(?:Working|Thinking|Reconnecting|Running)\b.*$|^.*\besc to interrupt\b.*$`)
-	liveSpinnerPrefix = regexp.MustCompile(`^(\s*)[\x{2800}-\x{28FF}✳✶✻✢✽·*○◎●◉]\s+`)
-	liveDigits        = regexp.MustCompile(`[0-9]+(?:\.[0-9]+)?`)
-	liveElapsedLine   = regexp.MustCompile(`^\s*Elapsed [0-9]`)
+	// liveEscIndicator is claude's and codex's working indicator: an optional
+	// spinner/bullet glyph, a status phrase, then a parenthetical that ends in
+	// "esc to interrupt" and carries the elapsed/token counters ("✳ Working…
+	// (12s · esc to interrupt)", "• Working (5s • esc to interrupt)",
+	// "• Reconnecting... 4/5 (2s • esc to interrupt)"). Group 1 is the indent,
+	// 2 the phrase, 3 the parenthetical.
+	liveEscIndicator = regexp.MustCompile(`^(\s*)(?:[✳✶✻✢✽·*•]\s+)?(\S[^()]*?)\s*(\((?:[^()]*\s)?esc to interrupt\))\s*$`)
+	// livePiSpinner is pi's working indicator, a braille spinner frame then its
+	// message (" ⠧ Working..."). Group 1 is the indent, 2 the message.
+	livePiSpinner = regexp.MustCompile(`^(\s*)[\x{2800}-\x{28FF}]\s+(\S.*)$`)
+	// livePiElapsed is the elapsed counter pi draws under a running tool call,
+	// alone on its line (" Elapsed 11.0s").
+	livePiElapsed = regexp.MustCompile(`^\s*Elapsed [0-9]+(?:\.[0-9]+)?s$`)
+	// liveRetryCounter is codex's "Reconnecting... 4/5" attempt counter.
+	liveRetryCounter = regexp.MustCompile(`^Reconnecting\.\.\. [0-9]+/[0-9]+$`)
+	liveDigits       = regexp.MustCompile(`[0-9]+(?:\.[0-9]+)?`)
 )
 
 // maskLiveIndicator makes an agent's live working indicator, the line the
 // agent redraws every tick while it works, a constant: its spinner frame and
-// its elapsed/retry counters are statusline churn, not output (R304). The
-// indicator is one of the region's last two lines when it reads "Working…", "Thinking…",
-// "Reconnecting…" or carries "esc to interrupt" (pi, claude, codex), and pi's
-// tool "Elapsed 11.0s" line. The indicator appearing or vanishing still
-// changes the region, so a turn starting or ending counts; any other line is
-// untouched.
+// its elapsed/retry counters are statusline churn, not output (R304). Only the
+// exact shapes the agents draw are masked, so transcript prose that merely
+// reads "Working on ticket 41" or "Elapsed 41 seconds" still counts:
+//   - claude/codex: the lowest region line shaped "<glyph> <phrase> (… esc to
+//     interrupt)" loses its glyph and the digits inside the parenthetical
+//     (and codex's "Reconnecting... n/m" counter); the phrase is kept.
+//   - pi: a region whose last line is the braille spinner line loses that
+//     frame glyph, and the last line reading exactly "Elapsed N.Ns" above it
+//     (the running tool's counter) is digit-masked.
+//
+// The indicator appearing or vanishing still changes the region, so a turn
+// starting or ending counts; any other line is untouched.
 func maskLiveIndicator(region string) string {
 	if region == "" {
 		return region
 	}
 	lines := strings.Split(region, "\n")
-	for i, line := range lines {
-		live := i >= len(lines)-2 // codex's retry detail sits under its indicator
-		switch {
-		case liveElapsedLine.MatchString(line):
-			lines[i] = liveDigits.ReplaceAllString(line, "#")
-		case live && liveIndicatorLine.MatchString(line):
-			lines[i] = liveDigits.ReplaceAllString(liveSpinnerPrefix.ReplaceAllString(line, "$1"), "#")
+	for i := len(lines) - 1; i >= 0; i-- {
+		m := liveEscIndicator.FindStringSubmatch(lines[i])
+		if m == nil {
+			continue
+		}
+		phrase := m[2]
+		if liveRetryCounter.MatchString(phrase) {
+			phrase = liveDigits.ReplaceAllString(phrase, "#")
+		}
+		lines[i] = m[1] + phrase + " " + liveDigits.ReplaceAllString(m[3], "#")
+		break
+	}
+	last := len(lines) - 1
+	if m := livePiSpinner.FindStringSubmatch(lines[last]); m != nil {
+		lines[last] = m[1] + m[2]
+		for i := last - 1; i >= 0; i-- {
+			if livePiElapsed.MatchString(lines[i]) {
+				lines[i] = liveDigits.ReplaceAllString(lines[i], "#")
+				break
+			}
 		}
 	}
 	return strings.Join(lines, "\n")
