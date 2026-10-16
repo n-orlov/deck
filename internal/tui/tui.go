@@ -4419,7 +4419,7 @@ func (m Model) attachSelected() (tea.Model, tea.Cmd) {
 		// Model that comes back from the attach share one record.
 		m.engagementCell()
 		engage := m.engageRow
-		watched := &watchedAttach{cmd: command, slug: session.Slug, sample: m.attachSample, interval: attachWatchInterval, settle: attachWatchSettle, session: session, read: m.attachRowReader(session.ID), engage: engage, observeOutput: m.attachOutputObserver(session)}
+		watched := &watchedAttach{cmd: command, slug: session.Slug, sample: m.attachSample, interval: attachWatchInterval, settle: attachWatchSettle, session: session, read: m.attachRowReader(session.ID), engage: engage, observeOutput: m.attachOutputObserver(session), discount: m.attachOutputDiscount(session)}
 		return m, tea.Exec(watched, func(err error) tea.Msg {
 			return attachFinished{err: err, engaged: watched.Trigger, observed: watched.Observed, writes: watched.Engaged}
 		})
@@ -4436,6 +4436,18 @@ func (m Model) attachOutputObserver(session store.Session) func(context.Context)
 	}
 	observe := m.attachOutput
 	return func(ctx context.Context) { _ = observe(ctx, session) }
+}
+
+// attachOutputDiscount is the watcher's output-clock discount for the
+// attached session (R305): the keys and resizes deck forwards during a full
+// attach are deck-caused, each for one bounded window. nil when no clock is
+// wired.
+func (m Model) attachOutputDiscount(session store.Session) func(service.DiscountCause) {
+	if m.outputDiscount == nil || session.ID == "" {
+		return nil
+	}
+	discounter, id := m.outputDiscount, session.ID
+	return func(cause service.DiscountCause) { discounter.Discount(id, cause) }
 }
 
 // releaseForeignPreviewPin is `a`'s last act before it hands the terminal

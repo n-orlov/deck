@@ -20,6 +20,7 @@ import (
 	"github.com/creack/pty"
 	"github.com/muesli/cancelreader"
 
+	"github.com/n-orlov/deck/internal/service"
 	"github.com/n-orlov/deck/internal/store"
 	"github.com/n-orlov/deck/internal/tmux"
 )
@@ -213,23 +214,48 @@ func newAttachKeyProxy(prefix, prefix2 string) *attachKeyProxy {
 
 // forwarded records one chunk of bytes deck has just written to the client.
 func (p *attachKeyProxy) forwarded(buf []byte) {
+	p.commit(p.classify(buf))
+}
+
+// attachInput is what one chunk of forwarded bytes holds: engagement keys
+// (counted for R321) and whether it holds any key or paste at all (a prefix
+// key and the key after it included), which the pane may answer with output
+// that deck caused (R305).
+type attachInput struct {
+	keys   int64
+	anyKey bool
+}
+
+// classify decodes a chunk deck is about to forward, before it is written,
+// so the output discount opens before the pane can echo it.
+func (p *attachKeyProxy) classify(buf []byte) attachInput {
+	var in attachInput
 	for len(buf) > 0 {
 		n, event := p.decoder.Decode(buf)
 		if n <= 0 {
-			return
+			break
 		}
 		buf = buf[n:]
-		p.event(event)
+		p.event(event, &in)
+	}
+	return in
+}
+
+// commit counts a classified chunk's keys once it has reached the client.
+func (p *attachKeyProxy) commit(in attachInput) {
+	if in.keys > 0 {
+		p.keys.Add(in.keys)
 	}
 }
 
-func (p *attachKeyProxy) event(event uv.Event) {
+func (p *attachKeyProxy) event(event uv.Event, in *attachInput) {
 	switch e := event.(type) {
 	case uv.MultiEvent:
 		for _, inner := range e {
-			p.event(inner)
+			p.event(inner, in)
 		}
 	case uv.KeyPressEvent:
+		in.anyKey = true
 		key := uv.Key(e)
 		switch {
 		case p.afterPrefix:
@@ -237,10 +263,11 @@ func (p *attachKeyProxy) event(event uv.Event) {
 		case key.MatchString(p.prefixes...):
 			p.afterPrefix = true
 		default:
-			p.keys.Add(1)
+			in.keys++
 		}
 	case uv.PasteEvent:
-		p.keys.Add(1)
+		in.anyKey = true
+		in.keys++
 	}
 }
 
@@ -373,6 +400,14 @@ type watchedAttach struct {
 	// long attach would only be read once the detach window had begun.
 	observeOutput func(context.Context)
 	outputEvery   time.Duration
+	// discount, when set, is the output clock's Discount for the attached
+	// session (R305). Deck forwards every key the user types and every
+	// terminal resize to the client, so the pane's answer to each is
+	// deck-caused: a forwarded key or paste opens a DiscountKey window just
+	// before it is written, a relayed SIGWINCH a DiscountResize window just
+	// before the client's pty is resized. Each window is the clock's bounded
+	// one; output after it counts, attached or not.
+	discount func(service.DiscountCause)
 
 	stdin  io.Reader
 	stdout io.Writer
@@ -469,13 +504,12 @@ func (w *watchedAttach) Run() error {
 	defer func() { _ = ptmx.Close() }()
 	inFile, _ := w.stdin.(fileDescriptor)
 	outFile, _ := w.stdout.(fileDescriptor)
-	resize := func() { resizePty(ptmx, outFile, inFile) }
-	resize()
+	resizePty(ptmx, outFile, inFile)
 	defer makeRawRestorer(inFile)()
 	winch := make(chan os.Signal, 1)
 	signal.Notify(winch, syscall.SIGWINCH)
 	defer signal.Stop(winch)
-	go relayResizes(ctx, winch, resize)
+	go relayResizes(ctx, winch, w.relayedResize(ptmx, outFile, inFile))
 
 	w.cmd.Stdin, w.cmd.Stdout, w.cmd.Stderr = tty, tty, tty
 	w.cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true, Setctty: true}
@@ -557,6 +591,16 @@ func resizePty(ptmx *os.File, outFile, inFile fileDescriptor) {
 	}
 }
 
+// relayedResize is what one relayed SIGWINCH does: open a resize discount
+// (R305), then give the client's pty the user's new size, so the redraw the
+// resize causes never lands before its discount.
+func (w *watchedAttach) relayedResize(ptmx *os.File, outFile, inFile fileDescriptor) func() {
+	return func() {
+		w.discountOutput(service.DiscountResize)
+		resizePty(ptmx, outFile, inFile)
+	}
+}
+
 // makeRawRestorer puts the user's terminal in raw mode and returns the func
 // that restores it; with no terminal it does nothing and returns a no-op.
 func makeRawRestorer(inFile fileDescriptor) func() {
@@ -611,9 +655,7 @@ func (w *watchedAttach) startInputProxy(ptmx io.Writer, proxy *attachKeyProxy) (
 		for {
 			n, err := input.Read(buf)
 			if n > 0 {
-				if _, werr := ptmx.Write(buf[:n]); werr == nil {
-					proxy.forwarded(buf[:n])
-				}
+				w.forward(ptmx, proxy, buf[:n])
 			}
 			if err != nil {
 				return
@@ -621,6 +663,27 @@ func (w *watchedAttach) startInputProxy(ptmx io.Writer, proxy *attachKeyProxy) (
 		}
 	}()
 	return inDone, input
+}
+
+// forward writes one chunk of the user's input to the client. A chunk holding
+// a key or paste opens the output discount first (R305), so the pane's echo
+// can never land before it; its engagement keys are counted once written.
+func (w *watchedAttach) forward(ptmx io.Writer, proxy *attachKeyProxy, chunk []byte) {
+	in := proxy.classify(chunk)
+	if in.anyKey {
+		w.discountOutput(service.DiscountKey)
+	}
+	if _, err := ptmx.Write(chunk); err == nil {
+		proxy.commit(in)
+	}
+}
+
+// discountOutput opens one output discount for the attached session, when a
+// clock is wired.
+func (w *watchedAttach) discountOutput(cause service.DiscountCause) {
+	if w.discount != nil {
+		w.discount(cause)
+	}
 }
 
 // stopInputProxy ends the input forwarder. A reader that cannot be canceled

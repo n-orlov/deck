@@ -1479,8 +1479,14 @@ no discount ever outlasts one window. Deck's reconcile ticks do not run for the 
 (the tmux client has the terminal), so the attach watcher feeds the clock itself, once a second, for as
 long as the client is attached (`Service.ObserveAttachedOutput`: it writes `last_output_at` only, never a
 status); without that read the detach window would swallow everything the agent printed during the
-attach. Output caused by a resize or a forwarded key stays
-discounted for its own window. A window is compared with the pane's `window_activity`, not with the
+attach. Deck stays in the attached client's key path (it proxies the user's terminal to the client's
+pty), so the keys and resizes the user makes during a full attach are deck-forwarded too: every
+forwarded chunk holding a key press or a paste (tmux's prefix and the key after it included, since a
+prefix command such as a zoom can make the pane redraw) opens a key window just before it is written to
+the client, and every terminal resize deck relays (SIGWINCH) opens a resize window just before the
+client's pty is resized. Mouse reports, focus changes and the terminal's replies to tmux's queries open
+nothing. Output caused by a resize or a forwarded key stays discounted for its own window, attached or
+not, and the agent's own output after that window counts while the client is still attached. A window is compared with the pane's `window_activity`, not with the
 tick that reads it, so a tick that lands late still discounts output that happened inside the
 window. Output whose `window_activity` falls after the window ends counts as before. The windows
 are in memory, like the baseline.
@@ -1490,7 +1496,11 @@ Tests: `TestOutputInsideTheAttachStartWindowDoesNotAdvanceLastOutputAt`,
 `TestAttachDiscountsTheHandOffAndTheDetachRepaint`,
 `TestAutonomousOutputReadMidAttachCountsAndSurvivesTheDetachRepaint`,
 `TestMidAttachOutputCountsPerBucketButAResizeInsideItStaysDiscounted`, `TestAttachWatcherFeedsTheOutputClockWhileAttached`,
-`TestFullAttachReadsTheOutputClockWhileAttachedAndStopsAtDetach`.
+`TestFullAttachReadsTheOutputClockWhileAttachedAndStopsAtDetach`,
+`TestFullAttachForwardedInputOpensAKeyDiscountBeforeTheWrite`,
+`TestFullAttachRelayedResizeOpensAResizeDiscountBeforeTheResize`,
+`TestModelHandsTheAttachedSessionToTheAttachDiscount`,
+`TestFullAttachForwardedKeyOutputIsDiscountedAndLaterAgentOutputCounts`.
 
 ---
 
