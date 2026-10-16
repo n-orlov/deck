@@ -446,6 +446,7 @@ CREATE TABLE sessions (
   launch_lease_until INTEGER NOT NULL DEFAULT 0,
   last_probe_at      INTEGER NOT NULL DEFAULT 0, -- last pane sample that matched no §7 rule; a column, never an event (§7)
   last_output_at     INTEGER NOT NULL DEFAULT 0, -- the output clock: ms of the newest transcript-region output reconcile confirmed (§7); a column, never an event
+  last_seen_at       INTEGER NOT NULL DEFAULT 0, -- the last_output_at value the user has viewed (R324, schema v19); a column, never an event. A row is output-unseen iff last_output_at > last_seen_at (§7, §11)
   probe_miss_streak  INTEGER NOT NULL DEFAULT 0, -- consecutive probe passes that matched no §7 rule (R315); a column, never an event
   created_at         INTEGER NOT NULL,
   last_attached_at   INTEGER NOT NULL DEFAULT 0,
@@ -563,6 +564,9 @@ Invariants:
   transcript has been seen to change. `ALTER TABLE ADD COLUMN` touches no existing value, so a migrated
   database starts every session at 0 and recreates no row. The column is written by a plain
   `UPDATE` and never as an `events` row.
+- Schema version 19 adds `sessions.last_seen_at` (R324, §7, §11), the `last_output_at` value the user has
+  viewed. The rung backfills it to `last_output_at`, so an upgrade does not light every existing session.
+  It is written by a plain `UPDATE` (`MarkViewed`) and never as an `events` row.
 - Schema version 16 adds `sessions.probe_miss_streak` (R315, §7), `0` on a migrated row. It is written by
   plain `UPDATE`s and never as an `events` row.
 - Schema version 17 adds the index `events_session_at` on `events(session_id, at)` (R315, §7), so the newest
@@ -1325,6 +1329,22 @@ writes nothing. The first reading of a session after deck starts is only a basel
 nothing, so a restart does not make every row look freshly active; the in-memory baseline is not
 persisted. The write is a plain `UPDATE` of that one column, never an `events` row (the same rule
 as `last_probe_at` above), and it leaves `status`, `status_source` and `status_at` untouched.
+
+**The unseen marker (`sessions.last_seen_at`, R324).** One marker answers "is there something here I have
+not looked at". A row is **unseen** iff `last_output_at > last_seen_at`, or its status is `waiting` or
+`error` and not seen per R319 (`seen_status_at != status_at`). A `running` row shows no output-unseen
+marker: its output is the expected state, so only an attention-unseen status can mark it (it never has
+one, because `waiting` and `error` are not `running`). `last_seen_at` is written only on a *view
+change* (a view of a row whose `last_output_at` it has not yet copied) or a *bucket change* (output in a
+new bucket landing under a view); a tick that changes neither writes nothing, and it is never written
+per tick. A view copies `last_output_at` into it (`Store.MarkViewed`), never a wall-clock time, so a
+stepped clock cannot hide or invent output. Output the clock does not count does not set the marker:
+statusline-only churn writes no `last_output_at`, so it leaves a row seen. Setting or clearing the marker
+never moves a row in any of the four sort orders (no comparator reads `last_seen_at`, and the marker is
+not in the attention tier). The one status-seen flip that does reorder is R319's own: marking an
+unseen `error` seen drops it to the seen-`error` tier. What counts as a view is R325's (later). Tests:
+`TestSessionUnseenPredicate`, `TestMarkViewedWritesOnlyOnAChange`,
+`TestStatuslineChurnDoesNotSetTheUnseenMarker`, `TestMarkerFlipMovesNoRow{Attention,Created,Activity,Name}Order`.
 
 **Deck-caused output is discounted (R305).** Output deck itself provokes is not the agent's activity,
 so a transcript change the pane shows inside a *discount window* does not advance `last_output_at`
@@ -2820,6 +2840,12 @@ always did), and the permission badge for non-`safe` **last**. The
   session. A pinned row shows `✦` before its name, drawn in the `accent` token; under
   `NO_COLOR` the glyph alone carries it, as the status glyphs do. `i` shows `pinned: yes`/`no`
   and also toggles it with `p`.
+- **The unseen marker (R324) is `◆`** (U+25C6, one column, EAW `Ambiguous` like the status glyphs), ASCII `!`,
+  drawn after the name in the row's status token. It is distinct from the `●` waiting status glyph, which
+  it used to share (the old marker was `●` too, so an unseen waiting row drew `●` twice). Neither
+  form collides with any status glyph (`? ~ o . # x`, `-`), the pin (`✦`/`*`) or the selection cue (`>`).
+  The sidebar title carries the count as `deck — sessions · N unseen` (ASCII `deck - sessions - N unseen`),
+  shown only when N is at least 1; N counts the rows that carry the marker (§7).
 - Status glyphs `●` waiting · `◐` running · `○` idle · `◌` starting · `■` stopped ·
   `✗` error · `▣` archived. Under `DECK_ASCII=1` / `[ui] ascii` each is one ASCII column: `?` waiting,
   `~` running, `o` idle, `.` starting, `#` stopped, `x` error. An **unverified** `running` row (§7, R315:

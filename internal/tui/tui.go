@@ -5640,7 +5640,30 @@ func (m Model) renderStackedFrame(layout LayoutResult) ([]string, int) {
 // used by the stacked layout's fullBoxTop, which has no special-cased
 // "deck" colour run the way sidebarTitleLine does.
 func (m Model) sidebarTitleText() string {
-	return "deck" + m.glyph(" — ", " - ") + "sessions"
+	title := "deck" + m.glyph(" — ", " - ") + "sessions"
+	if n := m.unseenCount(); n > 0 {
+		title += m.glyph(" · ", " - ") + strconv.Itoa(n) + " unseen"
+	}
+	return title
+}
+
+// unseenMarker is the one unseen marker (R324): `◆`, one column, distinct
+// from the `●` waiting status glyph; `!` under DECK_ASCII / [ui] ascii.
+func (m Model) unseenMarker() string {
+	return m.glyph("◆", "!")
+}
+
+// unseenCount is the header's "N unseen" figure: the rows that carry the
+// unseen marker (store.Session.Unseen), counted over every session in the
+// list. It reads the row; it never writes one and never orders anything.
+func (m Model) unseenCount() int {
+	n := 0
+	for _, s := range m.sessions {
+		if s.Unseen() {
+			n++
+		}
+	}
+	return n
 }
 
 // sidebarEntryContentWidth is the ONE answer to "how many columns of text
@@ -6262,9 +6285,8 @@ func statusTokenOrText(status string) theme.Token {
 // the status-source quality, the status word and the archived flag.
 func (m Model) sidebarBadgeParts(session store.Session, statusTok theme.Token) []settingsRowSegment {
 	var parts []settingsRowSegment
-	if !session.StatusSeen() && (session.Status == "waiting" || session.Status == "error") {
-		unseen := m.glyph("●", "!")
-		parts = append(parts, settingsRowSegment{Text: unseen, Tok: statusTok})
+	if session.Unseen() {
+		parts = append(parts, settingsRowSegment{Text: m.unseenMarker(), Tok: statusTok})
 	}
 	if quality := statusSourceQuality(session.StatusSource); quality != "" {
 		parts = append(parts, settingsRowSegment{Text: quality, Tok: theme.Dimmed})

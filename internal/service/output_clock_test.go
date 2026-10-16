@@ -197,3 +197,43 @@ func TestOutputClockSetBucketAppliesLive(t *testing.T) {
 		t.Fatalf("a non-positive width changed the bucket to %v", got)
 	}
 }
+
+// R324: statusline-only churn does not set the unseen marker. The row is idle
+// and has been viewed; a footer-only change (ctx:%, branch, model) leaves
+// last_output_at alone, so the row stays seen, while a transcript change then
+// sets the marker and a view clears it again.
+func TestStatuslineChurnDoesNotSetTheUnseenMarker(t *testing.T) {
+	h := newOutputHarness(t)
+	ctx := context.Background()
+	if _, err := h.db.DB().Exec(`UPDATE sessions SET status = 'idle' WHERE id = ?`, h.id); err != nil {
+		t.Fatal(err)
+	}
+	unseen := func() bool {
+		t.Helper()
+		s, err := h.db.GetSession(ctx, h.id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return s.Unseen()
+	}
+	h.pane = pane("hello", "~/proj  main  ctx:12%  opus")
+	h.tick(1000)
+	h.pane = pane("hello", "~/proj  feature  ctx:13%  sonnet")
+	if h.tick(1011) || unseen() {
+		t.Fatalf("a footer-only change set the unseen marker (unseen=%v)", unseen())
+	}
+	h.pane = pane("hello\nworld", "~/proj  feature  ctx:14%  sonnet")
+	if !h.tick(1022) || !unseen() {
+		t.Fatal("a transcript change did not set the unseen marker")
+	}
+	if _, err := h.db.MarkViewed(ctx, h.id); err != nil {
+		t.Fatal(err)
+	}
+	if unseen() {
+		t.Fatal("a view did not clear the marker")
+	}
+	h.pane = pane("hello\nworld", "~/proj  other  ctx:15%  haiku")
+	if h.tick(1033) || unseen() {
+		t.Fatal("statusline churn after a view set the marker")
+	}
+}

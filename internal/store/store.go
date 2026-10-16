@@ -25,7 +25,7 @@ import (
 const busyTimeoutMillis = 5000
 
 // SchemaVersion is the newest schema understood by this binary.
-const SchemaVersion = 18
+const SchemaVersion = 19
 
 // SupportedSchemaVersion is the newest schema this binary opens: SchemaVersion
 // in every shipped build. A test build (-tags deckoldschema, see
@@ -446,6 +446,9 @@ type Session struct {
 	// been. It is the output clock: footer/statusline churn never advances it,
 	// and it is written by RecordOutput as a column, never an event.
 	LastOutputAt int64
+	// LastSeenAt is the last_output_at value the user has viewed (R324), 0
+	// until the first view. MarkViewed copies last_output_at into it.
+	LastSeenAt int64
 	// EnvDirty is SPEC §6.1/§6.3's env_dirty column (task 021): true once a
 	// session-env edit has been written and mirrored into tmux's own
 	// environment table for future panes, but has NOT yet reached the
@@ -839,7 +842,7 @@ func scanSession(row interface {
 		&session.StatusAt, &session.CreatedAt, &killedByUser, &paneExitStatus, &crashTail,
 		&session.NotifyEpoch, &lastMessage, &session.SeenStatusAt, &launchArgsJSON, &envJSON, &preLaunch, &postDestroy,
 		&loginShell, &session.PermissionProfile, &permissionProfileReason, &conversationID, &resumePin, &session.ResumeState,
-		&groupID, &groupName, &session.LastProbeAt, &session.LastOutputAt, &session.ProbeMissStreak, &session.LastEventAt, &envDirty, &session.DeletedAt, &session.ArchivedAt, &launchDirty,
+		&groupID, &groupName, &session.LastProbeAt, &session.LastOutputAt, &session.LastSeenAt, &session.ProbeMissStreak, &session.LastEventAt, &envDirty, &session.DeletedAt, &session.ArchivedAt, &launchDirty,
 		&leaseOwner, &session.PinnedAt, &session.HookExecutable, &eventHookEnabled, &eventHookEvents, &session.NameSource, &pendingName, &pendingAt, &nameAdopt, &nameAdopted); err != nil {
 		return Session{}, err
 	}
@@ -889,7 +892,7 @@ const sessionColumns = `sessions.id, sessions.name, slug, cwd, agent, captured_p
 		COALESCE(status_reason, ''), status_source, status_at, created_at,
 		killed_by_user, pane_exit_status, crash_tail, notify_epoch, last_message, seen_status_at,
 		launch_args, env, pre_launch, post_destroy, login_shell, permission_profile, permission_profile_reason, conversation_id, resume_pin, resume_state,
-		sessions.group_id, groups.name, last_probe_at, last_output_at, probe_miss_streak, COALESCE((SELECT MAX(events.at) FROM events WHERE events.session_id = sessions.id), 0), env_dirty, deleted_at, archived_at, launch_dirty,
+		sessions.group_id, groups.name, last_probe_at, last_output_at, last_seen_at, probe_miss_streak, COALESCE((SELECT MAX(events.at) FROM events WHERE events.session_id = sessions.id), 0), env_dirty, deleted_at, archived_at, launch_dirty,
 		COALESCE(launch_lease_owner, ''), pinned_at, COALESCE(hook_executable, ''),
 		event_hook_enabled, event_hook_events, name_source, pending_harness_name, pending_harness_name_at, harness_name_adopt, name_adopted`
 
@@ -3006,7 +3009,7 @@ func (s *Store) migrate(version int) error {
 // the schemaVN variables at call time (tests substitute them); a version
 // outside 0..SchemaVersion-1 has no migration path.
 func applySchemaLadder(tx *sql.Tx, version int) error {
-	rungs := [][]string{schemaV1, schemaV2, schemaV3, schemaV4, schemaV5, schemaV6, schemaV7, schemaV8, schemaV9, schemaV10, schemaV11, schemaV12, schemaV13, schemaV14, schemaV15, schemaV16, schemaV17, schemaV18}
+	rungs := [][]string{schemaV1, schemaV2, schemaV3, schemaV4, schemaV5, schemaV6, schemaV7, schemaV8, schemaV9, schemaV10, schemaV11, schemaV12, schemaV13, schemaV14, schemaV15, schemaV16, schemaV17, schemaV18, schemaV19}
 	if version < 0 || version >= len(rungs) {
 		return fmt.Errorf("no migration path from schema version %d", version)
 	}
@@ -3306,6 +3309,53 @@ var schemaV18 = []string{
 	`ALTER TABLE sessions ADD COLUMN seen_status_at INTEGER NOT NULL DEFAULT 0`,
 	`UPDATE sessions SET seen_status_at = CASE WHEN acknowledged = 1 THEN status_at ELSE 0 END`,
 	`ALTER TABLE sessions DROP COLUMN acknowledged`,
+}
+
+// schemaV19 adds sessions.last_seen_at (R324): the last_output_at value the
+// user has viewed, 0 until the first view. It is a clock mirror, not a wall
+// time: a view copies last_output_at into it (MarkViewed), so the output-unseen
+// test is a plain comparison that a stepped clock cannot upset. Backfill sets
+// it to last_output_at, so an upgrade does not mark every existing session
+// unseen at once.
+var schemaV19 = []string{
+	`ALTER TABLE sessions ADD COLUMN last_seen_at INTEGER NOT NULL DEFAULT 0`,
+	`UPDATE sessions SET last_seen_at = last_output_at`,
+}
+
+// MarkViewed is the one durable write of a view (R324): it copies the row's
+// last_output_at into last_seen_at, so output the user has now looked at stops
+// counting as unseen. It writes nothing when the two already agree, which keeps
+// a watched row from rewriting its row on every tick: the column changes only
+// on a view change or when a new output bucket lands under a view. It changes
+// no status, seen_status_at, status_at or event and never moves a row in any
+// sort order (no order reads last_seen_at). It reports whether a row was
+// written.
+func (s *Store) MarkViewed(ctx context.Context, sessionID string) (bool, error) {
+	if sessionID == "" {
+		return false, errors.New("session id is required")
+	}
+	result, err := s.db.ExecContext(ctx,
+		`UPDATE sessions SET last_seen_at = last_output_at WHERE id = ? AND last_seen_at <> last_output_at`, sessionID)
+	if err != nil {
+		return false, fmt.Errorf("mark viewed: %w", err)
+	}
+	changed, err := result.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("read viewed session count: %w", err)
+	}
+	return changed > 0, nil
+}
+
+// Unseen reports whether the row carries the unseen marker (R324): output
+// the user has not viewed (last_output_at > last_seen_at) or an attention
+// status the user has not seen (waiting or error, and not StatusSeen per
+// R319). A running row never shows the output half: its output is the
+// expected state, and only a row that went quiet is worth a look.
+func (s Session) Unseen() bool {
+	if (s.Status == "waiting" || s.Status == "error") && !s.StatusSeen() {
+		return true
+	}
+	return s.Status != "running" && s.LastOutputAt > s.LastSeenAt
 }
 
 // StatusSeen reports whether the user has seen the row's current status stamp
