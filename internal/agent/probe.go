@@ -572,12 +572,14 @@ func TranscriptRegion(pane string) string {
 
 var (
 	// liveEscIndicator is claude's and codex's working indicator: an optional
-	// spinner/bullet glyph, a status phrase, then a parenthetical that ends in
+	// spinner/bullet glyph (any one symbol or punctuation character, because
+	// the agents animate it: codex blinks • and ◦, claude cycles · ✢ ✳ ✶ ✻ ✽),
+	// a status phrase, then a parenthetical that ends in
 	// "esc to interrupt" and carries the elapsed/token counters ("✳ Working…
 	// (12s · esc to interrupt)", "• Working (5s • esc to interrupt)",
 	// "• Reconnecting... 4/5 (2s • esc to interrupt)"). Group 1 is the indent,
 	// 2 the phrase, 3 the parenthetical.
-	liveEscIndicator = regexp.MustCompile(`^(\s*)(?:[✳✶✻✢✽·*•]\s+)?(\S[^()]*?)\s*(\((?:[^()]*\s)?esc to interrupt\))\s*$`)
+	liveEscIndicator = regexp.MustCompile(`^(\s*)(?:[^\s\p{L}\p{N}()]\s+)?(\S[^()]*?)\s*(\((?:[^()]*\s)?esc to interrupt\))\s*$`)
 	// livePiSpinner is pi's working indicator, a braille spinner frame then its
 	// message (" ⠧ Working..."). Group 1 is the indent, 2 the message.
 	livePiSpinner = regexp.MustCompile(`^(\s*)[\x{2800}-\x{28FF}]\s+(\S.*)$`)

@@ -81,11 +81,15 @@ func TestWorkingIndicatorChurnLeavesOutputClockAlone(t *testing.T) {
 			[2]string{"run: echo hello-from-tool", "run: echo other"}},
 		{"pi", "pi/sleep-midrun.txt", [][2]string{{"Elapsed 11.0s", "Elapsed 12.0s"}, {"Elapsed 11.0s", "Elapsed 13.5s"}},
 			[2]string{"run: sleep 25", "run: sleep 26"}},
-		{"claude", "claude/running-footer.txt", [][2]string{{"✳ Working… (12s ·", "✶ Working… (13s ·"}, {"✳ Working… (12s ·", "✻ Working… (14s ·"}},
+		{"claude", "claude/running-footer.txt", [][2]string{{"✳ Working… (12s ·", "✶ Working… (13s ·"}, {"✳ Working… (12s ·", "✻ Working… (14s ·"},
+			{"✳ Working… (12s ·", "· Working… (12s ·"}, {"✳ Working… (12s ·", "✢ Working… (15s ·"}},
 			[2]string{"I'll refactor the parser next.", "I'll refactor the lexer next."}},
-		{"codex", "codex/running.txt", [][2]string{{"Working (5s •", "Working (6s •"}, {"Working (5s •", "Working (7s •"}},
+		{"codex", "codex/running.txt", [][2]string{{"Working (5s •", "Working (6s •"}, {"Working (5s •", "Working (7s •"},
+			// codex blinks its bullet between • and ◦ (review F01)
+			{"• Working (5s", "◦ Working (5s"}, {"• Working (5s", "◦ Working (8s"}},
 			[2]string{"summarise this directory", "summarise that directory"}},
-		{"codex", "codex/retrying.txt", [][2]string{{"4/5 (2s •", "4/5 (3s •"}, {"4/5 (2s •", "4/5 (4s •"}},
+		{"codex", "codex/retrying.txt", [][2]string{{"4/5 (2s •", "4/5 (3s •"}, {"4/5 (2s •", "4/5 (4s •"},
+			{"• Reconnecting", "◦ Reconnecting"}, {"• Reconnecting... 4/5 (2s", "◦ Reconnecting... 5/5 (3s"}},
 			[2]string{"Invalid bearer token", "Expired bearer token"}},
 	}
 	for _, tc := range cases {
@@ -109,7 +113,8 @@ func TestWorkingIndicatorChurnLeavesOutputClockAlone(t *testing.T) {
 			if !strings.Contains(pane, tc.real[0]) {
 				t.Fatalf("golden has no %q", tc.real[0])
 			}
-			r.tickPane(1040, 1040, strings.Replace(pane, tc.real[0], tc.real[1], 1))
+			end := int64(1020 + 10*len(tc.churn))
+			r.tickPane(end, end, strings.Replace(pane, tc.real[0], tc.real[1], 1))
 			if got := r.row(); got.LastOutputAt == 0 || !got.Unseen() {
 				t.Fatalf("a transcript change did not count: last_output_at=%d unseen=%v", got.LastOutputAt, got.Unseen())
 			}

@@ -1439,7 +1439,8 @@ trailing claude prompt line. A draft, spinner or statusline change below the cut
 working indicator above the cut is statusline too, recognised by its exact drawn shape, in the one place it is
 drawn (the bottom of the region), only: when the head of the region's last cell (its lowest column-0 line, with
 only indented continuation lines such as codex's `└ …` detail under it) has the form `<glyph> <phrase> (… esc
-to interrupt)`, it is hashed with its glyph dropped and the numbers inside the parenthesis (elapsed seconds,
+to interrupt)`, it is hashed with its glyph dropped (whichever single symbol the agent animates it with: codex's
+`•`/`◦` blink, claude's `· ✢ ✳ ✶ ✻ ✽`) and the numbers inside the parenthesis (elapsed seconds,
 token counts) and codex's `Reconnecting... n/m` counter masked; when the region ends in pi's braille spinner
 line, that line's frame is dropped and the last non-blank line above it, if it reads exactly `Elapsed N.Ns`
 (the running tool's timer), is digit-masked. A ticking timer or a turning spinner is therefore not output,
