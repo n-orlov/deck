@@ -248,7 +248,10 @@ func reclaimLeakedPipesBestEffort(stderr io.Writer) {
 // on/off control itself is honoured here. A test-only raw-byte counting
 // build appends its own option last.
 func tuiProgramOptions(settings config.Settings) []tea.ProgramOption {
-	options := []tea.ProgramOption{tea.WithAltScreen()}
+	// WithReportFocus asks the host terminal for focus in/out reports: R322's
+	// dwell does not run while the deck window is unfocused. The reports are
+	// consumed by the model and never forwarded to a pane.
+	options := []tea.ProgramOption{tea.WithAltScreen(), tea.WithReportFocus()}
 	if settings.Mouse {
 		options = append(options, tea.WithMouseCellMotion())
 	}

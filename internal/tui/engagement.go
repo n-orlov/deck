@@ -4,6 +4,7 @@ import (
 	"context"
 	"hash/fnv"
 	"strings"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 
@@ -46,6 +47,13 @@ type engagementState struct {
 	// live screen; screenTarget is "" outside interactive mode.
 	screenTarget string
 	screenHash   uint64
+	// dwell is the R322 dwell in progress (dwell.go); dwelling is false while
+	// no row is in view for one. blurred is the terminal window's reported
+	// focus loss. now replaces the dwell's clock in tests.
+	dwell    dwellState
+	dwelling bool
+	blurred  bool
+	now      func() time.Time
 }
 
 func (m *Model) engagementCell() *engagementState {

@@ -31,14 +31,15 @@ func TestAbsoluteExecutableIsTheAbsolutePathOfTheRunningBinary(t *testing.T) {
 }
 
 // TestTUIProgramOptionsAddMouseReportingOnlyWhenEnabled pins requirement 3's
-// gate: the alternate screen is always requested and mouse reporting adds
-// exactly one more option, only when settings.Mouse is on.
+// gate: the alternate screen and focus reporting (R322's dwell needs the
+// unfocused state) are always requested and mouse reporting adds exactly one
+// more option, only when settings.Mouse is on.
 func TestTUIProgramOptionsAddMouseReportingOnlyWhenEnabled(t *testing.T) {
 	extra := len(rawByteCountingProgramOptions())
-	if got, want := len(tuiProgramOptions(config.Settings{Mouse: false})), 1+extra; got != want {
+	if got, want := len(tuiProgramOptions(config.Settings{Mouse: false})), 2+extra; got != want {
 		t.Fatalf("mouse off: %d options, want %d", got, want)
 	}
-	if got, want := len(tuiProgramOptions(config.Settings{Mouse: true})), 2+extra; got != want {
+	if got, want := len(tuiProgramOptions(config.Settings{Mouse: true})), 3+extra; got != want {
 		t.Fatalf("mouse on: %d options, want %d", got, want)
 	}
 }

@@ -2774,6 +2774,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	next, cmd := m.dispatchMessage(message)
 	next, cmd = m.releaseHeldReload(next, cmd)
 	next, cmd = releaseHeldRefit(next, cmd)
+	next = observeDwellAfterUpdate(next)
 	return stampFooterNotes(prev, next, cmd)
 }
 
@@ -2866,6 +2867,8 @@ func init() {
 		reflect.TypeFor[entryRefusalHolderRecheckDone]():  handlerFor(Model.onEntryRefusalHolderRecheckDone),
 		reflect.TypeFor[previewCaptured]():                handlerFor(Model.onPreviewCaptured),
 		reflect.TypeFor[animationTick]():                  handlerFor(Model.onAnimationTick),
+		reflect.TypeFor[tea.FocusMsg]():                   handlerFor(Model.onWindowFocus),
+		reflect.TypeFor[tea.BlurMsg]():                    handlerFor(Model.onWindowBlur),
 		reflect.TypeFor[tea.KeyMsg]():                     handlerFor(Model.onKeyMsg),
 		reflect.TypeFor[tea.MouseMsg]():                   handlerFor(Model.onMouseMsg),
 	}
@@ -4207,6 +4210,10 @@ func (m Model) onPreviewTick(_ previewTick) (tea.Model, tea.Cmd) {
 		if cmd := m.engageOnScreenChange(); cmd != nil {
 			cmds = append(cmds, cmd)
 		}
+	}
+	// R322: the dwell trigger, passive and interactive alike.
+	if cmd := m.engageOnDwell(); cmd != nil {
+		cmds = append(cmds, cmd)
 	}
 	return m, tea.Batch(cmds...)
 }
