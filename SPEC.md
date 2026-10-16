@@ -1417,7 +1417,11 @@ indents continuation lines, so the composer is the pane's last column-0 line whe
 however many indented lines it spans, together with the status line under it. A pane whose last
 non-blank line is a codex dialog's `Press enter to …` line has no composer: the dialog, its `›`
 cursor option included, is transcript. Otherwise the cut is a bare
-trailing claude prompt line. A draft, spinner or statusline change below the cut is never output. Only a
+trailing claude prompt line. A draft, spinner or statusline change below the cut is never output. The agent's
+working indicator above the cut is statusline too: a region's last two lines that read `Working…`, `Thinking…`,
+`Reconnecting…` or carry `esc to interrupt` (pi, claude, codex) are hashed with their spinner frame dropped and
+their numbers (elapsed seconds, retry counts) masked, as is pi's tool `Elapsed N s` line, so a ticking timer or a
+turning spinner is not output; the indicator appearing or vanishing, or its words changing, still is. Only a
 changed hash counts: it writes `last_output_at` as `window_activity` in milliseconds. A bucket
 whose transcript hash did not change, such as a footer-only update, writes nothing. When a framed draft
 holds frame-identical rules, the bucket counts only if **no** candidate top leaves exactly the baseline

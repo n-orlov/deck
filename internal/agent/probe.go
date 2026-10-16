@@ -1,6 +1,9 @@
 package agent
 
-import "strings"
+import (
+	"regexp"
+	"strings"
+)
 
 // probeRule is one pane-text heuristic. Keep the complete corpus here: probe
 // classification is adapter knowledge and must not leak into service or TUI
@@ -407,7 +410,7 @@ func TranscriptCuts(pane string) []TranscriptCut {
 	cuts, bottom := outputCuts(lines)
 	out := make([]TranscriptCut, 0, len(cuts))
 	for _, cut := range cuts {
-		reading := TranscriptCut{Region: normaliseRegion(lines[:cut])}
+		reading := TranscriptCut{Region: maskLiveIndicator(normaliseRegion(lines[:cut]))}
 		if bottom >= cut {
 			reading.Composer = normaliseRegion(lines[cut : bottom+1])
 		}
@@ -425,6 +428,40 @@ func TranscriptCuts(pane string) []TranscriptCut {
 // footer never reads as output.
 func TranscriptRegion(pane string) string {
 	return TranscriptCuts(pane)[0].Region
+}
+
+var (
+	// liveIndicatorLine is an agent's working indicator, led by a braille
+	// spinner frame (pi, claude), claude's asterisk family or codex's bullet.
+	liveIndicatorLine = regexp.MustCompile(`^\s*(?:[\x{2800}-\x{28FF}✳✶✻✢✽·*•○◎●◉]\s+)?(?:Working|Thinking|Reconnecting|Running)\b.*$|^.*\besc to interrupt\b.*$`)
+	liveSpinnerPrefix = regexp.MustCompile(`^(\s*)[\x{2800}-\x{28FF}✳✶✻✢✽·*○◎●◉]\s+`)
+	liveDigits        = regexp.MustCompile(`[0-9]+(?:\.[0-9]+)?`)
+	liveElapsedLine   = regexp.MustCompile(`^\s*Elapsed [0-9]`)
+)
+
+// maskLiveIndicator makes an agent's live working indicator, the line the
+// agent redraws every tick while it works, a constant: its spinner frame and
+// its elapsed/retry counters are statusline churn, not output (R304). The
+// indicator is one of the region's last two lines when it reads "Working…", "Thinking…",
+// "Reconnecting…" or carries "esc to interrupt" (pi, claude, codex), and pi's
+// tool "Elapsed 11.0s" line. The indicator appearing or vanishing still
+// changes the region, so a turn starting or ending counts; any other line is
+// untouched.
+func maskLiveIndicator(region string) string {
+	if region == "" {
+		return region
+	}
+	lines := strings.Split(region, "\n")
+	for i, line := range lines {
+		live := i >= len(lines)-2 // codex's retry detail sits under its indicator
+		switch {
+		case liveElapsedLine.MatchString(line):
+			lines[i] = liveDigits.ReplaceAllString(line, "#")
+		case live && liveIndicatorLine.MatchString(line):
+			lines[i] = liveDigits.ReplaceAllString(liveSpinnerPrefix.ReplaceAllString(line, "$1"), "#")
+		}
+	}
+	return strings.Join(lines, "\n")
 }
 
 // normaliseRegion joins lines with trailing whitespace and trailing blank lines
