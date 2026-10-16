@@ -168,7 +168,7 @@ func TestYIsOfferedOnlyWhereSomethingIsUnseen(t *testing.T) {
 				t.Errorf("footer offers Y = %v, want %v", offered, c.want)
 			}
 			called := 0
-			m.acknowledge = func(context.Context, string) error { called++; return nil }
+			m.acknowledge = func(context.Context, string, store.StatusEpisode) error { called++; return nil }
 			_, cmd := m.Update(key("Y"))
 			if c.want != (cmd != nil) {
 				t.Errorf("Y scheduled a command = %v, want %v", cmd != nil, c.want)

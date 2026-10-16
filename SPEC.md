@@ -1079,7 +1079,10 @@ Rules:
   or entered by `[ui] attach_on_new` / `attach_on_resume`. `Y` is the way to mark a row seen without
   engaging, so it applies only where there is something unseen: on
   a row already seen it does nothing at all — no write, no event, no message —
-  and §11.3's footer does not offer it there. Being
+  and §11.3's footer does not offer it there. `Y`'s write runs after the key, so it names the status
+  episode the key was pressed on (`status_at` **and** `status_seq`; `Store.AcknowledgeSession` takes a
+  `StatusEpisode`): if the row has moved to another episode by the time it lands, even one with the
+  same `status_at`, it writes nothing and the newer prompt stays unseen. Being
   *displaced* from the preview by another client records nothing either. Covering tests:
   `TestAttachIsInertOnStatusSeenAndPosition` (eight cases: `waiting`, `error`, `running`, `idle` under the
   `attention` and `activity` orders), `TestClickIsInertOnStatusSeenAndPosition` and
@@ -1170,7 +1173,9 @@ Rules:
   the row is in another, even one with the same `status_at`. Covering tests:
   `TestMarkStatusSeenNamesTheEpisodeNotTheStamp`, `TestStatusEpisodeAdvancesOnTransitionsOnly`,
   `TestLateEngagementWriteCannotSeeANewerPromptSharingItsStamp`,
-  `TestDwellOfAnEarlierPromptNeverSeesANewPromptOnTheSameStamp`, `TestEngagementHoldBelongsToItsEpisode`.
+  `TestDwellOfAnEarlierPromptNeverSeesANewPromptOnTheSameStamp`, `TestEngagementHoldBelongsToItsEpisode`,
+  `TestAcknowledgeNamesTheEpisodeNotTheStamp`, `TestAcknowledgeCannotSeeAPromptWhoseStampAStepBackRepeated`,
+  `TestQueuedYCannotSeeANewErrorSharingItsStamp`, `TestQueuedYCannotSeeAPromptAfterAClockStepBackToItsStamp`.
 - **A repeat write is inert.** A status write that leaves the status unchanged — a probe
   seeing `waiting`, `running` or `error` again, a hook or the user restating the current
   status — does not touch `status_at`, `notify_epoch`, `hook_fired` or the seen state

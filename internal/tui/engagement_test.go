@@ -377,7 +377,7 @@ func TestEngagementHoldEndsWithTheStatus(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if err := rig.db.AcknowledgeSession(context.Background(), "row-error"); err != nil {
+	if err := acknowledgeCurrent(context.Background(), rig.db, "row-error"); err != nil {
 		t.Fatal(err)
 	}
 	m = reloadInert(t, m)

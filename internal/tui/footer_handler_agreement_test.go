@@ -104,7 +104,7 @@ func buildFooterAgreementModel(selected store.Session, extra []store.Session, ma
 		rec.unarchiveCalled = true
 		return store.Session{}, nil
 	}
-	m.acknowledge = func(context.Context, string) error {
+	m.acknowledge = func(context.Context, string, store.StatusEpisode) error {
 		rec.acknowledgeCalled = true
 		return nil
 	}

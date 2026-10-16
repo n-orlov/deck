@@ -508,9 +508,13 @@ func (m Model) keyAcknowledge(_ tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if !canAcknowledge(session) {
 		return m, nil
 	}
-	sessionID := session.ID
+	// R319: the write names the episode the user pressed Y on, so a queued
+	// acknowledgement that lands after the row moved to a newer prompt --
+	// even one sharing this stamp -- leaves that prompt unseen.
+	sessionID, episode := session.ID, session.Episode()
+	acknowledge := m.acknowledge
 	return m, func() tea.Msg {
-		return sessionAcknowledged{err: m.acknowledge(context.Background(), sessionID)}
+		return sessionAcknowledged{err: acknowledge(context.Background(), sessionID, episode)}
 	}
 }
 

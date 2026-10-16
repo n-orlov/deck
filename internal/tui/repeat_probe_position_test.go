@@ -68,7 +68,7 @@ func TestClearedWaitingRowReprobedWaitingKeepsItsSortPosition(t *testing.T) {
 	}
 
 	// Y on the older row, then the probe sees the same waiting prompt again.
-	if err := db.AcknowledgeSession(ctx, "older"); err != nil {
+	if err := acknowledgeCurrent(ctx, db, "older"); err != nil {
 		t.Fatal(err)
 	}
 	if err := db.UpdateSessionStatus(ctx, store.StatusUpdateInput{

@@ -50,7 +50,7 @@ func (r *jumpRig) view(ids ...string) {
 func (r *jumpRig) ack(ids ...string) {
 	r.t.Helper()
 	for _, id := range ids {
-		if err := r.db.AcknowledgeSession(context.Background(), id); err != nil {
+		if err := acknowledgeCurrent(context.Background(), r.db, id); err != nil {
 			r.t.Fatal(err)
 		}
 	}

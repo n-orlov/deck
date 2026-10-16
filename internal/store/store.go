@@ -1338,22 +1338,30 @@ func recordStatusEventTx(ctx context.Context, tx *sql.Tx, input StatusUpdateInpu
 	return nil
 }
 
-// AcknowledgeSession durably clears the selected row's unseen marker without
-// changing its status verdict, source, timestamp, or notification epoch. It is
-// intentionally a targeted update rather than a status transition: pressing Y
-// acknowledges waiting/error but does not claim that the user answered it.
-func (s *Store) AcknowledgeSession(ctx context.Context, sessionID string) error {
+// AcknowledgeSession is Y's durable write (R319): it clears the row's unseen
+// marker without changing its status verdict, source, timestamp, or
+// notification epoch. It is intentionally a targeted update rather than a
+// status transition: pressing Y acknowledges waiting/error but does not claim
+// that the user answered it. Like engagement's MarkStatusSeen it names the
+// status episode the user pressed Y on (status_at AND status_seq): the key's
+// write runs asynchronously, so by the time it lands the row may already be in
+// a newer episode -- even one sharing the old stamp, or one whose stepped-back
+// clock repeated it -- and acknowledging the older prompt must never mark that
+// newer one seen. A row that has moved on, or is already seen, is left
+// untouched (no write at all); only a missing row is an error.
+func (s *Store) AcknowledgeSession(ctx context.Context, sessionID string, episode StatusEpisode) error {
 	if sessionID == "" {
 		return errors.New("session id is required")
 	}
-	result, err := s.db.ExecContext(ctx, `UPDATE sessions SET seen_status_at = status_at WHERE id = ?`, sessionID)
-	if err != nil {
+	if _, err := s.MarkStatusSeen(ctx, sessionID, episode); err != nil {
 		return fmt.Errorf("acknowledge session: %w", err)
 	}
-	if changed, err := result.RowsAffected(); err != nil {
-		return fmt.Errorf("read acknowledged session count: %w", err)
-	} else if changed == 0 {
+	var exists int
+	switch err := s.db.QueryRowContext(ctx, `SELECT 1 FROM sessions WHERE id = ?`, sessionID).Scan(&exists); {
+	case errors.Is(err, sql.ErrNoRows):
 		return fmt.Errorf("session %q not found", sessionID)
+	case err != nil:
+		return fmt.Errorf("read acknowledged session: %w", err)
 	}
 	return nil
 }

@@ -46,7 +46,7 @@ func TestLaterPromptAfterClockStepBackIsStillUnseen(t *testing.T) {
 	db := seenClockStore(t)
 	ctx := context.Background()
 	seenClockMove(t, db, "waiting", 5000)
-	if err := db.AcknowledgeSession(ctx, "s"); err != nil {
+	if err := acknowledgeCurrent(ctx, db); err != nil {
 		t.Fatal(err)
 	}
 	if got, _ := db.GetSession(ctx, "s"); !got.StatusSeen() || got.SeenStatusAt != 5000 {
@@ -69,7 +69,7 @@ func TestTwoStampsInTheSameMillisecondCannotHidePrompt(t *testing.T) {
 			db := seenClockStore(t)
 			ctx := context.Background()
 			seenClockMove(t, db, "waiting", 5000)
-			if err := db.AcknowledgeSession(ctx, "s"); err != nil {
+			if err := acknowledgeCurrent(ctx, db); err != nil {
 				t.Fatal(err)
 			}
 			// running at the seen stamp, then a new prompt at the same stamp.

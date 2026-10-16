@@ -130,7 +130,7 @@ func TestFooterDropsYOnceYAcknowledgesTheRow(t *testing.T) {
 func TestYOnAcknowledgedRowDoesNothingAndStaysInHelp(t *testing.T) {
 	m, db := ackOfferStoreModel(t)
 	ctx := context.Background()
-	if err := db.AcknowledgeSession(ctx, "waiting"); err != nil {
+	if err := acknowledgeCurrent(ctx, db, "waiting"); err != nil {
 		t.Fatal(err)
 	}
 	updated, _ := m.Update(m.loadSessions())
@@ -140,9 +140,9 @@ func TestYOnAcknowledgedRowDoesNothingAndStaysInHelp(t *testing.T) {
 	}
 	calls := 0
 	realAck := m.acknowledge
-	m.acknowledge = func(c context.Context, id string) error {
+	m.acknowledge = func(c context.Context, id string, episode store.StatusEpisode) error {
 		calls++
-		return realAck(c, id)
+		return realAck(c, id, episode)
 	}
 	before, err := db.GetSession(ctx, "waiting")
 	if err != nil {

@@ -226,7 +226,7 @@ type Model struct {
 	createAgentSession      func(context.Context, service.AgentCreateInput) (store.Session, error)
 	attach                  func(context.Context, string) (*exec.Cmd, error)
 	kill                    func(context.Context, store.Session) error
-	acknowledge             func(context.Context, string) error
+	acknowledge             func(context.Context, string, store.StatusEpisode) error
 	// markSeen is engagement's write (R321, engagement.go); engagement is its shared cell.
 	markSeen func(context.Context, string, store.StatusEpisode) (bool, error)
 	// markViewed is the R325 viewing write (viewed.go).
