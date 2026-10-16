@@ -41,7 +41,7 @@ func readDurableAttentionForTest(t *testing.T, db *store.Store, sessionID string
 		t.Fatalf("GetSession(%s): %v", sessionID, err)
 	}
 	return durableAttentionForTest{
-		Acknowledged:  row.Acknowledged,
+		Acknowledged:  row.StatusSeen(),
 		NotifyEpoch:   row.NotifyEpoch,
 		AttachedCount: attachedEventCountForTest(t, db, sessionID),
 	}

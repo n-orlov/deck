@@ -601,7 +601,7 @@ func databaseSessionAttentionFields(ctx context.Context, name, wantStatus, wantS
 	defer db.Close()
 	var status, source, sessionID string
 	var acknowledged, epoch, attachedEvents int
-	if err := db.QueryRowContext(ctx, `SELECT id, status, status_source, acknowledged, notify_epoch FROM sessions WHERE name = ?`, name).Scan(
+	if err := db.QueryRowContext(ctx, `SELECT id, status, status_source, (seen_status_at = status_at), notify_epoch FROM sessions WHERE name = ?`, name).Scan(
 		&sessionID, &status, &source, &acknowledged, &epoch); err != nil {
 		return fmt.Errorf("observe attention fields for session %q: %w", name, err)
 	}
@@ -1185,10 +1185,10 @@ func TestBlackBoxAssertionsObserveRealSession(t *testing.T) {
 	if err := privateOptionIs(stepCtx, "exit-empty", "off"); err != nil {
 		t.Fatal(err)
 	}
-	// The pinned version is internal/store.SchemaVersion (17 as of schemaV17);
+	// The pinned version is internal/store.SchemaVersion (18 as of schemaV18);
 	// this pin must track that constant exactly, as it has every time the
 	// constant moved before it.
-	if err := databaseSchemaVersion(stepCtx, 17); err != nil {
+	if err := databaseSchemaVersion(stepCtx, 18); err != nil {
 		t.Fatal(err)
 	}
 	if err := databaseJournalMode(stepCtx, "wal"); err != nil {

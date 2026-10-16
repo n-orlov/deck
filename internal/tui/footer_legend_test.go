@@ -26,7 +26,7 @@ func TestFooterKeyLegendReflectsEligibility(t *testing.T) {
 	}
 
 	t.Run("live row: kill, restart, attach and interactive eligible, resume is not", func(t *testing.T) {
-		m := newModel([]store.Session{{ID: "s1", Name: "live", Agent: "shell", Status: "running"}}, 0, nil)
+		m := newModel([]store.Session{{ID: "s1", Name: "live", Agent: "shell", Status: "running", StatusAt: 100}}, 0, nil)
 		legend := m.footerKeyLegend()
 		for _, want := range []string{"Y acknowledge", "x kill", "R relaunch", "↵ interactive", "a attach", "i detail"} {
 			if !strings.Contains(legend, want) {
@@ -75,7 +75,7 @@ func TestFooterKeyLegendReflectsEligibility(t *testing.T) {
 		// is not" are exactly the cases the footer never lists; the two
 		// entries share canArchive/canUnarchive, which are exact
 		// complements of ArchivedAt, so exactly one of A/U shows per row.
-		unarchived := newModel([]store.Session{{ID: "s1", Name: "live", Agent: "shell", Status: "running"}}, 0, nil)
+		unarchived := newModel([]store.Session{{ID: "s1", Name: "live", Agent: "shell", Status: "running", StatusAt: 100}}, 0, nil)
 		legend := unarchived.footerKeyLegend()
 		if !strings.Contains(legend, "A archive") {
 			t.Errorf("unarchived row: legend missing A archive: %q", legend)
@@ -98,7 +98,7 @@ func TestFooterKeyLegendReflectsEligibility(t *testing.T) {
 		// SPEC §11.3: ", because settings has no other visible entry point
 		// in the default frame" -- it carries no eligible predicate at all
 		// (like n/?/q), so it is not conditioned on there being a row.
-		withRows := newModel([]store.Session{{ID: "s1", Name: "live", Agent: "shell", Status: "running"}}, 0, nil)
+		withRows := newModel([]store.Session{{ID: "s1", Name: "live", Agent: "shell", Status: "running", StatusAt: 100}}, 0, nil)
 		if !strings.Contains(withRows.footerKeyLegend(), ", settings") {
 			t.Errorf(", must be in the footer with sessions present: %q", withRows.footerKeyLegend())
 		}
@@ -146,7 +146,7 @@ func TestFooterKeyLegendReflectsEligibility(t *testing.T) {
 	})
 
 	t.Run("attention-pending row (waiting): kill and restart eligible, resume is not", func(t *testing.T) {
-		m := newModel([]store.Session{{ID: "s1", Name: "waiting", Agent: "claude", Status: "waiting"}}, 0, nil)
+		m := newModel([]store.Session{{ID: "s1", Name: "waiting", Agent: "claude", Status: "waiting", StatusAt: 100}}, 0, nil)
 		legend := m.footerKeyLegend()
 		for _, want := range []string{"x kill", "R relaunch", "Y acknowledge", "a attach"} {
 			if !strings.Contains(legend, want) {

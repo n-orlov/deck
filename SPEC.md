@@ -441,7 +441,7 @@ CREATE TABLE sessions (
   hook_fired         TEXT,                  -- JSON (kind,reason) pairs fired in this notify_epoch (§10.3)
   important          INTEGER NOT NULL DEFAULT 0, -- exported to the event hook (§10.1)
   group_id           INTEGER,               -- manual group (§11); NULL = the implicit "default"
-  acknowledged       INTEGER NOT NULL DEFAULT 1,
+  seen_status_at     INTEGER NOT NULL DEFAULT 0, -- the status_at stamp the user has seen (R318, schema v18); a row's status is seen iff seen_status_at = status_at. Replaces the dropped `acknowledged` bit; the v18 rung backfills it to status_at where acknowledged was 1, else 0
   launch_lease_owner TEXT,                  -- pid@boot_id#generation holding a start (§9.3)
   launch_lease_until INTEGER NOT NULL DEFAULT 0,
   last_probe_at      INTEGER NOT NULL DEFAULT 0, -- last pane sample that matched no §7 rule; a column, never an event (§7)
@@ -1056,9 +1056,11 @@ Rules:
   `killed_by_user`, which an in-flight hook arriving milliseconds later cannot undo —
   explicit human action outranks automation. Below that, a probe never overwrites a fresher
   hook verdict, and `tmux` only ever supplies liveness.
-- `waiting` and `error` set `acknowledged = 0`; cleared by attaching or by `Y`. `Y` is the
-  way to clear it without attaching, so it applies only where there is something to clear: on
-  a row already at `acknowledged = 1` it does nothing at all — no write, no event, no message —
+- A transition into `waiting` or `error` leaves the row unseen (`seen_status_at` reset to 0, so it
+  differs from the new `status_at`); a row is seen exactly when `seen_status_at = status_at`.
+  Attaching or `Y` sets `seen_status_at = status_at`. `Y` is the
+  way to mark it without attaching, so it applies only where there is something unseen: on
+  a row already seen it does nothing at all — no write, no event, no message —
   and §11.3's footer does not offer it there. "Attaching"
   means every way the keyboard reaches the pane through deck: `a`'s full attach and the
   interactive preview (§11.9), whether entered by `↵` or forced by `F` — the same durable
@@ -1069,7 +1071,7 @@ Rules:
 - **A repeat write is inert.** A status write that leaves the status unchanged — a probe
   seeing `waiting`, `running` or `error` again, a hook or the user restating the current
   status — does not touch `status_at`, `notify_epoch`, `hook_fired` or the seen state
-  (`acknowledged`); precedence decides the stored `status_source` exactly as it does for a
+  (`seen_status_at`); precedence decides the stored `status_source` exactly as it does for a
   transition. It updates the reason (a hook repeating the status with a different reason
   changes the reason and not `status_at`), and `last_probe_at` may still advance. The event
   is still recorded. Only a change of status dates the row, opens an attention episode and
@@ -1561,7 +1563,7 @@ Subscribed events — a handful per turn, never per tool call:
 | session start | `idle` | confirms the assigned id; the source field distinguishes fresh vs resumed vs compacted. **`SessionStart` lands on `idle`, never `running` (R307)**, including `--resume` and `--continue`: a session that has started has not been asked anything. The `UserPromptSubmit` below, or a working indicator the probe sees, is what enters `running` |
 | user prompt submitted | `running` | also feeds prompt count; **enters `running`** |
 | notification, `notification_type` `permission_prompt` or `elicitation_dialog` | `waiting` | **the golden signal**; the notification type becomes `status_reason` |
-| notification, `notification_type` `idle_prompt` | no change | **R308**: it only says the agent has been idle a while. It writes no status, no `status_at`, no `acknowledged` or `notify_epoch` change and no attention transition on an idle, a running or a waiting row, and `Stop` then `idle_prompt` leaves the row `idle`. No `idle_since` value is stamped: the notification is recorded as a `notification` event (reason `idle_prompt`) and nothing else |
+| notification, `notification_type` `idle_prompt` | no change | **R308**: it only says the agent has been idle a while. It writes no status, no `status_at`, no `seen_status_at` or `notify_epoch` change and no attention transition on an idle, a running or a waiting row, and `Stop` then `idle_prompt` leaves the row `idle`. No `idle_since` value is stamped: the notification is recorded as a `notification` event (reason `idle_prompt`) and nothing else |
 | notification, any other `notification_type` (`auth_success`, a type this deck build has not seen, or none) | no change | **R309 hook half**: recorded as a `notification` event, never applied. Only the two types above are `waiting`, the same two Copilot's `notification` maps (§8.4). The probe-side producers (permission, question, plan approval, trust prompt) are §7's probe rules |
 | stop | `idle` | carries the last assistant message — use it; the transcript file lags |
 | stop-failure | `error` | error type becomes `status_reason` |
@@ -3138,7 +3140,7 @@ truncated-but-honest frame beats an unpredictable one.
   **Nor does it list a key that would refuse the current selection.** `x` is absent on a row
   with no pane to kill, `r` on a row that is already running, `A` on a row that is already
   archived, `U` on one that is not, `Y` on a row with nothing to acknowledge (§7's
-  `acknowledged = 1`, which every attach leaves behind), and every per-row key when the list
+  seen state, `seen_status_at = status_at`, which every attach leaves behind), and every per-row key when the list
   is empty; with a mark
   set in force the question is asked of the marked rows, since that is what the key would act
   on. This is the same argument one step finer: a key that is bound but refuses *here* is,

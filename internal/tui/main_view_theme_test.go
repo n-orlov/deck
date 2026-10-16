@@ -20,8 +20,8 @@ func mainViewColorTestModel(t *testing.T) Model {
 	m := New(nil, config.Settings{Color: true}, "")
 	m.width, m.height = 160, 30
 	m.sessions = []store.Session{
-		{ID: "s1", Name: "alpha", Agent: "shell", Status: "running", CWD: "/repo/alpha"},
-		{ID: "s2", Name: "beta", Agent: "shell", Status: "running", CWD: "/repo/beta"},
+		{ID: "s1", Name: "alpha", Agent: "shell", Status: "running", StatusAt: 100, CWD: "/repo/alpha"},
+		{ID: "s2", Name: "beta", Agent: "shell", Status: "running", StatusAt: 100, CWD: "/repo/beta"},
 	}
 	m.selected = rowCursor(0)
 	return m

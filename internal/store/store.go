@@ -25,7 +25,7 @@ import (
 const busyTimeoutMillis = 5000
 
 // SchemaVersion is the newest schema understood by this binary.
-const SchemaVersion = 17
+const SchemaVersion = 18
 
 // SupportedSchemaVersion is the newest schema this binary opens: SchemaVersion
 // in every shipped build. A test build (-tags deckoldschema, see
@@ -382,7 +382,9 @@ type Session struct {
 	CrashTail      string
 	NotifyEpoch    int64
 	LastMessage    string
-	Acknowledged   bool
+	// SeenStatusAt is the status_at stamp the user has seen (R318): the row's
+	// status is seen exactly when it equals StatusAt (StatusSeen).
+	SeenStatusAt int64
 
 	LaunchArgs []string
 	Env        map[string]string
@@ -535,9 +537,6 @@ type StatusUpdateInput struct {
 	// that outlives its pane keeps the row terminal, which silently removes it
 	// from reconciliation and blocks the transitions that would correct it.
 	ClearCrashVerdict bool
-	// Acknowledged explicitly changes the durable unseen marker. Independently,
-	// every waiting/error transition resets it to false.
-	Acknowledged *bool
 	// ExpectedStatus makes a transition conditional on the row still having the
 	// status the caller observed. Attach uses this to clear only a waiting
 	// episode; a hook racing the keypress must not be overwritten by stale UI.
@@ -630,7 +629,7 @@ func (s *Store) CreateSession(ctx context.Context, input CreateSessionInput) (Se
 	return Session{
 		ID: input.ID, Name: input.Name, Slug: slug, CWD: input.CWD, Agent: input.Agent,
 		Status: input.Status, StatusSource: input.StatusSource, StatusAt: input.StatusAt, CreatedAt: input.CreatedAt,
-		NameSource: input.NameSource, Acknowledged: true,
+		NameSource: input.NameSource, SeenStatusAt: input.StatusAt,
 		LaunchArgs: input.LaunchArgs, Env: input.Env, PreLaunch: input.PreLaunch, PostDestroy: input.PostDestroy, LoginShell: input.LoginShell,
 		EventHookEnabled: input.EventHookEnabled, EventHookEvents: input.EventHookEvents,
 		PermissionProfile: input.PermissionProfile, PermissionProfileReason: input.PermissionProfileReason,
@@ -735,13 +734,13 @@ func insertSessionRowTx(ctx context.Context, tx *sql.Tx, input CreateSessionInpu
 	_, err := tx.ExecContext(ctx, `INSERT INTO sessions
 		(id, name, slug, cwd, agent, captured_path, status, status_source, status_at, created_at,
 		 launch_args, env, pre_launch, post_destroy, login_shell, permission_profile, permission_profile_reason, conversation_id, resume_pin, resume_state, group_id,
-		 event_hook_enabled, event_hook_events, name_source)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		 event_hook_enabled, event_hook_events, name_source, seen_status_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		input.ID, input.Name, slug, input.CWD, input.Agent, input.CapturedPath,
 		input.Status, input.StatusSource, input.StatusAt, input.CreatedAt,
 		launchArgsJSON, envJSON, nullableString(input.PreLaunch), nullableString(input.PostDestroy), input.LoginShell,
 		input.PermissionProfile, nullableString(input.PermissionProfileReason), nullableString(input.ConversationID), nullableString(input.ResumePin), input.ResumeState,
-		nullableGroupID(input.GroupID), eventHookEnabledArg(input.EventHookEnabled), eventHookEventsArg(input.EventHookEvents), input.NameSource)
+		nullableGroupID(input.GroupID), eventHookEnabledArg(input.EventHookEnabled), eventHookEventsArg(input.EventHookEvents), input.NameSource, input.StatusAt)
 	if err != nil {
 		if strings.Contains(err.Error(), "sessions.name") || strings.Contains(err.Error(), "UNIQUE constraint failed: sessions.name") {
 			return fmt.Errorf("session name %q already exists", input.Name)
@@ -830,7 +829,7 @@ func scanSession(row interface {
 	var groupID sql.NullInt64
 	var groupName sql.NullString
 	var leaseOwner string
-	var loginShell, killedByUser, acknowledged, envDirty, launchDirty int
+	var loginShell, killedByUser, envDirty, launchDirty int
 	var paneExitStatus, eventHookEnabled sql.NullInt64
 	var eventHookEvents, pendingName sql.NullString
 	var pendingAt, nameAdopt sql.NullInt64
@@ -838,7 +837,7 @@ func scanSession(row interface {
 	if err := row.Scan(&session.ID, &session.Name, &session.Slug, &session.CWD,
 		&session.Agent, &session.CapturedPath, &session.Status, &session.StatusReason, &session.StatusSource,
 		&session.StatusAt, &session.CreatedAt, &killedByUser, &paneExitStatus, &crashTail,
-		&session.NotifyEpoch, &lastMessage, &acknowledged, &launchArgsJSON, &envJSON, &preLaunch, &postDestroy,
+		&session.NotifyEpoch, &lastMessage, &session.SeenStatusAt, &launchArgsJSON, &envJSON, &preLaunch, &postDestroy,
 		&loginShell, &session.PermissionProfile, &permissionProfileReason, &conversationID, &resumePin, &session.ResumeState,
 		&groupID, &groupName, &session.LastProbeAt, &session.LastOutputAt, &session.ProbeMissStreak, &session.LastEventAt, &envDirty, &session.DeletedAt, &session.ArchivedAt, &launchDirty,
 		&leaseOwner, &session.PinnedAt, &session.HookExecutable, &eventHookEnabled, &eventHookEvents, &session.NameSource, &pendingName, &pendingAt, &nameAdopt, &nameAdopted); err != nil {
@@ -883,13 +882,12 @@ func scanSession(row interface {
 	}
 	session.CrashTail = crashTail.String
 	session.LastMessage = lastMessage.String
-	session.Acknowledged = acknowledged != 0
 	return session, nil
 }
 
 const sessionColumns = `sessions.id, sessions.name, slug, cwd, agent, captured_path, status,
 		COALESCE(status_reason, ''), status_source, status_at, created_at,
-		killed_by_user, pane_exit_status, crash_tail, notify_epoch, last_message, acknowledged,
+		killed_by_user, pane_exit_status, crash_tail, notify_epoch, last_message, seen_status_at,
 		launch_args, env, pre_launch, post_destroy, login_shell, permission_profile, permission_profile_reason, conversation_id, resume_pin, resume_state,
 		sessions.group_id, groups.name, last_probe_at, last_output_at, probe_miss_streak, COALESCE((SELECT MAX(events.at) FROM events WHERE events.session_id = sessions.id), 0), env_dirty, deleted_at, archived_at, launch_dirty,
 		COALESCE(launch_lease_owner, ''), pinned_at, COALESCE(hook_executable, ''),
@@ -959,20 +957,21 @@ func validateStatusUpdate(input StatusUpdateInput) error {
 // statusRow is the slice of a session row UpdateSessionStatus reads before
 // deciding whether a verdict wins.
 type statusRow struct {
-	status, source, agent      string
-	at, notifyEpoch            int64
-	killedByUser, acknowledged int
-	paneExitStatus             sql.NullInt64
+	status, source, agent string
+	at, notifyEpoch       int64
+	killedByUser          int
+	seenStatusAt          int64
+	paneExitStatus        sql.NullInt64
 }
 
 // readStatusRow loads the row a status update is judged against.
 func readStatusRow(ctx context.Context, tx *sql.Tx, sessionID string) (statusRow, error) {
 	var row statusRow
 	if err := tx.QueryRowContext(ctx, `SELECT status, status_source, status_at, agent,
-		killed_by_user, acknowledged, notify_epoch, pane_exit_status
+		killed_by_user, seen_status_at, notify_epoch, pane_exit_status
 		FROM sessions WHERE id = ?`, sessionID).Scan(
 		&row.status, &row.source, &row.at, &row.agent, &row.killedByUser,
-		&row.acknowledged, &row.notifyEpoch, &row.paneExitStatus); err != nil {
+		&row.seenStatusAt, &row.notifyEpoch, &row.paneExitStatus); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return statusRow{}, fmt.Errorf("session %q not found", sessionID)
 		}
@@ -1142,11 +1141,10 @@ func statusWins(in StatusUpdateInput, cur statusRow) bool {
 // writeStatusUpdate stores the winning verdict on the session row.
 //
 // A write that leaves the status unchanged is inert (SPEC §7, R303): it
-// keeps status_at, notify_epoch, hook_fired and the acknowledged state exactly
+// keeps status_at, notify_epoch, hook_fired and the seen state exactly
 // as stored, and updates only the reason, the source the precedence rules let
 // win (statusWins decides that exactly as for a transition) and the side
-// columns the write explicitly carries (kill/crash verdict, last message, an
-// explicit Acknowledged). A repeat is the same status being
+// columns the write explicitly carries (kill/crash verdict, last message). A repeat is the same status being
 // reported again, not a transition, so it has no moment to date, no
 // episode to open or close and nothing to mark unseen.
 func writeStatusUpdate(ctx context.Context, tx *sql.Tx, input StatusUpdateInput, cur statusRow) error {
@@ -1159,14 +1157,18 @@ func writeStatusUpdate(ctx context.Context, tx *sql.Tx, input StatusUpdateInput,
 	if isAttentionStatus(cur.status) && !isAttentionStatus(input.Status) {
 		notifyEpoch++
 	}
-	acknowledged := cur.acknowledged
-	if isAttentionStatus(input.Status) {
-		if !repeat {
-			acknowledged = 0
-		}
-	}
-	if input.Acknowledged != nil && !isAttentionStatus(input.Status) {
-		acknowledged = boolInt(*input.Acknowledged)
+	// A transition into an attention status opens an unseen episode whatever
+	// stamp it carries, so a status_at equal to an older seen stamp cannot
+	// hide it. Any other transition keeps the row's seen answer (what the
+	// acknowledged bit did): a seen row stays seen at its new stamp, an
+	// unseen one stays unseen.
+	seenStatusAt := cur.seenStatusAt
+	switch {
+	case repeat:
+	case isAttentionStatus(input.Status):
+		seenStatusAt = 0
+	case cur.seenStatusAt == cur.at:
+		seenStatusAt = statusAt
 	}
 	newKilled := cur.killedByUser
 	if input.ClearKilledByUser {
@@ -1184,14 +1186,14 @@ func writeStatusUpdate(ctx context.Context, tx *sql.Tx, input StatusUpdateInput,
 	clearCrash := boolInt(input.ClearCrashVerdict)
 	_, err := tx.ExecContext(ctx, `UPDATE sessions SET
 		status = ?, status_reason = ?, status_source = ?, status_at = ?,
-		killed_by_user = ?, acknowledged = ?, notify_epoch = ?,
+		killed_by_user = ?, seen_status_at = ?, notify_epoch = ?,
 		hook_fired = CASE WHEN ? THEN NULL ELSE hook_fired END,
 		pane_exit_status = CASE WHEN ? = 1 THEN NULL ELSE COALESCE(?, pane_exit_status) END,
 		crash_tail = CASE WHEN ? = 1 THEN NULL WHEN ? IS NULL THEN crash_tail ELSE ? END,
 		last_message = CASE WHEN ? = '' THEN last_message ELSE ? END,
 		probe_miss_streak = 0
 		WHERE id = ?`, input.Status, input.Reason, input.Source, statusAt,
-		newKilled, acknowledged, notifyEpoch, notifyEpoch != cur.notifyEpoch, clearCrash, input.PaneExitStatus,
+		newKilled, seenStatusAt, notifyEpoch, notifyEpoch != cur.notifyEpoch, clearCrash, input.PaneExitStatus,
 		clearCrash, input.PaneExitStatus, input.CrashTail, lastMessage, lastMessage, input.SessionID)
 	if err != nil {
 		return fmt.Errorf("update session status: %w", err)
@@ -1339,12 +1341,12 @@ func applyAttachmentToStatusTx(ctx context.Context, tx *sql.Tx, sessionID, statu
 	case "waiting":
 		if _, err := tx.ExecContext(ctx, `UPDATE sessions SET
 			status = 'running', status_reason = '', status_source = 'user', status_at = ?,
-			acknowledged = 1, notify_epoch = notify_epoch + 1, hook_fired = NULL
-			WHERE id = ? AND status = 'waiting'`, at, sessionID); err != nil {
+			seen_status_at = ?, notify_epoch = notify_epoch + 1, hook_fired = NULL
+			WHERE id = ? AND status = 'waiting'`, at, at, sessionID); err != nil {
 			return false, fmt.Errorf("answer waiting attachment: %w", err)
 		}
 	case "error":
-		if _, err := tx.ExecContext(ctx, `UPDATE sessions SET acknowledged = 1
+		if _, err := tx.ExecContext(ctx, `UPDATE sessions SET seen_status_at = status_at
 			WHERE id = ? AND status = 'error'`, sessionID); err != nil {
 			return false, fmt.Errorf("acknowledge error attachment: %w", err)
 		}
@@ -1362,7 +1364,7 @@ func (s *Store) AcknowledgeSession(ctx context.Context, sessionID string) error 
 	if sessionID == "" {
 		return errors.New("session id is required")
 	}
-	result, err := s.db.ExecContext(ctx, `UPDATE sessions SET acknowledged = 1 WHERE id = ?`, sessionID)
+	result, err := s.db.ExecContext(ctx, `UPDATE sessions SET seen_status_at = status_at WHERE id = ?`, sessionID)
 	if err != nil {
 		return fmt.Errorf("acknowledge session: %w", err)
 	}
@@ -3041,7 +3043,7 @@ func (s *Store) migrate(version int) error {
 // the schemaVN variables at call time (tests substitute them); a version
 // outside 0..SchemaVersion-1 has no migration path.
 func applySchemaLadder(tx *sql.Tx, version int) error {
-	rungs := [][]string{schemaV1, schemaV2, schemaV3, schemaV4, schemaV5, schemaV6, schemaV7, schemaV8, schemaV9, schemaV10, schemaV11, schemaV12, schemaV13, schemaV14, schemaV15, schemaV16, schemaV17}
+	rungs := [][]string{schemaV1, schemaV2, schemaV3, schemaV4, schemaV5, schemaV6, schemaV7, schemaV8, schemaV9, schemaV10, schemaV11, schemaV12, schemaV13, schemaV14, schemaV15, schemaV16, schemaV17, schemaV18}
 	if version < 0 || version >= len(rungs) {
 		return fmt.Errorf("no migration path from schema version %d", version)
 	}
@@ -3330,6 +3332,22 @@ var schemaV16 = []string{
 var schemaV17 = []string{
 	`CREATE INDEX IF NOT EXISTS events_session_at ON events(session_id, at)`,
 }
+
+// schemaV18 is R318's seen schema (phase 4t). sessions.acknowledged (a bit)
+// is dropped (the schemaV10 column-drop precedent) and sessions.seen_status_at
+// added: the status_at stamp the user has seen, so a row's status is seen
+// exactly when seen_status_at equals status_at. Backfill keeps what each row
+// already said: an acknowledged row is seen at its current stamp, every other
+// row is unseen (0).
+var schemaV18 = []string{
+	`ALTER TABLE sessions ADD COLUMN seen_status_at INTEGER NOT NULL DEFAULT 0`,
+	`UPDATE sessions SET seen_status_at = CASE WHEN acknowledged = 1 THEN status_at ELSE 0 END`,
+	`ALTER TABLE sessions DROP COLUMN acknowledged`,
+}
+
+// StatusSeen reports whether the user has seen the row's current status stamp
+// (R318): equality of seen_status_at and status_at, never an ordering.
+func (s Session) StatusSeen() bool { return s.SeenStatusAt == s.StatusAt }
 
 // getUIState returns the persisted value for key, or def when no row exists
 // yet. Per SPEC §11.2, ui_state is not load-bearing: a missing row degrades

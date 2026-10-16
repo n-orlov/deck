@@ -292,7 +292,7 @@ func databaseSessionHasHookStatus(ctx context.Context, name, wantStatus, wantRea
 	for {
 		var status, source, reason, message string
 		var acknowledged, epoch int
-		err := db.QueryRowContext(ctx, `SELECT status, status_source, COALESCE(status_reason, ''), COALESCE(last_message, ''), acknowledged, notify_epoch FROM sessions WHERE name = ?`, name).Scan(&status, &source, &reason, &message, &acknowledged, &epoch)
+		err := db.QueryRowContext(ctx, `SELECT status, status_source, COALESCE(status_reason, ''), COALESCE(last_message, ''), (seen_status_at = status_at), notify_epoch FROM sessions WHERE name = ?`, name).Scan(&status, &source, &reason, &message, &acknowledged, &epoch)
 		if err != nil {
 			return fmt.Errorf("observe hook status for session %q: %w", name, err)
 		}
@@ -336,7 +336,7 @@ func databaseSessionIsRepairedTo(ctx context.Context, name, wantStatus, wantSour
 	for {
 		var status, source, reason, message string
 		var acknowledged, epoch int
-		err := db.QueryRowContext(ctx, `SELECT status, status_source, COALESCE(status_reason, ''), COALESCE(last_message, ''), acknowledged, notify_epoch FROM sessions WHERE name = ?`, name).Scan(&status, &source, &reason, &message, &acknowledged, &epoch)
+		err := db.QueryRowContext(ctx, `SELECT status, status_source, COALESCE(status_reason, ''), COALESCE(last_message, ''), (seen_status_at = status_at), notify_epoch FROM sessions WHERE name = ?`, name).Scan(&status, &source, &reason, &message, &acknowledged, &epoch)
 		if err != nil {
 			return fmt.Errorf("observe repaired status for session %q: %w", name, err)
 		}

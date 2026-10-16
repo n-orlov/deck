@@ -59,7 +59,7 @@ func seedRepeatRow(t *testing.T, db *Store, status, source, reason string, ackno
 	if err := db.UpdateSessionStatus(ctx, in); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.db.ExecContext(ctx, `UPDATE sessions SET notify_epoch = ?, hook_fired = ?, acknowledged = ? WHERE id = 'row'`,
+	if _, err := db.db.ExecContext(ctx, `UPDATE sessions SET notify_epoch = ?, hook_fired = ?, seen_status_at = CASE WHEN ? = 1 THEN status_at ELSE 0 END WHERE id = 'row'`,
 		repeatSeedEpoch, repeatSeedFired, boolInt(acknowledged)); err != nil {
 		t.Fatal(err)
 	}
@@ -76,7 +76,7 @@ func readRepeatRow(t *testing.T, db *Store) (Session, repeatSeed) {
 	if err := db.db.QueryRowContext(ctx, `SELECT COALESCE(hook_fired, '') FROM sessions WHERE id = 'row'`).Scan(&fired); err != nil {
 		t.Fatal(err)
 	}
-	return row, repeatSeed{row.StatusAt, row.NotifyEpoch, row.StatusSource, row.Acknowledged, fired}
+	return row, repeatSeed{row.StatusAt, row.NotifyEpoch, row.StatusSource, row.StatusSeen(), fired}
 }
 
 // requireInert fails unless the five protected values equal their seed.
@@ -85,7 +85,7 @@ func requireInert(t *testing.T, db *Store, wantSource string, wantAcknowledged b
 	row, got := readRepeatRow(t, db)
 	want := repeatSeed{repeatSeedAt, repeatSeedEpoch, wantSource, wantAcknowledged, repeatSeedFired}
 	if got != want {
-		t.Fatalf("a repeat write moved protected state: status_at/notify_epoch/source/acknowledged/hook_fired = %+v, want %+v", got, want)
+		t.Fatalf("a repeat write moved protected state: status_at/notify_epoch/source/seen/hook_fired = %+v, want %+v", got, want)
 	}
 	return row
 }
@@ -179,7 +179,7 @@ func TestTransitionStillDatesTheRowAndMarksItUnseen(t *testing.T) {
 		t.Fatal(err)
 	}
 	row, _ := readRepeatRow(t, db)
-	if row.StatusAt != repeatWriteLater || row.Acknowledged {
-		t.Fatalf("transition to waiting: status_at=%d acknowledged=%v, want %d/false", row.StatusAt, row.Acknowledged, repeatWriteLater)
+	if row.StatusAt != repeatWriteLater || row.StatusSeen() {
+		t.Fatalf("transition to waiting: status_at=%d acknowledged=%v, want %d/false", row.StatusAt, row.StatusSeen(), repeatWriteLater)
 	}
 }

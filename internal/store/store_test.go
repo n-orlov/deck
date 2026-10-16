@@ -634,14 +634,13 @@ func TestStatusTransitionAppliesPrecedenceAcknowledgementAndEpochAtomically(t *t
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Status != "waiting" || got.StatusSource != "probe" || got.Acknowledged {
+	if got.Status != "waiting" || got.StatusSource != "probe" || got.StatusSeen() {
 		t.Fatalf("stale correction/attention reset = %#v", got)
 	}
 
-	acknowledged := true
 	if err := store.UpdateSessionStatus(ctx, StatusUpdateInput{
 		SessionID: id, Status: "running", Source: "user", At: 160,
-		EventKind: "attached", Acknowledged: &acknowledged,
+		EventKind: "attached",
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -649,8 +648,8 @@ func TestStatusTransitionAppliesPrecedenceAcknowledgementAndEpochAtomically(t *t
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Status != "running" || !got.Acknowledged || got.NotifyEpoch != 1 {
-		t.Fatalf("leaving attention state = %#v; want acknowledged and epoch 1", got)
+	if got.Status != "running" || got.NotifyEpoch != 1 {
+		t.Fatalf("leaving attention state = %#v; want running and epoch 1", got)
 	}
 
 	// An event failure rolls the status mutation back with it.
@@ -700,7 +699,7 @@ func TestStatusTransitionEnforcesCallerPolicyInsideEventTransaction(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Status != "running" || got.StatusReason != "" || got.StatusSource != "hook" || got.StatusAt != 10 || got.LastMessage != "" || !got.Acknowledged || got.NotifyEpoch != 0 {
+	if got.Status != "running" || got.StatusReason != "" || got.StatusSource != "hook" || got.StatusAt != 10 || got.LastMessage != "" || !got.StatusSeen() || got.NotifyEpoch != 0 {
 		t.Fatalf("rejected policy transition changed row: %#v", got)
 	}
 	var events int
@@ -717,7 +716,7 @@ func TestStatusTransitionEnforcesCallerPolicyInsideEventTransaction(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Status != "waiting" || got.StatusReason != "question" || got.StatusAt != 21 || got.Acknowledged {
+	if got.Status != "waiting" || got.StatusReason != "question" || got.StatusAt != 21 || got.StatusSeen() {
 		t.Fatalf("allowed policy transition did not apply: %#v", got)
 	}
 }
@@ -738,7 +737,7 @@ func TestStatusTransitionDoesNotReviveProcessCrashWithHook(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.DB().Exec(`UPDATE sessions SET status_reason = 'pane exit', pane_exit_status = ?, crash_tail = 'fatal', acknowledged = 0 WHERE id = ?`, exit, id); err != nil {
+	if _, err := store.DB().Exec(`UPDATE sessions SET status_reason = 'pane exit', pane_exit_status = ?, crash_tail = 'fatal', seen_status_at = 0 WHERE id = ?`, exit, id); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.UpdateSessionStatus(ctx, StatusUpdateInput{
@@ -751,7 +750,7 @@ func TestStatusTransitionDoesNotReviveProcessCrashWithHook(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Status != "error" || got.StatusReason != "pane exit" || got.StatusSource != "tmux" || got.StatusAt != 10 || got.PaneExitStatus == nil || *got.PaneExitStatus != exit || got.CrashTail != "fatal" || got.Acknowledged {
+	if got.Status != "error" || got.StatusReason != "pane exit" || got.StatusSource != "tmux" || got.StatusAt != 10 || got.PaneExitStatus == nil || *got.PaneExitStatus != exit || got.CrashTail != "fatal" || got.StatusSeen() {
 		t.Fatalf("hook revived process crash: %#v", got)
 	}
 	var events int
@@ -791,7 +790,7 @@ func TestRecordAttachmentHandlesWaitingErrorAndRacedStatusAtomically(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	if waiting.Status != "running" || waiting.StatusReason != "" || waiting.StatusSource != "user" || waiting.StatusAt != 120 || !waiting.Acknowledged || waiting.NotifyEpoch != 1 {
+	if waiting.Status != "running" || waiting.StatusReason != "" || waiting.StatusSource != "user" || waiting.StatusAt != 120 || !waiting.StatusSeen() || waiting.NotifyEpoch != 1 {
 		t.Fatalf("waiting attachment = %#v", waiting)
 	}
 
@@ -818,7 +817,7 @@ func TestRecordAttachmentHandlesWaitingErrorAndRacedStatusAtomically(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !after.Acknowledged || after.Status != before.Status || after.StatusReason != before.StatusReason ||
+	if !after.StatusSeen() || after.Status != before.Status || after.StatusReason != before.StatusReason ||
 		after.StatusSource != before.StatusSource || after.StatusAt != before.StatusAt ||
 		after.KilledByUser != before.KilledByUser || after.NotifyEpoch != before.NotifyEpoch ||
 		after.PaneExitStatus == nil || before.PaneExitStatus == nil || *after.PaneExitStatus != *before.PaneExitStatus ||
@@ -843,7 +842,7 @@ func TestRecordAttachmentHandlesWaitingErrorAndRacedStatusAtomically(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	if raced.Status != "idle" || raced.StatusReason != "resolved" || raced.StatusSource != "hook" || raced.StatusAt != 320 || raced.Acknowledged || raced.NotifyEpoch != 1 {
+	if raced.Status != "idle" || raced.StatusReason != "resolved" || raced.StatusSource != "hook" || raced.StatusAt != 320 || raced.StatusSeen() || raced.NotifyEpoch != 1 {
 		t.Fatalf("raced status was overwritten: %#v", raced)
 	}
 	var racedAttachEvents int
@@ -929,7 +928,7 @@ func TestStatusTransitionProtectsUserKillAndPersistsHookAndCrashFields(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.PaneExitStatus == nil || *got.PaneExitStatus != exit || got.CrashTail != "first tail" || got.StatusAt != 14 || got.Acknowledged {
+	if got.PaneExitStatus == nil || *got.PaneExitStatus != exit || got.CrashTail != "first tail" || got.StatusAt != 14 || got.StatusSeen() {
 		t.Fatalf("first-writer crash fields = %#v", got)
 	}
 }

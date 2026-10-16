@@ -46,7 +46,7 @@ func TestAAtomicallyClearsSelectedWaitingEpisodeBeforeAttach(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Status != "running" || got.StatusSource != "user" || !got.Acknowledged || got.NotifyEpoch != 1 || got.StatusAt != clock.Now().UnixMilli() {
+	if got.Status != "running" || got.StatusSource != "user" || !got.StatusSeen() || got.NotifyEpoch != 1 || got.StatusAt != clock.Now().UnixMilli() {
 		t.Fatalf("waiting attach transition = %#v", got)
 	}
 	var events int
@@ -93,7 +93,7 @@ func TestAAcknowledgesErrorWithoutChangingVerdict(t *testing.T) {
 		t.Fatal(err)
 	}
 	if got.Status != "error" || got.StatusReason != "pane exited" || got.StatusSource != "tmux" || got.StatusAt != 110 ||
-		!got.Acknowledged || got.NotifyEpoch != 0 || got.PaneExitStatus == nil || *got.PaneExitStatus != exit || got.CrashTail != "fatal output" {
+		!got.StatusSeen() || got.NotifyEpoch != 0 || got.PaneExitStatus == nil || *got.PaneExitStatus != exit || got.CrashTail != "fatal output" {
 		t.Fatalf("error attachment changed verdict fields: %#v", got)
 	}
 }
@@ -160,14 +160,14 @@ func TestYAcknowledgesOnlySelectedRowDurably(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !selected.Acknowledged || selected.Status != "waiting" || selected.StatusSource != "hook" || selected.StatusAt != 111 || selected.NotifyEpoch != 0 {
+	if !selected.StatusSeen() || selected.Status != "waiting" || selected.StatusSource != "hook" || selected.StatusAt != 111 || selected.NotifyEpoch != 0 {
 		t.Fatalf("selected row acknowledgement changed verdict fields: %#v", selected)
 	}
 	other, err := db.GetSession(ctx, "other")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if other.Acknowledged || other.Status != "error" {
+	if other.StatusSeen() || other.Status != "error" {
 		t.Fatalf("Y changed unrelated row: %#v", other)
 	}
 	if got := strings.Count(model.View(), "!"); got != 1 {

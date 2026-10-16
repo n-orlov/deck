@@ -2623,7 +2623,7 @@ func (m *Model) previewFit() tea.Cmd {
 // handler consult this one predicate, so Y is never offered or acted on for
 // a row that has nothing left to acknowledge.
 func canAcknowledge(session store.Session) bool {
-	return !session.Acknowledged
+	return !session.StatusSeen()
 }
 
 // canKill reports whether x may act on session: any row that is not
@@ -6231,7 +6231,7 @@ func statusTokenOrText(status string) theme.Token {
 // the status-source quality, the status word and the archived flag.
 func (m Model) sidebarBadgeParts(session store.Session, statusTok theme.Token) []settingsRowSegment {
 	var parts []settingsRowSegment
-	if !session.Acknowledged && (session.Status == "waiting" || session.Status == "error") {
+	if !session.StatusSeen() && (session.Status == "waiting" || session.Status == "error") {
 		unseen := m.glyph("●", "!")
 		parts = append(parts, settingsRowSegment{Text: unseen, Tok: statusTok})
 	}

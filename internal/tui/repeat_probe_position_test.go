@@ -86,8 +86,8 @@ func TestClearedWaitingRowReprobedWaitingKeepsItsSortPosition(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if row.StatusAt != 100 || !row.Acknowledged {
-		t.Fatalf("re-probed row status_at=%d acknowledged=%v, want 100/true (cleared stays cleared)", row.StatusAt, row.Acknowledged)
+	if row.StatusAt != 100 || !row.StatusSeen() {
+		t.Fatalf("re-probed row status_at=%d acknowledged=%v, want 100/true (cleared stays cleared)", row.StatusAt, row.StatusSeen())
 	}
 }
 

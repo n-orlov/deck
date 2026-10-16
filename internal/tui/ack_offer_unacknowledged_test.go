@@ -28,31 +28,31 @@ func ackOfferModel(sessions []store.Session, selected sidebarCursor) Model {
 
 func TestFooterOffersYOnlyForUnacknowledgedRows(t *testing.T) {
 	t.Run("acknowledged waiting row omits Y", func(t *testing.T) {
-		m := ackOfferModel([]store.Session{{ID: "s1", Name: "a", Slug: "a", Agent: "claude", Status: "waiting", Acknowledged: true}}, rowCursor(0))
+		m := ackOfferModel([]store.Session{{ID: "s1", Name: "a", Slug: "a", Agent: "claude", Status: "waiting"}}, rowCursor(0))
 		if legend := ackOfferFooter(m); strings.Contains(legend, "Y acknowledge") {
 			t.Fatalf("acknowledged row: footer must not offer Y: %q", legend)
 		}
 	})
 	t.Run("acknowledged running row omits Y", func(t *testing.T) {
-		m := ackOfferModel([]store.Session{{ID: "s1", Name: "a", Slug: "a", Agent: "claude", Status: "running", Acknowledged: true}}, rowCursor(0))
+		m := ackOfferModel([]store.Session{{ID: "s1", Name: "a", Slug: "a", Agent: "claude", Status: "running"}}, rowCursor(0))
 		if legend := ackOfferFooter(m); strings.Contains(legend, "Y acknowledge") {
 			t.Fatalf("acknowledged running row: footer must not offer Y: %q", legend)
 		}
 	})
 	t.Run("group header omits Y", func(t *testing.T) {
-		m := ackOfferModel([]store.Session{{ID: "s1", Name: "a", Slug: "a", Agent: "claude", Status: "waiting", Acknowledged: false}}, headerCursor(0))
+		m := ackOfferModel([]store.Session{{ID: "s1", Name: "a", Slug: "a", Agent: "claude", Status: "waiting", StatusAt: 100}}, headerCursor(0))
 		if legend := ackOfferFooter(m); strings.Contains(legend, "Y acknowledge") {
 			t.Fatalf("group header: footer must not offer Y: %q", legend)
 		}
 	})
 	t.Run("unacknowledged waiting row shows Y", func(t *testing.T) {
-		m := ackOfferModel([]store.Session{{ID: "s1", Name: "a", Slug: "a", Agent: "claude", Status: "waiting"}}, rowCursor(0))
+		m := ackOfferModel([]store.Session{{ID: "s1", Name: "a", Slug: "a", Agent: "claude", Status: "waiting", StatusAt: 100}}, rowCursor(0))
 		if legend := ackOfferFooter(m); !strings.Contains(legend, "Y acknowledge") {
 			t.Fatalf("unacknowledged waiting row: footer must offer Y: %q", legend)
 		}
 	})
 	t.Run("unacknowledged error row shows Y", func(t *testing.T) {
-		m := ackOfferModel([]store.Session{{ID: "s1", Name: "a", Slug: "a", Agent: "claude", Status: "error"}}, rowCursor(0))
+		m := ackOfferModel([]store.Session{{ID: "s1", Name: "a", Slug: "a", Agent: "claude", Status: "error", StatusAt: 100}}, rowCursor(0))
 		if legend := ackOfferFooter(m); !strings.Contains(legend, "Y acknowledge") {
 			t.Fatalf("unacknowledged error row: footer must offer Y: %q", legend)
 		}
@@ -135,7 +135,7 @@ func TestYOnAcknowledgedRowDoesNothingAndStaysInHelp(t *testing.T) {
 	}
 	updated, _ := m.Update(m.loadSessions())
 	m = updated.(Model)
-	if !m.sessions[0].Acknowledged {
+	if !m.sessions[0].StatusSeen() {
 		t.Fatalf("test assumption violated: row is not acknowledged: %#v", m.sessions[0])
 	}
 	calls := 0

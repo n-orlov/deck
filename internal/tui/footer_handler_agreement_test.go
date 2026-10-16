@@ -161,7 +161,7 @@ func footerAgreementRowClasses() []footerAgreementRowClass {
 			name: "attention-pending",
 			build: func() (Model, *footerAgreementRecorder) {
 				return buildFooterAgreementModel(
-					store.Session{ID: "s1", Name: "alpha", Slug: "alpha", Agent: "claude", Status: "waiting", Acknowledged: false}, nil, nil)
+					store.Session{ID: "s1", Name: "alpha", Slug: "alpha", Agent: "claude", Status: "waiting", StatusAt: 100}, nil, nil)
 			},
 		},
 		{

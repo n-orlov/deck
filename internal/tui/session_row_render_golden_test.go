@@ -43,7 +43,7 @@ func renderSessionRowGolden(t *testing.T) string {
 	sessions := []store.Session{
 		{ID: "a0", Name: "alpha zero", Status: "idle", GroupName: "a", GroupID: &idA, CreatedAt: ago(0)},
 		{ID: "a1", Name: "alpha one", Status: "working", GroupName: "a", GroupID: &idA, CreatedAt: ago(5 * time.Minute)},
-		{ID: "b0", Name: "bravo zero", Status: "waiting", GroupName: "b", GroupID: &idB, CreatedAt: ago(3 * time.Hour)},
+		{ID: "b0", Name: "bravo zero", Status: "waiting", StatusAt: 100, GroupName: "b", GroupID: &idB, CreatedAt: ago(3 * time.Hour)},
 		{ID: "d0", Name: "default row", Status: "idle", CreatedAt: ago(50 * time.Hour)},
 	}
 	modes := []struct {

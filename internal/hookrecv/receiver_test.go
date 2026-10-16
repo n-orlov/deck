@@ -94,7 +94,7 @@ func TestReceiveHookAppliesOverAnyStaleSourceExceptStopped(t *testing.T) {
 					db := newHookStore(t)
 					id := event + "-" + current + "-" + currentSource
 					createHookSession(t, db, id, "claude", id)
-					if _, err := db.DB().Exec(`UPDATE sessions SET status = ?, status_reason = 'before', status_source = ?, status_at = 7, notify_epoch = 3, acknowledged = 1, last_message = 'before message' WHERE id = ?`, current, currentSource, id); err != nil {
+					if _, err := db.DB().Exec(`UPDATE sessions SET status = ?, status_reason = 'before', status_source = ?, status_at = 7, notify_epoch = 3, seen_status_at = 7, last_message = 'before message' WHERE id = ?`, current, currentSource, id); err != nil {
 						t.Fatal(err)
 					}
 					raw := []byte(fmt.Sprintf(`{"hook_event_name":%q,"session_id":%q,"source":"resume","notification_type":"permission_prompt","error_type":"api_error","reason":"logout","last_assistant_message":"after message"}`, event, id))
@@ -113,18 +113,18 @@ func TestReceiveHookAppliesOverAnyStaleSourceExceptStopped(t *testing.T) {
 						// precedence; internal/store hookRefinesTmuxStop).
 						// The row was already stopped, so the write repeats the status
 						// (R303) and keeps status_at.
-						if got.Status != "stopped" || got.StatusSource != "hook" || got.StatusReason != "logout" || got.StatusAt != 7 || got.NotifyEpoch != 3 || !got.Acknowledged || got.LastMessage != "before message" {
+						if got.Status != "stopped" || got.StatusSource != "hook" || got.StatusReason != "logout" || got.StatusAt != 7 || got.NotifyEpoch != 3 || !got.StatusSeen() || got.LastMessage != "before message" {
 							t.Fatalf("SessionEnd did not refine a tmux-sourced stop: %#v", got)
 						}
 					case current == "stopped":
-						if got.Status != current || got.StatusReason != "before" || got.StatusSource != currentSource || got.StatusAt != 7 || got.NotifyEpoch != 3 || !got.Acknowledged || got.LastMessage != "before message" {
+						if got.Status != current || got.StatusReason != "before" || got.StatusSource != currentSource || got.StatusAt != 7 || got.NotifyEpoch != 3 || !got.StatusSeen() || got.LastMessage != "before message" {
 							t.Fatalf("hook resurrected a stopped row: %#v", got)
 						}
 					case current == mapping.Status:
 						// A hook repeating the row's status is inert (R303): the
 						// verdict's source is recorded, but status_at, the notify
 						// epoch and the acknowledged flag keep their values.
-						if got.Status != current || got.StatusSource != "hook" || got.StatusAt != 7 || got.NotifyEpoch != 3 || !got.Acknowledged {
+						if got.Status != current || got.StatusSource != "hook" || got.StatusAt != 7 || got.NotifyEpoch != 3 || !got.StatusSeen() {
 							t.Fatalf("a repeated %s hook over a stale %s verdict was not inert: %#v", current, currentSource, got)
 						}
 					case got.Status != mapping.Status || got.StatusSource != "hook" || got.StatusAt != 20:
@@ -272,7 +272,7 @@ func TestReceiveDoesNotReviveCleanStopOrProcessCrash(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			db := newHookStore(t)
 			createHookSession(t, db, tc.name, "claude", tc.name)
-			if _, err := db.DB().Exec(`UPDATE sessions SET status = ?, status_reason = 'terminal', status_source = 'tmux', status_at = 9, pane_exit_status = ?, crash_tail = 'fatal', notify_epoch = 4, acknowledged = 0, last_message = 'last' WHERE id = ?`, tc.status, tc.paneStatus, tc.name); err != nil {
+			if _, err := db.DB().Exec(`UPDATE sessions SET status = ?, status_reason = 'terminal', status_source = 'tmux', status_at = 9, pane_exit_status = ?, crash_tail = 'fatal', notify_epoch = 4, seen_status_at = 0, last_message = 'last' WHERE id = ?`, tc.status, tc.paneStatus, tc.name); err != nil {
 				t.Fatal(err)
 			}
 			raw := []byte(fmt.Sprintf(`{"hook_event_name":%q,"session_id":%q,"source":"resume"}`, tc.event, tc.name))
@@ -283,7 +283,7 @@ func TestReceiveDoesNotReviveCleanStopOrProcessCrash(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if got.Status != tc.status || got.StatusReason != "terminal" || got.StatusSource != "tmux" || got.StatusAt != 9 || got.CrashTail != "fatal" || got.NotifyEpoch != 4 || got.Acknowledged || got.LastMessage != "last" {
+			if got.Status != tc.status || got.StatusReason != "terminal" || got.StatusSource != "tmux" || got.StatusAt != 9 || got.CrashTail != "fatal" || got.NotifyEpoch != 4 || got.StatusSeen() || got.LastMessage != "last" {
 				t.Fatalf("terminal metadata changed: %#v", got)
 			}
 			if tc.paneStatus != nil && (got.PaneExitStatus == nil || *got.PaneExitStatus != 137) {
