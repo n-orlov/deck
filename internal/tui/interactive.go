@@ -67,7 +67,6 @@ func (m Model) enterInteractiveBody(force bool) (tea.Model, tea.Cmd) {
 	}
 	session, _ := m.selectedSession()
 	ctx := context.Background()
-	client := m.tmuxClient
 	entry, ref := m.claimInteractiveEntry(ctx, session, force)
 	if ref != nil {
 		m.setEntryRefusal(session.ID, ref.kind, ref.reason)
@@ -75,26 +74,9 @@ func (m Model) enterInteractiveBody(force bool) (tea.Model, tea.Cmd) {
 	}
 	windowTarget, claim, dispatcher, grid := entry.windowTarget, entry.claim, entry.dispatcher, entry.grid
 
-	// SPEC §7: entering the interactive preview is a deck-mediated
-	// attachment in exactly `a`'s sense -- the keyboard is about to reach
-	// the pane -- so the same durable transaction (store.RecordAttachment,
-	// via the same m.prepareAttach attachSelected consults) answers a
-	// waiting row and acknowledges an error row, against the durable row
-	// rather than the possibly-stale list frame. It runs only after every
-	// refusal and every fallible tmux step above: a refused or failed
-	// entry must not claim the user answered anything. A store failure
-	// here refuses the entry like attachSelected refuses the attach, and
-	// unwinds the claim already made -- grid first, then geometry, then
-	// ownership, the same order exitInteractive's teardown uses (and
-	// through the same still-mine-gated helper, so an unwind that races a
-	// steal disarms nothing of the winner's; task 112).
-	if m.prepareAttach != nil {
-		if err := m.prepareAttach(ctx, session.ID); err != nil {
-			teardownInteractiveClaim(ctx, client, claim.ownership, windowTarget, claim.geometry, grid)
-			m.setEntryRefusal(session.ID, entryRefusalOther, err.Error())
-			return m, nil
-		}
-	}
+	// R320: entering the interactive preview is inert on status and seen
+	// state -- no store write happens here, so the row neither changes
+	// status nor moves. Engagement (R321) is what sets seen.
 
 	// R305: the entry fit (and the pin, and later the restore) resized the
 	// window, so the pane redraws.

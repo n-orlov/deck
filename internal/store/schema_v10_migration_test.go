@@ -255,8 +255,8 @@ func hookFiredOf(t *testing.T, st *Store, id string) sql.NullString {
 
 // TestHookFiredClearsWhenNotifyEpochAdvances: hook_fired belongs to one
 // notify_epoch. It survives a write that leaves the epoch alone and is cleared
-// by both paths that advance it -- an attention state resolving through a
-// status verdict, and an attachment answering a waiting session.
+// by the path that advances it -- an attention state resolving through a
+// status verdict. (An attachment no longer answers a waiting session, R320.)
 func TestHookFiredClearsWhenNotifyEpochAdvances(t *testing.T) {
 	home := t.TempDir()
 	st, err := OpenPath(home, filepath.Join(home, "state.db"))
@@ -267,7 +267,7 @@ func TestHookFiredClearsWhenNotifyEpochAdvances(t *testing.T) {
 	ctx := context.Background()
 	const fired = `[["waiting","permission_prompt"]]`
 
-	for _, id := range []string{"via-verdict", "via-attach"} {
+	for _, id := range []string{"via-verdict"} {
 		if _, err := st.CreateSession(ctx, CreateSessionInput{
 			ID: id, Name: id, CWD: "/work", Agent: "claude", CapturedPath: "/bin",
 			Status: "running", StatusSource: "hook", StatusAt: 100, CreatedAt: 1,
@@ -310,16 +310,5 @@ func TestHookFiredClearsWhenNotifyEpochAdvances(t *testing.T) {
 	}
 	if f := hookFiredOf(t, st, "via-verdict"); f.Valid {
 		t.Fatalf("hook_fired after the epoch advanced by a verdict = %+v; want NULL", f)
-	}
-
-	if err := st.RecordAttachment(ctx, "via-attach", 140); err != nil {
-		t.Fatal(err)
-	}
-	got, err = st.GetSession(ctx, "via-attach")
-	if err != nil || got.NotifyEpoch != 1 {
-		t.Fatalf("epoch after attaching to a waiting session = %d, %v; want 1", got.NotifyEpoch, err)
-	}
-	if f := hookFiredOf(t, st, "via-attach"); f.Valid {
-		t.Fatalf("hook_fired after the epoch advanced by an attachment = %+v; want NULL", f)
 	}
 }

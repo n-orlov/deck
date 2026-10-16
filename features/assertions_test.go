@@ -45,6 +45,8 @@ func registerBlackBoxAssertionSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^the state database session "([^"]+)" is "([^"]+)" from "([^"]+)" with killed_by_user=([01])$`, databaseSessionTerminalFields)
 	sc.Step(`^the released running hook fires for session "([^"]+)"$`, releasedRunningHookForSession)
 	sc.Step(`^the released waiting hook fires for session "([^"]+)"$`, releasedWaitingHookForSession)
+	sc.Step(`^the state database session "([^"]+)" is "([^"]+)" from "([^"]+)" and is (seen|unseen), with notify_epoch=([0-9]+), and ([0-9]+) attached events?$`, databaseSessionSeenFields)
+	sc.Step(`^after one configured reconcile interval deck client "([^"]+)" row "([^"]+)" still contains "([^"]+)"$`, clientRowStillContainsAfterReconcileInterval)
 	sc.Step(`^the state database session "([^"]+)" is "([^"]+)" from "([^"]+)" with acknowledged=([01]), notify_epoch=([0-9]+), and ([0-9]+) attached events?$`, databaseSessionAttentionFields)
 	sc.Step(`^the state database session "([^"]+)" has ([0-9]+) attached events?$`, databaseSessionAttachedEventCount)
 	sc.Step(`^the audit log is valid JSONL$`, auditLogIsJSONL)
@@ -142,6 +144,37 @@ func clientScreenStillContainsAfterReconcileInterval(ctx context.Context, name, 
 		return fmt.Errorf("client %q does not still show %q after reconcile interval %s:\n%s", name, want, scenarioReconcileInterval, frame)
 	}
 	return nil
+}
+
+// clientRowStillContainsAfterReconcileInterval waits one reconcile interval,
+// then asserts the row still shows want: the positive twin of the step above
+// for a marker (the unseen "!") that must survive looking at the row (R320).
+func clientRowStillContainsAfterReconcileInterval(ctx context.Context, clientName, sessionName, want string) error {
+	timer := time.NewTimer(scenarioReconcileInterval + 100*time.Millisecond)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+	}
+	h, err := assertionHarness(ctx)
+	if err != nil {
+		return err
+	}
+	client, err := h.Client(clientName)
+	if err != nil {
+		return err
+	}
+	frame := client.Frame(false)
+	for _, line := range strings.Split(frame, "\n") {
+		if strings.Contains(line, sessionName) {
+			if !strings.Contains(line, want) {
+				return fmt.Errorf("deck client %q row %q no longer contains %q: %s", clientName, sessionName, want, line)
+			}
+			return nil
+		}
+	}
+	return fmt.Errorf("deck client %q has no rendered row %q:\n%s", clientName, sessionName, frame)
 }
 
 func clientRowDoesNotContainAfterReconcileInterval(ctx context.Context, clientName, sessionName, unwanted string) error {
@@ -587,6 +620,16 @@ func releasedHookForSession(ctx context.Context, name, payload string) error {
 		return fmt.Errorf("released hook for session %q: %w: %s", name, err, strings.TrimSpace(string(output)))
 	}
 	return nil
+}
+
+// databaseSessionSeenFields is the seen-vocabulary form of
+// databaseSessionAttentionFields: "seen" means seen_status_at = status_at.
+func databaseSessionSeenFields(ctx context.Context, name, wantStatus, wantSource, seen string, wantEpoch, wantAttachedEvents int) error {
+	wantSeen := 0
+	if seen == "seen" {
+		wantSeen = 1
+	}
+	return databaseSessionAttentionFields(ctx, name, wantStatus, wantSource, wantSeen, wantEpoch, wantAttachedEvents)
 }
 
 func databaseSessionAttentionFields(ctx context.Context, name, wantStatus, wantSource string, wantAcknowledged, wantEpoch, wantAttachedEvents int) error {

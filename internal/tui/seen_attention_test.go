@@ -179,4 +179,3 @@ func TestYIsOfferedOnlyWhereSomethingIsUnseen(t *testing.T) {
 		})
 	}
 }
-

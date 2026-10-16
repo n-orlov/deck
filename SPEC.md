@@ -988,7 +988,7 @@ other section restates a transition, they only refer here:
 | *any* | Claude `idle_prompt` notification (R308) | unchanged — recorded as an event, never applied |
 | `running` | turn finished cleanly | `idle` |
 | `running` | turn or API failure | `error` |
-| `waiting` | answered: probe verdict, or the user attaches | `running` |
+| `waiting` | answered: probe verdict or a later hook (attaching, clicking and previewing never answer it, R320) | `running` |
 | `idle` | new prompt | `running` |
 | `error` | new prompt, or a retry that succeeds | `running` |
 | *any* | pane exit 0 · `x` kill · session-end hook | `stopped` |
@@ -1058,16 +1058,19 @@ Rules:
   hook verdict, and `tmux` only ever supplies liveness.
 - A transition into `waiting` or `error` leaves the row unseen (`seen_status_at` reset to 0, so it
   differs from the new `status_at`); a row is seen exactly when `seen_status_at = status_at`.
-  Attaching or `Y` sets `seen_status_at = status_at`. `Y` is the
-  way to mark it without attaching, so it applies only where there is something unseen: on
+  `Y` sets `seen_status_at = status_at`; engagement (R321) will too, and nothing else does. **Attach, click
+  and passive preview are inert (R320):** they never change `status` or the seen state, write no `attached`
+  event and no `notify_epoch` bump, and the row does not move, in the `attention` order or the `activity`
+  order. This holds for every way the keyboard reaches the pane through deck: `a`'s full attach and the
+  interactive preview (§11.9), whether entered by `↵`, forced by `F`, reached by a sidebar or preview click,
+  or entered by `[ui] attach_on_new` / `attach_on_resume`. `Y` is the way to mark a row seen without
+  engaging, so it applies only where there is something unseen: on
   a row already seen it does nothing at all — no write, no event, no message —
-  and §11.3's footer does not offer it there. "Attaching"
-  means every way the keyboard reaches the pane through deck: `a`'s full attach and the
-  interactive preview (§11.9), whether entered by `↵` or forced by `F` — the same durable
-  transaction applies to any of them, and a forced entry is an attachment for exactly the
-  reason an ordinary one is, since the keyboard reaches the pane either way. Being
-  *displaced* from the preview by another client records nothing: that is something done to
-  the user, not by them. Leaving an attention state bumps `notify_epoch` (§10.3).
+  and §11.3's footer does not offer it there. Being
+  *displaced* from the preview by another client records nothing either. Covering tests:
+  `TestAttachIsInertOnStatusSeenAndPosition` (eight cases: `waiting`, `error`, `running`, `idle` under the
+  `attention` and `activity` orders), `TestClickIsInertOnStatusSeenAndPosition` and
+  `TestPassivePreviewIsInertOnStatusSeenAndPosition`. Leaving an attention state bumps `notify_epoch` (§10.3).
 - **Needs attention (R319).** A row needs attention when it is `waiting`, or `error` **and
   unseen**; seen means `seen_status_at = status_at`, an equality and never an ordering. A
   seen `waiting` row still needs attention (it is still blocked on the user): it stays in the
@@ -1089,12 +1092,9 @@ Rules:
   keeps its position in the `attention` sort order (which orders by `status_at`); the
   `activity` order reads `last_output_at` (§7, §11) and no status write can move it. A hook repeating the current status therefore does not extend a hook verdict's
   freshness window: staleness (§7, below) is measured from the last change of status.
-- **Attaching to a `waiting` row also clears the status to `running`** (not only the
-  acknowledgement): answering the prompt is why you attached, deck watched you do it, and
-  no hook fires on a prompt being answered — the subscribed hooks (§8.1) are per-turn, not
-  per-tool-call, so the next event is the turn's `stop`. Without this rule a row you just
-  unblocked stays `waiting` until the turn ends — a standing false positive in the one
-  signal the product exists to provide.
+- **Attaching never answers a `waiting` row (R320).** The old rule that attaching moved a `waiting` row to
+  `running` is removed: looking at a session is not evidence that the prompt was answered. A `waiting` row
+  leaves `waiting` on evidence only: a later hook, or a probe verdict (including the staleness rule below).
 - Staleness: a `starting`, `running` **or `waiting`** session with no event for
   `stale_after` (default 45 s) becomes eligible for probing. For non-hook agents, probing
   is the only source. `waiting` is included for the unattended half of the same hole: a
@@ -3150,7 +3150,7 @@ truncated-but-honest frame beats an unpredictable one.
   **Nor does it list a key that would refuse the current selection.** `x` is absent on a row
   with no pane to kill, `r` on a row that is already running, `A` on a row that is already
   archived, `U` on one that is not, `Y` on a row with nothing to acknowledge (§7's
-  seen state, `seen_status_at = status_at`, which every attach leaves behind), and every per-row key when the list
+  seen state, `seen_status_at = status_at`), and every per-row key when the list
   is empty; with a mark
   set in force the question is asked of the marked rows, since that is what the key would act
   on. This is the same argument one step finer: a key that is bound but refuses *here* is,
@@ -3766,7 +3766,7 @@ than the obvious one:
 - **`[ui] attach_on_click` turns that handover off.** With it false (default true, §6.5,
   `DECK_ATTACH_ON_CLICK`, editable in Settings §11.5), a click **and a double-click** on a
   sidebar row only select it: the list keeps keyboard focus, the preview stays passive, and
-  no entry, ownership claim, fit or attachment record happens, so a key typed next is a list
+  no entry, ownership claim or fit happens, so a key typed next is a list
   key. A double-click is two presses on the row and has no handler of its own, so the one
   setting governs both. `↵` still enters. The setting does not touch the group-header click
   (collapse), a click on the passive preview (that is `↵`), the collapsed-strip click, a
@@ -3781,9 +3781,9 @@ than the obvious one:
   gratuitous resize of a live window). A click over the **preview** while interactive is
   unchanged from below: it is the drag-to-copy gesture's press, never a navigation.
 - **The wheel scrolls the list under the pointer and changes neither focus nor selection.**
-  Scrolling to look at something is not selecting it. A wheel that moved the selection would
-  fire status-changing side effects (§7's attach-clears-`waiting` is one keystroke away)
-  from an idle gesture. Over the preview it scrolls nothing, because there is nothing there
+  Scrolling to look at something is not selecting it. Attach, click and preview write no
+  status and no seen state (§7, R320), but a wheel that moved the selection would still turn an
+  idle gesture into a navigation. Over the preview it scrolls nothing, because there is nothing there
   to scroll.
 - **A click outside a dialog does nothing.** It neither cancels nor confirms; `esc` cancels
   (§11.4). "Click outside to dismiss" puts cancel and confirm a few cells apart on a
@@ -3906,12 +3906,11 @@ session's window to the preview panel, streams the pane into an in-process cell 
 forwards keystrokes to it. `Ctrl+Q` returns. `a` remains the escalation to a real terminal.
 `Ctrl+U` is among the forwarded keys: deck never handles it here, so the update confirmation (§11.4) is
 not offered and the pane receives the single byte 0x15 whatever the update indicator reads.
-Entering is an attachment in §7's sense: the same durable transaction as `a`'s attach answers
-a `waiting` row and acknowledges an `error` row, applied only once entry has actually
-succeeded — a refused entry claims nothing.
+Entering is an attachment in §7's sense, and an attachment is inert (R320): it writes no status, no seen
+state and no event, so the row neither changes nor moves. A refused entry claims nothing either.
 A successful create from `n` (§11, `[ui] attach_on_new`) or resume from `r`/`R` (§9.1,
 `[ui] attach_on_resume`) enters by itself through exactly this path — the same refusals and
-banner, the same claim and fit, the same attachment transaction — so there is one way in, not
+banner, the same claim and fit — so there is one way in, not
 two.
 
 **A host terminal resize re-fits an interactive session at once too.** While interactive, a

@@ -282,11 +282,11 @@ Feature: §11.8 mouse bindings and the [ui] mouse / DECK_MOUSE opt-out (requirem
     When deck client "A" exits cleanly
 
   @requirement-37-preview-click-enters-and-empty-sidebar-click-leaves
-  Scenario: clicking the preview enters interactive mode and records the same attachment enter does, and clicking below the last row leaves
+  Scenario: clicking the preview enters interactive mode and records no attachment, and clicking below the last row leaves
     # Task 011 (B.5, R144, GH #37): the preview click's own entry (task
-    # 010) records the exact durable attachment `↵`/RecordAttachment
-    # records -- an `attached` event, once the session's status is one
-    # RecordAttachment actually answers (`waiting`, here) -- and a left
+    # 010) is inert exactly like `↵` (R320): no `attached` event and no
+    # status or seen change on a `waiting` row (covering test:
+    # TestClickIsInertOnStatusSeenAndPosition) -- and a left
     # press over the sidebar's empty padding, where there is no row to
     # re-target and so nothing left to fall through to except Ctrl+Q's
     # own exitInteractive, is the second, equally deliberate way back to
@@ -299,7 +299,7 @@ Feature: §11.8 mouse bindings and the [ui] mouse / DECK_MOUSE opt-out (requirem
     And deck client "A" clicks at column 70 row 15
     Then deck client "A" screen contains "interactive"
     And deck client "A" screen contains "Ctrl+Q"
-    And the state database session "mouse-attach-rt" has 1 attached event
+    And the state database session "mouse-attach-rt" has 0 attached events
     When deck client "A" clicks at column 10 row 15
     Then deck client "A" screen contains "deck - sessions"
     When deck client "A" exits cleanly

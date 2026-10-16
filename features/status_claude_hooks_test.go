@@ -28,6 +28,7 @@ func registerClaudeHookStatusSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^fake Claude session "([^"]+)" fires "([^"]+)" for session "([^"]+)" using conversation identity:$`, fakeClaudeFiresForSession)
 	sc.Step(`^fake Claude session "([^"]+)" exits its pane cleanly$`, fakeClaudeExitsPaneCleanly)
 	sc.Step(`^the released deck _hook receives "([^"]+)" for session "([^"]+)" using (injected|conversation) identity:$`, releasedHookFiresForSession)
+	sc.Step(`^the state database session "([^"]+)" has hook status "([^"]+)", reason "([^"]*)", message "([^"]*)", (seen|unseen), and notify_epoch ([0-9]+)$`, databaseSessionHasHookStatusSeen)
 	sc.Step(`^the state database session "([^"]+)" has hook status "([^"]+)", reason "([^"]*)", message "([^"]*)", acknowledged ([01]), and notify_epoch ([0-9]+)$`, databaseSessionHasHookStatus)
 	sc.Step(`^the state database session "([^"]+)" is repaired to "([^"]+)" from "([^"]+)" with reason "([^"]*)", message "([^"]*)", acknowledged ([01]), and notify_epoch ([0-9]+)$`, databaseSessionIsRepairedTo)
 	sc.Step(`^session "([^"]+)" has one "([^"]+)" event with payload field "([^"]+)" equal to "([^"]*)"$`, sessionHasOneEventPayloadField)
@@ -274,6 +275,16 @@ func releasedHookFiresForSession(ctx context.Context, event, target, identity st
 		return fmt.Errorf("released deck _hook for session %q event %q: %w: %s", target, event, err, strings.TrimSpace(string(output)))
 	}
 	return nil
+}
+
+// databaseSessionHasHookStatusSeen is the seen-vocabulary form of
+// databaseSessionHasHookStatus: "seen" means seen_status_at = status_at.
+func databaseSessionHasHookStatusSeen(ctx context.Context, name, wantStatus, wantReason, wantMessage, seen, epochText string) error {
+	flag := "0"
+	if seen == "seen" {
+		flag = "1"
+	}
+	return databaseSessionHasHookStatus(ctx, name, wantStatus, wantReason, wantMessage, flag, epochText)
 }
 
 func databaseSessionHasHookStatus(ctx context.Context, name, wantStatus, wantReason, wantMessage, acknowledgedText, epochText string) error {

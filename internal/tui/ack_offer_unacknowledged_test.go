@@ -91,7 +91,7 @@ func ackOfferStoreModel(t *testing.T) (Model, *store.Store) {
 	return updated.(Model), db
 }
 
-func TestFooterDropsYOnceAttachAcknowledgesTheRow(t *testing.T) {
+func TestFooterKeepsOfferingYAfterAttach(t *testing.T) {
 	m, _ := ackOfferStoreModel(t)
 	if legend := ackOfferFooter(m); !strings.Contains(legend, "Y acknowledge") {
 		t.Fatalf("before attach: footer must offer Y: %q", legend)
@@ -103,8 +103,8 @@ func TestFooterDropsYOnceAttachAcknowledgesTheRow(t *testing.T) {
 	m = updated.(Model)
 	updated, _ = m.Update(m.loadSessions())
 	m = updated.(Model)
-	if legend := ackOfferFooter(m); strings.Contains(legend, "Y acknowledge") {
-		t.Fatalf("after attach acknowledged the row: footer must drop Y: %q", legend)
+	if legend := ackOfferFooter(m); !strings.Contains(legend, "Y acknowledge") {
+		t.Fatalf("after attach (R320: inert, the row stays unseen): footer must still offer Y: %q", legend)
 	}
 }
 

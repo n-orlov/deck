@@ -225,7 +225,6 @@ type Model struct {
 	create                  func(context.Context, service.ShellCreateInput) (store.Session, error)
 	createAgentSession      func(context.Context, service.AgentCreateInput) (store.Session, error)
 	attach                  func(context.Context, string) (*exec.Cmd, error)
-	prepareAttach           func(context.Context, string) error
 	kill                    func(context.Context, store.Session) error
 	acknowledge             func(context.Context, string) error
 	reconcile               func(context.Context) error
@@ -2033,12 +2032,6 @@ func New(db *store.Store, settings config.Settings, tmuxNote string) Model {
 	}
 	if db != nil {
 		m.acknowledge = db.AcknowledgeSession
-		m.prepareAttach = func(ctx context.Context, sessionID string) error {
-			if settings.Clock == nil {
-				return fmt.Errorf("attach status clock is unavailable")
-			}
-			return db.RecordAttachment(ctx, sessionID, settings.Clock.Now().UnixMilli())
-		}
 		m.loadPersistedUIState(db)
 	}
 	return m
@@ -4318,15 +4311,7 @@ func (m Model) attachSelected() (tea.Model, tea.Cmd) {
 		m.setAttachError("Cannot attach: " + err.Error())
 		return m, nil
 	}
-	// Consult the durable row on every attachment. The list frame may lag a
-	// hook that just made it waiting or error; the store transaction applies
-	// only that row's current status and leaves raced resolutions untouched.
-	if m.prepareAttach != nil {
-		if err := m.prepareAttach(context.Background(), session.ID); err != nil {
-			m.setAttachError("Cannot attach: " + err.Error())
-			return m, nil
-		}
-	}
+	// R320: attaching is inert on status and seen state; nothing is written.
 	m.setAttachError("")
 	// SPEC §11.9 (task 008/R143, GH #38): `a` is one of the three entry
 	// paths (↵, F, a) whose SUCCESS clears an active refusal banner --

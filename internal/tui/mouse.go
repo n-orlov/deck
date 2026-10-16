@@ -238,9 +238,8 @@ func (m Model) handleMousePress(e tea.MouseMsg) (tea.Model, tea.Cmd) {
 		// row is selected from the click's own coordinates (the click
 		// landed in the preview, not on a row). enterInteractive already
 		// carries every refusal (R143's banner), the header-cursor no-op
-		// (hasSelectedSession is false while m.selected is a header) and
-		// the same durable attachment record (m.prepareAttach) ↵ itself
-		// gets, so this is a plain call-through, not a second copy of any
+		// (hasSelectedSession is false while m.selected is a header), so
+		// this is a plain call-through, not a second copy of any
 		// of that ladder. This still must not fall through to the sidebar,
 		// and it still starts no drag-to-copy selection (that gesture is
 		// scoped to interactive mode only -- Update's own tea.MouseMsg case

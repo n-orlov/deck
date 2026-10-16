@@ -1,24 +1,21 @@
 @multiclient
-Feature: Forced entry into interactive mode answers a waiting row
+Feature: Forced entry into interactive mode leaves a waiting row untouched
   `F` (SPEC "F forces entry over whoever holds the window") is identical to
   plain Enter in every respect but two: it does not refuse for another
   client's claim and it steals ownership over a live holder instead of
   standing down for one (task 105). Stealing the window is still a
-  deck-mediated attachment in exactly the sense SPEC section 7 gives `a`
-  and plain Enter: it answers a waiting row and records an attached event
-  at the client that forced its way in, using the same durable transaction
-  (task 109), not a degraded or partial one.
+  attachment in exactly the sense SPEC section 7 gives `a` and plain Enter:
+  attach is inert (R320), so it changes no status, sets no seen state and
+  writes no attached event, whichever client forced its way in.
 
-  The row only becomes waiting after the first client is already inside the
-  preview, so the answering attachment cannot be the first client's ordinary
-  entry: entry on a running row is a durable no-op (store.RecordAttachment
-  only answers waiting and acknowledges error), leaving the pre-force state
-  identical to status_attach.feature's -- waiting from hook, acknowledged=0,
-  notify_epoch=0, 0 attached events. The forcing client's `F` is therefore
-  the only attachment in the scenario, and the post-state asserted below is
-  status_attach.feature's post-state for it.
+  The row becomes waiting after the first client is already inside the
+  preview. Its state is waiting from hook, unseen, notify_epoch=0, 0 attached
+  events, and the forcing client's `F` must leave exactly that state, the
+  same post-state status_attach.feature asserts for an attach.
+  Covering test of the rewritten scenarios: TestAttachIsInertOnStatusSeenAndPosition
+  (internal/tui/attach_inert_test.go).
 
-  Scenario: a forced entry over a waiting row answers it at the forcing client
+  Scenario: a forced entry over a waiting row leaves it waiting and unseen
     Given a long-running fake "claude" binary is on PATH for future deck clients
     And deck client "A" is started
     And deck client "B" is started
@@ -29,12 +26,12 @@ Feature: Forced entry into interactive mode answers a waiting row
     And deck client "A" enters interactive mode
     Then deck client "A" screen contains "Ctrl+Q"
     When the released waiting hook fires for session "contested row"
-    Then the state database session "contested row" is "waiting" from "hook" with acknowledged=0, notify_epoch=0, and 0 attached events
+    Then the state database session "contested row" is "waiting" from "hook" and is unseen, with notify_epoch=0, and 0 attached events
     And within one configured reconcile interval deck client "B" row "contested row" contains "waiting"
     When deck client "B" selects session "contested row"
     And deck client "B" forces entry into interactive mode
     Then deck client "B" screen contains "Ctrl+Q"
-    And the state database session "contested row" is "running" from "user" with acknowledged=1, notify_epoch=1, and 1 attached event
+    And the state database session "contested row" is "waiting" from "hook" and is unseen, with notify_epoch=0, and 0 attached events
     # B's steal displaced A out of interactive mode entirely (task 118's
     # previewTick fast path/async backstop, raised on A's OWN model without
     # A doing anything): A is now looking at the lost-attach dialog (task
@@ -46,7 +43,7 @@ Feature: Forced entry into interactive mode answers a waiting row
     And deck client "A" exits cleanly
     And deck client "B" exits cleanly
 
-  # The steal chain does more than answer the row (the scenario above): it
+  # The steal chain does more than leave the row alone (the scenario above): it
   # must also leave the WINDOW exactly as it was before any deck client
   # ever touched it -- byte-exact geometry (task 114's unit-test proof,
   # here on the real multi-client path) and both isize options released,
@@ -158,9 +155,9 @@ Feature: Forced entry into interactive mode answers a waiting row
   # exercises against a hand-crafted claim -- here against a real one) and
   # must name `F` as the way past it -- not silently degrade and not steal
   # on its own. Only B's SUBSEQUENT `F` may steal, and the durable row must
-  # show exactly one attached event for that steal: neither B's refused
-  # plain Enter nor A's own fall-out through the lost-attach dialog may add
-  # a second one.
+  # show no attached event at all: neither B's refused plain
+  # Enter, B's forced steal nor A's own fall-out through the lost-attach
+  # dialog writes one (R320).
   # The lost-attach dialog raised on the displaced client (task 116) binds
   # only Enter -- updateLostAttachView routes every OTHER key to itself and
   # does nothing with it (SPEC.md ~1770, "swallows every key -- that is its
@@ -171,10 +168,9 @@ Feature: Forced entry into interactive mode answers a waiting row
   # dialog is up -- the selection A had before the steal must still be
   # exactly where A left it once the dialog is dismissed, no confirm dialog
   # may appear, and the row's durable state (a shell session starts and
-  # stays "running" from "tmux", RecordAttachment's default case is a
-  # no-op for any status but waiting/error, so acknowledged/notify_epoch/
-  # attached-event count never move for this session at any point in the
-  # scenario) must read back identical to its pre-steal value.
+  # stays "running" from "tmux", and attach is inert (R320), so seen
+  # state, notify_epoch and the attached-event count never move for this
+  # session at any point in the scenario) must read back identical to its pre-steal value.
   Scenario: the lost-attach dialog swallows j, dd and x
     Given deck client "A" is started
     And deck client "B" is started
@@ -182,7 +178,7 @@ Feature: Forced entry into interactive mode answers a waiting row
     Then within one configured reconcile interval deck client "B" screen contains "swallowed"
     And deck client "A" selects session "swallowed"
     And deck client "B" selects session "swallowed"
-    And the state database session "swallowed" is "running" from "tmux" with acknowledged=1, notify_epoch=0, and 0 attached events
+    And the state database session "swallowed" is "running" from "tmux" and is seen, with notify_epoch=0, and 0 attached events
     When deck client "A" enters interactive mode
     Then deck client "A" screen contains "Ctrl+Q"
     When deck client "B" forces entry into interactive mode
@@ -193,12 +189,12 @@ Feature: Forced entry into interactive mode answers a waiting row
     And deck client "A" sends "x"
     Then deck client "A" screen contains "Lost attach: swallowed"
     And deck client "A" screen does not contain "Enter deletes"
-    And the state database session "swallowed" is "running" from "tmux" with acknowledged=1, notify_epoch=0, and 0 attached events
+    And the state database session "swallowed" is "running" from "tmux" and is seen, with notify_epoch=0, and 0 attached events
     When deck client "A" dismisses the lost-attach dialog
     Then deck client "A" screen contains "deck - sessions"
     And deck client "A" has session "swallowed" selected
     And deck client "A" screen does not contain "Enter deletes"
-    And the state database session "swallowed" is "running" from "tmux" with acknowledged=1, notify_epoch=0, and 0 attached events
+    And the state database session "swallowed" is "running" from "tmux" and is seen, with notify_epoch=0, and 0 attached events
     When deck client "B" leaves interactive mode
     And deck client "A" exits cleanly
     And deck client "B" exits cleanly
@@ -238,7 +234,7 @@ Feature: Forced entry into interactive mode answers a waiting row
     And deck client "A" exits cleanly
     And deck client "B" exits cleanly
 
-  Scenario: a refused plain entry names F, and only B's forced steal is durably attached
+  Scenario: a refused plain entry names F, and B's forced steal writes nothing durable
     Given a long-running fake "claude" binary is on PATH for future deck clients
     And deck client "A" is started
     And deck client "B" is started
@@ -249,7 +245,7 @@ Feature: Forced entry into interactive mode answers a waiting row
     And deck client "A" enters interactive mode
     Then deck client "A" screen contains "Ctrl+Q"
     When the released waiting hook fires for session "held entry"
-    Then the state database session "held entry" is "waiting" from "hook" with acknowledged=0, notify_epoch=0, and 0 attached events
+    Then the state database session "held entry" is "waiting" from "hook" and is unseen, with notify_epoch=0, and 0 attached events
     And within one configured reconcile interval deck client "B" row "held entry" contains "waiting"
     When deck client "B" selects session "held entry"
     And deck client "B" enters interactive mode
@@ -260,11 +256,11 @@ Feature: Forced entry into interactive mode answers a waiting row
     And the state database session "held entry" has 0 attached events
     When deck client "B" forces entry into interactive mode
     Then deck client "B" screen contains "Ctrl+Q"
-    And the state database session "held entry" is "running" from "user" with acknowledged=1, notify_epoch=1, and 1 attached event
+    And the state database session "held entry" is "waiting" from "hook" and is unseen, with notify_epoch=0, and 0 attached events
     And deck client "A" screen contains "Lost attach: held entry"
     When deck client "A" dismisses the lost-attach dialog
     Then deck client "A" screen contains "deck - sessions"
-    And the state database session "held entry" has 1 attached event
+    And the state database session "held entry" has 0 attached events
     When deck client "B" leaves interactive mode
     And deck client "A" exits cleanly
     And deck client "B" exits cleanly

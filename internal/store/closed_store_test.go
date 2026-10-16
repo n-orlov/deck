@@ -41,7 +41,6 @@ func TestStoreOperationsSurfaceDatabaseFailure(t *testing.T) {
 		"UpdateSessionStatus": func(s *Store) error {
 			return s.UpdateSessionStatus(ctx, StatusUpdateInput{SessionID: id, Status: "working", Source: "hook", At: at})
 		},
-		"RecordAttachment":   func(s *Store) error { return s.RecordAttachment(ctx, id, at) },
 		"AcknowledgeSession": func(s *Store) error { return s.AcknowledgeSession(ctx, id) },
 		"RecordSessionNote":  func(s *Store) error { return s.RecordSessionNote(ctx, id, "note", at) },
 		"RecordTranscript":   func(s *Store) error { return s.RecordTranscript(ctx, id, "/t/events.jsonl", at) },
