@@ -1393,9 +1393,15 @@ tick in the same bucket reads and writes nothing (except inside a discount windo
 pane, cuts it at the composer/footer chrome and hashes the **transcript region** above it
 (trailing blanks ignored). The cut is **the composer frame's top separator** (the boundary the
 probe's `lastContentLine` uses; claude, pi, copilot): the bottom rule is the pane's last separator
-line and the top rule is the nearest separator above it drawn identically (same characters, same
+line and the top rule is a separator above it drawn identically (same characters, same
 width), so a draft line that is itself a rule (`---`, an indented `  ───` continuation) is composer
-content, not the frame; a pane with no identical pair is cut at the earlier of its last two
+content, not the frame. A draft may also hold a line drawn exactly like the frame (pasted or typed to the
+pane's width); among the identical rules the top one is told apart by what the frame looks like: the
+agent's `❯` prompt at column 0 on the line under it (claude, copilot), and a blank line (or the pane's top)
+above it (pi). The topmost rule with the best such evidence is the frame, so that draft line stays composer content;
+with no evidence the nearest identical rule is taken. A transcript line drawn identically to the frame at column 0
+and blank-preceded, in a pane whose frame carries no prompt glyph, is indistinguishable from the
+frame and is not told apart. A pane with no identical pair is cut at the earlier of its last two
 separator lines. For a pane that draws no
 separators, **codex's `›` composer line**: codex draws every transcript cell from column 0 and
 indents continuation lines, so the composer is the pane's last column-0 line when that line is a

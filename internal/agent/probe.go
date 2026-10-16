@@ -267,17 +267,28 @@ func lastContentLine(pane string) string {
 
 // transcriptEnd is the index of the first footer-chrome line: the composer's
 // top separator. The bottom one is the pane's last separator line; the top one
-// is the nearest separator above it drawn identically (same characters, same
-// width), because pi, claude and copilot draw both rules of the composer frame
-// as one full-width line. A draft line that happens to be a rule ("---", an
-// indented "  ───" continuation) differs from the frame's rule and is composer
-// content, not the frame (R304). A pane with no identical pair falls back to
-// the earlier of its last two (possibly non-adjacent) separator lines, and to
-// len(lines) when it has fewer than two. It is the one boundary
-// lastContentLine and TranscriptRegion share.
+// is a separator above it drawn identically (same characters, same width),
+// because pi, claude and copilot draw both rules of the composer frame as one
+// full-width line. A draft line that happens to be a rule ("---", an indented
+// "  ───" continuation) differs from the frame's rule and is composer content,
+// not the frame (R304).
+//
+// A draft can also hold a line drawn exactly like the frame (pasted, or typed
+// to the pane's width), so the nearest identical rule is not always the top
+// one. Among the identical candidates the top rule is told apart by what the
+// frame itself looks like: it is the one the agent's prompt glyph follows at
+// column 0 (claude, copilot), and the one a blank line (or the pane's top)
+// precedes (pi, and the agents above), because a draft's continuation lines are
+// indented or follow draft text. The topmost candidate with the best such
+// evidence wins; with no evidence the nearest identical rule is taken. A pane
+// with no identical pair falls back to the earlier of its last two (possibly
+// non-adjacent) separator lines, and to len(lines) when it has fewer than two.
+// It is the one boundary lastContentLine and TranscriptRegion share.
 func transcriptEnd(lines []string) int {
 	bottom := -1
 	fallback := len(lines)
+	best, bestScore := -1, 0
+	nearest := -1
 	for i := len(lines) - 1; i >= 0; i-- {
 		if !isSeparatorLine(strings.TrimSpace(lines[i])) {
 			continue
@@ -289,9 +300,28 @@ func transcriptEnd(lines []string) int {
 		if fallback == len(lines) {
 			fallback = i
 		}
-		if sameRule(lines[i], lines[bottom]) {
-			return i
+		if !sameRule(lines[i], lines[bottom]) {
+			continue
 		}
+		if nearest < 0 {
+			nearest = i
+		}
+		score := 0
+		if i+1 < bottom && strings.HasPrefix(lines[i+1], "❯") {
+			score += 2
+		}
+		if i == 0 || strings.TrimSpace(lines[i-1]) == "" {
+			score++
+		}
+		if score > 0 && score >= bestScore {
+			best, bestScore = i, score
+		}
+	}
+	switch {
+	case best >= 0:
+		return best
+	case nearest >= 0:
+		return nearest
 	}
 	return fallback
 }
