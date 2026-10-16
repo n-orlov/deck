@@ -358,7 +358,8 @@ func TestFullAttachFirstScreenContentChangeIsReported(t *testing.T) {
 // --- the Model: a full attach's trigger goes through engageRow ------------
 
 // fullAttachEngagementCmd plays a full attach of the selected row ending with
-// the watcher's trigger, and returns the engagement write cmd onAttachFinished
+// the watcher's trigger, observed on the row's episode as the model shows it,
+// and returns the engagement write cmd onAttachFinished
 // issued (nil when it issued none).
 func fullAttachEngagementCmd(t *testing.T, m Model, trigger engagementTrigger) tea.Cmd {
 	t.Helper()
@@ -367,7 +368,7 @@ func fullAttachEngagementCmd(t *testing.T, m Model, trigger engagementTrigger) t
 		t.Fatal("no selected row")
 	}
 	m.attachingSessionID = session.ID
-	_, cmd := m.Update(attachFinished{engaged: trigger})
+	_, cmd := m.Update(attachFinished{engaged: trigger, observed: session})
 	var found tea.Msg
 	var walk func(tea.Cmd)
 	walk = func(c tea.Cmd) {

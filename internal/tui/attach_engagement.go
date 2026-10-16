@@ -19,6 +19,7 @@ import (
 	"github.com/creack/pty"
 	"github.com/muesli/cancelreader"
 
+	"github.com/n-orlov/deck/internal/store"
 	"github.com/n-orlov/deck/internal/tmux"
 )
 
@@ -27,10 +28,14 @@ import (
 // owns and copies the user's terminal to it, byte for byte, so every key the
 // user types passes through deck exactly once (attachKeyProxy). Beside that,
 // a watcher samples tmux (tmux.Client.AttachSample, a read-only
-// display-message/list-clients/capture-pane) every attachWatchInterval. The
-// first of the three engagement triggers it sees is recorded, and
-// onAttachFinished hands it to Model.engageRow, the same one function the
-// interactive preview's triggers go through:
+// display-message/list-clients/capture-pane) every attachWatchInterval, and
+// reads the attached row from the store before every sample. Each of the
+// three engagement triggers below is bound to the status episode
+// (status_at, status_seq) that held across the whole interval its evidence
+// arrived in (episodeBracket); the latest such pair is recorded, and
+// onAttachFinished hands the trigger and that observed row -- never the row
+// as it is when the attach ends -- to Model.engageRow, the same one function
+// the interactive preview's triggers go through:
 //
 //   - key: a key event decoded from the bytes deck forwarded (mouse, focus
 //     and the terminal's own replies to tmux's queries are not keys), that is
@@ -47,7 +52,9 @@ import (
 //     agent's redraw for that resize is never counted.
 //
 // The watcher writes nothing to tmux and nothing to the store itself; the
-// one write is engageRow's, after the attach ends.
+// one write is engageRow's, after the attach ends, and it names the observed
+// episode, so it is a no-op if the row has moved on to a newer one (a later
+// prompt sharing the millisecond, or a stepped-back clock, included).
 
 const (
 	attachWatchInterval = 200 * time.Millisecond
@@ -69,6 +76,26 @@ type attachEngagementDetector struct {
 
 	keys       int64
 	pendingKey bool
+
+	// observed counts the samples seen so far; last is the index of the
+	// latest one and keyFrom the index of the sample before the one that
+	// first showed the pending key. They name where a trigger's evidence
+	// interval opens (evidenceFrom), which is what binds the trigger to a
+	// status episode (episodeBracket).
+	observed int
+	last     int
+	keyFrom  int
+}
+
+// evidenceFrom is the index of the sample that opens the interval the
+// trigger's evidence arrived in: the sample before the one that showed it
+// (for a key, before the one that showed the forwarded key, not the one that
+// confirmed it).
+func (d *attachEngagementDetector) evidenceFrom(trigger engagementTrigger) int {
+	if trigger == engageKey {
+		return d.keyFrom
+	}
+	return d.last - 1
 }
 
 func screenHash(screen []byte) uint64 {
@@ -79,15 +106,20 @@ func screenHash(screen []byte) uint64 {
 
 func (d *attachEngagementDetector) observe(now time.Time, s tmux.AttachSample, keys int64) engagementTrigger {
 	sum := screenHash(s.Screen)
+	d.last = d.observed
+	d.observed++
 	if !d.started {
 		d.start(now, s, keys, sum)
 		return ""
 	}
-	// Scroll: copy mode is entered, or scrolled, only by the user.
-	if s.InMode && (!d.inMode || s.ScrollPosition != d.scrollPosition) {
+	// Scroll: copy mode is entered, or scrolled, only by the user. The new
+	// position is the baseline of the next scroll, so a pane left in copy
+	// mode is one scroll, not one per sample.
+	scrolled := s.InMode && (!d.inMode || s.ScrollPosition != d.scrollPosition)
+	d.inMode, d.scrollPosition = s.InMode, s.ScrollPosition
+	if scrolled {
 		return engageScroll
 	}
-	d.inMode, d.scrollPosition = s.InMode, s.ScrollPosition
 	if trigger, done := d.observeKey(s, keys); done {
 		return trigger
 	}
@@ -120,6 +152,7 @@ func (d *attachEngagementDetector) observeKey(s tmux.AttachSample, keys int64) (
 	}
 	if keys > d.keys {
 		d.keys = keys
+		d.keyFrom = d.last - 1
 		// The key's own echo may already be on this screen: wait for the
 		// confirming sample rather than calling it a screen change.
 		d.pendingKey = true
@@ -140,6 +173,7 @@ func (d *attachEngagementDetector) observeScreen(now time.Time, s tmux.AttachSam
 		return ""
 	}
 	if sum != d.screenHash {
+		d.screenHash = sum
 		return engageScreen
 	}
 	return ""
@@ -255,10 +289,57 @@ func tmuxBaseKey(name string, hasMods bool) (string, bool) {
 // clientPID is the attach client's pid (0 before the client exists).
 type attachSampler func(ctx context.Context, slug string, clientPID int) (tmux.AttachSample, error)
 
+// attachRowReader reads the attached row as the store holds it now.
+type attachRowReader func(ctx context.Context) (store.Session, error)
+
+// attachEngagement is what the watcher reports: the trigger, and the row at
+// the one status episode the trigger's evidence arrived in.
+type attachEngagement struct {
+	trigger  engagementTrigger
+	observed store.Session
+}
+
+// episodeBracket binds a trigger to the status episode it observed (R319,
+// R321, R322). The row is read before every sample; a trigger whose evidence
+// arrived between sample i and a later one is attributed to an episode only
+// when the read before sample i and a read taken after the trigger name the
+// same (status_at, status_seq). status_seq only grows, so equal reads mean
+// the episode held for the whole interval, whatever the clock did; when the
+// row changed episode inside it the trigger is attributed to none.
+type episodeBracket struct {
+	read  func(ctx context.Context) (store.Session, bool)
+	reads map[int]store.Session
+}
+
+// before records the row read before sample index.
+func (b *episodeBracket) before(ctx context.Context, index int) {
+	if row, ok := b.read(ctx); ok {
+		b.reads[index] = row
+	} else {
+		delete(b.reads, index)
+	}
+	delete(b.reads, index-4)
+}
+
+// attribute is the row at the episode a trigger whose evidence interval
+// opened at sample from observed, if that episode held until now.
+func (b *episodeBracket) attribute(ctx context.Context, from int) (store.Session, bool) {
+	start, ok := b.reads[from]
+	if !ok {
+		return store.Session{}, false
+	}
+	end, ok := b.read(ctx)
+	if !ok || end.ID != start.ID || end.Episode() != start.Episode() {
+		return store.Session{}, false
+	}
+	return end, true
+}
+
 // watchedAttach is the tea.ExecCommand `a` runs when a sampler is wired: the
 // tmux attach client on a deck-owned pty, the proxy between it and the
 // user's terminal, and the engagement watcher for as long as the client
-// runs. Trigger is read by the exec callback, after Run has returned.
+// runs. Trigger and Observed are read by the exec callback, after Run has
+// returned.
 type watchedAttach struct {
 	cmd      *exec.Cmd
 	slug     string
@@ -266,11 +347,30 @@ type watchedAttach struct {
 	interval time.Duration
 	settle   time.Duration
 	now      func() time.Time
+	// session is the attached row as deck showed it when the attach began;
+	// read, when set, re-reads it from the store. Without read every
+	// trigger is attributed to session's own episode.
+	session store.Session
+	read    attachRowReader
 
 	stdin  io.Reader
 	stdout io.Writer
 
-	Trigger engagementTrigger
+	// Trigger is the latest engagement trigger the watcher could attribute
+	// to one status episode, "" when none; Observed is the row at that
+	// episode, the only one Trigger may set seen.
+	Trigger  engagementTrigger
+	Observed store.Session
+}
+
+// readRow is the bracket's read: the store's row, or session when no reader
+// is wired.
+func (w *watchedAttach) readRow(ctx context.Context) (store.Session, bool) {
+	if w.read == nil {
+		return w.session, true
+	}
+	row, err := w.read(ctx)
+	return row, err == nil
 }
 
 func (w *watchedAttach) SetStdin(r io.Reader) {
@@ -313,6 +413,9 @@ const attachOutputDrain = 2 * time.Second
 func (w *watchedAttach) Run() error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+	// The bracket's first read precedes everything the watcher observes.
+	bracket := &episodeBracket{read: w.readRow, reads: map[int]store.Session{}}
+	bracket.before(context.WithoutCancel(ctx), 0)
 	// The baseline is sampled before the client exists, so the attach's own
 	// resize shows up as a size change and its first second is not blind.
 	baseline, baseErr := w.sample(ctx, w.slug, 0)
@@ -348,13 +451,13 @@ func (w *watchedAttach) Run() error {
 	}()
 	inDone, input := w.startInputProxy(ptmx, proxy)
 
-	found := make(chan engagementTrigger, 1)
+	found := make(chan attachEngagement, 1)
 	go func() {
 		var first *tmux.AttachSample
 		if baseErr == nil {
 			first = &baseline
 		}
-		found <- w.watch(ctx, w.cmd.Process.Pid, first, &proxy.keys)
+		found <- w.watch(ctx, w.cmd.Process.Pid, first, &proxy.keys, bracket)
 	}()
 	err = w.cmd.Wait()
 	select {
@@ -363,7 +466,8 @@ func (w *watchedAttach) Run() error {
 	}
 	stopInputProxy(inDone, input)
 	cancel()
-	w.Trigger = <-found
+	engaged := <-found
+	w.Trigger, w.Observed = engaged.trigger, engaged.observed
 	return err
 }
 
@@ -456,28 +560,65 @@ func stopInputProxy(inDone chan struct{}, input cancelreader.CancelReader) {
 	}
 }
 
-func (w *watchedAttach) watch(ctx context.Context, pid int, baseline *tmux.AttachSample, keys *atomic.Int64) engagementTrigger {
-	now := w.now
-	if now == nil {
-		now = time.Now
-	}
+// watch samples until ctx ends and reports the latest trigger it could
+// attribute to one status episode. A full attach can outlive the episode it
+// began on; only the newest episode engaged can still be the row's current
+// one, and a trigger whose interval straddled an episode change is dropped
+// rather than credited to either side.
+func (w *watchedAttach) watch(ctx context.Context, pid int, baseline *tmux.AttachSample, keys *atomic.Int64, bracket *episodeBracket) attachEngagement {
 	detector := attachEngagementDetector{settle: w.settle}
 	if baseline != nil {
-		detector.observe(now(), *baseline, keys.Load())
+		// The baseline was sampled before the client existed: no key had
+		// been forwarded yet.
+		detector.observe(w.clock(), *baseline, 0)
 	}
+	var latest attachEngagement
 	ticker := time.NewTicker(w.interval)
 	defer ticker.Stop()
 	for {
-		sample, err := w.sample(ctx, w.slug, pid)
-		if err == nil {
-			if trigger := detector.observe(now(), sample, keys.Load()); trigger != "" {
-				return trigger
-			}
+		if engaged, ok := w.step(ctx, pid, &detector, bracket, keys); ok {
+			latest = engaged
 		}
 		select {
 		case <-ctx.Done():
-			return ""
+			return latest
 		case <-ticker.C:
 		}
 	}
+}
+
+// step is one watch round: the row read, the sample, and the trigger it
+// shows bound to the episode it observed. ok is false when the round has no
+// trigger or the trigger's interval straddled an episode change.
+func (w *watchedAttach) step(ctx context.Context, pid int, detector *attachEngagementDetector, bracket *episodeBracket, keys *atomic.Int64) (attachEngagement, bool) {
+	readCtx := context.WithoutCancel(ctx)
+	bracket.before(readCtx, detector.observed)
+	sample, err := w.sample(ctx, w.slug, pid)
+	if err != nil {
+		return attachEngagement{}, false
+	}
+	trigger := detector.observe(w.clock(), sample, keys.Load())
+	if trigger == "" {
+		return attachEngagement{}, false
+	}
+	row, ok := bracket.attribute(readCtx, detector.evidenceFrom(trigger))
+	return attachEngagement{trigger: trigger, observed: row}, ok
+}
+
+// clock is the watcher's time: now in tests, the wall clock otherwise.
+func (w *watchedAttach) clock() time.Time {
+	if w.now == nil {
+		return time.Now()
+	}
+	return w.now()
+}
+
+// attachRowReader is the full-attach watcher's store read of row id, nil
+// when the Model has no store.
+func (m Model) attachRowReader(id string) attachRowReader {
+	if m.store == nil {
+		return nil
+	}
+	db := m.store
+	return func(ctx context.Context) (store.Session, error) { return db.GetSession(ctx, id) }
 }

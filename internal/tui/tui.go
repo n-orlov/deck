@@ -1637,11 +1637,14 @@ type shellCreated struct {
 	err     error
 }
 
-// attachFinished ends a full attach; engaged is the first engagement trigger
-// the attach watcher saw (R321, attach_engagement.go), "" when none.
+// attachFinished ends a full attach; engaged is the engagement trigger the
+// attach watcher attributed to one status episode (R321,
+// attach_engagement.go), "" when none, and observed is the row at that
+// episode: the only episode the trigger may set seen (R319, R322).
 type attachFinished struct {
-	err     error
-	engaged engagementTrigger
+	err      error
+	engaged  engagementTrigger
+	observed store.Session
 }
 
 // sessionKilled carries the killed session back (not just the error) so a
@@ -3430,11 +3433,12 @@ func (m Model) onAttachFinished(msg attachFinished) (tea.Model, tea.Cmd) {
 	if m.outputDiscount != nil && m.attachingSessionID != "" {
 		m.outputDiscount.AttachEnded(m.attachingSessionID)
 	}
+	// The trigger engages the episode the watcher observed it on, never the
+	// row as a reload delivered since has it: a newer prompt sharing the
+	// stamp, or one dated by a stepped-back clock, stays unseen.
 	var engaged tea.Cmd
-	if msg.engaged != "" {
-		if idx := indexOfSessionID(m.baseSessions, m.attachingSessionID); idx >= 0 {
-			engaged = m.engageRow(msg.engaged, m.baseSessions[idx])
-		}
+	if msg.engaged != "" && m.attachingSessionID != "" && msg.observed.ID == m.attachingSessionID {
+		engaged = m.engageRow(msg.engaged, msg.observed)
 	}
 	m.attachingSessionID = ""
 	if msg.err != nil {
@@ -4384,8 +4388,13 @@ func (m Model) attachSelected() (tea.Model, tea.Cmd) {
 	if m.attachSample != nil {
 		// R321: the watcher beside the client reports the attach's first
 		// engagement trigger; onAttachFinished hands it to engageRow.
-		watched := &watchedAttach{cmd: command, slug: session.Slug, sample: m.attachSample, interval: attachWatchInterval, settle: attachWatchSettle}
-		return m, tea.Exec(watched, func(err error) tea.Msg { return attachFinished{err: err, engaged: watched.Trigger} })
+		// The trigger is bound to the status episode the watcher read
+		// across its evidence (episodeBracket), from the store when deck
+		// has one.
+		watched := &watchedAttach{cmd: command, slug: session.Slug, sample: m.attachSample, interval: attachWatchInterval, settle: attachWatchSettle, session: session, read: m.attachRowReader(session.ID)}
+		return m, tea.Exec(watched, func(err error) tea.Msg {
+			return attachFinished{err: err, engaged: watched.Trigger, observed: watched.Observed}
+		})
 	}
 	return m, tea.ExecProcess(command, func(err error) tea.Msg { return attachFinished{err: err} })
 }

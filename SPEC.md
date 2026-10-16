@@ -1098,8 +1098,14 @@ Rules:
   and deck copies the user's terminal (put in raw mode, its size and resizes passed on) to it byte for
   byte. Beside it a watcher samples tmux read-only every 200 ms (`tmux.Client.AttachSample`: pane size,
   copy mode and scroll position, the `prefix`/`prefix2` options, the attach client's key table, and the
-  visible screen; the first sample is taken before the client exists) and reports the first trigger when
-  the client exits. A key is a key event decoded from the bytes deck forwarded -- not a mouse report, a
+  visible screen; the first sample is taken before the client exists). It also reads the row from the
+  store before every sample, and binds a trigger to the status episode only when the read before the
+  sample that opens the trigger's evidence interval and a read after the trigger name the same
+  `status_at` **and** `status_seq`; a trigger whose interval straddled an episode change is credited to
+  neither episode. When the client exits it reports the latest trigger so bound together with the row at
+  that observed episode, and `onAttachFinished` engages that observed episode -- never the row as a
+  `sessionsLoaded` delivered meanwhile shows it -- so a delayed trigger from an older prompt leaves a newer
+  one unseen, whether it shares the stamp or a clock step back dated it. A key is a key event decoded from the bytes deck forwarded -- not a mouse report, a
   focus change or the terminal's reply to a tmux query, not the prefix key and not the key after it --
   confirmed by the client still being attached in its `root` table at the next sample, so `prefix d` and
   any other detach never count; it involves no clock, so a key in the attach's first instant counts. A
@@ -1175,7 +1181,9 @@ Rules:
   `TestLateEngagementWriteCannotSeeANewerPromptSharingItsStamp`,
   `TestDwellOfAnEarlierPromptNeverSeesANewPromptOnTheSameStamp`, `TestEngagementHoldBelongsToItsEpisode`,
   `TestAcknowledgeNamesTheEpisodeNotTheStamp`, `TestAcknowledgeCannotSeeAPromptWhoseStampAStepBackRepeated`,
-  `TestQueuedYCannotSeeANewErrorSharingItsStamp`, `TestQueuedYCannotSeeAPromptAfterAClockStepBackToItsStamp`.
+  `TestQueuedYCannotSeeANewErrorSharingItsStamp`, `TestQueuedYCannotSeeAPromptAfterAClockStepBackToItsStamp`,
+  `TestDelayedFullAttachTriggerCannotSeeAReloadedEpisode`, `TestDelayedFullAttachTriggerSurvivesARepeatOfItsEpisode`,
+  `TestFullAttachTriggerWithoutItsObservedRowWritesNothing`, `TestAttachWatcherBindsTheTriggerToTheEpisodeItObserved`.
 - **A repeat write is inert.** A status write that leaves the status unchanged — a probe
   seeing `waiting`, `running` or `error` again, a hook or the user restating the current
   status — does not touch `status_at`, `notify_epoch`, `hook_fired` or the seen state
