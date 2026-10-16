@@ -90,6 +90,7 @@ func (m Model) enterInteractiveBody(force bool) (tea.Model, tea.Cmd) {
 	m.interactivePaneID = entry.claim.pane.ID
 	m.interactiveWidth, m.interactiveHeight = entry.width, entry.height
 	m.setInteractiveScrollOffset(0)
+	m.baselineInteractiveScreen()
 	m.clearEntryRefusal()
 	return m, nil
 }
@@ -562,6 +563,7 @@ func (m Model) exitInteractive() (tea.Model, tea.Cmd) {
 	m.interactivePaneID = ""
 	m.interactiveWidth, m.interactiveHeight = 0, 0
 	m.setInteractiveScrollOffset(0)
+	m.engagementCell().screenTarget = ""
 	// steer 018 item 4 / SPEC §11: RestoreWindowGeometry above just put the
 	// window back at its PRE-entry size, which is not generally the preview
 	// panel's own current content size -- previewFit's own coalescing
@@ -641,8 +643,9 @@ func (m Model) updateInteractive(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		m.setInteractiveScrollOffset(0)
 		m.discountForwardedKey()
+		engaged := m.engage(engageKey)
 		_ = m.interactiveDispatcher.SendNamedKey(ctx, named)
-		return m, nil
+		return m, engaged
 	}
 	if payload, ok := interactiveLiteralPayload(msg); ok {
 		if m.sidebarScrollDrifted {
@@ -651,7 +654,9 @@ func (m Model) updateInteractive(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		m.setInteractiveScrollOffset(0)
 		m.discountForwardedKey()
+		engaged := m.engage(engageKey)
 		_ = interactive.SendKeyRun(ctx, m.interactiveDispatcher, payload)
+		return m, engaged
 	}
 	return m, nil
 }

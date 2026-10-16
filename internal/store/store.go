@@ -1291,6 +1291,30 @@ func (s *Store) AcknowledgeSession(ctx context.Context, sessionID string) error 
 	return nil
 }
 
+// MarkStatusSeen is engagement's (R321) one durable write: it sets
+// seen_status_at = status_at on a row whose status_at is still statusAt, the
+// stamp the caller saw. It changes no status, source, reason, status_at,
+// notify_epoch or event, and it writes nothing at all when the row is already
+// seen or the status has moved on since the caller looked (a newer prompt
+// must not be marked seen by an engagement with the old one). It reports
+// whether a row was written.
+func (s *Store) MarkStatusSeen(ctx context.Context, sessionID string, statusAt int64) (bool, error) {
+	if sessionID == "" {
+		return false, errors.New("session id is required")
+	}
+	result, err := s.db.ExecContext(ctx,
+		`UPDATE sessions SET seen_status_at = status_at WHERE id = ? AND status_at = ? AND seen_status_at <> status_at`,
+		sessionID, statusAt)
+	if err != nil {
+		return false, fmt.Errorf("mark status seen: %w", err)
+	}
+	changed, err := result.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("read marked-seen session count: %w", err)
+	}
+	return changed > 0, nil
+}
+
 // RecordSessionNote appends one session-scoped "note" event (task 013,
 // SPEC §9.2's fail-open teardown report) without touching any other column
 // on the row: unlike UpdateSessionStatus it never rewrites status, source,

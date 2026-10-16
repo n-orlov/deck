@@ -171,6 +171,11 @@ func (m Model) handleMouse(e tea.MouseMsg) (tea.Model, tea.Cmd) {
 		if e.Button == tea.MouseButtonWheelUp {
 			delta = -1
 		}
+		// R321: a notch over the passive preview scrolls nothing (SPEC
+		// §11.8) but is the first scroll of an unseen waiting/error row.
+		if m.hitTest(e.X, e.Y).panel == hitPanelPreview {
+			return m, m.engage(engagePassiveScroll)
+		}
 		return m.scrollSidebar(e, delta), nil
 	}
 	if e.Button != tea.MouseButtonLeft {

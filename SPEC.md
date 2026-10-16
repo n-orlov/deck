@@ -1058,7 +1058,7 @@ Rules:
   hook verdict, and `tmux` only ever supplies liveness.
 - A transition into `waiting` or `error` leaves the row unseen (`seen_status_at` reset to 0, so it
   differs from the new `status_at`); a row is seen exactly when `seen_status_at = status_at`.
-  `Y` sets `seen_status_at = status_at`; engagement (R321) will too, and nothing else does. **Attach, click
+  `Y` sets `seen_status_at = status_at`; engagement (R321) does too, and nothing else does. **Attach, click
   and passive preview are inert (R320):** they never change `status` or the seen state, write no `attached`
   event and no `notify_epoch` bump, and the row does not move, in the `attention` order or the `activity`
   order. This holds for every way the keyboard reaches the pane through deck: `a`'s full attach and the
@@ -1070,7 +1070,22 @@ Rules:
   *displaced* from the preview by another client records nothing either. Covering tests:
   `TestAttachIsInertOnStatusSeenAndPosition` (eight cases: `waiting`, `error`, `running`, `idle` under the
   `attention` and `activity` orders), `TestClickIsInertOnStatusSeenAndPosition` and
-  `TestPassivePreviewIsInertOnStatusSeenAndPosition`. Leaving an attention state bumps `notify_epoch` (§10.3).
+  `TestPassivePreviewIsInertOnStatusSeenAndPosition`.
+  **Engagement sets seen (R321).** On an unseen `waiting` or `error` row, in the interactive preview or over
+  the passive preview, the first of these sets `seen_status_at = status_at` through one function
+  (`Model.engage`, one `Store.MarkStatusSeen` write): the first key forwarded to the pane, the first scroll
+  (the wheel over the interactive preview, a page scroll, and a wheel notch over the *passive* preview,
+  which still scrolls nothing, §11.8), and the first change of the interactive preview's live screen
+  content since entry (compared on the preview tick). Engagement sets seen only: no status, reason, source,
+  `status_at`, event or `notify_epoch` changes, and no row moves except by the seen predicate itself
+  (an `error` row sorts in the seen-`error` tier once seen, exactly as after `Y`). The write names the
+  `status_at` it saw, so a newer prompt is never hidden by an engagement with an older one, and a second
+  engagement on an already-seen row issues no write at all. `a`'s full attach hands the terminal to tmux,
+  so deck sees none of its keys or scrolling; it engages only through these triggers in the interactive
+  preview. Covering tests: `TestEngagementFirstForwardedKeySetsSeen`,
+  `TestEngagementFirstInteractiveScrollSetsSeen`, `TestEngagementFirstPassivePreviewScrollSetsSeen`,
+  `TestEngagementFirstScreenContentChangeSetsSeen`, `TestSecondEngagementWritesNothing` and
+  `TestEngagementChangesNoStatusAndMovesNoRow`. Leaving an attention state bumps `notify_epoch` (§10.3).
 - **Needs attention (R319).** A row needs attention when it is `waiting`, or `error` **and
   unseen**; seen means `seen_status_at = status_at`, an equality and never an ordering. A
   seen `waiting` row still needs attention (it is still blocked on the user): it stays in the

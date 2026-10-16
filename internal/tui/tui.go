@@ -227,8 +227,11 @@ type Model struct {
 	attach                  func(context.Context, string) (*exec.Cmd, error)
 	kill                    func(context.Context, store.Session) error
 	acknowledge             func(context.Context, string) error
-	reconcile               func(context.Context) error
-	resume                  func(context.Context, string) (store.Session, service.ResumeOutcome, error)
+	// markSeen is engagement's write (R321, engagement.go); engagement is its shared cell.
+	markSeen   func(context.Context, string, int64) (bool, error)
+	engagement *engagementState
+	reconcile  func(context.Context) error
+	resume     func(context.Context, string) (store.Session, service.ResumeOutcome, error)
 	// restart is task 022's `R` (SPEC §6.2/§6.3): kills the selected
 	// session's live pane if one exists and relaunches it with the
 	// adapter's resume argv (same conversation id, never a fresh one),
@@ -2026,12 +2029,13 @@ type sessionGroupMoved struct {
 // New creates a list model. tmux failures are intentionally retained as a
 // rendered health state: users must be able to read and quit it.
 func New(db *store.Store, settings config.Settings, tmuxNote string) Model {
-	m := Model{store: db, settings: settings, startupNote: tmuxNote, createCWDRecentIndex: -1, interactiveScroll: &interactiveScrollState{}, deckExecutable: runningExecutable(), configReloader: newConfigReloader(settings)}
+	m := Model{store: db, settings: settings, startupNote: tmuxNote, createCWDRecentIndex: -1, interactiveScroll: &interactiveScrollState{}, engagement: &engagementState{issued: map[string]int64{}}, deckExecutable: runningExecutable(), configReloader: newConfigReloader(settings)}
 	if wd, err := os.Getwd(); err == nil {
 		m.startCWD = wd
 	}
 	if db != nil {
 		m.acknowledge = db.AcknowledgeSession
+		m.markSeen = db.MarkStatusSeen
 		m.loadPersistedUIState(db)
 	}
 	return m
@@ -2814,6 +2818,7 @@ func init() {
 		reflect.TypeFor[undoExpired]():                    handlerFor(Model.onUndoExpired),
 		reflect.TypeFor[sessionsPinned]():                 handlerFor(Model.onSessionsPinned),
 		reflect.TypeFor[sessionAcknowledged]():            handlerFor(Model.onSessionAcknowledged),
+		reflect.TypeFor[sessionEngaged]():                 handlerFor(Model.onSessionEngaged),
 		reflect.TypeFor[sessionArchived]():                handlerFor(Model.onSessionArchived),
 		reflect.TypeFor[archiveUndoExpired]():             handlerFor(Model.onArchiveUndoExpired),
 		reflect.TypeFor[footerNoteExpired]():              handlerFor(Model.onFooterNoteExpired),
@@ -4182,6 +4187,9 @@ func (m Model) onPreviewTick(_ previewTick) (tea.Model, tea.Cmd) {
 		var cmd tea.Cmd
 		m, cmd = m.tickInteractiveDisplacement()
 		if cmd != nil {
+			cmds = append(cmds, cmd)
+		}
+		if cmd := m.engageOnScreenChange(); cmd != nil {
 			cmds = append(cmds, cmd)
 		}
 	}

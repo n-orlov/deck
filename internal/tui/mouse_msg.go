@@ -171,9 +171,11 @@ func (m Model) onInteractiveWheel(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	case hitPanelPreview:
 		// R183/GH #59: a program that tracks the mouse owns
 		// the notch (interactive_wheel.go); otherwise it
-		// scrolls the grid, as before.
+		// scrolls the grid, as before. Either way it is the first
+		// scroll (R321; the grid's own path engages in
+		// scrollInteractiveByLines).
 		if forwarded, handled := m.forwardInteractiveWheel(msg); handled {
-			return forwarded, nil
+			return forwarded, forwarded.engage(engageScroll)
 		}
 		delta := interactiveWheelStepLines
 		if msg.Button == tea.MouseButtonWheelDown {
