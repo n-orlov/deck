@@ -144,11 +144,10 @@ func lessByCreatedStable(previous []store.Session) func(a, b store.Session) bool
 // A width that is not positive means the default, so a Settings built without
 // config.Load sorts on the documented 10 s.
 func outputBucketOf(s store.Session, width time.Duration) int64 {
-	seconds := int64(width / time.Second)
-	if seconds < 1 {
-		seconds = int64(config.DefaultOutputBucket / time.Second)
+	if width <= 0 {
+		width = config.DefaultOutputBucket
 	}
-	return (s.LastOutputAt / 1000) / seconds
+	return config.OutputBucketIndex(s.LastOutputAt, width)
 }
 
 // lessByActivityStable orders by the output bucket of last_output_at

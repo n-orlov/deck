@@ -40,6 +40,9 @@ const (
 	// DefaultOutputBucket is the width of one output-clock bucket when neither
 	// config.toml's [ui] output_bucket nor DECK_OUTPUT_BUCKET sets it (R306).
 	DefaultOutputBucket = 10 * time.Second
+
+	// MinOutputBucket is the smallest [ui] output_bucket (R306).
+	MinOutputBucket = time.Second
 	// DefaultProfile is the flat, unnamed layout and socket "deck" (SPEC
 	// §3.4): the profile `deck`/`deck default`/an unset DECK_PROFILE all
 	// resolve to, byte-for-byte, with no migration and profiles/default/
@@ -1108,3 +1111,17 @@ func (g *IDGenerator) UUID() (string, error) {
 // update_check is on, or auto_update is on (auto_update implies the check,
 // SPEC §6.5). It is the one place that rule lives.
 func (s Settings) UpdateCheckEnabled() bool { return s.UpdateCheck || s.AutoUpdate }
+
+// OutputBucketIndex is the output-clock bucket a Unix-millisecond instant
+// falls in for a bucket of the given width (R304, R306). The output clock
+// (which receives tmux's whole-second window_activity), the activity sort
+// (which reads last_output_at, written as that second in milliseconds) and
+// every other reader share it, so they agree on every bucket boundary for a
+// whole-second or a fractional width alike. A width under MinOutputBucket
+// means the minimum, never a division by zero.
+func OutputBucketIndex(unixMillis int64, width time.Duration) int64 {
+	if width < MinOutputBucket {
+		width = MinOutputBucket
+	}
+	return unixMillis / width.Milliseconds()
+}

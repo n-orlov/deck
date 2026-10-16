@@ -2052,6 +2052,10 @@ func settingsToggleValueDisplay(f config.Field, cfg config.FileConfig) string {
 func settingsIntegerValueDisplay(f config.Field, cfg config.FileConfig) string {
 	v := settingsIntegerValue(f, cfg)
 	text := strconv.Itoa(v)
+	if f.FullKey() == "ui.output_bucket" && cfg.OutputBucket%time.Second != 0 {
+		// a fractional bucket is shown exactly, never as its truncation (R306).
+		text = cfg.OutputBucket.String()
+	}
 	if f.Unit != "" {
 		text += " " + f.Unit
 	}

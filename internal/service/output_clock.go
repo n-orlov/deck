@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/n-orlov/deck/internal/agent"
+	"github.com/n-orlov/deck/internal/config"
 )
 
 // DefaultOutputBucket is the width of one output-clock bucket (R304). The
@@ -220,11 +221,10 @@ func (c *OutputClock) Observe(ctx context.Context, store OutputStore, sessionID 
 	if c == nil || windowActivity <= 0 {
 		return false, nil
 	}
-	width, err := c.bucketSeconds()
+	bucket, err := c.bucketOf(windowActivity)
 	if err != nil {
 		return false, err
 	}
-	bucket := windowActivity / width
 
 	c.mu.Lock()
 	previous, seen := c.state[sessionID]
@@ -261,13 +261,15 @@ func (c *OutputClock) observeNewBucket(ctx context.Context, store OutputStore, s
 	return changed, nil
 }
 
-// bucketSeconds is the bucket width in whole seconds (at least one).
-func (c *OutputClock) bucketSeconds() (int64, error) {
+// bucketOf is the bucket window_activity (Unix seconds) falls in at the
+// clock's exact width, fractional seconds included, by the same rule the
+// activity sort uses (config.OutputBucketIndex).
+func (c *OutputClock) bucketOf(windowActivity int64) (int64, error) {
 	bucketWidth := c.bucketWidth()
 	if bucketWidth <= 0 {
 		return 0, errors.New("output clock bucket must be positive")
 	}
-	return max(int64(bucketWidth/time.Second), 1), nil
+	return config.OutputBucketIndex(windowActivity*1000, bucketWidth), nil
 }
 
 // captureTranscriptHash reads the pane and hashes its transcript region.

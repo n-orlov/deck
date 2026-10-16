@@ -237,3 +237,44 @@ func TestStatuslineChurnDoesNotSetTheUnseenMarker(t *testing.T) {
 		t.Fatal("statusline churn after a view set the marker")
 	}
 }
+
+// R306: a fractional-second bucket stays exact in the clock. With 1.5 s
+// buckets, window_activity 3 and 4 (3000 and 4000 ms) are one bucket, so two
+// changes there write once; the first second of the next bucket writes again.
+func TestOutputClockFractionalBucketNeverWritesTwiceInOneBucket(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		width   time.Duration
+		samples []int64 // activities after the baseline, each a transcript change
+		writes  []bool
+	}{
+		{"1.5s", 1500 * time.Millisecond, []int64{3, 4, 5}, []bool{true, false, true}},
+		{"1500ms from 100", 1500 * time.Millisecond, []int64{102, 103, 104}, []bool{true, false, true}},
+		{"2.5s", 2500 * time.Millisecond, []int64{5, 6, 7, 8}, []bool{true, false, false, true}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h := newOutputHarness(t)
+			h.clock = NewOutputClock(tc.width)
+			h.pane = pane("base", "f")
+			h.tick(1) // baseline
+			for i, activity := range tc.samples {
+				h.pane = pane("base"+strings.Repeat("+", i+1), "f")
+				if got := h.tick(activity); got != tc.writes[i] {
+					t.Fatalf("activity %d: wrote = %v, want %v", activity, got, tc.writes[i])
+				}
+			}
+		})
+	}
+}
+
+// SetBucket applies a fractional width live, exactly.
+func TestOutputClockSetBucketKeepsAFractionalWidth(t *testing.T) {
+	c := NewOutputClock(10 * time.Second)
+	c.SetBucket(1500 * time.Millisecond)
+	if got := c.bucketWidth(); got != 1500*time.Millisecond {
+		t.Fatalf("bucket = %v, want 1.5s", got)
+	}
+	if b, _ := c.bucketOf(4); b != 2 {
+		t.Fatalf("bucketOf(4) = %d at 1.5s, want 2", b)
+	}
+}

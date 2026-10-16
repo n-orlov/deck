@@ -110,3 +110,47 @@ func TestReloadAppliesUiOutputBucketLive(t *testing.T) {
 		t.Fatalf("output clock bucket = %v, want 1s handed to the clock", clock.bucket)
 	}
 }
+
+// R306: the activity sort buckets by the exact configured width, fractional
+// seconds included, on the same boundaries the output clock writes at.
+func TestActivitySortHonoursAFractionalBucketWidth(t *testing.T) {
+	sessions := []store.Session{
+		{ID: "a", LastOutputAt: 3_000}, // bucket 2 at 1.5s
+		{ID: "b", LastOutputAt: 4_000}, // bucket 2, tied with "a"
+		{ID: "c", LastOutputAt: 5_000}, // bucket 3
+		{ID: "d", LastOutputAt: 1_000}, // bucket 0
+	}
+	assertIDOrder(t, sortSessionsByOrder(nil, sessions, SortOrderActivity, 1500*time.Millisecond), []string{"c", "a", "b", "d"})
+	// At 1 s the same rows no longer tie: a fraction is not truncated away
+	// into a different width.
+	assertIDOrder(t, sortSessionsByOrder(nil, sessions, SortOrderActivity, time.Second), []string{"c", "b", "a", "d"})
+	// 2.5 s: 3000 and 4000 share bucket 1, 5000 opens bucket 2.
+	assertIDOrder(t, sortSessionsByOrder(nil, sessions, SortOrderActivity, 2500*time.Millisecond), []string{"c", "a", "b", "d"})
+}
+
+// A reload of a quoted fractional duration reaches the settings, the output
+// clock and the on-screen order exactly, not truncated to 1 s.
+func TestReloadAppliesAFractionalOutputBucketLive(t *testing.T) {
+	h := newReloadHarness(t, "[ui]\nsort_order = \"activity\"\noutput_bucket = 10\n")
+	clock := &bucketClock{}
+	h.m = h.m.WithOutputDiscounter(clock)
+	sessions := []store.Session{
+		{ID: "a", Name: "a", Agent: "shell", Status: "idle", LastOutputAt: 3_000},
+		{ID: "b", Name: "b", Agent: "shell", Status: "idle", LastOutputAt: 4_000},
+		{ID: "c", Name: "c", Agent: "shell", Status: "idle", LastOutputAt: 5_000},
+	}
+	next, _ := h.m.Update(sessionsLoaded{sessions: sessions})
+	h.m = next.(Model)
+	h.writeConfig("[ui]\nsort_order = \"activity\"\noutput_bucket = \"1500ms\"\n")
+	h.reload()
+	want := 1500 * time.Millisecond
+	if h.m.settings.OutputBucket != want {
+		t.Fatalf("OutputBucket = %v after reload, want exactly %v", h.m.settings.OutputBucket, want)
+	}
+	if clock.bucket != want {
+		t.Fatalf("output clock bucket = %v, want %v", clock.bucket, want)
+	}
+	if got := idsOf(h.m.sessions); !equalStrings(got, []string{"c", "a", "b"}) {
+		t.Fatalf("order at 1.5s = %v, want [c a b]", got)
+	}
+}

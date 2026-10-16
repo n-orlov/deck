@@ -113,3 +113,99 @@ func TestReloadingAnOutputBucketChangeWritesNothing(t *testing.T) {
 		t.Fatal("a reload that applied output_bucket rewrote config.toml")
 	}
 }
+
+// R306: a valid quoted duration of at least one second keeps its exact value
+// (no truncation to whole seconds), whatever the unit it is written in, and
+// both Load and the config.toml writer carry it unchanged.
+func TestOutputBucketQuotedDurationKeepsItsExactValue(t *testing.T) {
+	cases := map[string]time.Duration{
+		`"1500ms"`: 1500 * time.Millisecond, // the finding's case
+		`"1.5s"`:   1500 * time.Millisecond,
+		`"2.25s"`:  2250 * time.Millisecond, // a case the finding did not list
+		`"1000ms"`: time.Second,
+		`"1.001s"`: 1001 * time.Millisecond,
+		`"2m"`:     2 * time.Minute,
+		`"1m0.5s"`: 60*time.Second + 500*time.Millisecond,
+	}
+	for value, want := range cases {
+		dir := writeConfigFile(t, "[ui]\noutput_bucket = "+value+"\n")
+		got, err := LoadFrom(environment(map[string]string{"DECK_HOME": dir}), fakeHome)
+		if err != nil || got.OutputBucket != want || got.File.OutputBucket != want {
+			t.Errorf("output_bucket = %s gave %v / %v, %v; want exactly %v", value, got.OutputBucket, got.File.OutputBucket, err, want)
+			continue
+		}
+		path := filepath.Join(t.TempDir(), "config.toml")
+		if err := WriteConfigFile(path, got.File); err != nil {
+			t.Fatal(err)
+		}
+		reread, err := loadConfigFile(path)
+		if err != nil || reread.OutputBucket != want {
+			t.Errorf("output_bucket %s written and re-read gave %v, %v; want exactly %v", value, reread.OutputBucket, err, want)
+		}
+	}
+}
+
+// A whole number of seconds is still written as the bare integer, and a
+// fractional one as a quoted duration that re-reads to the same value.
+func TestOutputBucketWriterKeepsWholeSecondsBareAndFractionsQuoted(t *testing.T) {
+	for _, tc := range []struct {
+		bucket time.Duration
+		line   string
+	}{
+		{10 * time.Second, "output_bucket = 10"},
+		{1500 * time.Millisecond, `output_bucket = "1.5s"`},
+		{2250 * time.Millisecond, `output_bucket = "2.25s"`},
+	} {
+		path := filepath.Join(t.TempDir(), "config.toml")
+		cfg, err := loadConfigFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		cfg.OutputBucket = tc.bucket
+		if err := WriteConfigFile(path, cfg); err != nil {
+			t.Fatal(err)
+		}
+		data, _ := os.ReadFile(path)
+		if !strings.Contains(string(data), tc.line) {
+			t.Errorf("bucket %v: config.toml = %q, want a line %q", tc.bucket, data, tc.line)
+		}
+		reread, err := loadConfigFile(path)
+		if err != nil || reread.OutputBucket != tc.bucket {
+			t.Errorf("bucket %v re-read as %v, %v", tc.bucket, reread.OutputBucket, err)
+		}
+	}
+}
+
+// Under the minimum stays an error: a fractional duration just below one
+// second is refused, not rounded up to the minimum.
+func TestOutputBucketJustBelowOneSecondIsRefused(t *testing.T) {
+	for _, value := range []string{`"999ms"`, `"0.5s"`, `"-1500ms"`} {
+		_, err := loadEventHookBody(t, "[ui]\noutput_bucket = "+value+"\n")
+		if err == nil || !strings.Contains(err.Error(), "ui.output_bucket must be at least 1") {
+			t.Errorf("value %s: err = %v, want \"ui.output_bucket must be at least 1\"", value, err)
+		}
+	}
+}
+
+// OutputBucketIndex is the one bucket rule: exact for fractional widths, and
+// a width under the minimum never divides by zero.
+func TestOutputBucketIndexUsesTheExactWidth(t *testing.T) {
+	for _, tc := range []struct {
+		ms    int64
+		width time.Duration
+		want  int64
+	}{
+		{3000, 1500 * time.Millisecond, 2},
+		{4000, 1500 * time.Millisecond, 2},
+		{4500, 1500 * time.Millisecond, 3},
+		{109_999, 10 * time.Second, 10},
+		{110_000, 10 * time.Second, 11},
+		{7000, 2500 * time.Millisecond, 2},
+		{8000, 2500 * time.Millisecond, 3},
+		{5000, 0, 5},
+	} {
+		if got := OutputBucketIndex(tc.ms, tc.width); got != tc.want {
+			t.Errorf("OutputBucketIndex(%d, %v) = %d, want %d", tc.ms, tc.width, got, tc.want)
+		}
+	}
+}
