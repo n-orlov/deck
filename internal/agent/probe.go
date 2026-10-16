@@ -289,8 +289,9 @@ func transcriptEnd(lines []string) int {
 // len(lines) when it has fewer than two; either way that is its only cut.
 //
 // A draft can also hold a line drawn exactly like the frame (pasted, or typed
-// to the pane's width), so every identical rule is a candidate and the frame's
-// own shape picks the top one:
+// to the pane's width), and so can the transcript (a divider a tool printed), so
+// every identical rule is a candidate: plausibleTops drops those only the
+// transcript can have drawn, then the frame's own shape picks the top one:
 //   - claude and copilot lead the composer with their prompt glyph: the top
 //     rule is the topmost candidate a column-0 "❯" line follows. A draft line
 //     can quote "❯" too, but never above the frame's own, so the topmost wins.
@@ -329,10 +330,71 @@ func frameCuts(lines []string) ([]int, int) {
 		}
 		return []int{fallback}, bottom
 	}
+	identical = plausibleTops(lines, bottom, identical)
 	chosen := pickTopRule(lines, bottom, identical)
 	cuts := []int{identical[chosen]}
 	cuts = append(cuts, identical[:chosen]...)
 	return append(cuts, identical[chosen+1:]...), bottom
+}
+
+// plausibleTops narrows the frame-identical rules (nearest first) to those that
+// can be the composer's top, judged from the pane alone, so a rule the
+// transcript itself drew (a divider printed by a tool, a markdown rule) is not
+// taken for the frame even on the clock's first capture of a session. The
+// shapes the three framed agents draw differ, and each leaves evidence the
+// other side of the frame cannot fake:
+//   - claude and copilot lead the composer with a column-0 "❯" line, and every
+//     draft continuation is indented by the prompt's width (two columns), so a
+//     rule the composer's first line does not follow, or one with a "●" turn
+//     bullet drawn in column 0 or 1 between it and the bottom rule (claude
+//     draws it flush left, copilot after one space), is transcript.
+//   - pi draws no glyph and starts every composer line at column 0, while its
+//     transcript is padded by one column, so a rule with an indented line
+//     between it and the bottom rule is transcript.
+//
+// A pane none of whose rules passes keeps all of them: the evidence ranks, it
+// never leaves the frame without a top. What remains is genuine ambiguity (a
+// draft that mimics the frame and the transcript the same way), which
+// pickTopRule and the clock's alternative cuts handle.
+func plausibleTops(lines []string, bottom int, identical []int) []int {
+	glyphless := glyphlessFrame(lines, bottom)
+	keep := identical
+	if !glyphless {
+		keep = narrow(keep, func(i int) bool { return i+1 < bottom && strings.HasPrefix(lines[i+1], "❯") })
+	}
+	return narrow(keep, func(i int) bool { return !transcriptBetween(lines, i, bottom, glyphless) })
+}
+
+// narrow returns the entries of tops for which ok holds, or tops itself when
+// none does.
+func narrow(tops []int, ok func(int) bool) []int {
+	var out []int
+	for _, i := range tops {
+		if ok(i) {
+			out = append(out, i)
+		}
+	}
+	if len(out) == 0 {
+		return tops
+	}
+	return out
+}
+
+// transcriptBetween reports a line between the rule at top and the bottom rule
+// that only the transcript draws (plausibleTops).
+func transcriptBetween(lines []string, top, bottom int, glyphless bool) bool {
+	for _, line := range lines[top+1 : bottom] {
+		trimmed := strings.TrimSpace(line)
+		indent := len(line) - len(strings.TrimLeft(line, " \t"))
+		switch {
+		case trimmed == "" || isSeparatorLine(trimmed):
+		case glyphless && indent > 0:
+			return true
+		case !glyphless && indent < 2 && strings.HasPrefix(trimmed, "●"):
+			return true
+		}
+	}
+	return false
 }
 
 // pickTopRule is the index into identical (nearest first) of the frame's top

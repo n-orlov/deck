@@ -1401,15 +1401,21 @@ probe's `lastContentLine` uses; claude, pi, copilot): the bottom rule is the pan
 line and the top rule is a separator above it drawn identically (same characters, same
 width), so a draft line that is itself a rule (`---`, an indented `  ───` continuation) is composer
 content, not the frame. A draft may also hold a line drawn exactly like the frame (pasted or typed to the
-pane's width), so every identical rule is a candidate top, and the frame's own shape picks one. Claude and
-copilot lead the composer with their `❯` prompt: the top is the topmost candidate a column-0 `❯` line
-follows (a draft can quote `❯` too, but never above the frame's own). Pi draws no prompt glyph (its
-frame is recognised by the cwd line, a path at column 0, under the bottom rule), so a `❯` line there is
-draft text and no evidence; pi leaves a blank line above its frame, so its top is the topmost candidate a
-blank line (or the pane's top) precedes. With neither evidence the nearest identical rule is taken. The
-boundary rule alone cannot tell a frame-identical transcript line above the frame from the frame, nor (in
-pi) a draft that adds a blank line and a frame-identical rule when the transcript runs up to the frame
-with no blank line; the clock below covers the draft case. A pane with no identical pair is cut at the earlier of its last two
+pane's width), and the transcript can hold one too (a divider a tool printed, a markdown rule), so every
+identical rule is a candidate top and the pane's own shape picks one, from the first capture of a session on.
+What only the transcript draws rules a candidate out: claude and copilot lead the composer with their `❯`
+prompt, so a rule no column-0 `❯` line follows is transcript, as is one with a `●` turn bullet drawn in column
+0 or 1 (claude's flush-left bullet, copilot's ` ●`) between it and the bottom rule, since a draft's
+continuation lines are indented by the prompt's width; pi (no prompt glyph; its frame is recognised by the cwd
+line, a path at column 0, under the bottom rule) draws its composer lines from column 0 and pads its
+transcript by one column, so a rule with an indented line between it and the bottom rule is transcript. If
+no rule passes, all stay candidates. Of the remaining candidates, claude and copilot take the topmost one a
+column-0 `❯` line follows (a draft can quote `❯` too, but never above the frame's own); in pi a `❯` line is
+draft text and no evidence, and pi leaves a blank line above its frame, so its top is the topmost candidate a
+blank line (or the pane's top) precedes. With neither evidence the nearest identical rule is taken. What is
+left is a genuinely ambiguous pane: a frame-identical transcript line with nothing under it but blank lines
+(the divider is the last transcript line), or in pi a draft that adds a blank line and a frame-identical rule
+when the transcript runs up to the frame with no blank line; the clock below covers the draft case. A pane with no identical pair is cut at the earlier of its last two
 separator lines. For a pane that draws no
 separators, **codex's `›` composer line**: codex draws every transcript cell from column 0 and
 indents continuation lines, so the composer is the pane's last column-0 line when that line is a
@@ -1437,8 +1443,8 @@ region above it, so once deck has read the frame, adding or editing such a draft
 mimics the frame; output above the draft still changes every candidate's region and counts. The new
 baseline is the candidate that matched, else the one whose composer (top rule to bottom rule, footer
 excluded) is unchanged since the last reading (output arrived above an untouched draft), else the chosen cut.
-A draft that already mimics the frame when deck first reads the pane, or that is edited in the same bucket
-as new output, is judged by the boundary rule alone. So two changes
+A draft that already mimics the frame in a way the evidence above cannot rule out when deck first reads
+the pane, or that is edited in the same bucket as new output, is judged by the boundary rule alone. So two changes
 inside one bucket write once (the second sees no new bucket), and a tick with no bucket change
 writes nothing. The first reading of a session after deck starts is only a baseline and counts
 nothing, so a restart does not make every row look freshly active; the in-memory baseline is not
