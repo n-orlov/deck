@@ -28,6 +28,7 @@ func openAsSchema12(t *testing.T, seed func(*store.Store)) *store.Store {
 		`ALTER TABLE sessions DROP COLUMN last_output_at`,
 		`ALTER TABLE sessions DROP COLUMN probe_miss_streak`,
 		`ALTER TABLE sessions DROP COLUMN last_seen_at`,
+		`ALTER TABLE sessions DROP COLUMN hook_at`,
 		`ALTER TABLE sessions DROP COLUMN seen_status_at`,
 		`ALTER TABLE sessions ADD COLUMN acknowledged INTEGER NOT NULL DEFAULT 1`,
 		`DROP INDEX events_session_at`,

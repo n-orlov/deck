@@ -25,7 +25,7 @@ import (
 const busyTimeoutMillis = 5000
 
 // SchemaVersion is the newest schema understood by this binary.
-const SchemaVersion = 19
+const SchemaVersion = 20
 
 // SupportedSchemaVersion is the newest schema this binary opens: SchemaVersion
 // in every shipped build. A test build (-tags deckoldschema, see
@@ -449,6 +449,13 @@ type Session struct {
 	// LastSeenAt is the last_output_at value the user has viewed (R324), 0
 	// until the first view. MarkViewed copies last_output_at into it.
 	LastSeenAt int64
+	// HookAt is the wall-clock millisecond time of the newest hook verdict
+	// the store applied (R303, SPEC §7), 0 until one has been. It is hook
+	// evidence's own clock: a hook repeating the current status leaves
+	// status_at (the transition stamp) alone but still advances this, so the
+	// freshness of a hook verdict never depends on when the status last
+	// changed.
+	HookAt int64
 	// EnvDirty is SPEC §6.1/§6.3's env_dirty column (task 021): true once a
 	// session-env edit has been written and mirrored into tmux's own
 	// environment table for future panes, but has NOT yet reached the
@@ -843,7 +850,7 @@ func scanSession(row interface {
 		&session.NotifyEpoch, &lastMessage, &session.SeenStatusAt, &launchArgsJSON, &envJSON, &preLaunch, &postDestroy,
 		&loginShell, &session.PermissionProfile, &permissionProfileReason, &conversationID, &resumePin, &session.ResumeState,
 		&groupID, &groupName, &session.LastProbeAt, &session.LastOutputAt, &session.LastSeenAt, &session.ProbeMissStreak, &session.LastEventAt, &envDirty, &session.DeletedAt, &session.ArchivedAt, &launchDirty,
-		&leaseOwner, &session.PinnedAt, &session.HookExecutable, &eventHookEnabled, &eventHookEvents, &session.NameSource, &pendingName, &pendingAt, &nameAdopt, &nameAdopted); err != nil {
+		&leaseOwner, &session.PinnedAt, &session.HookExecutable, &eventHookEnabled, &eventHookEvents, &session.NameSource, &pendingName, &pendingAt, &nameAdopt, &nameAdopted, &session.HookAt); err != nil {
 		return Session{}, err
 	}
 	session.NameAdopted = nameAdopted != 0
@@ -894,7 +901,7 @@ const sessionColumns = `sessions.id, sessions.name, slug, cwd, agent, captured_p
 		launch_args, env, pre_launch, post_destroy, login_shell, permission_profile, permission_profile_reason, conversation_id, resume_pin, resume_state,
 		sessions.group_id, groups.name, last_probe_at, last_output_at, last_seen_at, probe_miss_streak, COALESCE((SELECT MAX(events.at) FROM events WHERE events.session_id = sessions.id), 0), env_dirty, deleted_at, archived_at, launch_dirty,
 		COALESCE(launch_lease_owner, ''), pinned_at, COALESCE(hook_executable, ''),
-		event_hook_enabled, event_hook_events, name_source, pending_harness_name, pending_harness_name_at, harness_name_adopt, name_adopted`
+		event_hook_enabled, event_hook_events, name_source, pending_harness_name, pending_harness_name_at, harness_name_adopt, name_adopted, hook_at`
 
 // sessionsFromClause is every sessionColumns-backed query's shared FROM:
 // a LEFT JOIN against groups so GroupName resolves (or reads back empty
@@ -962,6 +969,7 @@ func validateStatusUpdate(input StatusUpdateInput) error {
 type statusRow struct {
 	status, source, agent string
 	at, notifyEpoch       int64
+	hookAt                int64
 	killedByUser          int
 	seenStatusAt          int64
 	paneExitStatus        sql.NullInt64
@@ -971,10 +979,10 @@ type statusRow struct {
 func readStatusRow(ctx context.Context, tx *sql.Tx, sessionID string) (statusRow, error) {
 	var row statusRow
 	if err := tx.QueryRowContext(ctx, `SELECT status, status_source, status_at, agent,
-		killed_by_user, seen_status_at, notify_epoch, pane_exit_status
+		killed_by_user, seen_status_at, notify_epoch, pane_exit_status, hook_at
 		FROM sessions WHERE id = ?`, sessionID).Scan(
 		&row.status, &row.source, &row.at, &row.agent, &row.killedByUser,
-		&row.seenStatusAt, &row.notifyEpoch, &row.paneExitStatus); err != nil {
+		&row.seenStatusAt, &row.notifyEpoch, &row.paneExitStatus, &row.hookAt); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return statusRow{}, fmt.Errorf("session %q not found", sessionID)
 		}
@@ -1053,9 +1061,18 @@ func vetoHookRunningAfterCrash(in StatusUpdateInput, cur statusRow) bool {
 	return in.Source == "hook" && revives && cur.paneExitStatus.Valid
 }
 
+// freshHook reports whether the stored row carries a hook verdict younger
+// than the incoming write's StaleAfter. Freshness is measured from the newest
+// hook evidence (hook_at), which a hook repeating the current status advances
+// although it leaves status_at alone (R303); the later of the two stamps
+// counts so a row never reads older than its own transition.
+func freshHook(in StatusUpdateInput, cur statusRow) bool {
+	return cur.source == "hook" && in.At-max(cur.at, cur.hookAt) < in.StaleAfter
+}
+
 // vetoFreshHookOverProbe: a probe never replaces a hook verdict that is still fresh.
 func vetoFreshHookOverProbe(in StatusUpdateInput, cur statusRow) bool {
-	return in.Source == "probe" && cur.source == "hook" && in.At-cur.at < in.StaleAfter
+	return in.Source == "probe" && freshHook(in, cur)
 }
 
 // vetoMovementOutOfBounds: the output-movement fallback (R316) may only move
@@ -1066,7 +1083,7 @@ func vetoMovementOutOfBounds(in StatusUpdateInput, cur statusRow) bool {
 	if in.Source != "movement" {
 		return false
 	}
-	if in.StaleAfter > 0 && cur.source == "hook" && in.At-cur.at < in.StaleAfter {
+	if in.StaleAfter > 0 && freshHook(in, cur) {
 		return true
 	}
 	enter := in.Status == "running" && cur.status == "idle"
@@ -1204,10 +1221,11 @@ func writeStatusUpdate(ctx context.Context, tx *sql.Tx, input StatusUpdateInput,
 		pane_exit_status = CASE WHEN ? = 1 THEN NULL ELSE COALESCE(?, pane_exit_status) END,
 		crash_tail = CASE WHEN ? = 1 THEN NULL WHEN ? IS NULL THEN crash_tail ELSE ? END,
 		last_message = CASE WHEN ? = '' THEN last_message ELSE ? END,
+		hook_at = CASE WHEN ? = 'hook' THEN ? ELSE hook_at END,
 		probe_miss_streak = 0
 		WHERE id = ?`, input.Status, input.Reason, input.Source, statusAt,
 		newKilled, seenStatusAt, notifyEpoch, notifyEpoch != cur.notifyEpoch, clearCrash, input.PaneExitStatus,
-		clearCrash, input.PaneExitStatus, input.CrashTail, lastMessage, lastMessage, input.SessionID)
+		clearCrash, input.PaneExitStatus, input.CrashTail, lastMessage, lastMessage, input.Source, input.At, input.SessionID)
 	if err != nil {
 		return fmt.Errorf("update session status: %w", err)
 	}
@@ -3009,7 +3027,7 @@ func (s *Store) migrate(version int) error {
 // the schemaVN variables at call time (tests substitute them); a version
 // outside 0..SchemaVersion-1 has no migration path.
 func applySchemaLadder(tx *sql.Tx, version int) error {
-	rungs := [][]string{schemaV1, schemaV2, schemaV3, schemaV4, schemaV5, schemaV6, schemaV7, schemaV8, schemaV9, schemaV10, schemaV11, schemaV12, schemaV13, schemaV14, schemaV15, schemaV16, schemaV17, schemaV18, schemaV19}
+	rungs := [][]string{schemaV1, schemaV2, schemaV3, schemaV4, schemaV5, schemaV6, schemaV7, schemaV8, schemaV9, schemaV10, schemaV11, schemaV12, schemaV13, schemaV14, schemaV15, schemaV16, schemaV17, schemaV18, schemaV19, schemaV20}
 	if version < 0 || version >= len(rungs) {
 		return fmt.Errorf("no migration path from schema version %d", version)
 	}
@@ -3320,6 +3338,29 @@ var schemaV18 = []string{
 var schemaV19 = []string{
 	`ALTER TABLE sessions ADD COLUMN last_seen_at INTEGER NOT NULL DEFAULT 0`,
 	`UPDATE sessions SET last_seen_at = last_output_at`,
+}
+
+// schemaV20 adds sessions.hook_at (R303, SPEC §7): the time of the newest hook
+// verdict the store applied. The hook-over-sampling precedence reads it
+// instead of status_at, because a hook repeating the current status must not
+// move status_at (the transition stamp) yet is still fresh hook evidence.
+// Backfill dates a hook-sourced row by its status_at, the only hook time a
+// pre-v20 database recorded.
+var schemaV20 = []string{
+	`ALTER TABLE sessions ADD COLUMN hook_at INTEGER NOT NULL DEFAULT 0`,
+	`UPDATE sessions SET hook_at = status_at WHERE status_source = 'hook'`,
+}
+
+// VerdictAt is the time the row's verdict was last vouched for, the anchor of
+// every staleness decision (probe eligibility, the movement fallback, the
+// store's hook-over-sampling guards): status_at, or the newer hook_at when the
+// stored verdict is a hook's. A hook repeating the status therefore keeps its
+// verdict fresh without ever dating the row (R303).
+func (s Session) VerdictAt() int64 {
+	if s.StatusSource == "hook" {
+		return max(s.StatusAt, s.HookAt)
+	}
+	return s.StatusAt
 }
 
 // MarkViewed is the one durable write of a view (R324): it copies the row's

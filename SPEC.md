@@ -446,6 +446,7 @@ CREATE TABLE sessions (
   launch_lease_until INTEGER NOT NULL DEFAULT 0,
   last_probe_at      INTEGER NOT NULL DEFAULT 0, -- last pane sample that matched no §7 rule; a column, never an event (§7)
   last_output_at     INTEGER NOT NULL DEFAULT 0, -- the output clock: ms of the newest transcript-region output reconcile confirmed (§7); a column, never an event
+  hook_at            INTEGER NOT NULL DEFAULT 0, -- ms of the newest hook verdict the store applied (R303, schema v20); the freshness clock of a hook verdict, independent of status_at (§7). A column, never an event
   last_seen_at       INTEGER NOT NULL DEFAULT 0, -- the last_output_at value the user has viewed (R324, schema v19); a column, never an event. A row is output-unseen iff last_output_at > last_seen_at (§7, §11)
   probe_miss_streak  INTEGER NOT NULL DEFAULT 0, -- consecutive probe passes that matched no §7 rule (R315); a column, never an event
   created_at         INTEGER NOT NULL,
@@ -567,6 +568,9 @@ Invariants:
 - Schema version 19 adds `sessions.last_seen_at` (R324, §7, §11), the `last_output_at` value the user has
   viewed. The rung backfills it to `last_output_at`, so an upgrade does not light every existing session.
   It is written by a plain `UPDATE` (`MarkViewed`) and never as an `events` row.
+- Schema version 20 adds `sessions.hook_at` (R303, §7), the time of the newest applied hook verdict, the
+  clock hook-over-sampling precedence reads instead of `status_at`. The rung backfills it to `status_at` on
+  hook-sourced rows and is written by the status update itself, never as an `events` row.
 - Schema version 16 adds `sessions.probe_miss_streak` (R315, §7), `0` on a migrated row. It is written by
   plain `UPDATE`s and never as an `events` row.
 - Schema version 17 adds the index `events_session_at` on `events(session_id, at)` (R315, §7), so the newest
@@ -1025,7 +1029,8 @@ Rules:
   same veto a `running` hook has. Copilot fires `userPromptSubmitted` and then `sessionStart` on its
   first prompt, so that first turn reads `idle` until the next hook or a probe that sees the working
   indicator; the next prompt's `userPromptSubmitted` enters `running`.
-- **Idle probe cadence (R314).** An `idle` row is probe-eligible once its `status_at` is at least
+- **Idle probe cadence (R314).** An `idle` row is probe-eligible once its verdict age (`status_at`, or `hook_at` for
+  a hook-sourced row, see the hook-evidence clock below) is at least
   **4 × `stale_after`** old (`starting`, `running` and `waiting` stay at 1 × `stale_after`). The multiple is
   fixed, not a setting, and it applies only on the TUI's probing path, never in `deck _hook`. This is the
   sparse check for a turn begun without a hook: a probe that sees the working indicator moves the row to
@@ -1051,7 +1056,7 @@ Rules:
   counted write, a `running` row the fallback itself set returns to `idle`. It never ends a `running` row
   any other source set, and only moves `idle` to `running` and back. Pi has no hook verdict to defer to and
   uses movement directly. Claude, Codex and Copilot use it only as the stale fallback: the store refuses a
-  movement write over a `hook` verdict younger than `stale_after`, so a fresh hook always wins and a stale
+  movement write over a `hook` verdict whose `hook_at` is younger than `stale_after` (a repeated hook included), so a fresh hook always wins and a stale
   one does not. The streak lives in memory beside the clock (a restart starts from a baseline), the write
   is an ordinary status write with an event (`movement.running`, `movement.idle`), and it runs only on the
   TUI's probing path with `stale_after` above 0. The pass that writes it takes no probe of that row. Its
@@ -1151,13 +1156,28 @@ Rules:
   is still recorded. Only a change of status dates the row, opens an attention episode and
   marks it unseen, so a row cleared with `Y` and then re-probed `waiting` stays cleared and
   keeps its position in the `attention` sort order (which orders by `status_at`); the
-  `activity` order reads `last_output_at` (§7, §11) and no status write can move it. A hook repeating the current status therefore does not extend a hook verdict's
-  freshness window: staleness (§7, below) is measured from the last change of status.
+  `activity` order reads `last_output_at` (§7, §11) and no status write can move it. A hook repeating the current status therefore does not date the row or
+  extend its transition state. Hook freshness has a clock of its own, `hook_at` (below), so that repeat still
+  keeps a hook verdict fresh while changing none of the transition state this bullet protects.
+- **Fresh hook evidence (R303, R316, R317).** A fresh hook verdict keeps precedence over every sampled
+  source: a probe and the movement fallback alike. Freshness is the hook's own clock, `sessions.hook_at`
+  (schema v20), the time of the newest hook verdict the store applied. It is **independent of `status_at`**:
+  a hook that repeats the current status leaves `status_at`, `notify_epoch`, `hook_fired` and the seen
+  state alone (the inert repeat above) but still advances `hook_at`, so a hook that says "still running" or
+  "still idle" is fresh for `stale_after` from that moment. The row's *verdict age* is `hook_at` (never
+  older than `status_at`) while `status_source` is `hook`, and `status_at` for every other source; a
+  verdict from another writer never advances `hook_at`, and a hook that lost precedence leaves none. The
+  age is read twice: by reconcile's eligibility (`probeEligible`, and the movement fallback's pre-check)
+  and, atomically against the stored row, by the store's own guards (a probe or movement write younger than
+  its `stale_after` over a fresh hook verdict loses, whatever the writer read earlier), so a probe that
+  sampled the pane before a hook landed cannot undo it. A genuinely stale hook (older than `stale_after`
+  by `hook_at`) permits sampling and the fallback exactly as before. The v20 rung backfills `hook_at` to
+  `status_at` on hook-sourced rows and leaves 0 elsewhere.
 - **Attaching never answers a `waiting` row (R320).** The old rule that attaching moved a `waiting` row to
   `running` is removed: looking at a session is not evidence that the prompt was answered. A `waiting` row
   leaves `waiting` on evidence only: a later hook, or a probe verdict (including the staleness rule below).
-- Staleness: a `starting`, `running` **or `waiting`** session with no event for
-  `stale_after` (default 45 s) becomes eligible for probing. For non-hook agents, probing
+- Staleness: a `starting`, `running` **or `waiting`** session whose verdict age (above: `hook_at` for a
+  hook verdict, else `status_at`) has reached `stale_after` (default 45 s) becomes eligible for probing. For non-hook agents, probing
   is the only source. `waiting` is included for the unattended half of the same hole: a
   prompt answered from a raw `tmux attach` (not through deck) fires no hook either, so the
   probe is what corrects it. This does not violate precedence — by the time a `waiting` row

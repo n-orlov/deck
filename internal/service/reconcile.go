@@ -325,7 +325,7 @@ func movementStaleAfter(session store.Session, status string, now time.Time, sta
 		return 0, false
 	}
 	stale = staleAfter.Milliseconds()
-	return stale, status == "running" && session.StatusSource == "hook" && now.UnixMilli()-session.StatusAt < stale
+	return stale, status == "running" && session.StatusSource == "hook" && now.UnixMilli()-session.VerdictAt() < stale
 }
 
 // promoteLiveShell: shells have no higher-quality signal or probe, so a live
@@ -493,9 +493,9 @@ const idleProbeFactor = 4
 func probeEligible(session store.Session, now time.Time, staleAfter time.Duration) bool {
 	switch session.Status {
 	case "starting", "running", "waiting":
-		return now.UnixMilli()-session.StatusAt >= staleAfter.Milliseconds()
+		return now.UnixMilli()-session.VerdictAt() >= staleAfter.Milliseconds()
 	case "idle":
-		return now.UnixMilli()-session.StatusAt >= idleProbeFactor*staleAfter.Milliseconds()
+		return now.UnixMilli()-session.VerdictAt() >= idleProbeFactor*staleAfter.Milliseconds()
 	default:
 		return false
 	}

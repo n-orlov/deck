@@ -75,9 +75,9 @@ func newCopilotProbeService(t *testing.T, seed string) (Service, *store.Store) {
 func TestCopilotAbortDemotesAHookRunningRowWhoseIdleFooterIsShown(t *testing.T) {
 	svc, db := newCopilotProbeService(t, "copilot-abort")
 	row := copilotProbeRow(t, svc, db, "copilot", "safe", "idle.txt", 1)
-	// A hook repeating the status the row already has is inert (R303) and
-	// would not date the verdict, so each hook verdict below is a transition
-	// out of idle, whose moment status_at keeps.
+	// Each hook verdict below is a transition out of idle, so it dates both
+	// status_at and hook_at; the repeat case (hook_at alone) is covered by
+	// hook_evidence_test.go.
 	hookRunningAt := func(at int64) {
 		t.Helper()
 		for _, in := range []store.StatusUpdateInput{
