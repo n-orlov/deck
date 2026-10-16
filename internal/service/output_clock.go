@@ -66,14 +66,21 @@ type discountSpan struct{ from, until int64 }
 
 const maxDiscountSpans = 32
 
+// It holds instants, never bucket indices: an index is only meaningful at the
+// width it was computed with, and [ui] output_bucket changes live (R306). Every
+// comparison re-buckets these instants at the clock's current width, so the
+// boundaries the clock compares are always the configured ones.
 type outputState struct {
-	bucket   int64 // the window_activity bucket last examined
-	activity int64 // the window_activity second last read
+	// activity is the window_activity second last read. The bucket it falls
+	// in at the current width is the last bucket examined: under a fixed
+	// width it only moves inside the bucket the last capture examined.
+	activity int64
 	hash     [sha256.Size]byte
-	// counted is the last bucket that wrote last_output_at (0 = none) and
-	// streak the run of consecutive counted buckets ending there (R316).
-	counted int64
-	streak  int
+	// countedAt is the window_activity second of the last counted change
+	// (one that wrote last_output_at; 0 = none) and streak the run of
+	// consecutive counted buckets ending at its bucket (R316).
+	countedAt int64
+	streak    int
 }
 
 // NewOutputClock returns a clock with the given bucket width, or
@@ -87,7 +94,9 @@ func NewOutputClock(bucket time.Duration) *OutputClock {
 
 // SetBucket changes the bucket width while the clock runs (R306: [ui]
 // output_bucket applies live). A non-positive width is ignored. The next
-// Observe reads the new width; the baselines already held stay as they are.
+// Observe reads the new width; the baselines already held stay as they are,
+// and are re-bucketed at the new width, so the bucket a held reading falls in
+// is always judged by the boundaries now configured.
 func (c *OutputClock) SetBucket(bucket time.Duration) {
 	if c == nil || bucket <= 0 {
 		return
@@ -221,25 +230,31 @@ func (c *OutputClock) Observe(ctx context.Context, store OutputStore, sessionID 
 	if c == nil || windowActivity <= 0 {
 		return false, nil
 	}
-	bucket, err := c.bucketOf(windowActivity)
-	if err != nil {
-		return false, err
-	}
-
 	c.mu.Lock()
+	width := c.Bucket
 	previous, seen := c.state[sessionID]
 	c.mu.Unlock()
-	if seen && bucket <= previous.bucket {
+	if width <= 0 {
+		return false, errors.New("output clock bucket must be positive")
+	}
+	bucket := secondBucket(windowActivity, width)
+	if seen && bucket <= secondBucket(previous.activity, width) {
 		return false, c.observeExaminedBucket(ctx, sessionID, windowActivity, previous, capture)
 	}
-	return c.observeNewBucket(ctx, store, sessionID, windowActivity, bucket, previous, seen, capture)
+	return c.observeNewBucket(ctx, store, sessionID, windowActivity, width, previous, seen, capture)
+}
+
+// secondBucket is the bucket a Unix second falls in at width, by the one rule
+// the activity sort uses too (config.OutputBucketIndex).
+func secondBucket(unixSeconds int64, width time.Duration) int64 {
+	return config.OutputBucketIndex(unixSeconds*1000, width)
 }
 
 // observeNewBucket reads the pane for a bucket not yet examined: a transcript
 // change it shows counts (writes last_output_at) unless it lies inside a
 // deck-caused window (R305). The new hash is remembered either way, so the
 // same text never counts later. It reports whether it wrote.
-func (c *OutputClock) observeNewBucket(ctx context.Context, store OutputStore, sessionID string, windowActivity, bucket int64, previous outputState, seen bool, capture func(context.Context) (string, error)) (bool, error) {
+func (c *OutputClock) observeNewBucket(ctx context.Context, store OutputStore, sessionID string, windowActivity int64, width time.Duration, previous outputState, seen bool, capture func(context.Context) (string, error)) (bool, error) {
 	hash, err := captureTranscriptHash(ctx, sessionID, capture)
 	if err != nil {
 		return false, err
@@ -251,9 +266,9 @@ func (c *OutputClock) observeNewBucket(ctx context.Context, store OutputStore, s
 			return false, fmt.Errorf("record output for session %q: %w", sessionID, err)
 		}
 	}
-	next := outputState{bucket: bucket, activity: windowActivity, hash: hash, counted: previous.counted, streak: previous.streak}
+	next := outputState{activity: windowActivity, hash: hash, countedAt: previous.countedAt, streak: previous.streak}
 	if changed {
-		next.countBucket(previous)
+		next.countBucket(previous, width)
 	}
 	c.mu.Lock()
 	c.state[sessionID] = next
@@ -269,7 +284,7 @@ func (c *OutputClock) bucketOf(windowActivity int64) (int64, error) {
 	if bucketWidth <= 0 {
 		return 0, errors.New("output clock bucket must be positive")
 	}
-	return config.OutputBucketIndex(windowActivity*1000, bucketWidth), nil
+	return secondBucket(windowActivity, bucketWidth), nil
 }
 
 // captureTranscriptHash reads the pane and hashes its transcript region.
@@ -281,15 +296,15 @@ func captureTranscriptHash(ctx context.Context, sessionID string, capture func(c
 	return sha256.Sum256([]byte(agent.TranscriptRegion(pane))), nil
 }
 
-// countBucket marks next as the bucket a change was counted in: consecutive
-// counted buckets extend the streak, any gap restarts it at one.
-func (next *outputState) countBucket(previous outputState) {
-	if previous.counted != 0 && previous.counted == next.bucket-1 {
+// countBucket marks next's reading as a counted change: consecutive counted
+// buckets at the current width extend the streak, any gap restarts it at one.
+func (next *outputState) countBucket(previous outputState, width time.Duration) {
+	if previous.countedAt != 0 && secondBucket(previous.countedAt, width) == secondBucket(next.activity, width)-1 {
 		next.streak++
 	} else {
 		next.streak = 1
 	}
-	next.counted = next.bucket
+	next.countedAt = next.activity
 }
 
 // observeExaminedBucket handles a tick whose bucket was already examined
@@ -331,9 +346,8 @@ func (c *OutputClock) Moving(sessionID string) bool {
 	if !ok || state.streak < 2 {
 		return false
 	}
-	width := int64(c.Bucket / time.Second)
-	if width < 1 {
-		width = 1
+	if c.Bucket <= 0 {
+		return false
 	}
-	return c.nowMillis()/1000/width <= state.counted+1
+	return config.OutputBucketIndex(c.nowMillis(), c.Bucket) <= secondBucket(state.countedAt, c.Bucket)+1
 }

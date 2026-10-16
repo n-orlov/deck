@@ -846,7 +846,7 @@ view (§11.5) uses: `allow_yolo`, `yolo_default`, `ui.theme`, `ui.ascii`, `ui.mo
 terminal's mouse reporting is switched on or off with it), `ui.preview_fit`, `ui.preview_paint`,
 `ui.sort_order` (the loaded sessions are re-sorted, the selection stays on its session),
 `ui.default_group_first`, `ui.attach_on_new`, `ui.attach_on_click`, `ui.select_on_drag`,
-`ui.attach_on_resume`, `ui.note_timeout` (the next note follows it), `ui.output_bucket` (the output clock writes at the new width from its next read, and an `activity` list re-sorts at once), `event_hook`, `event_hook_default`, `adopt_harness_names` (the next adoption or
+`ui.attach_on_resume`, `ui.note_timeout` (the next note follows it), `ui.output_bucket` (the output clock writes at the new width from its next read, judging the readings it already holds by the new width's bucket boundaries too, and an `activity` list re-sorts at once), `event_hook`, `event_hook_default`, `adopt_harness_names` (the next adoption or
 push follows it), `bookmarks`, `update_check`, `auto_update` (a save or reload that turns the check on runs it at once, one that turns `auto_update` on installs an offered release at once, and one that turns them off stops every later automatic request or install), `event_hook_events` and
 `event_hook_timeout` (the dispatcher reads them from the running settings when an event fires,
 so the next event follows them). A key the file did not change is left as it is, and a key a `DECK_*`
