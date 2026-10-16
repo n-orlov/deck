@@ -462,23 +462,39 @@ func piTranscriptStretch(stretch []string) bool {
 // pickTopRule is the index into identical (nearest first) of the frame's top
 // rule, by the evidence frameCuts describes.
 func pickTopRule(lines []string, bottom int, identical []int) int {
-	glyphless := glyphlessFrame(lines, bottom)
-	prompted, blankAbove := -1, -1
-	for k, i := range identical {
-		if !glyphless && i+1 < bottom && strings.HasPrefix(lines[i+1], "❯") {
-			prompted = k
-		}
-		if i == 0 || strings.TrimSpace(lines[i-1]) == "" {
-			blankAbove = k
+	if !glyphlessFrame(lines, bottom) {
+		if k := lastMatching(identical, func(i int) bool { return promptedBelow(lines, bottom, i) }); k >= 0 {
+			return k
 		}
 	}
-	switch {
-	case prompted >= 0:
-		return prompted
-	case blankAbove >= 0:
-		return blankAbove
+	if k := lastMatching(identical, func(i int) bool { return blankAbove(lines, i) }); k >= 0 {
+		return k
 	}
 	return 0
+}
+
+// lastMatching is the index into identical of the last rule line accepts, or
+// -1 when none does.
+func lastMatching(identical []int, accept func(line int) bool) int {
+	picked := -1
+	for k, i := range identical {
+		if accept(i) {
+			picked = k
+		}
+	}
+	return picked
+}
+
+// promptedBelow reports whether the rule at line i has a "❯" prompt line right
+// under it, above the bottom rule.
+func promptedBelow(lines []string, bottom, i int) bool {
+	return i+1 < bottom && strings.HasPrefix(lines[i+1], "❯")
+}
+
+// blankAbove reports whether the rule at line i is the first line or has a
+// blank line over it.
+func blankAbove(lines []string, i int) bool {
+	return i == 0 || strings.TrimSpace(lines[i-1]) == ""
 }
 
 // glyphlessFrame reports pi's composer frame: the line under its bottom rule is
@@ -598,27 +614,45 @@ func maskLiveIndicator(region string) string {
 		return region
 	}
 	lines := strings.Split(region, "\n")
-	if i := lastCellHead(lines); i >= 0 {
-		if m := liveEscIndicator.FindStringSubmatch(lines[i]); m != nil {
-			phrase := m[2]
-			if liveRetryCounter.MatchString(phrase) {
-				phrase = liveDigits.ReplaceAllString(phrase, "#")
-			}
-			lines[i] = m[1] + phrase + " " + liveDigits.ReplaceAllString(m[3], "#")
-		}
-	}
-	last := len(lines) - 1
-	if m := livePiSpinner.FindStringSubmatch(lines[last]); m != nil {
-		lines[last] = m[1] + m[2]
-		i := last - 1
-		for i >= 0 && strings.TrimSpace(lines[i]) == "" {
-			i--
-		}
-		if i >= 0 && livePiElapsed.MatchString(lines[i]) {
-			lines[i] = liveDigits.ReplaceAllString(lines[i], "#")
-		}
-	}
+	maskEscIndicator(lines)
+	maskPiSpinner(lines)
 	return strings.Join(lines, "\n")
+}
+
+// maskEscIndicator masks the "<glyph> <phrase> (… esc to interrupt)" line
+// heading the region's last transcript cell, in place.
+func maskEscIndicator(lines []string) {
+	i := lastCellHead(lines)
+	if i < 0 {
+		return
+	}
+	m := liveEscIndicator.FindStringSubmatch(lines[i])
+	if m == nil {
+		return
+	}
+	phrase := m[2]
+	if liveRetryCounter.MatchString(phrase) {
+		phrase = liveDigits.ReplaceAllString(phrase, "#")
+	}
+	lines[i] = m[1] + phrase + " " + liveDigits.ReplaceAllString(m[3], "#")
+}
+
+// maskPiSpinner masks pi's braille spinner line when it is the region's last
+// line, and the "Elapsed N.Ns" counter above it, in place.
+func maskPiSpinner(lines []string) {
+	last := len(lines) - 1
+	m := livePiSpinner.FindStringSubmatch(lines[last])
+	if m == nil {
+		return
+	}
+	lines[last] = m[1] + m[2]
+	i := last - 1
+	for i >= 0 && strings.TrimSpace(lines[i]) == "" {
+		i--
+	}
+	if i >= 0 && livePiElapsed.MatchString(lines[i]) {
+		lines[i] = liveDigits.ReplaceAllString(lines[i], "#")
+	}
 }
 
 // lastCellHead is the index of the region's lowest non-blank line drawn from
@@ -710,15 +744,8 @@ func codexComposerStart(lines []string, end int) int {
 	if end == 0 || strings.HasPrefix(strings.TrimSpace(lines[end-1]), codexDialogMarker) {
 		return end
 	}
-	for i := end - 1; i >= 0; i-- {
-		line := lines[i]
-		if strings.TrimSpace(line) == "" || strings.HasPrefix(line, " ") || strings.HasPrefix(line, "\t") {
-			continue
-		}
-		if strings.HasPrefix(line, "›") {
-			return i
-		}
-		break
+	if i := lastCellHead(lines[:end]); i >= 0 && strings.HasPrefix(lines[i], "›") {
+		return i
 	}
 	return end
 }
