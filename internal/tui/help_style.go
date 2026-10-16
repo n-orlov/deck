@@ -59,6 +59,7 @@ var helpKeycapTokens = map[string]bool{
 	"/": true, "space": true, "c": true, "g": true, "G": true, ",": true,
 	"t": true, "|": true, "<": true, ">": true, "?": true, "q": true,
 	"Ctrl+C": true, "PgUp/PgDn": true, "or": true,
+	"alt+u": true, "alt+Shift+U": true,
 }
 
 // splitLeadingKeyPhrase finds the boundary between a "Keys" section

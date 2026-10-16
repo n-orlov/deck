@@ -266,6 +266,8 @@ func init() {
 		"E":      Model.keyEventLog,
 		"/":      Model.keyFilter,
 		" ":      Model.keyNextAttention,
+		"alt+u":  Model.keyNextUnseen,
+		"alt+U":  Model.keyPreviousUnseen,
 		"c":      Model.keyToggleGroup,
 		"left":   Model.keyCollapseGroup,
 		"right":  Model.keyExpandGroup,

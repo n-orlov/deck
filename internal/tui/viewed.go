@@ -84,7 +84,17 @@ func (m *Model) engageOnView() tea.Cmd {
 	if !ok || !m.viewWriteNeeded(session) {
 		return nil
 	}
+	return m.issueViewWrite(session)
+}
+
+// issueViewWrite records that session's current last_output_at is being
+// copied into last_seen_at and returns the write; the one place both the
+// viewing trigger and a landing (Alt+U, R326) build it.
+func (m *Model) issueViewWrite(session store.Session) tea.Cmd {
 	cell := m.engagement
+	if m.markViewed == nil || cell == nil {
+		return nil
+	}
 	if cell.view.issued == nil {
 		cell.view.issued = map[string]int64{}
 	}

@@ -2861,6 +2861,22 @@ always did), and the permission badge for non-`safe` **last**. The
   `TestInteractiveModeOnARowMarksItViewed`, `TestWatchedSessionDoesNotGoUnseen`,
   `TestCollapsedPreviewViewsNothing`, `TestUnfocusedDeckViewsNothing`,
   `TestArrowingDownUnseenRowsLeavesPassedOverRowsUnseen`, `TestPreviewTickRunsTheViewingTrigger`.
+- **Unseen jumps (R326).** In the list, `Alt+U` selects the next unseen session in list order from the
+  current row and `Alt+Shift+U` the previous one, both wrapping through the painted list (visible rows
+  only; the current row is reached last when it is the only unseen one). *Unseen* is the one predicate
+  the `◆` marker and the `N unseen` header use, so a **seen `error` row with output not yet viewed is
+  reachable until it is viewed**; `space` keeps its own, status-only meaning (a `waiting` row or an unseen
+  `error` row) and never lands on a row that is merely unseen. With nothing unseen a one-line footer
+  message (`No unseen sessions`) is shown and the selection stays. Landing views the row exactly as
+  R325 does (`last_seen_at` takes `last_output_at`, once) and nothing else: no `seen_status_at`, no
+  status, no event, and no row moves. **Decoder:** tmux keeps the case of `M-u` and `M-U` (the bytes are
+  `ESC u` and `ESC U`) and the decoder names them `alt+u` and `alt+U`, so `Alt+Shift+U` is distinguishable
+  from `Alt+U` and the gap `Alt+Shift+Tab` has (§11.9: tmux discards that modifier) does not apply.
+  Tests: `TestAltUJumpsToTheNextUnseenSessionAndOnlyViewsIt`,
+  `TestAltShiftUJumpsToThePreviousUnseenSession`, `TestAltUAndAltShiftUWrapThroughTheList`,
+  `TestAltUWithNothingUnseenShowsAOneLineMessageAndMovesNothing`,
+  `TestASeenErrorIsReachableByAltUUntilItIsViewed`, `TestSpaceIsUnaffectedByTheUnseenJumps`,
+  `TestAltShiftUIsDistinguishableFromAltUThroughTmux`. The interactive-mode form is R327.
 - Status glyphs `●` waiting · `◐` running · `○` idle · `◌` starting · `■` stopped ·
   `✗` error · `▣` archived. Under `DECK_ASCII=1` / `[ui] ascii` each is one ASCII column: `?` waiting,
   `~` running, `o` idle, `.` starting, `#` stopped, `x` error. An **unverified** `running` row (§7, R315:
@@ -2981,7 +2997,7 @@ always did), and the permission badge for non-`safe` **last**. The
   with the full keymap. A capability that can only be reached by editing a file by hand is
   a defect against R7, not a documentation gap.
 
-Keymap: `↵` attach · `space` next needing attention (a `waiting` row or an unseen `error` row, §7) · `Y` mark seen (acknowledge; only where something is unseen) · `n` new · `r`
+Keymap: `↵` attach · `space` next needing attention (a `waiting` row or an unseen `error` row, §7) · `Alt+U` / `Alt+Shift+U` next / previous unseen session (R326, below) · `Y` mark seen (acknowledge; only where something is unseen) · `n` new · `r`
 resume/start · `R` restart preserving conversation · `x` kill (undo toast) · `dd` delete ·
 `s` send message (§11.1) · `i` session detail (§11.4 — **rename, the launch-inputs editor, the
 group move, the permission profile `P` and the conversation lock `c` are actions inside it**,

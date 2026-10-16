@@ -5568,12 +5568,24 @@ func (m Model) attentionCount() int {
 // selection (and everything else) untouched — this function never
 // mutates m.sessions or any session's status, only answers where to move.
 func (m Model) nextAttentionSelection(from sidebarCursor) (sidebarCursor, bool) {
+	return m.stepSelection(from, 1, NeedsAttention)
+}
+
+// stepSelection walks the painted list from from's visual position, one
+// visible session row at a time in direction dir (+1 forward, -1 backward),
+// wrapping through the whole list back to from itself, and returns the first
+// row match accepts. ok is false when no visible session matches. It only
+// answers where to move: it never mutates anything.
+func (m Model) stepSelection(from sidebarCursor, dir int, match func(store.Session) bool) (sidebarCursor, bool) {
 	order := m.visualOrder()
 	n := len(order)
 	if n == 0 {
 		return from, false
 	}
 	pos := -1
+	if dir < 0 {
+		pos = n
+	}
 	for i, c := range order {
 		if c == from {
 			pos = i
@@ -5581,13 +5593,9 @@ func (m Model) nextAttentionSelection(from sidebarCursor) (sidebarCursor, bool) 
 		}
 	}
 	for step := 1; step <= n; step++ {
-		i := (pos + step) % n
-		c := order[i]
+		c := order[((pos+dir*step)%n+n)%n]
 		idx, ok := c.SessionIndex()
-		if !ok {
-			continue
-		}
-		if m.isSessionVisible(idx) && NeedsAttention(m.sessions[idx]) {
+		if ok && m.isSessionVisible(idx) && match(m.sessions[idx]) {
 			return c, true
 		}
 	}
@@ -9967,6 +9975,9 @@ Keys
   space move to the next session needing attention (waiting or error),
     wrapping around; does nothing when nothing needs attention and never
     changes any session's status
+  alt+u / alt+Shift+U move to the next / previous unseen session (the ◆
+    marker), wrapping around; landing views the row but moves no row and
+    acknowledges nothing; a one-line message when nothing is unseen
   c / ←/→ toggle (c), fold (←) or unfold (→) the group whose header is
     under the cursor -- from a session row, that row's own group
   g / G jump to the first / last visible row
