@@ -229,6 +229,8 @@ type Model struct {
 	acknowledge             func(context.Context, string) error
 	// markSeen is engagement's write (R321, engagement.go); engagement is its shared cell.
 	markSeen func(context.Context, string, int64) (bool, error)
+	// markViewed is the R325 viewing write (viewed.go).
+	markViewed func(context.Context, string) (bool, error)
 	// attachSample is the full-attach engagement watcher's read (R321,
 	// attach_engagement.go); WithTmuxClient wires it. Nil runs `a` unwatched.
 	attachSample attachSampler
@@ -2045,6 +2047,7 @@ func New(db *store.Store, settings config.Settings, tmuxNote string) Model {
 	if db != nil {
 		m.acknowledge = db.AcknowledgeSession
 		m.markSeen = db.MarkStatusSeen
+		m.markViewed = db.MarkViewed
 		m.loadPersistedUIState(db)
 	}
 	return m
@@ -2839,6 +2842,7 @@ func init() {
 		reflect.TypeFor[sessionsPinned]():                 handlerFor(Model.onSessionsPinned),
 		reflect.TypeFor[sessionAcknowledged]():            handlerFor(Model.onSessionAcknowledged),
 		reflect.TypeFor[sessionEngaged]():                 handlerFor(Model.onSessionEngaged),
+		reflect.TypeFor[sessionViewed]():                  handlerFor(Model.onSessionViewed),
 		reflect.TypeFor[sessionArchived]():                handlerFor(Model.onSessionArchived),
 		reflect.TypeFor[archiveUndoExpired]():             handlerFor(Model.onArchiveUndoExpired),
 		reflect.TypeFor[footerNoteExpired]():              handlerFor(Model.onFooterNoteExpired),
@@ -4223,6 +4227,10 @@ func (m Model) onPreviewTick(_ previewTick) (tea.Model, tea.Cmd) {
 	}
 	// R322: the dwell trigger, passive and interactive alike.
 	if cmd := m.engageOnDwell(); cmd != nil {
+		cmds = append(cmds, cmd)
+	}
+	// R325: the viewing trigger, on the same tick.
+	if cmd := m.engageOnView(); cmd != nil {
 		cmds = append(cmds, cmd)
 	}
 	return m, tea.Batch(cmds...)

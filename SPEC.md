@@ -1342,7 +1342,7 @@ stepped clock cannot hide or invent output. Output the clock does not count does
 statusline-only churn writes no `last_output_at`, so it leaves a row seen. Setting or clearing the marker
 never moves a row in any of the four sort orders (no comparator reads `last_seen_at`, and the marker is
 not in the attention tier). The one status-seen flip that does reorder is R319's own: marking an
-unseen `error` seen drops it to the seen-`error` tier. What counts as a view is R325's (later). Tests:
+unseen `error` seen drops it to the seen-`error` tier. What counts as a view is R325's (§11, "What counts as viewed"). Tests:
 `TestSessionUnseenPredicate`, `TestMarkViewedWritesOnlyOnAChange`,
 `TestStatuslineChurnDoesNotSetTheUnseenMarker`, `TestMarkerFlipMovesNoRow{Attention,Created,Activity,Name}Order`.
 
@@ -2846,6 +2846,21 @@ always did), and the permission badge for non-`safe` **last**. The
   form collides with any status glyph (`? ~ o . # x`, `-`), the pin (`✦`/`*`) or the selection cue (`>`).
   The sidebar title carries the count as `deck — sessions · N unseen` (ASCII `deck - sessions - N unseen`),
   shown only when N is at least 1; N counts the rows that carry the marker (§7).
+- **What counts as viewed (R325).** A row is *viewed* when the passive preview has been visible on it for
+  at least 1.5 s, or when interactive mode is on it (no dwell: interactive mode is the view). *Visible*
+  is the same test as the R322 dwell's: the row is the one the preview shows (the selected row, or the
+  interactive target), the preview panel is on screen (stacked below its floor it is collapsed away and
+  views nothing), no modal or takeover covers it, the pane's capture is the row's own and live, and the
+  terminal window has not reported losing focus. While a row stays in view the preview tick keeps
+  copying `last_output_at` into `last_seen_at` (`Store.MarkViewed`, a write only when the two differ,
+  once per new output bucket), so a watched session never goes unseen. Arrowing away from a row, a
+  collapsed preview or a blurred window ends the clock; coming back starts a new 1.5 s, so rows passed
+  over while arrowing down a list stay unseen and only the row the cursor rests on is cleared. Viewing
+  writes no status, no `seen_status_at` and no event, and moves no row; it is independent of the
+  R322 prompt dwell, which sets status-seen only. Tests: `TestPreviewVisibleForDwellMarksRowViewed`,
+  `TestInteractiveModeOnARowMarksItViewed`, `TestWatchedSessionDoesNotGoUnseen`,
+  `TestCollapsedPreviewViewsNothing`, `TestUnfocusedDeckViewsNothing`,
+  `TestArrowingDownUnseenRowsLeavesPassedOverRowsUnseen`, `TestPreviewTickRunsTheViewingTrigger`.
 - Status glyphs `●` waiting · `◐` running · `○` idle · `◌` starting · `■` stopped ·
   `✗` error · `▣` archived. Under `DECK_ASCII=1` / `[ui] ascii` each is one ASCII column: `?` waiting,
   `~` running, `o` idle, `.` starting, `#` stopped, `x` error. An **unverified** `running` row (§7, R315:

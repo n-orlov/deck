@@ -123,6 +123,7 @@ func (m Model) promptOnScreen(session store.Session) bool {
 // It is cheap and runs after every message, so a row that is arrowed past and
 // back between two preview ticks still starts a new dwell.
 func (m *Model) observeDwell() {
+	m.observeView() // R325's viewing clock follows every message too
 	session, ok := m.dwellSubject()
 	if !ok {
 		if m.engagement != nil {

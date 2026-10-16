@@ -54,6 +54,8 @@ type engagementState struct {
 	dwelling bool
 	blurred  bool
 	now      func() time.Time
+	// view is the R325 viewing clock (viewed.go).
+	view viewState
 }
 
 func (m *Model) engagementCell() *engagementState {
