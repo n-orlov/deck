@@ -1218,7 +1218,7 @@ Rules:
   markers (`Do you want to proceed?` with `Yes`, `waiting`, reason `permission prompt`) count only in the **live
   region** of the capture: from the last transcript line down to the composer, composer excluded. A transcript
   line starts with `●` (assistant message or tool call), `⎿` (tool result) or the prompt glyph `❯`/`>` not followed
-  by a dialog option number (an echoed user turn); the composer is the chrome below the last two separator rules,
+  by a dialog option number (an echoed user turn); the composer is the chrome from the composer frame's top separator rule down (the same cut as the output clock's transcript region),
   or, on a pane with no rules, a bare trailing prompt line. A marker above the last transcript line has been
   followed by newer output, so it is history: an old `API Error:` above a live composer is not `error`, and an
   answered `Do you want to proceed?` above a live composer is not `waiting`. A live dialog is `waiting` and a live
@@ -1346,8 +1346,12 @@ reconcile tick (the TUI's, never the hook-critical `Reconcile`) compares the win
 (`window_activity` divided by the bucket width, `[ui] output_bucket`, 10 s by default, applied live) with the last one examined for that session. A
 tick in the same bucket reads and writes nothing (except inside a discount window, below). When the bucket has advanced, deck captures the
 pane, cuts it at the composer/footer chrome and hashes the **transcript region** above it
-(trailing blanks ignored). The cut is **the earlier of the last two separator lines** (the
-boundary the probe's `lastContentLine` uses; claude, pi, copilot), or, for a pane that draws no
+(trailing blanks ignored). The cut is **the composer frame's top separator** (the boundary the
+probe's `lastContentLine` uses; claude, pi, copilot): the bottom rule is the pane's last separator
+line and the top rule is the nearest separator above it drawn identically (same characters, same
+width), so a draft line that is itself a rule (`---`, an indented `  ───` continuation) is composer
+content, not the frame; a pane with no identical pair is cut at the earlier of its last two
+separator lines. For a pane that draws no
 separators, **codex's `›` composer line**: codex draws every transcript cell from column 0 and
 indents continuation lines, so the composer is the pane's last column-0 line when that line is a
 `›` line, whatever the draft holds (a numbered item such as `› 1. Write tests` included) and

@@ -265,21 +265,41 @@ func lastContentLine(pane string) string {
 	return ""
 }
 
-// transcriptEnd is the index of the first footer-chrome line: the earlier of
-// the pane's last two (possibly non-adjacent) separator lines, or len(lines)
-// when the pane has fewer than two. It is the one boundary lastContentLine and
-// TranscriptRegion share.
+// transcriptEnd is the index of the first footer-chrome line: the composer's
+// top separator. The bottom one is the pane's last separator line; the top one
+// is the nearest separator above it drawn identically (same characters, same
+// width), because pi, claude and copilot draw both rules of the composer frame
+// as one full-width line. A draft line that happens to be a rule ("---", an
+// indented "  ───" continuation) differs from the frame's rule and is composer
+// content, not the frame (R304). A pane with no identical pair falls back to
+// the earlier of its last two (possibly non-adjacent) separator lines, and to
+// len(lines) when it has fewer than two. It is the one boundary
+// lastContentLine and TranscriptRegion share.
 func transcriptEnd(lines []string) int {
-	separators := 0
+	bottom := -1
+	fallback := len(lines)
 	for i := len(lines) - 1; i >= 0; i-- {
-		if isSeparatorLine(strings.TrimSpace(lines[i])) {
-			separators++
-			if separators == 2 {
-				return i
-			}
+		if !isSeparatorLine(strings.TrimSpace(lines[i])) {
+			continue
+		}
+		if bottom < 0 {
+			bottom = i
+			continue
+		}
+		if fallback == len(lines) {
+			fallback = i
+		}
+		if sameRule(lines[i], lines[bottom]) {
+			return i
 		}
 	}
-	return len(lines)
+	return fallback
+}
+
+// sameRule reports whether two separator lines are drawn identically, ignoring
+// trailing redraw padding.
+func sameRule(a, b string) bool {
+	return strings.TrimRight(a, " \t") == strings.TrimRight(b, " \t")
 }
 
 // outputBoundary is the index where the composer/footer chrome starts, for
@@ -295,8 +315,8 @@ func outputBoundary(lines []string) int {
 }
 
 // TranscriptRegion returns the part of pane above the composer/footer chrome:
-// everything above the last two separator lines (the boundary lastContentLine
-// uses) or above codex's composer line, whichever shape the pane has (the
+// everything above the composer's top separator (transcriptEnd, the boundary
+// lastContentLine uses) or above codex's composer line, whichever shape the pane has (the
 // whole pane when it has neither). Trailing
 // whitespace on each line and trailing blank lines are dropped, so redraw
 // padding is not a change. The R304 output clock hashes it, so a ctx:%, branch
