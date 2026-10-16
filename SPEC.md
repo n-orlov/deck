@@ -1241,7 +1241,8 @@ Rules:
   and error goldens never probe `waiting`.
 - **Codex terminal error is anchored (R313).** Codex's `■` error rule (`error`, reason `terminal error`) matches only
   on the **last content line**, the way pi's `Error:` is anchored: the last content block above codex's composer
-  (the last `›` line within the final three non-blank lines, then its footer) must be led by a `■ ` in column 0.
+  (the last column-0 line when it is a `›` line, then the draft's indented lines and its footer) must be led by a
+  `■ ` in column 0.
   Codex indents an agent cell's and a tool result's continuation lines, and a long error line wraps with indented
   continuations, so the block's head is found by reading up over indented lines. A `■` in a markdown body, in a
   progress bar (`[■■■□□]`) or in a tool's output, followed or surrounded by more transcript, is not `error`. A
@@ -1347,8 +1348,12 @@ tick in the same bucket reads and writes nothing (except inside a discount windo
 pane, cuts it at the composer/footer chrome and hashes the **transcript region** above it
 (trailing blanks ignored). The cut is **the earlier of the last two separator lines** (the
 boundary the probe's `lastContentLine` uses; claude, pi, copilot), or, for a pane that draws no
-separators, **codex's `›` composer line** (one of the final three non-blank lines, and not a
-numbered dialog option such as `› 1. Yes`) together with the status line under it, or a bare
+separators, **codex's `›` composer line**: codex draws every transcript cell from column 0 and
+indents continuation lines, so the composer is the pane's last column-0 line when that line is a
+`›` line, whatever the draft holds (a numbered item such as `› 1. Write tests` included) and
+however many indented lines it spans, together with the status line under it. A pane whose last
+non-blank line is a codex dialog's `Press enter to …` line has no composer: the dialog, its `›`
+cursor option included, is transcript. Otherwise the cut is a bare
 trailing claude prompt line. A draft, spinner or statusline change below the cut is never output. Only a
 changed hash counts: it writes `last_output_at` as `window_activity` in milliseconds. A bucket
 whose transcript hash did not change, such as a footer-only update, writes nothing. So two changes

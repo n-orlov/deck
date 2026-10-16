@@ -59,3 +59,48 @@ func TestCodexFooterOnlyChurnLeavesOutputClockUnseenAndMovementAlone(t *testing.
 	r.tickPane(1050, 1050, strings.Replace(idle, "hello.txt is the only file", "three files now", 1))
 	r.wantStatus("running", "transcript changes in two consecutive buckets")
 }
+
+// R304/R316/R324 under real composer contents: a numbered draft (which looks
+// like a dialog option), a four-line draft, a draft with a blank line in it and
+// a numbered multi-line draft, each sitting unchanged while only the footer's
+// spinner turns over in consecutive buckets. None of it moves last_output_at,
+// sets unseen or lets movement take the row; a transcript change afterwards in
+// two consecutive buckets still does.
+func TestCodexFooterChurnUnderAnyDraftLeavesOutputClockUnseenAndMovementAlone(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join("..", "agent", "testdata", "probes", "codex", "idle.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	const status = "fake-model default · /tmp/codex-spike/work"
+	drafts := map[string]string{
+		"numbered":            "› 1. Write regression tests",
+		"four-line":           "› first line of a draft\n  second line\n  third line\n  fourth line",
+		"blank-inside":        "› para one\n\n  para two",
+		"numbered-multi-line": "› 2. Cover the footer\n  3. Cover the draft",
+	}
+	for name, draft := range drafts {
+		t.Run(name, func(t *testing.T) {
+			idle := strings.Replace(string(raw), "› Ask Codex to do anything", draft, 1)
+			if idle == string(raw) || !strings.Contains(idle, status) {
+				t.Fatal("golden lost its composer or status line")
+			}
+			r := newMovementRig(t, "codex", 2*time.Hour)
+			r.tickPane(1000, 1000, idle)
+			for i, spinner := range []string{"⠋", "⠙", "⠹", "⠸"} {
+				now := int64(1010 + 10*i)
+				r.tickPane(now, now, strings.Replace(idle, status, status+" · renaming... "+spinner, 1))
+				got := r.row()
+				if got.LastOutputAt != 0 || got.Unseen() || got.Status != "idle" || got.StatusSource == "movement" {
+					t.Fatalf("footer-only tick at %d: last_output_at=%d unseen=%v status=%q source=%q",
+						now, got.LastOutputAt, got.Unseen(), got.Status, got.StatusSource)
+				}
+			}
+			r.tickPane(1050, 1050, strings.Replace(idle, "hello.txt is the only file", "two files", 1))
+			if got := r.row(); got.LastOutputAt == 0 || !got.Unseen() {
+				t.Fatalf("a transcript change did not count: last_output_at=%d unseen=%v", got.LastOutputAt, got.Unseen())
+			}
+			r.tickPane(1060, 1060, strings.Replace(idle, "hello.txt is the only file", "three files now", 1))
+			r.wantStatus("running", "transcript changes in two consecutive buckets")
+		})
+	}
+}

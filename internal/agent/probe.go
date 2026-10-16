@@ -1,9 +1,6 @@
 package agent
 
-import (
-	"regexp"
-	"strings"
-)
+import "strings"
 
 // probeRule is one pane-text heuristic. Keep the complete corpus here: probe
 // classification is adapter knowledge and must not leak into service or TUI
@@ -336,9 +333,8 @@ func isSeparatorLine(line string) bool {
 // "■ " in column 0. Codex indents an agent cell's and a tool result's
 // continuation lines, and wraps a long error line with indented continuations
 // too, so the block's head is found by walking up over indented lines. The
-// composer is the last "›" line within the pane's final three non-blank lines
-// (the placeholder or a draft, then the footer); a pane without one is read to
-// its end.
+// composer (codexComposerStart: the placeholder or a draft of any length, then
+// the footer) is cut first; a pane without one is read to its end.
 func codexTerminalError(pane string) bool {
 	lines := strings.Split(strings.ReplaceAll(pane, "\r\n", "\n"), "\n")
 	end := trimTrailingBlank(lines, len(lines))
@@ -361,23 +357,33 @@ func trimTrailingBlank(lines []string, end int) int {
 	return end
 }
 
-// codexOptionLine is a numbered choice in a codex dialog ("› 1. Yes, proceed
-// (y)"): the cursor glyph there is a selection, not the composer.
-var codexOptionLine = regexp.MustCompile(`^›\s*\d+\.`)
+// codexDialogMarker leads the last line of every codex selection dialog
+// ("Press enter to confirm or esc to cancel", "Press enter to continue"). A
+// dialog replaces the composer, so its "› N." cursor line is dialog content.
+const codexDialogMarker = "Press enter to "
 
-// codexComposerStart is the index of codex's composer: the last "›" line
-// within the final three non-blank lines before end, or end itself when there
-// is none.
+// codexComposerStart is the index of codex's composer, or end when the pane
+// shows none. Codex draws every transcript cell ("› you", "• agent", "⚠", "■")
+// from column 0 and indents its continuation lines; the composer is drawn the
+// same way, its draft's further lines and the status line under it all
+// indented. So the composer is the last column-0 line before end, provided it
+// is a "›" line: whatever the draft says (a numbered list item included) and
+// however many lines it spans. A pane whose last non-blank line is a dialog's
+// "Press enter to ..." line has no composer.
 func codexComposerStart(lines []string, end int) int {
-	seen := 0
-	for i := end - 1; i >= 0 && seen < 3; i-- {
-		if strings.TrimSpace(lines[i]) == "" {
+	end = trimTrailingBlank(lines, end)
+	if end == 0 || strings.HasPrefix(strings.TrimSpace(lines[end-1]), codexDialogMarker) {
+		return end
+	}
+	for i := end - 1; i >= 0; i-- {
+		line := lines[i]
+		if strings.TrimSpace(line) == "" || strings.HasPrefix(line, " ") || strings.HasPrefix(line, "\t") {
 			continue
 		}
-		seen++
-		if strings.HasPrefix(lines[i], "›") && !codexOptionLine.MatchString(lines[i]) {
+		if strings.HasPrefix(line, "›") {
 			return i
 		}
+		break
 	}
 	return end
 }
