@@ -1356,12 +1356,19 @@ redraw in the same bucket as the last reading is not counted by the next bucket'
 a deck-caused resize (a preview fit that issued a `resize-window`, and interactive entry and exit,
 which resize the window and make the pane redraw on SIGWINCH), a key deck forwards to the pane in
 interactive mode (each forwarded key restarts the window; a key deck does not forward does not), and
-an attach. An attach is open-ended: it discounts from the moment `a` hands the terminal to the
-tmux client until the client detaches, plus one window for the detach repaint, because deck cannot
-see what is typed meanwhile. A window is compared with the pane's `window_activity`, not with the
+an attach. An attach is bounded like the rest: the hand-off from `a` to the tmux client opens one
+window (the client's attach resizes the window and the pane redraws), and the client's detach opens
+one more for the detach repaint. Nothing discounts the stretch in between: what the agent prints
+while a client stays attached is autonomous and counts, however long the attach lasts, because
+no discount ever outlasts one window. Output caused by a resize or a forwarded key stays
+discounted for its own window. A window is compared with the pane's `window_activity`, not with the
 tick that reads it, so a tick that lands late still discounts output that happened inside the
 window. Output whose `window_activity` falls after the window ends counts as before. The windows
 are in memory, like the baseline.
+Tests: `TestOutputInsideTheAttachStartWindowDoesNotAdvanceLastOutputAt`,
+`TestAutonomousOutputLongAfterAnAttachStartCountsWhileStillAttached`, `TestAttachDiscountNeverOutlastsOneBucket`,
+`TestDetachRepaintIsDiscountedButTheAttachedStretchIsNot`, `TestKeyAfterAnExpiredAttachWindowIsStillDiscounted`,
+`TestAttachDiscountsTheHandOffAndTheDetachRepaint`.
 
 ---
 

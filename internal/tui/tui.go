@@ -4375,8 +4375,9 @@ func (m Model) attachSelected() (tea.Model, tea.Cmd) {
 	m.clearEntryRefusal()
 	m.releaseForeignPreviewPin(session.Slug)
 	if m.outputDiscount != nil {
-		// R305: everything printed while the real client is attached, and
-		// the repaint at its detach, is deck-mediated.
+		// R305: the hand-off redraw and (at its detach) the detach repaint
+		// are deck-caused, each for one bounded window; the attached
+		// stretch between them is not discounted.
 		m.outputDiscount.AttachStarted(session.ID)
 	}
 	m.attachingSessionID = session.ID

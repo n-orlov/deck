@@ -52,7 +52,7 @@ func wantEvents(t *testing.T, r *discountRecorder, want ...string) {
 	}
 }
 
-func TestAttachDiscountsOutputFromStartToDetach(t *testing.T) {
+func TestAttachDiscountsTheHandOffAndTheDetachRepaint(t *testing.T) {
 	rec := &discountRecorder{}
 	m := New(nil, config.Settings{}, "").WithOutputDiscounter(rec)
 	m.width, m.height = 100, 30

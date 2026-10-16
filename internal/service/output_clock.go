@@ -60,13 +60,10 @@ type OutputClock struct {
 }
 
 // discountSpan is one stretch of Unix milliseconds in which output on a
-// session is deck-caused. until is openEnded while an attach holds it.
+// session is deck-caused. Every span is bounded by one DiscountWindow.
 type discountSpan struct{ from, until int64 }
 
-const (
-	openEnded        = int64(1<<63 - 1)
-	maxDiscountSpans = 32
-)
+const maxDiscountSpans = 32
 
 type outputState struct {
 	bucket   int64 // the window_activity bucket last examined
@@ -136,32 +133,26 @@ func (c *OutputClock) Discount(sessionID string, cause DiscountCause) {
 	c.addSpan(sessionID, discountSpan{from: now, until: now + c.DiscountWindow().Milliseconds()})
 }
 
-// AttachStarted opens a discount that lasts until AttachEnded: while a real
-// tmux client is attached every byte of output is typed or redrawn through
-// deck's hand-off, and deck cannot see which.
+// AttachStarted discounts the DiscountWindow after the hand-off: handing the
+// terminal to a tmux client resizes the window and makes the pane redraw. The
+// discount is bounded like every other cause (R305): it never lasts longer
+// than one window, so an agent's own output later in a long attach counts.
 func (c *OutputClock) AttachStarted(sessionID string) {
 	if c == nil {
 		return
 	}
-	c.addSpan(sessionID, discountSpan{from: c.nowMillis(), until: openEnded})
+	now := c.nowMillis()
+	c.addSpan(sessionID, discountSpan{from: now, until: now + c.DiscountWindow().Milliseconds()})
 }
 
-// AttachEnded closes the attach discount and gives the detach redraw its own
-// DiscountWindow.
+// AttachEnded gives the detach repaint its own DiscountWindow. What was
+// printed between the attach and the detach is not discounted.
 func (c *OutputClock) AttachEnded(sessionID string) {
 	if c == nil {
 		return
 	}
 	now := c.nowMillis()
-	end := now + c.DiscountWindow().Milliseconds()
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	spans := c.discount[sessionID]
-	if n := len(spans); n > 0 && spans[n-1].until == openEnded {
-		spans[n-1].until = end
-		return
-	}
-	c.addSpanLocked(sessionID, discountSpan{from: now, until: end})
+	c.addSpan(sessionID, discountSpan{from: now, until: now + c.DiscountWindow().Milliseconds()})
 }
 
 func (c *OutputClock) addSpan(sessionID string, span discountSpan) {

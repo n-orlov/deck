@@ -38,20 +38,83 @@ func TestOutputAfterADeckCausedResizeDoesNotAdvanceLastOutputAt(t *testing.T) {
 	}
 }
 
-func TestOutputAfterAnAttachDoesNotAdvanceLastOutputAt(t *testing.T) {
+// The attach's own hand-off redraw is deck-caused and discounted.
+func TestOutputInsideTheAttachStartWindowDoesNotAdvanceLastOutputAt(t *testing.T) {
 	h := discountHarness(t)
 	h.clock.AttachStarted(h.id)
-	// The user types in the attached client for a long while; deck is
-	// suspended and sees none of it. Detach lands 60 s later.
+	h.provoke()
+	if h.tick(1003) {
+		t.Fatalf("the attach hand-off redraw advanced last_output_at to %d", h.lastOutputAt())
+	}
+	if got := h.lastOutputAt(); got != 0 {
+		t.Fatalf("last_output_at = %d, want 0", got)
+	}
+}
+
+// An attach discount is bounded by one window: output past it counts while the
+// client is still attached (the discount is not open-ended).
+func TestAutonomousOutputLongAfterAnAttachStartCountsWhileStillAttached(t *testing.T) {
+	for _, at := range []int64{1007, 1021, 1050} {
+		h := discountHarness(t)
+		h.clock.AttachStarted(h.id) // never ended: the client stays attached
+		h.provoke()
+		if !h.tick(at) {
+			t.Fatalf("output at %d, past the attach window, was suppressed", at)
+		}
+		if got := h.lastOutputAt(); got != at*1000 {
+			t.Fatalf("last_output_at = %d, want %d", got, at*1000)
+		}
+	}
+}
+
+// Window length is min(bucket, 5 s) for an attach too, for small buckets.
+func TestAttachDiscountNeverOutlastsOneBucket(t *testing.T) {
+	for _, bucket := range []time.Duration{time.Second, 3 * time.Second, 10 * time.Second} {
+		c := NewOutputClock(bucket)
+		now := time.Unix(1001, 0)
+		c.Now = func() time.Time { return now }
+		c.AttachStarted("s")
+		c.AttachEnded("s")
+		// window_activity second W is discounted only when W*1000 <= until.
+		limit := now.UnixMilli() + c.DiscountWindow().Milliseconds()
+		if !c.discounted("s", limit/1000) {
+			t.Fatalf("bucket %v: output at the window end must be discounted", bucket)
+		}
+		if c.discounted("s", limit/1000+1) {
+			t.Fatalf("bucket %v: output one second past the window was discounted", bucket)
+		}
+	}
+}
+
+// The detach repaint has its own window; the long attached stretch between
+// start and detach is not discounted.
+func TestDetachRepaintIsDiscountedButTheAttachedStretchIsNot(t *testing.T) {
+	h := discountHarness(t)
+	h.clock.AttachStarted(h.id)
 	later := time.Unix(1061, 0)
 	h.clock.Now = func() time.Time { return later }
 	h.clock.AttachEnded(h.id)
 	h.provoke()
-	if h.tick(1050) {
-		t.Fatalf("output during an attach advanced last_output_at to %d", h.lastOutputAt())
+	if h.tick(1062) {
+		t.Fatalf("the detach repaint advanced last_output_at to %d", h.lastOutputAt())
 	}
-	if got := h.lastOutputAt(); got != 0 {
-		t.Fatalf("last_output_at = %d, want 0", got)
+	h.pane = pane("hello\nredraw\nagent", "~/proj  main  ctx:12%")
+	if !h.tick(1072) {
+		t.Fatal("output after the detach window must count")
+	}
+}
+
+// A forwarded key typed while an attach is also open stays discounted for its
+// own window even though the attach start has expired.
+func TestKeyAfterAnExpiredAttachWindowIsStillDiscounted(t *testing.T) {
+	h := discountHarness(t)
+	h.clock.AttachStarted(h.id)
+	later := time.Unix(1031, 0)
+	h.clock.Now = func() time.Time { return later }
+	h.clock.Discount(h.id, DiscountKey)
+	h.provoke()
+	if h.tick(1033) {
+		t.Fatalf("key-caused output advanced last_output_at to %d", h.lastOutputAt())
 	}
 }
 
