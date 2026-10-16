@@ -4215,25 +4215,32 @@ func (m Model) onPreviewTick(_ previewTick) (tea.Model, tea.Cmd) {
 	// no tea.Cmd at all -- it is a pure read of the transport's own
 	// Status(), so a hit is handled inline, in this very Update call,
 	// rather than round-tripping through another message.
-	if m.interactive {
-		var cmd tea.Cmd
-		m, cmd = m.tickInteractiveDisplacement()
+	var engage []tea.Cmd
+	m, engage = m.tickEngagement()
+	cmds = append(cmds, engage...)
+	return m, tea.Batch(cmds...)
+}
+
+// tickEngagement is onPreviewTick's tail: while interactive the
+// displacement check and the screen-change trigger, then the dwell trigger
+// (R322, passive and interactive alike) and the viewing trigger (R325) on
+// the same tick. It returns the non-nil commands in that order.
+func (m Model) tickEngagement() (Model, []tea.Cmd) {
+	var cmds []tea.Cmd
+	add := func(cmd tea.Cmd) {
 		if cmd != nil {
 			cmds = append(cmds, cmd)
 		}
-		if cmd := m.engageOnScreenChange(); cmd != nil {
-			cmds = append(cmds, cmd)
-		}
 	}
-	// R322: the dwell trigger, passive and interactive alike.
-	if cmd := m.engageOnDwell(); cmd != nil {
-		cmds = append(cmds, cmd)
+	if m.interactive {
+		var cmd tea.Cmd
+		m, cmd = m.tickInteractiveDisplacement()
+		add(cmd)
+		add(m.engageOnScreenChange())
 	}
-	// R325: the viewing trigger, on the same tick.
-	if cmd := m.engageOnView(); cmd != nil {
-		cmds = append(cmds, cmd)
-	}
-	return m, tea.Batch(cmds...)
+	add(m.engageOnDwell())
+	add(m.engageOnView())
+	return m, cmds
 }
 
 // tickInteractiveDisplacement is onPreviewTick's displacement check while
