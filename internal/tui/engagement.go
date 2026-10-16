@@ -42,7 +42,8 @@ type engagementState struct {
 	// issued maps a session id to the status episode (status_at AND
 	// status_seq: a stamp alone can repeat) its engagement write named. It is
 	// also the sort hold: a row still in its entry's episode keeps its
-	// pre-engagement attention tier.
+	// pre-engagement attention tier. An entry only ever moves forward in
+	// status_seq: a delayed engagement of an older episode never replaces it.
 	issued map[string]store.StatusEpisode
 	// screenTarget/screenHash are the baseline of the interactive preview's
 	// live screen; screenTarget is "" outside interactive mode.
@@ -105,7 +106,14 @@ func (m *Model) engageRow(trigger engagementTrigger, session store.Session) tea.
 	}
 	cell := m.engagementCell()
 	episode := session.Episode()
-	if issued, done := cell.issued[session.ID]; done && issued == episode {
+	if issued, done := cell.issued[session.ID]; done && (issued == episode || issued.Seq > episode.Seq) {
+		// Already issued for this episode, or a NEWER episode of the row was
+		// engaged before this older one's delayed trigger arrived (an attach
+		// completion). status_seq counts the row's transitions, so it orders
+		// episodes where status_at cannot (equal stamps, a stepped-back
+		// clock). The older trigger must neither replace the newer entry --
+		// which is the cached decision and the sidebar hold -- nor issue a
+		// write the store would refuse anyway.
 		return nil
 	}
 	cell.issued[session.ID] = episode

@@ -1128,8 +1128,13 @@ Rules:
   status episode it saw (`status_at` **and** `status_seq`; `Store.MarkStatusSeen` takes a
   `StatusEpisode`), so a newer prompt is never hidden by an engagement with an older one however late
   the older write runs, and the cached engagement decision, the sidebar hold and the R322 dwell are
-  bound to that same episode, not to the stamp. A second
+  bound to that same episode, not to the stamp. The cached decision and the hold only move forward in
+  `status_seq` (which orders episodes where `status_at` cannot: equal stamps, a stepped-back clock): an
+  engagement delayed from an older episode (a full attach's completion arriving after the newer prompt
+  was engaged) issues no write, leaves that episode's cached entry and hold in place, and so neither
+  changes the newer episode's durable state nor moves its already-engaged row. A second
   engagement on an already-seen row issues no write at all. Covering tests:
+  `TestDelayedOlderEngagementCannotDisturbAnEngagedNewerEpisode`, `TestOlderEpisodeEngageRowKeepsTheNewerEpisodesEntry`,
   `TestFullAttachEngagesPromptThatArrivesWhileAttachedAtTheTrigger`, `TestFullAttachLeavesNewerUnobservedEpisodesUnseen`, `TestEngagementFirstForwardedKeySetsSeen`, `TestEngagementFirstInteractiveScrollSetsSeen`,
   `TestEngagementFirstPassivePreviewScrollSetsSeen`, `TestEngagementFirstScreenContentChangeSetsSeen`,
   `TestFullAttachFirstForwardedKeyIsReported`, `TestFullAttachFirstScrollIsReported`,
