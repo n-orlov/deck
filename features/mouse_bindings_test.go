@@ -20,6 +20,7 @@ func registerMouseBindingSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^deck client "([^"]+)" clicks on the row containing "([^"]+)"$`, clientClicksOnRowContaining)
 	sc.Step(`^deck client "([^"]+)" double-clicks on the row containing "([^"]+)"$`, clientDoubleClicksOnRowContaining)
 	sc.Step(`^deck client "([^"]+)" detaches$`, clientDetaches)
+	sc.Step(`^deck client "([^"]+)" clicks on the gutter of the row containing "([^"]+)"$`, clientClicksOnGutterOfRowContaining)
 }
 
 // locateText finds text's first occurrence WITHIN THE SIDEBAR PANEL of
@@ -246,6 +247,26 @@ func clientClicksOnRowContaining(ctx context.Context, clientName, text string) e
 		return err
 	}
 	return client.Click(col, row)
+}
+
+// clientClicksOnGutterOfRowContaining presses the row's cursor gutter: the
+// two cells that hold the `>` marker, right after the left border and one pad
+// column (R328). Columns are 1-based on the wire, so the first gutter cell is
+// column 3. The row is located through the frame like every other click step.
+func clientClicksOnGutterOfRowContaining(ctx context.Context, clientName, text string) error {
+	h, err := assertionHarness(ctx)
+	if err != nil {
+		return err
+	}
+	client, err := h.Client(clientName)
+	if err != nil {
+		return err
+	}
+	_, row, err := locateText(client, text)
+	if err != nil {
+		return err
+	}
+	return client.Click(3, row)
 }
 
 func clientDoubleClicksOnRowContaining(ctx context.Context, clientName, text string) error {

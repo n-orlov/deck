@@ -3841,6 +3841,19 @@ scroll, no close button that is the only way to dismiss.
 | click the collapsed strip | restore the previous non-collapsed mode | `|` |
 | click the passive preview | enter §11.9's interactive preview on the **already selected** row | `↵` |
 | click empty sidebar space while interactive | leave interactive mode | `Ctrl+Q` |
+| click the **gutter** of the attached row while interactive | leave interactive mode, selection left where it is (R328) | `Ctrl+Q` |
+| click the **gutter** of any other row while interactive | leave interactive mode and select that row, **without** entering it (R328) | `↑`/`↓` |
+| click the **gutter** of a row while not interactive | select that row only, whatever `[ui] attach_on_click` says (R328) | `↑`/`↓` |
+| click the **gutter** cells of a group header | nothing of its own: the gutter is inert on headers, and the press is the header click (collapse) above (R328) | `c` (§11) |
+
+**The gutter is the cursor marker's two cells.** A row's *gutter* is the two cells at the left of
+every sidebar row that hold the `>` marker (the same cells on every other row, and on both of the
+row's lines): column 2 and 3, 0-based, right after the left border and one pad column, in the side-by-side
+and the stacked layout alike, with Unicode or `ascii` glyphs, and at the 80x24 minimum. It is resolved by
+the same hit-test as every other cell (R329), so it cannot drift from where the marker is drawn. A press there
+*navigates and never attaches* (R328): the main area of a row keeps the select-and-enter behaviour above,
+the empty space below the rows keeps its meaning, and a gutter navigate is not an engagement (§7, R320) —
+the row it lands on does not move and its seen state is untouched.
 
 **A wheel over the passive preview does nothing, and a click over it is `↵`.** The passive
 preview is a non-interactive, non-scrolling crop (§11): there is no viewport for a wheel to

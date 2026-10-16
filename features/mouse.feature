@@ -365,3 +365,32 @@ Feature: §11.8 mouse bindings and the [ui] mouse / DECK_MOUSE opt-out (requirem
     # tests) -- its own "> " marker is never expected on screen here,
     # since that row not being rendered is the drift itself.
     When deck client "A" exits cleanly
+
+  @requirement-328-gutter-click-navigates-without-attaching
+  Scenario: at the 80x24 minimum a gutter click detaches or selects without attaching, and a main-area click still enters
+    # R328/R329: the gutter is the two cells that hold the "> " marker
+    # (columns 3-4 on the wire, after the border and one pad column). The
+    # harness pins DECK_ASCII=1, so this runs with the ascii glyphs too.
+    Given deck client "A" is started with terminal size 80x24
+    When deck client "A" creates shell session "gutter-alpha"
+    And deck client "A" creates shell session "gutter-bravo"
+    And within one configured reconcile interval deck client "A" row "gutter-alpha" contains "running"
+    And within one configured reconcile interval deck client "A" row "gutter-bravo" contains "running"
+    And deck client "A" clicks on the row containing "gutter-bravo"
+    Then deck client "A" has session "gutter-bravo" selected
+    And deck client "A" screen contains "Ctrl+Q"
+    # The attached row's gutter leaves interactive mode, selection kept.
+    When deck client "A" clicks on the gutter of the row containing "gutter-bravo"
+    Then deck client "A" screen stops containing "Ctrl+Q"
+    And deck client "A" has session "gutter-bravo" selected
+    # Another row's gutter, while not interactive, only selects it.
+    When deck client "A" clicks on the gutter of the row containing "gutter-alpha"
+    Then deck client "A" screen stops containing "Ctrl+Q"
+    And deck client "A" has session "gutter-alpha" selected
+    # While interactive, another row's gutter selects it without entering.
+    When deck client "A" clicks on the row containing "gutter-bravo"
+    Then deck client "A" screen contains "Ctrl+Q"
+    When deck client "A" clicks on the gutter of the row containing "gutter-alpha"
+    Then deck client "A" screen stops containing "Ctrl+Q"
+    And deck client "A" has session "gutter-alpha" selected
+    When deck client "A" exits cleanly

@@ -193,6 +193,9 @@ func (m Model) interactiveSidebarPress(msg tea.MouseMsg) (tea.Model, tea.Cmd, bo
 		return m, nil, false
 	}
 	if updated, cmd, ok := m.resolveSidebarPress(hit, func(mm Model, h hitResult) (tea.Model, tea.Cmd) {
+		if h.gutter {
+			return mm.gutterNavigateInteractive(h.sessionIndex)
+		}
 		return mm.retargetInteractiveSidebarClick(h.sessionIndex)
 	}); ok {
 		return updated, cmd, true
