@@ -299,8 +299,8 @@ func TestCollapsedStripRendersMarkerAndAttentionCount(t *testing.T) {
 	model.width, model.height = 80, 24
 	model.layoutMode = LayoutCollapsed
 	model.sessions = []store.Session{
-		{Name: "waiting one", Agent: "claude", Status: "waiting"},
-		{Name: "errored one", Agent: "claude", Status: "error"},
+		{Name: "waiting one", Agent: "claude", Status: "waiting", StatusAt: 100},
+		{Name: "errored one", Agent: "claude", Status: "error", StatusAt: 100}, // unseen: SeenStatusAt != StatusAt (R319; seen_attention_test.go covers the seen row)
 		{Name: "running one", Agent: "claude", Status: "running"},
 	}
 

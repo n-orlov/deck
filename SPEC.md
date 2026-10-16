@@ -1004,9 +1004,9 @@ clearable by unarchiving (§9.2).
 |---|---|---|
 | `starting` | tmux session created, no agent signal yet | dim |
 | `running` | agent is working | normal |
-| `waiting` | **needs me** — permission prompt, question | bright, in the attention count, sorted first |
+| `waiting` | **needs me** — permission prompt, question | bright, in the attention count, sorted first, seen or not |
 | `idle` | turn finished cleanly | check, `last_message` in the detail pane |
-| `error` | turn or process died | red, unseen marker sticks, crash tail captured |
+| `error` | turn or process died | red, unseen marker sticks until seen, crash tail captured; needs attention only while unseen (§7) |
 | `stopped` | record alive, no tmux session (post-reboot, killed) | grey, labelled *resumable* |
 | `archived` | hidden from the default list, retained; **not startable** — unarchive (`U`) to resume | hidden behind a filter |
 
@@ -1068,6 +1068,16 @@ Rules:
   reason an ordinary one is, since the keyboard reaches the pane either way. Being
   *displaced* from the preview by another client records nothing: that is something done to
   the user, not by them. Leaving an attention state bumps `notify_epoch` (§10.3).
+- **Needs attention (R319).** A row needs attention when it is `waiting`, or `error` **and
+  unseen**; seen means `seen_status_at = status_at`, an equality and never an ordering. A
+  seen `waiting` row still needs attention (it is still blocked on the user): it stays in the
+  top tier, in the strip's count and a `space` target. A seen `error` row does not: it is
+  dropped from the count and from `space`, and sorts just above `stopped` (after `idle`).
+  The `attention` sort tier, the collapsed strip's count and `space` all call that one
+  predicate (`NeedsAttention`, `internal/tui/attention.go`), so the three cannot disagree.
+  Because the test is equality, a clock that steps back or two stamps in the same
+  millisecond cannot hide a prompt: a transition into `waiting` or `error` resets
+  `seen_status_at` to 0, so a later prompt is unseen whatever stamp it carries.
 - **A repeat write is inert.** A status write that leaves the status unchanged — a probe
   seeing `waiting`, `running` or `error` again, a hook or the user restating the current
   status — does not touch `status_at`, `notify_epoch`, `hook_fired` or the seen state
@@ -2637,8 +2647,8 @@ hold them side by side.
     second implementation of deletion. An empty group needs no prompt. deck never mass-kills
     sessions as a side effect of a list edit.
 - Sort: **configurable**, `[ui] sort_order` (§6.5), four values, `attention` the default:
-  - `attention` (default) — `waiting` (oldest first) → `error` → `running` → `starting` →
-    `idle` → `stopped`. This is the order every earlier phase shipped and the one the list
+  - `attention` (default) — `waiting` (oldest first, seen or not) → unseen `error` → `running` →
+    `starting` → `idle` → seen `error` → `stopped` (seen means `seen_status_at = status_at`, §7). This is the order every earlier phase shipped and the one the list
     exists to provide; it stays the default precisely because it is the order that answers
     "which session needs me".
   - `created` — newest first, by `sessions.created_at` descending.
@@ -2873,7 +2883,7 @@ always did), and the permission badge for non-`safe` **last**. The
   with the full keymap. A capability that can only be reached by editing a file by hand is
   a defect against R7, not a documentation gap.
 
-Keymap: `↵` attach · `space` next needing attention · `Y` acknowledge · `n` new · `r`
+Keymap: `↵` attach · `space` next needing attention (a `waiting` row or an unseen `error` row, §7) · `Y` mark seen (acknowledge; only where something is unseen) · `n` new · `r`
 resume/start · `R` restart preserving conversation · `x` kill (undo toast) · `dd` delete ·
 `s` send message (§11.1) · `i` session detail (§11.4 — **rename, the launch-inputs editor, the
 group move, the permission profile `P` and the conversation lock `c` are actions inside it**,
