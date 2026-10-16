@@ -1039,6 +1039,19 @@ Rules:
   nowhere: the status stays `running`, the status word reads `running`, no text is added, and the row keeps
   its sort position in every order. It never applies with `stale_after` 0 (probing off) and never to a
   `starting`, `waiting`, `idle`, `error` or `stopped` row.
+- **Movement fallback (R316).** An `idle` row whose transcript region (§4, the `last_output_at` clock) changed in
+  **two consecutive output buckets** becomes `running` (source `movement`, reason `output movement`); a
+  counted bucket is one the clock wrote `last_output_at` for, so footer-only churn and deck-caused output
+  (R305) never count, and one counted bucket alone, or two with a quiet bucket between them, enters nothing.
+  It leaves with **one quiet bucket**: once the bucket after the newest counted one has passed without a
+  counted write, a `running` row the fallback itself set returns to `idle`. It never ends a `running` row
+  any other source set, and only moves `idle` to `running` and back. Pi has no hook verdict to defer to and
+  uses movement directly. Claude, Codex and Copilot use it only as the stale fallback: the store refuses a
+  movement write over a `hook` verdict younger than `stale_after`, so a fresh hook always wins and a stale
+  one does not. The streak lives in memory beside the clock (a restart starts from a baseline), the write
+  is an ordinary status write with an event (`movement.running`, `movement.idle`), and it runs only on the
+  TUI's probing path with `stale_after` above 0. The pass that writes it takes no probe of that row. Its
+  quality badge reads `sampled`, like a probe.
 - **Precedence:** `user-terminal` > `hook` > `probe` > `tmux`. A user kill sets
   `killed_by_user`, which an in-flight hook arriving milliseconds later cannot undo —
   explicit human action outranks automation. Below that, a probe never overwrites a fresher

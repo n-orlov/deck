@@ -992,6 +992,7 @@ var statusVetoes = []func(in StatusUpdateInput, cur statusRow) bool{
 	vetoTmuxStopOverStopped,
 	vetoHookRunningAfterCrash,
 	vetoFreshHookOverProbe,
+	vetoMovementOutOfBounds,
 	vetoTmuxInventedState,
 	vetoSecondCrashCollection,
 }
@@ -1053,6 +1054,22 @@ func vetoHookRunningAfterCrash(in StatusUpdateInput, cur statusRow) bool {
 // vetoFreshHookOverProbe: a probe never replaces a hook verdict that is still fresh.
 func vetoFreshHookOverProbe(in StatusUpdateInput, cur statusRow) bool {
 	return in.Source == "probe" && cur.source == "hook" && in.At-cur.at < in.StaleAfter
+}
+
+// vetoMovementOutOfBounds: the output-movement fallback (R316) may only move
+// an idle row to running, and only take back a running row it set itself. A
+// non-zero StaleAfter also makes it lose to a hook verdict that is still fresh
+// (pi passes none: it has no hook verdict to defer to).
+func vetoMovementOutOfBounds(in StatusUpdateInput, cur statusRow) bool {
+	if in.Source != "movement" {
+		return false
+	}
+	if in.StaleAfter > 0 && cur.source == "hook" && in.At-cur.at < in.StaleAfter {
+		return true
+	}
+	enter := in.Status == "running" && cur.status == "idle"
+	leave := in.Status == "idle" && cur.status == "running" && cur.source == "movement"
+	return !enter && !leave
 }
 
 // vetoTmuxInventedState: tmux supplies terminal liveness, plus the one explicit shell promotion;

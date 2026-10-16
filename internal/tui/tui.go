@@ -6786,7 +6786,7 @@ func statusSourceQuality(source string) string {
 	switch source {
 	case "hook":
 		return "live"
-	case "probe":
+	case "probe", "movement":
 		return "sampled"
 	default:
 		return ""

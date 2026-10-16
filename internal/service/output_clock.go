@@ -72,6 +72,10 @@ type outputState struct {
 	bucket   int64 // the window_activity bucket last examined
 	activity int64 // the window_activity second last read
 	hash     [sha256.Size]byte
+	// counted is the last bucket that wrote last_output_at (0 = none) and
+	// streak the run of consecutive counted buckets ending there (R316).
+	counted int64
+	streak  int
 }
 
 // NewOutputClock returns a clock with the given bucket width, or
@@ -258,7 +262,9 @@ func (c *OutputClock) Observe(ctx context.Context, store OutputStore, sessionID 
 			return false, fmt.Errorf("capture pane for output clock of session %q: %w", sessionID, err)
 		}
 		c.mu.Lock()
-		c.state[sessionID] = outputState{bucket: previous.bucket, activity: windowActivity, hash: sha256.Sum256([]byte(agent.TranscriptRegion(pane)))}
+		previous.activity = windowActivity
+		previous.hash = sha256.Sum256([]byte(agent.TranscriptRegion(pane)))
+		c.state[sessionID] = previous
 		c.mu.Unlock()
 		return false, nil
 	}
@@ -279,8 +285,40 @@ func (c *OutputClock) Observe(ctx context.Context, store OutputStore, sessionID 
 			return false, fmt.Errorf("record output for session %q: %w", sessionID, err)
 		}
 	}
+	next := outputState{bucket: bucket, activity: windowActivity, hash: hash, counted: previous.counted, streak: previous.streak}
+	if changed {
+		if previous.counted != 0 && previous.counted == bucket-1 {
+			next.streak++
+		} else {
+			next.streak = 1
+		}
+		next.counted = bucket
+	}
 	c.mu.Lock()
-	c.state[sessionID] = outputState{bucket: bucket, activity: windowActivity, hash: hash}
+	c.state[sessionID] = next
 	c.mu.Unlock()
 	return changed, nil
+}
+
+// Moving reports the movement fallback's reading for a session (R316): its
+// transcript region changed in two consecutive buckets (a counted bucket is
+// one Observe wrote last_output_at for, so footer-only churn and deck-caused
+// output never count) and the bucket after the newest counted one has not yet
+// passed quiet. One whole quiet bucket ends it. A session this process has
+// not counted output for is not moving.
+func (c *OutputClock) Moving(sessionID string) bool {
+	if c == nil {
+		return false
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	state, ok := c.state[sessionID]
+	if !ok || state.streak < 2 {
+		return false
+	}
+	width := int64(c.Bucket / time.Second)
+	if width < 1 {
+		width = 1
+	}
+	return c.nowMillis()/1000/width <= state.counted+1
 }

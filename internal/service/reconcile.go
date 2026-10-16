@@ -235,6 +235,9 @@ func (s Service) reconcileLivePane(ctx context.Context, session store.Session, o
 		if err := s.observeOutput(ctx, session, observed); err != nil {
 			return err
 		}
+		if moved, err := s.applyMovement(ctx, session, staleAfter); err != nil || moved {
+			return err
+		}
 	}
 	if staleAfter > 0 && session.Agent != "shell" && probeEligible(session, s.Clock.Now(), staleAfter) {
 		return s.probeLivePane(ctx, session, observed, staleAfter)
@@ -259,6 +262,47 @@ func (s Service) observeOutput(ctx context.Context, session store.Session, obser
 		return nil
 	}
 	return err
+}
+
+// applyMovement is the output-movement fallback (R316). Output counted in two
+// consecutive buckets moves an idle row to running; one quiet bucket takes back
+// a running row the fallback itself set. Pi has no hook verdict to defer to and
+// uses movement directly; Claude, Codex and Copilot use it only when no hook
+// verdict is fresh (the store re-checks that against the stored row). It
+// reports whether it wrote, in which case this pass takes no probe.
+func (s Service) applyMovement(ctx context.Context, session store.Session, staleAfter time.Duration) (bool, error) {
+	if s.Output == nil || session.Agent == "shell" {
+		return false, nil
+	}
+	moving := s.Output.Moving(session.ID)
+	var status, reason string
+	switch {
+	case session.Status == "idle" && moving:
+		status, reason = "running", "output movement"
+	case session.Status == "running" && session.StatusSource == "movement" && !moving:
+		status, reason = "idle", "output quiet"
+	default:
+		return false, nil
+	}
+	now := s.Clock.Now()
+	var stale int64
+	if session.Agent != "pi" {
+		stale = staleAfter.Milliseconds()
+		if status == "running" && session.StatusSource == "hook" && now.UnixMilli()-session.StatusAt < stale {
+			return false, nil
+		}
+	}
+	kind := "movement." + status
+	if err := s.Store.UpdateSessionStatus(ctx, store.StatusUpdateInput{
+		SessionID: session.ID, Status: status, Reason: reason, Source: "movement", At: now.UnixMilli(),
+		StaleAfter: stale, EventKind: kind, ExpectedStatus: session.Status,
+	}); err != nil {
+		return false, fmt.Errorf("record output movement for session %q: %w", session.ID, err)
+	}
+	if err := s.Audit.Transition(session.ID, kind); err != nil {
+		return false, fmt.Errorf("audit output movement for session %q: %w", session.ID, err)
+	}
+	return true, nil
 }
 
 // promoteLiveShell: shells have no higher-quality signal or probe, so a live
