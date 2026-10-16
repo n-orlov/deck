@@ -1,6 +1,9 @@
 package agent
 
-import "strings"
+import (
+	"regexp"
+	"strings"
+)
 
 // probeRule is one pane-text heuristic. Keep the complete corpus here: probe
 // classification is adapter knowledge and must not leak into service or TUI
@@ -282,15 +285,28 @@ func transcriptEnd(lines []string) int {
 	return len(lines)
 }
 
+// outputBoundary is the index where the composer/footer chrome starts, for
+// every supported pane shape: codex's "›" composer (it draws no separators, so
+// its composer line and the status line under it are the chrome), else the
+// separator pair pi, claude and copilot frame their composer with, else a bare
+// trailing claude prompt line. len(lines) when the pane draws none of them.
+func outputBoundary(lines []string) int {
+	if end := trimTrailingBlank(lines, len(lines)); codexComposerStart(lines, end) < end {
+		return codexComposerStart(lines, end)
+	}
+	return claudeComposerStart(lines)
+}
+
 // TranscriptRegion returns the part of pane above the composer/footer chrome:
-// everything above the last two separator lines, the same boundary
-// lastContentLine uses (the whole pane when it has fewer than two). Trailing
+// everything above the last two separator lines (the boundary lastContentLine
+// uses) or above codex's composer line, whichever shape the pane has (the
+// whole pane when it has neither). Trailing
 // whitespace on each line and trailing blank lines are dropped, so redraw
 // padding is not a change. The R304 output clock hashes it, so a ctx:%, branch
 // or model change in the footer never reads as output.
 func TranscriptRegion(pane string) string {
 	lines := strings.Split(strings.ReplaceAll(pane, "\r\n", "\n"), "\n")
-	lines = lines[:transcriptEnd(lines)]
+	lines = lines[:outputBoundary(lines)]
 	for i := range lines {
 		lines[i] = strings.TrimRight(lines[i], " \t")
 	}
@@ -345,6 +361,10 @@ func trimTrailingBlank(lines []string, end int) int {
 	return end
 }
 
+// codexOptionLine is a numbered choice in a codex dialog ("› 1. Yes, proceed
+// (y)"): the cursor glyph there is a selection, not the composer.
+var codexOptionLine = regexp.MustCompile(`^›\s*\d+\.`)
+
 // codexComposerStart is the index of codex's composer: the last "›" line
 // within the final three non-blank lines before end, or end itself when there
 // is none.
@@ -355,7 +375,7 @@ func codexComposerStart(lines []string, end int) int {
 			continue
 		}
 		seen++
-		if strings.HasPrefix(lines[i], "›") {
+		if strings.HasPrefix(lines[i], "›") && !codexOptionLine.MatchString(lines[i]) {
 			return i
 		}
 	}

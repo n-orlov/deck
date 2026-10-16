@@ -1344,8 +1344,12 @@ because it also moves for footer and statusline churn (`ctx:%`, branch, model). 
 reconcile tick (the TUI's, never the hook-critical `Reconcile`) compares the window's activity bucket
 (`window_activity` divided by the bucket width, `[ui] output_bucket`, 10 s by default, applied live) with the last one examined for that session. A
 tick in the same bucket reads and writes nothing (except inside a discount window, below). When the bucket has advanced, deck captures the
-pane, cuts it at the boundary the probe's `lastContentLine` uses, **the earlier of the last two
-separator lines**, and hashes the **transcript region** above it (trailing blanks ignored). Only a
+pane, cuts it at the composer/footer chrome and hashes the **transcript region** above it
+(trailing blanks ignored). The cut is **the earlier of the last two separator lines** (the
+boundary the probe's `lastContentLine` uses; claude, pi, copilot), or, for a pane that draws no
+separators, **codex's `›` composer line** (one of the final three non-blank lines, and not a
+numbered dialog option such as `› 1. Yes`) together with the status line under it, or a bare
+trailing claude prompt line. A draft, spinner or statusline change below the cut is never output. Only a
 changed hash counts: it writes `last_output_at` as `window_activity` in milliseconds. A bucket
 whose transcript hash did not change, such as a footer-only update, writes nothing. So two changes
 inside one bucket write once (the second sees no new bucket), and a tick with no bucket change
