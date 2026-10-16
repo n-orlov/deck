@@ -14,7 +14,7 @@ import (
 
 // R321: the first forwarded key, the first scroll (a passive-preview scroll
 // included) and the first screen-content change on an unseen waiting/error
-// row set seen_status_at = status_at through one function (Model.engage).
+// row set seen_status_at = status_at through one function (Model.engageRow).
 // Engagement sets seen only: no status change, no moved row, and a second
 // engagement writes nothing.
 
@@ -262,57 +262,126 @@ func TestEngagementOfAnOlderPromptDoesNotHideANewerOne(t *testing.T) {
 	}
 }
 
-// TestEngagementChangesNoStatusAndMovesNoRow: each trigger, on each unseen
-// attention row, in both sort orders, leaves every status, reason, source and
-// status_at alone and keeps the list order. A waiting row sits in the same
-// tier seen or unseen; an unseen error row drops below idle only through the
-// seen predicate itself (R319), so its order is compared against the order Y
-// would give, never against anything the engagement adds.
+// TestEngagementChangesNoStatusAndMovesNoRow: every trigger (forwarded key,
+// interactive scroll, passive-preview scroll, screen-content change, and a
+// full attach's watcher report), on each unseen attention row, in both sort
+// orders, leaves every status, reason, source and status_at alone and keeps
+// the list order exactly -- the engaged error row included: engagement holds
+// it in the tier it had (attentionSortRank), so it does not drop to the
+// seen-error tier the way Y moves it.
 func TestEngagementChangesNoStatusAndMovesNoRow(t *testing.T) {
-	triggers := map[string]func(t *testing.T, rig engagementRig) tea.Cmd{
-		"key": func(_ *testing.T, rig engagementRig) tea.Cmd {
+	type trigger struct {
+		interactive bool
+		run         func(t *testing.T, rig engagementRig) tea.Cmd
+	}
+	triggers := map[string]trigger{
+		"key": {true, func(_ *testing.T, rig engagementRig) tea.Cmd {
 			_, cmd := rig.m.Update(key("x"))
 			return cmd
-		},
-		"scroll": func(_ *testing.T, rig engagementRig) tea.Cmd {
+		}},
+		"scroll": {true, func(_ *testing.T, rig engagementRig) tea.Cmd {
 			_, cmd := rig.m.Update(wheelUp(rig.m.computeLayout().Sidebar.Width+3, 3))
 			return cmd
-		},
+		}},
+		"passive-scroll": {false, func(_ *testing.T, rig engagementRig) tea.Cmd {
+			_, cmd := rig.m.Update(wheelDown(rig.m.computeLayout().Sidebar.Width+3, 3))
+			return cmd
+		}},
+		"screen": {true, func(t *testing.T, rig engagementRig) tea.Cmd {
+			m := rig.m
+			if out, err := exec.Command("tmux", "-L", m.tmuxClient.Socket, "send-keys", "-t", m.interactiveWindowTarget, "-l", "moved?").CombinedOutput(); err != nil {
+				t.Fatalf("send-keys: %v: %s", err, out)
+			}
+			deadline := time.Now().Add(5 * time.Second)
+			for {
+				if cmd := m.engageOnScreenChange(); cmd != nil {
+					return cmd
+				}
+				if time.Now().After(deadline) {
+					t.Fatal("the grid never showed the new output")
+				}
+				time.Sleep(20 * time.Millisecond)
+			}
+		}},
+		"full-attach": {false, func(t *testing.T, rig engagementRig) tea.Cmd {
+			return fullAttachEngagementCmd(t, rig.m, engageKey)
+		}},
 	}
 	for _, order := range []string{SortOrderAttention, SortOrderActivity} {
 		for _, id := range engagementRows {
-			for name, trigger := range triggers {
+			for name, trig := range triggers {
 				t.Run(order+"/"+id+"/"+name, func(t *testing.T) {
-					rig := engagementFixture(t, order, id, true)
+					rig := engagementFixture(t, order, id, trig.interactive)
 					before := snapshotAll(t, rig.db)
 					orderBefore := inertOrder(rig.m)
-					cmd := trigger(t, rig)
+					cmd := trig.run(t, rig)
+					if cmd == nil {
+						t.Fatal("the trigger issued no engagement")
+					}
 					m := settleEngagement(t, rig.m, cmd)
 					after := snapshotAll(t, rig.db)
 					for rowID, was := range before {
 						now := after[rowID]
 						if rowID == id {
+							if now.Session.Status != was.Session.Status || now.Session.StatusAt != was.Session.StatusAt {
+								t.Fatalf("engagement changed %s's status: %s@%d -> %s@%d", rowID, was.Session.Status, was.Session.StatusAt, now.Session.Status, now.Session.StatusAt)
+							}
 							was.Session.SeenStatusAt = was.Session.StatusAt
 						}
 						if !reflect.DeepEqual(now, was) {
 							t.Fatalf("engagement changed row %s beyond seen:\nbefore=%+v\nafter =%+v", rowID, was, now)
 						}
 					}
-					m = reloadInert(t, m)
-					got := inertOrder(m)
-					if order == SortOrderAttention && id == "row-error" {
-						// R319: a seen error sorts just above stopped; that is
-						// the predicate's tier, the same one Y produces.
-						if got[len(got)-1] != "row-error" {
-							t.Fatalf("seen error row is not in its seen-error tier: %v", got)
-						}
-						return
+					if !after[id].Session.StatusSeen() {
+						t.Fatalf("engagement did not set %s seen", id)
 					}
-					if !reflect.DeepEqual(got, orderBefore) {
+					if got := inertOrder(m); !reflect.DeepEqual(got, orderBefore) {
 						t.Fatalf("engagement moved a row: before=%v after=%v", orderBefore, got)
+					}
+					m = reloadInert(t, m)
+					if got := inertOrder(m); !reflect.DeepEqual(got, orderBefore) {
+						t.Fatalf("engagement moved a row on reload: before=%v after=%v", orderBefore, got)
+					}
+					// A live re-sort (as a config reload does) keeps it too.
+					m.resortSessionsLive()
+					if got := inertOrder(m); !reflect.DeepEqual(got, orderBefore) {
+						t.Fatalf("engagement moved a row on a live re-sort: before=%v after=%v", orderBefore, got)
 					}
 				})
 			}
 		}
+	}
+}
+
+// TestEngagementHoldEndsWithTheStatus: the hold is tied to the engaged
+// status stamp. Once the row's status_at moves on (a new verdict), it sorts
+// by its new tier like any other row, and a later seen error that was never
+// engaged (Y) takes the seen-error tier as R319 says.
+func TestEngagementHoldEndsWithTheStatus(t *testing.T) {
+	rig := engagementFixture(t, SortOrderAttention, "row-error", true)
+	_, cmd := rig.m.Update(key("x"))
+	m := settleEngagement(t, rig.m, cmd)
+	held := inertOrder(m)
+	if held[1] != "row-error" {
+		t.Fatalf("engaged error row left its tier: %v", held)
+	}
+	// A new error verdict: new status_at, unseen, the hold no longer names it.
+	at := snapshotDurable(t, rig.db, "row-error").Session.StatusAt
+	if err := rig.db.UpdateSessionStatus(context.Background(), store.StatusUpdateInput{
+		SessionID: "row-error", Status: "idle", Reason: "done", Source: "hook", At: at + 100,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := rig.db.UpdateSessionStatus(context.Background(), store.StatusUpdateInput{
+		SessionID: "row-error", Status: "error", Reason: "again", Source: "hook", At: at + 200,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := rig.db.AcknowledgeSession(context.Background(), "row-error"); err != nil {
+		t.Fatal(err)
+	}
+	m = reloadInert(t, m)
+	if got := inertOrder(m); got[len(got)-1] != "row-error" {
+		t.Fatalf("a seen error whose engaged stamp is gone is not in the seen-error tier: %v", got)
 	}
 }

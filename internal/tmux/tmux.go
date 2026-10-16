@@ -954,3 +954,82 @@ func (c Client) Bootstrap(ctx context.Context) error {
 	}
 	return nil
 }
+
+// AttachSample is one look at a session while a full attach holds it (R321):
+// the active pane's geometry, whether it is in a mode (copy mode: a scroll)
+// and its scroll position, the attached client's last-key time and key table,
+// and the pane's visible screen. It is read by deck's full-attach engagement
+// watcher, which never writes anything to tmux.
+type AttachSample struct {
+	Width, Height  int
+	InMode         bool
+	ScrollPosition string
+	// ClientFound reports whether the client with the requested pid is still
+	// attached to the session; ClientActivity/ClientKeyTable describe it.
+	ClientFound    bool
+	ClientActivity int64
+	ClientKeyTable string
+	Screen         []byte
+}
+
+// attachSampleSeparator divides AttachSample's client listing from the
+// captured screen in one tmux invocation.
+const attachSampleSeparator = "::deck-attach-sample-end-of-clients::"
+
+// AttachSample reads one AttachSample for deck_<slug> in a single tmux
+// invocation (display-message, list-clients, a separator, capture-pane), so
+// the facts and the screen describe the same moment. clientPID names the
+// attach client deck spawned.
+func (c Client) AttachSample(ctx context.Context, slug string, clientPID int) (AttachSample, error) {
+	if c.Socket == "" {
+		return AttachSample{}, errors.New("tmux socket name is required")
+	}
+	name, err := sessionName(slug)
+	if err != nil {
+		return AttachSample{}, err
+	}
+	target := "=" + name + ":"
+	data, err := c.run(ctx,
+		"display-message", "-p", "-t", target, "#{pane_width}|#{pane_height}|#{pane_in_mode}|#{scroll_position}",
+		";",
+		"list-clients", "-t", "="+name, "-F", "#{client_pid}|#{client_activity}|#{client_key_table}",
+		";",
+		"display-message", "-p", attachSampleSeparator,
+		";",
+		"capture-pane", "-p", "-t", target)
+	if err != nil {
+		return AttachSample{}, fmt.Errorf("attach sample %q: %w", name, err)
+	}
+	return parseAttachSample(name, data, clientPID)
+}
+
+func parseAttachSample(name string, data []byte, clientPID int) (AttachSample, error) {
+	head, screen, ok := bytes.Cut(data, []byte(attachSampleSeparator+"\n"))
+	if !ok {
+		return AttachSample{}, fmt.Errorf("attach sample %q: no separator", name)
+	}
+	lines := strings.Split(strings.TrimRight(string(head), "\n"), "\n")
+	facts := strings.Split(lines[0], "|")
+	if len(facts) != 4 {
+		return AttachSample{}, fmt.Errorf("attach sample %q: parse pane facts %q", name, lines[0])
+	}
+	width, werr := strconv.Atoi(facts[0])
+	height, herr := strconv.Atoi(facts[1])
+	if werr != nil || herr != nil {
+		return AttachSample{}, fmt.Errorf("attach sample %q: parse pane geometry %q", name, lines[0])
+	}
+	sample := AttachSample{Width: width, Height: height, InMode: facts[2] == "1", ScrollPosition: facts[3], Screen: screen}
+	for _, line := range lines[1:] {
+		fields := strings.Split(line, "|")
+		if len(fields) != 3 {
+			continue
+		}
+		pid, perr := strconv.Atoi(fields[0])
+		if perr != nil || pid != clientPID {
+			continue
+		}
+		activity, _ := strconv.ParseInt(fields[1], 10, 64)
+		sample.ClientFound, sample.ClientActivity, sample.ClientKeyTable = true, activity, fields[2]
+	}
+	return sample, nil
+}

@@ -1071,28 +1071,45 @@ Rules:
   `TestAttachIsInertOnStatusSeenAndPosition` (eight cases: `waiting`, `error`, `running`, `idle` under the
   `attention` and `activity` orders), `TestClickIsInertOnStatusSeenAndPosition` and
   `TestPassivePreviewIsInertOnStatusSeenAndPosition`.
-  **Engagement sets seen (R321).** On an unseen `waiting` or `error` row, in the interactive preview or over
-  the passive preview, the first of these sets `seen_status_at = status_at` through one function
-  (`Model.engage`, one `Store.MarkStatusSeen` write): the first key forwarded to the pane, the first scroll
-  (the wheel over the interactive preview, a page scroll, and a wheel notch over the *passive* preview,
-  which still scrolls nothing, §11.8), and the first change of the interactive preview's live screen
-  content since entry (compared on the preview tick). Engagement sets seen only: no status, reason, source,
-  `status_at`, event or `notify_epoch` changes, and no row moves except by the seen predicate itself
-  (an `error` row sorts in the seen-`error` tier once seen, exactly as after `Y`). The write names the
+  **Engagement sets seen (R321).** On an unseen `waiting` or `error` row, in `a`'s full attach, in the
+  interactive preview or over the passive preview, the first of these sets `seen_status_at = status_at`
+  through one function (`Model.engageRow`, one `Store.MarkStatusSeen` write): the first key forwarded to
+  the pane, the first scroll, and the first change of the pane's screen content. In the interactive and
+  passive preview deck sees them itself: a forwarded key; the wheel over the interactive preview, a page
+  scroll, or a wheel notch over the *passive* preview (which still scrolls nothing, §11.8); and a change of
+  the interactive preview's live screen since entry (compared on the preview tick). In a full attach the
+  real tmux client owns the terminal, so a watcher beside it samples tmux read-only every 200 ms
+  (`tmux.Client.AttachSample`: pane size, copy mode and scroll position, the attach client's
+  `client_activity` and key table, and the visible screen) and reports the first trigger when the client
+  exits: a key is the client's `client_activity` moving while its key table is `root`, confirmed by the
+  client still being attached one sample later, so a prefix key and the user's own detach (`prefix d`)
+  never count; a scroll is the pane entering copy mode or moving its scroll position; a screen change is
+  the screen's hash moving at an unchanged size, where a size change (the attach's own resize) and the
+  1 s after it only re-baseline. `client_activity` has one-second resolution, so a key in the attach's
+  first second is seen only through the screen it changes. An attach with none of these stays inert
+  (R320). Engagement sets seen only: no status, reason, source, `status_at`, event or `notify_epoch`
+  changes, and no row moves. An engaged `error` row is therefore held in the sidebar tier it had before
+  engagement while its `status_at` is the one engagement saw (`attentionSortRank`); the count and `space`
+  read the seen predicate as it is, so it leaves them at once, and it takes the seen-`error` tier only
+  when it is seen with no engagement hold (`Y`, a later status, a restart). The write names the
   `status_at` it saw, so a newer prompt is never hidden by an engagement with an older one, and a second
-  engagement on an already-seen row issues no write at all. `a`'s full attach hands the terminal to tmux,
-  so deck sees none of its keys or scrolling; it engages only through these triggers in the interactive
-  preview. Covering tests: `TestEngagementFirstForwardedKeySetsSeen`,
-  `TestEngagementFirstInteractiveScrollSetsSeen`, `TestEngagementFirstPassivePreviewScrollSetsSeen`,
-  `TestEngagementFirstScreenContentChangeSetsSeen`, `TestSecondEngagementWritesNothing` and
-  `TestEngagementChangesNoStatusAndMovesNoRow`. Leaving an attention state bumps `notify_epoch` (§10.3).
+  engagement on an already-seen row issues no write at all. Covering tests:
+  `TestEngagementFirstForwardedKeySetsSeen`, `TestEngagementFirstInteractiveScrollSetsSeen`,
+  `TestEngagementFirstPassivePreviewScrollSetsSeen`, `TestEngagementFirstScreenContentChangeSetsSeen`,
+  `TestFullAttachFirstForwardedKeyIsReported`, `TestFullAttachFirstScrollIsReported`,
+  `TestFullAttachFirstScreenContentChangeIsReported`, `TestFullAttachTriggersSetSeenThroughEngageRow`,
+  `TestFullAttachWithoutEngagementReportsNothing`, `TestFullAttachDetachByKeyReportsNothing`,
+  `TestSecondEngagementWritesNothing`, `TestEngagementChangesNoStatusAndMovesNoRow` and
+  `TestEngagementHoldEndsWithTheStatus`. Leaving an attention state bumps `notify_epoch` (§10.3).
 - **Needs attention (R319).** A row needs attention when it is `waiting`, or `error` **and
   unseen**; seen means `seen_status_at = status_at`, an equality and never an ordering. A
   seen `waiting` row still needs attention (it is still blocked on the user): it stays in the
   top tier, in the strip's count and a `space` target. A seen `error` row does not: it is
   dropped from the count and from `space`, and sorts just above `stopped` (after `idle`).
   The `attention` sort tier, the collapsed strip's count and `space` all call that one
-  predicate (`NeedsAttention`, `internal/tui/attention.go`), so the three cannot disagree.
+  predicate (`NeedsAttention`, `internal/tui/attention.go`), so the three cannot disagree. The one
+  exception is R321's engagement hold (above): an `error` row engagement set seen keeps its sidebar
+  position until its `status_at` changes, because engagement moves no row.
   Because the test is equality, a clock that steps back or two stamps in the same
   millisecond cannot hide a prompt: a transition into `waiting` or `error` resets
   `seen_status_at` to 0, so a later prompt is unseen whatever stamp it carries.

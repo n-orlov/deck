@@ -228,10 +228,13 @@ type Model struct {
 	kill                    func(context.Context, store.Session) error
 	acknowledge             func(context.Context, string) error
 	// markSeen is engagement's write (R321, engagement.go); engagement is its shared cell.
-	markSeen   func(context.Context, string, int64) (bool, error)
-	engagement *engagementState
-	reconcile  func(context.Context) error
-	resume     func(context.Context, string) (store.Session, service.ResumeOutcome, error)
+	markSeen func(context.Context, string, int64) (bool, error)
+	// attachSample is the full-attach engagement watcher's read (R321,
+	// attach_engagement.go); WithTmuxClient wires it. Nil runs `a` unwatched.
+	attachSample attachSampler
+	engagement   *engagementState
+	reconcile    func(context.Context) error
+	resume       func(context.Context, string) (store.Session, service.ResumeOutcome, error)
 	// restart is task 022's `R` (SPEC §6.2/§6.3): kills the selected
 	// session's live pane if one exists and relaunches it with the
 	// adapter's resume argv (same conversation id, never a fresh one),
@@ -1344,6 +1347,7 @@ func (m Model) discountOutput(sessionID string, cause service.DiscountCause) {
 // tmuxClient's own doc comment.
 func (m Model) WithTmuxClient(client tmux.Client) Model {
 	m.tmuxClient = client
+	m.attachSample = client.AttachSample
 	return m
 }
 
@@ -1631,7 +1635,12 @@ type shellCreated struct {
 	err     error
 }
 
-type attachFinished struct{ err error }
+// attachFinished ends a full attach; engaged is the first engagement trigger
+// the attach watcher saw (R321, attach_engagement.go), "" when none.
+type attachFinished struct {
+	err     error
+	engaged engagementTrigger
+}
 
 // sessionKilled carries the killed session back (not just the error) so a
 // successful x can start requirement 22's undo toast/window without a
@@ -3206,7 +3215,7 @@ func (m *Model) sortReloaded(loaded []store.Session) []store.Session {
 	order, _ := m.effectiveSortOrder()
 	switch order {
 	case SortOrderAttention:
-		return sortSessionsByAttentionStable(m.baseSessions, loaded)
+		return sortSessionsByAttentionStableHeld(m.baseSessions, loaded, m.engagementHold())
 	default:
 		return sortSessionsByOrder(m.baseSessions, loaded, order, m.settings.OutputBucket)
 	}
@@ -3404,6 +3413,12 @@ func (m Model) onAttachFinished(msg attachFinished) (tea.Model, tea.Cmd) {
 	if m.outputDiscount != nil && m.attachingSessionID != "" {
 		m.outputDiscount.AttachEnded(m.attachingSessionID)
 	}
+	var engaged tea.Cmd
+	if msg.engaged != "" {
+		if idx := indexOfSessionID(m.baseSessions, m.attachingSessionID); idx >= 0 {
+			engaged = m.engageRow(msg.engaged, m.baseSessions[idx])
+		}
+	}
 	m.attachingSessionID = ""
 	if msg.err != nil {
 		m.setAttachError("Cannot attach: " + msg.err.Error())
@@ -3431,9 +3446,9 @@ func (m Model) onAttachFinished(msg attachFinished) (tea.Model, tea.Cmd) {
 	// asked for mouse off ([ui] mouse=false / DECK_MOUSE=0) does not get it
 	// silently switched back on by one attach/detach cycle.
 	if m.settings.Mouse {
-		return m, tea.Batch(m.loadSessions, tea.EnableMouseCellMotion)
+		return m, tea.Batch(m.loadSessions, tea.EnableMouseCellMotion, engaged)
 	}
-	return m, m.loadSessions
+	return m, tea.Batch(m.loadSessions, engaged)
 }
 
 func (m Model) onSessionKilled(msg sessionKilled) (tea.Model, tea.Cmd) {
@@ -4333,6 +4348,12 @@ func (m Model) attachSelected() (tea.Model, tea.Cmd) {
 		m.outputDiscount.AttachStarted(session.ID)
 	}
 	m.attachingSessionID = session.ID
+	if m.attachSample != nil {
+		// R321: the watcher beside the client reports the attach's first
+		// engagement trigger; onAttachFinished hands it to engageRow.
+		watched := &watchedAttach{cmd: command, slug: session.Slug, sample: m.attachSample, interval: attachWatchInterval, settle: attachWatchSettle}
+		return m, tea.Exec(watched, func(err error) tea.Msg { return attachFinished{err: err, engaged: watched.Trigger} })
+	}
 	return m, tea.ExecProcess(command, func(err error) tea.Msg { return attachFinished{err: err} })
 }
 
@@ -5830,7 +5851,7 @@ func (m *Model) resortSessionsLive() {
 	// order -- see sessionsLoaded's own identical simplification above.
 	switch order {
 	case SortOrderAttention:
-		m.baseSessions = sortSessionsByAttentionStable(m.baseSessions, m.baseSessions)
+		m.baseSessions = sortSessionsByAttentionStableHeld(m.baseSessions, m.baseSessions, m.engagementHold())
 	default:
 		m.baseSessions = sortSessionsByOrder(m.baseSessions, m.baseSessions, order, m.settings.OutputBucket)
 	}

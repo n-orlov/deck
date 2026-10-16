@@ -14,10 +14,15 @@ import (
 // forwarded key, the first scroll (a passive-preview wheel notch included)
 // and the first change of the screen's content on an unseen waiting/error row
 // set seen_status_at = status_at, and every one of those triggers goes through
-// Model.engage, the one function that decides and issues the write.
+// Model.engageRow, the one function that decides and issues the write (the
+// preview's triggers via Model.engage, a full attach's via onAttachFinished
+// and the watcher in attach_engagement.go).
 // Engagement sets seen only: it writes no status, no event, no notify_epoch
-// and moves no row by itself (the sort tiers read the seen predicate, R319,
-// and nothing else).
+// and moves no row. The seen predicate (R319) would drop an engaged error
+// row to the seen-error tier, so the attention sort holds an engaged row in
+// the tier it had before engagement until its status_at next changes
+// (engagementHold, attentionSortRank); the count and `space` read the
+// predicate as it is.
 
 type engagementTrigger string
 
@@ -34,6 +39,8 @@ const (
 // screen baseline the content-change trigger compares against.
 type engagementState struct {
 	// issued maps a session id to the status_at its engagement write named.
+	// It is also the sort hold: a row whose status_at still equals its entry
+	// keeps its pre-engagement attention tier.
 	issued map[string]int64
 	// screenTarget/screenHash are the baseline of the interactive preview's
 	// live screen; screenTarget is "" outside interactive mode.
@@ -66,11 +73,23 @@ func (m Model) engagementTargetSession() (store.Session, bool) {
 // target, a status other than waiting/error, a row already seen, or a write
 // already issued for this status stamp.
 func (m *Model) engage(trigger engagementTrigger) tea.Cmd {
+	session, ok := m.engagementTargetSession()
+	if !ok {
+		return nil
+	}
+	return m.engageRow(trigger, session)
+}
+
+// engageRow is the one function every engagement trigger ends in -- the
+// interactive preview's (through engage) and a full attach's (through
+// onAttachFinished) alike. It decides and issues the single seen write for
+// session's current status stamp, and records that stamp so the row keeps
+// its sidebar position (engagementHold).
+func (m *Model) engageRow(trigger engagementTrigger, session store.Session) tea.Cmd {
 	if m.markSeen == nil {
 		return nil
 	}
-	session, ok := m.engagementTargetSession()
-	if !ok || (session.Status != "waiting" && session.Status != "error") || session.StatusSeen() {
+	if (session.Status != "waiting" && session.Status != "error") || session.StatusSeen() {
 		return nil
 	}
 	cell := m.engagementCell()
@@ -146,4 +165,13 @@ func (m *Model) engageOnScreenChange() tea.Cmd {
 	}
 	cell.screenHash = sum
 	return m.engage(engageScreen)
+}
+
+// engagementHold is the attention sort's hold set: session id -> the
+// status_at an engagement write named. Nil when nothing was engaged.
+func (m Model) engagementHold() map[string]int64 {
+	if m.engagement == nil || len(m.engagement.issued) == 0 {
+		return nil
+	}
+	return m.engagement.issued
 }
