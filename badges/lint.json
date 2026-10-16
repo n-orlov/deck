@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
   "label": "lint",
-  "message": "passing",
-  "color": "green"
+  "message": "failing",
+  "color": "red"
 }

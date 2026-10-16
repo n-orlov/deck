@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
   "label": "unit tests",
-  "message": "29 failed",
-  "color": "red"
+  "message": "unknown",
+  "color": "lightgrey"
 }
