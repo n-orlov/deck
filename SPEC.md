@@ -1396,12 +1396,15 @@ probe's `lastContentLine` uses; claude, pi, copilot): the bottom rule is the pan
 line and the top rule is a separator above it drawn identically (same characters, same
 width), so a draft line that is itself a rule (`---`, an indented `  ───` continuation) is composer
 content, not the frame. A draft may also hold a line drawn exactly like the frame (pasted or typed to the
-pane's width); among the identical rules the top one is told apart by what the frame looks like: the
-agent's `❯` prompt at column 0 on the line under it (claude, copilot), and a blank line (or the pane's top)
-above it (pi). The topmost rule with the best such evidence is the frame, so that draft line stays composer content;
-with no evidence the nearest identical rule is taken. A transcript line drawn identically to the frame at column 0
-and blank-preceded, in a pane whose frame carries no prompt glyph, is indistinguishable from the
-frame and is not told apart. A pane with no identical pair is cut at the earlier of its last two
+pane's width), so every identical rule is a candidate top, and the frame's own shape picks one. Claude and
+copilot lead the composer with their `❯` prompt: the top is the topmost candidate a column-0 `❯` line
+follows (a draft can quote `❯` too, but never above the frame's own). Pi draws no prompt glyph (its
+frame is recognised by the cwd line, a path at column 0, under the bottom rule), so a `❯` line there is
+draft text and no evidence; pi leaves a blank line above its frame, so its top is the topmost candidate a
+blank line (or the pane's top) precedes. With neither evidence the nearest identical rule is taken. The
+boundary rule alone cannot tell a frame-identical transcript line above the frame from the frame, nor (in
+pi) a draft that adds a blank line and a frame-identical rule when the transcript runs up to the frame
+with no blank line; the clock below covers the draft case. A pane with no identical pair is cut at the earlier of its last two
 separator lines. For a pane that draws no
 separators, **codex's `›` composer line**: codex draws every transcript cell from column 0 and
 indents continuation lines, so the composer is the pane's last column-0 line when that line is a
@@ -1411,7 +1414,14 @@ non-blank line is a codex dialog's `Press enter to …` line has no composer: th
 cursor option included, is transcript. Otherwise the cut is a bare
 trailing claude prompt line. A draft, spinner or statusline change below the cut is never output. Only a
 changed hash counts: it writes `last_output_at` as `window_activity` in milliseconds. A bucket
-whose transcript hash did not change, such as a footer-only update, writes nothing. So two changes
+whose transcript hash did not change, such as a footer-only update, writes nothing. When a framed draft
+holds frame-identical rules, the bucket counts only if **no** candidate top leaves exactly the baseline
+region above it, so once deck has read the frame, adding or editing such a draft is never output however it
+mimics the frame; output above the draft still changes every candidate's region and counts. The new
+baseline is the candidate that matched, else the one whose composer (top rule to bottom rule, footer
+excluded) is unchanged since the last reading (output arrived above an untouched draft), else the chosen cut.
+A draft that already mimics the frame when deck first reads the pane, or that is edited in the same bucket
+as new output, is judged by the boundary rule alone. So two changes
 inside one bucket write once (the second sees no new bucket), and a tick with no bucket change
 writes nothing. The first reading of a session after deck starts is only a baseline and counts
 nothing, so a restart does not make every row look freshly active; the in-memory baseline is not

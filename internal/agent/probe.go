@@ -266,29 +266,45 @@ func lastContentLine(pane string) string {
 }
 
 // transcriptEnd is the index of the first footer-chrome line: the composer's
-// top separator. The bottom one is the pane's last separator line; the top one
-// is a separator above it drawn identically (same characters, same width),
-// because pi, claude and copilot draw both rules of the composer frame as one
-// full-width line. A draft line that happens to be a rule ("---", an indented
-// "  ───" continuation) differs from the frame's rule and is composer content,
-// not the frame (R304).
+// top separator (frameCuts' chosen cut), or len(lines) when the pane draws no
+// composer frame. It is the one boundary lastContentLine, claudeLiveRegion and
+// TranscriptRegion share.
+func transcriptEnd(lines []string) int {
+	cuts, _ := frameCuts(lines)
+	return cuts[0]
+}
+
+// frameCuts lists where the composer frame may start, the chosen cut first,
+// and returns the index of the frame's bottom rule (-1 when it has none).
+//
+// The bottom rule is the pane's last separator line; the top one is a separator
+// above it drawn identically (same characters, same width), because pi, claude
+// and copilot draw both rules of the composer frame as one full-width line. A
+// draft line that is a rule of another shape ("---", an indented "  ───") is
+// composer content, not the frame (R304). A pane with no identical pair cuts at
+// the earlier of its last two (possibly non-adjacent) separator lines, and at
+// len(lines) when it has fewer than two; either way that is its only cut.
 //
 // A draft can also hold a line drawn exactly like the frame (pasted, or typed
-// to the pane's width), so the nearest identical rule is not always the top
-// one. Among the identical candidates the top rule is told apart by what the
-// frame itself looks like: it is the one the agent's prompt glyph follows at
-// column 0 (claude, copilot), and the one a blank line (or the pane's top)
-// precedes (pi, and the agents above), because a draft's continuation lines are
-// indented or follow draft text. The topmost candidate with the best such
-// evidence wins; with no evidence the nearest identical rule is taken. A pane
-// with no identical pair falls back to the earlier of its last two (possibly
-// non-adjacent) separator lines, and to len(lines) when it has fewer than two.
-// It is the one boundary lastContentLine and TranscriptRegion share.
-func transcriptEnd(lines []string) int {
+// to the pane's width), so every identical rule is a candidate and the frame's
+// own shape picks the top one:
+//   - claude and copilot lead the composer with their prompt glyph: the top
+//     rule is the topmost candidate a column-0 "❯" line follows. A draft line
+//     can quote "❯" too, but never above the frame's own, so the topmost wins.
+//   - pi draws no glyph (its frame is followed by its cwd line, drawn from
+//     column 0: glyphlessFrame), so a "❯" line under a rule is draft text
+//     there and is no evidence; pi always leaves a blank line above the frame,
+//     so its top rule is the topmost candidate a blank line (or the pane's top)
+//     precedes.
+//   - with neither evidence the nearest identical rule is taken.
+//
+// The other candidates follow the chosen cut, nearest first: the output clock
+// (service.OutputClock) uses them to keep a draft-only edit from counting even
+// when a draft mimics the frame more closely than this rule can tell apart.
+func frameCuts(lines []string) ([]int, int) {
 	bottom := -1
 	fallback := len(lines)
-	best, bestScore := -1, 0
-	nearest := -1
+	var identical []int // nearest first
 	for i := len(lines) - 1; i >= 0; i-- {
 		if !isSeparatorLine(strings.TrimSpace(lines[i])) {
 			continue
@@ -300,30 +316,53 @@ func transcriptEnd(lines []string) int {
 		if fallback == len(lines) {
 			fallback = i
 		}
-		if !sameRule(lines[i], lines[bottom]) {
-			continue
+		if sameRule(lines[i], lines[bottom]) {
+			identical = append(identical, i)
 		}
-		if nearest < 0 {
-			nearest = i
+	}
+	if len(identical) == 0 {
+		if fallback == len(lines) {
+			return []int{fallback}, -1
 		}
-		score := 0
-		if i+1 < bottom && strings.HasPrefix(lines[i+1], "❯") {
-			score += 2
+		return []int{fallback}, bottom
+	}
+	chosen := pickTopRule(lines, bottom, identical)
+	cuts := []int{identical[chosen]}
+	cuts = append(cuts, identical[:chosen]...)
+	return append(cuts, identical[chosen+1:]...), bottom
+}
+
+// pickTopRule is the index into identical (nearest first) of the frame's top
+// rule, by the evidence frameCuts describes.
+func pickTopRule(lines []string, bottom int, identical []int) int {
+	glyphless := glyphlessFrame(lines, bottom)
+	prompted, blankAbove := -1, -1
+	for k, i := range identical {
+		if !glyphless && i+1 < bottom && strings.HasPrefix(lines[i+1], "❯") {
+			prompted = k
 		}
 		if i == 0 || strings.TrimSpace(lines[i-1]) == "" {
-			score++
-		}
-		if score > 0 && score >= bestScore {
-			best, bestScore = i, score
+			blankAbove = k
 		}
 	}
 	switch {
-	case best >= 0:
-		return best
-	case nearest >= 0:
-		return nearest
+	case prompted >= 0:
+		return prompted
+	case blankAbove >= 0:
+		return blankAbove
 	}
-	return fallback
+	return 0
+}
+
+// glyphlessFrame reports pi's composer frame: the line under its bottom rule is
+// pi's cwd line, a path drawn from column 0. Claude and copilot indent their
+// footer (or draw none), and lead their composer with the "❯" glyph instead.
+func glyphlessFrame(lines []string, bottom int) bool {
+	if bottom < 0 || bottom+1 >= len(lines) {
+		return false
+	}
+	next := lines[bottom+1]
+	return strings.HasPrefix(next, "/") || strings.HasPrefix(next, "~")
 }
 
 // sameRule reports whether two separator lines are drawn identically, ignoring
@@ -332,30 +371,68 @@ func sameRule(a, b string) bool {
 	return strings.TrimRight(a, " \t") == strings.TrimRight(b, " \t")
 }
 
-// outputBoundary is the index where the composer/footer chrome starts, for
-// every supported pane shape: codex's "›" composer (it draws no separators, so
-// its composer line and the status line under it are the chrome), else the
-// separator pair pi, claude and copilot frame their composer with, else a bare
-// trailing claude prompt line. len(lines) when the pane draws none of them.
-func outputBoundary(lines []string) int {
+// outputCuts lists where the composer/footer chrome may start, the chosen cut
+// first, for every supported pane shape: codex's "›" composer (it draws no
+// separators, so its composer line and the status line under it are the
+// chrome), else the separator frame pi, claude and copilot draw round their
+// composer (frameCuts, with its alternative cuts), else a bare trailing claude
+// prompt line. len(lines) when the pane draws none of them. bottom is the
+// frame's bottom rule, or -1 when the chrome is not a frame.
+func outputCuts(lines []string) (cuts []int, bottom int) {
 	if end := trimTrailingBlank(lines, len(lines)); codexComposerStart(lines, end) < end {
-		return codexComposerStart(lines, end)
+		return []int{codexComposerStart(lines, end)}, -1
 	}
-	return claudeComposerStart(lines)
+	if cuts, bottom := frameCuts(lines); cuts[0] < len(lines) {
+		return cuts, bottom
+	}
+	return []int{claudeComposerStart(lines)}, -1
+}
+
+// TranscriptCut is one reading of a pane: Region is the transcript above a
+// candidate composer boundary (what TranscriptRegion returns for the chosen
+// one), Composer the frame from that boundary down to its bottom rule, the
+// draft included and the footer under it left out ("" when the chrome is not a
+// separator frame).
+type TranscriptCut struct {
+	Region   string
+	Composer string
+}
+
+// TranscriptCuts returns the pane's readings, the chosen boundary first
+// (TranscriptRegion's), then any other frame-identical rule that could be the
+// composer's top, nearest first. Only a framed draft holding a line drawn
+// exactly like the frame yields more than one.
+func TranscriptCuts(pane string) []TranscriptCut {
+	lines := strings.Split(strings.ReplaceAll(pane, "\r\n", "\n"), "\n")
+	cuts, bottom := outputCuts(lines)
+	out := make([]TranscriptCut, 0, len(cuts))
+	for _, cut := range cuts {
+		reading := TranscriptCut{Region: normaliseRegion(lines[:cut])}
+		if bottom >= cut {
+			reading.Composer = normaliseRegion(lines[cut : bottom+1])
+		}
+		out = append(out, reading)
+	}
+	return out
 }
 
 // TranscriptRegion returns the part of pane above the composer/footer chrome:
 // everything above the composer's top separator (transcriptEnd, the boundary
-// lastContentLine uses) or above codex's composer line, whichever shape the pane has (the
-// whole pane when it has neither). Trailing
-// whitespace on each line and trailing blank lines are dropped, so redraw
-// padding is not a change. The R304 output clock hashes it, so a ctx:%, branch
-// or model change in the footer never reads as output.
+// lastContentLine uses) or above codex's composer line, whichever shape the
+// pane has (the whole pane when it has neither). Trailing whitespace on each
+// line and trailing blank lines are dropped, so redraw padding is not a change.
+// The R304 output clock hashes it, so a ctx:%, branch or model change in the
+// footer never reads as output.
 func TranscriptRegion(pane string) string {
-	lines := strings.Split(strings.ReplaceAll(pane, "\r\n", "\n"), "\n")
-	lines = lines[:outputBoundary(lines)]
-	for i := range lines {
-		lines[i] = strings.TrimRight(lines[i], " \t")
+	return TranscriptCuts(pane)[0].Region
+}
+
+// normaliseRegion joins lines with trailing whitespace and trailing blank lines
+// dropped.
+func normaliseRegion(in []string) string {
+	lines := make([]string, len(in))
+	for i := range in {
+		lines[i] = strings.TrimRight(in[i], " \t")
 	}
 	for len(lines) > 0 && lines[len(lines)-1] == "" {
 		lines = lines[:len(lines)-1]

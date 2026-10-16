@@ -42,9 +42,10 @@ type OutputStore interface {
 // says WHEN a window last produced output, but it also moves for footer and
 // statusline churn (ctx:%, branch, model), so it only nominates: when a
 // session's window_activity moves into a new bucket the clock captures the
-// pane, hashes the transcript region (agent.TranscriptRegion, above the last
-// two separator lines) and counts the bucket only when that hash differs from
-// the one it last saw. The column is written with a plain UPDATE, never an
+// pane, hashes the transcript region (agent.TranscriptRegion, above the
+// composer frame or codex's composer) and counts the bucket only when that hash
+// differs from the one it last saw (for a framed draft that mimics the frame:
+// when no possible composer top leaves it, pickReading). The column is written with a plain UPDATE, never an
 // event row, and only on a counted bucket.
 //
 // The state is in memory: the first sight of a session after deck starts sets
@@ -75,7 +76,10 @@ type outputState struct {
 	// in at the current width is the last bucket examined: under a fixed
 	// width it only moves inside the bucket the last capture examined.
 	activity int64
+	// hash is the baseline transcript region's hash, composer the hash of the
+	// composer frame read with it (pickReading).
 	hash     [sha256.Size]byte
+	composer [sha256.Size]byte
 	// countedAt is the window_activity second of the last counted change
 	// (one that wrote last_output_at; 0 = none) and streak the run of
 	// consecutive counted buckets ending at its bucket (R316).
@@ -255,18 +259,19 @@ func secondBucket(unixSeconds int64, width time.Duration) int64 {
 // deck-caused window (R305). The new hash is remembered either way, so the
 // same text never counts later. It reports whether it wrote.
 func (c *OutputClock) observeNewBucket(ctx context.Context, store OutputStore, sessionID string, windowActivity int64, width time.Duration, previous outputState, seen bool, capture func(context.Context) (string, error)) (bool, error) {
-	hash, err := captureTranscriptHash(ctx, sessionID, capture)
+	readings, err := captureTranscriptReadings(ctx, sessionID, capture)
 	if err != nil {
 		return false, err
 	}
+	reading, same := pickReading(readings, previous)
 	discounted := c.discounted(sessionID, windowActivity)
-	changed := seen && hash != previous.hash && !discounted
+	changed := seen && !same && !discounted
 	if changed {
 		if err := store.RecordOutput(ctx, sessionID, windowActivity*1000); err != nil {
 			return false, fmt.Errorf("record output for session %q: %w", sessionID, err)
 		}
 	}
-	next := outputState{activity: windowActivity, hash: hash, countedAt: previous.countedAt, streak: previous.streak}
+	next := outputState{activity: windowActivity, hash: reading.region, composer: reading.composer, countedAt: previous.countedAt, streak: previous.streak}
 	if changed {
 		next.countBucket(previous, width)
 	}
@@ -287,13 +292,53 @@ func (c *OutputClock) bucketOf(windowActivity int64) (int64, error) {
 	return secondBucket(windowActivity, bucketWidth), nil
 }
 
-// captureTranscriptHash reads the pane and hashes its transcript region.
-func captureTranscriptHash(ctx context.Context, sessionID string, capture func(context.Context) (string, error)) ([sha256.Size]byte, error) {
+// transcriptReading is one agent.TranscriptCut, hashed.
+type transcriptReading struct {
+	region, composer [sha256.Size]byte
+	framed           bool
+}
+
+// captureTranscriptReadings reads the pane and hashes its readings
+// (agent.TranscriptCuts), the chosen boundary first.
+func captureTranscriptReadings(ctx context.Context, sessionID string, capture func(context.Context) (string, error)) ([]transcriptReading, error) {
 	pane, err := capture(ctx)
 	if err != nil {
-		return [sha256.Size]byte{}, fmt.Errorf("capture pane for output clock of session %q: %w", sessionID, err)
+		return nil, fmt.Errorf("capture pane for output clock of session %q: %w", sessionID, err)
 	}
-	return sha256.Sum256([]byte(agent.TranscriptRegion(pane))), nil
+	cuts := agent.TranscriptCuts(pane)
+	readings := make([]transcriptReading, len(cuts))
+	for i, cut := range cuts {
+		readings[i] = transcriptReading{
+			region:   sha256.Sum256([]byte(cut.Region)),
+			composer: sha256.Sum256([]byte(cut.Composer)),
+			framed:   cut.Composer != "",
+		}
+	}
+	return readings, nil
+}
+
+// pickReading chooses the reading that becomes the new baseline and reports
+// whether the transcript is unchanged against previous. A pane whose framed
+// draft holds a line drawn exactly like the frame has more than one possible
+// composer top (agent.TranscriptCuts); the transcript is unchanged when ANY of
+// them leaves exactly the baseline region above it, so a draft-only edit never
+// counts once the clock has read the frame, however the draft mimics it. When
+// none does, the transcript changed whichever cut is right, and the baseline
+// follows the cut whose composer is the one read last (output arrived above an
+// unchanged draft), else the chosen cut. A pane with one reading is compared
+// exactly as before.
+func pickReading(readings []transcriptReading, previous outputState) (transcriptReading, bool) {
+	for _, r := range readings {
+		if r.region == previous.hash {
+			return r, true
+		}
+	}
+	for _, r := range readings {
+		if r.framed && r.composer == previous.composer {
+			return r, false
+		}
+	}
+	return readings[0], false
 }
 
 // countBucket marks next's reading as a counted change: consecutive counted
@@ -317,11 +362,12 @@ func (c *OutputClock) observeExaminedBucket(ctx context.Context, sessionID strin
 		return nil
 	}
 	if c.discounted(sessionID, windowActivity) {
-		hash, err := captureTranscriptHash(ctx, sessionID, capture)
+		readings, err := captureTranscriptReadings(ctx, sessionID, capture)
 		if err != nil {
 			return err
 		}
-		previous.hash = hash
+		reading, _ := pickReading(readings, previous)
+		previous.hash, previous.composer = reading.region, reading.composer
 	}
 	previous.activity = windowActivity
 	c.mu.Lock()
