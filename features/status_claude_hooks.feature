@@ -15,13 +15,13 @@ Feature: Claude hook status truth
     # R307: SessionStart lands on idle, never running; the UserPromptSubmit
     # below is what enters running. Covered by
     # internal/hookrecv TestSessionStartLandsOnIdleForClaude.
-    Then the state database session "hook truth" has hook status "idle", reason "fresh", message "", acknowledged 1, and notify_epoch 0
+    Then the state database session "hook truth" has hook status "idle", reason "fresh", message "", seen, and notify_epoch 0
     And session "hook truth" has one "session_start" event with payload field "source" equal to "fresh"
 
     When fake Claude session "hook truth" fires "Notification" for itself using injected identity:
       | notification_type | permission_prompt |
     Then within one configured reconcile interval deck client "A" screen contains "waiting"
-    And the state database session "hook truth" has hook status "waiting", reason "permission_prompt", message "", acknowledged 0, and notify_epoch 0
+    And the state database session "hook truth" has hook status "waiting", reason "permission_prompt", message "", unseen, and notify_epoch 0
     And session "hook truth" has one "notification" event with payload field "notification_type" equal to "permission_prompt"
 
     When deck client "A" attaches to and detaches from its selected agent
@@ -43,7 +43,7 @@ Feature: Claude hook status truth
     When fake Claude session "hook truth" fires "Notification" for itself using injected identity:
       | notification_type | permission_prompt |
     Then within one configured reconcile interval deck client "A" screen contains "waiting"
-    And the state database session "hook truth" has hook status "waiting", reason "permission_prompt", message "permission granted; work is complete", acknowledged 0, and notify_epoch 1
+    And the state database session "hook truth" has hook status "waiting", reason "permission_prompt", message "permission granted; work is complete", unseen, and notify_epoch 1
 
     When deck client "A" attaches to and detaches from its selected agent
     Then the state database session "hook truth" is "waiting" from "hook" and is unseen, with notify_epoch=1, and 0 attached events
