@@ -448,6 +448,7 @@ CREATE TABLE sessions (
   last_output_at     INTEGER NOT NULL DEFAULT 0, -- the output clock: ms of the newest transcript-region output reconcile confirmed (§7); a column, never an event
   hook_at            INTEGER NOT NULL DEFAULT 0, -- ms of the newest hook verdict the store applied (R303, schema v20); the freshness clock of a hook verdict, independent of status_at (§7). A column, never an event
   last_seen_at       INTEGER NOT NULL DEFAULT 0, -- the last_output_at value the user has viewed (R324, schema v19); a column, never an event. A row is output-unseen iff last_output_at > last_seen_at (§7, §11)
+  status_seq         INTEGER NOT NULL DEFAULT 0, -- number of status transitions the row has made (R319/R321/R322, schema v21); with status_at it names a status episode. A repeat of the current status does not advance it. A column, never an event
   probe_miss_streak  INTEGER NOT NULL DEFAULT 0, -- consecutive probe passes that matched no §7 rule (R315); a column, never an event
   created_at         INTEGER NOT NULL,
   last_attached_at   INTEGER NOT NULL DEFAULT 0,
@@ -571,6 +572,9 @@ Invariants:
 - Schema version 20 adds `sessions.hook_at` (R303, §7), the time of the newest applied hook verdict, the
   clock hook-over-sampling precedence reads instead of `status_at`. The rung backfills it to `status_at` on
   hook-sourced rows and is written by the status update itself, never as an `events` row.
+- Schema version 21 adds `sessions.status_seq` (R319, R321, R322, §7), the count of status transitions, `0`
+  on a migrated row. `(status_at, status_seq)` is the identity of a status episode; it is written by the
+  status update itself and never as an `events` row.
 - Schema version 16 adds `sessions.probe_miss_streak` (R315, §7), `0` on a migrated row. It is written by
   plain `UPDATE`s and never as an `events` row.
 - Schema version 17 adds the index `events_session_at` on `events(session_id, at)` (R315, §7), so the newest
@@ -1104,7 +1108,10 @@ Rules:
   engagement while its `status_at` is the one engagement saw (`attentionSortRank`); the count and `space`
   read the seen predicate as it is, so it leaves them at once, and it takes the seen-`error` tier only
   when it is seen with no engagement hold (`Y`, a later status, a restart). The write names the
-  `status_at` it saw, so a newer prompt is never hidden by an engagement with an older one, and a second
+  status episode it saw (`status_at` **and** `status_seq`; `Store.MarkStatusSeen` takes a
+  `StatusEpisode`), so a newer prompt is never hidden by an engagement with an older one however late
+  the older write runs, and the cached engagement decision, the sidebar hold and the R322 dwell are
+  bound to that same episode, not to the stamp. A second
   engagement on an already-seen row issues no write at all. Covering tests:
   `TestEngagementFirstForwardedKeySetsSeen`, `TestEngagementFirstInteractiveScrollSetsSeen`,
   `TestEngagementFirstPassivePreviewScrollSetsSeen`, `TestEngagementFirstScreenContentChangeSetsSeen`,
@@ -1125,8 +1132,9 @@ Rules:
   there at the start. *The prompt on screen at the start* means that, when the view began, the row was an
   unseen `waiting`/`error` and its agent adapter's probe of the pane text in view (the passive capture, or
   the interactive grid) reported that same status; an agent with no probe rule for it never reaches seen by
-  dwell. At 1.5 s from the view's start the row is set seen only if it still carries that status and
-  `status_at`. A prompt that appears after the view began -- the status or `status_at` changing, or the
+  dwell. At 1.5 s from the view's start the row is set seen only if it still carries that status episode
+  (status, `status_at` and `status_seq`). A prompt that appears after the view began -- the status or its
+  episode changing, even to a `status_at` equal to the old one, or the
   prompt text arriving in the capture -- stays unseen until an engagement (R321) sets it, whichever of the
   capture, the hook or the reload brought it first. The view is followed after every message, so anything
   that stops being true ends it -- arrowing to another row, the panel collapsing, the window blurring -- and
@@ -1156,7 +1164,13 @@ Rules:
   position until its `status_at` changes, because engagement moves no row.
   Because the test is equality, a clock that steps back or two stamps in the same
   millisecond cannot hide a prompt: a transition into `waiting` or `error` resets
-  `seen_status_at` to 0, so a later prompt is unseen whatever stamp it carries.
+  `seen_status_at` to 0, so a later prompt is unseen whatever stamp it carries. A stamp is also not
+  an identity for asynchronous work: `status_seq` counts the row's transitions (a repeat of the current
+  status, being inert, does not advance it), so a seen write issued for one episode matches nothing once
+  the row is in another, even one with the same `status_at`. Covering tests:
+  `TestMarkStatusSeenNamesTheEpisodeNotTheStamp`, `TestStatusEpisodeAdvancesOnTransitionsOnly`,
+  `TestLateEngagementWriteCannotSeeANewerPromptSharingItsStamp`,
+  `TestDwellOfAnEarlierPromptNeverSeesANewPromptOnTheSameStamp`, `TestEngagementHoldBelongsToItsEpisode`.
 - **A repeat write is inert.** A status write that leaves the status unchanged — a probe
   seeing `waiting`, `running` or `error` again, a hook or the user restating the current
   status — does not touch `status_at`, `notify_epoch`, `hook_fired` or the seen state

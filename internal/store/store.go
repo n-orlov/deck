@@ -25,7 +25,7 @@ import (
 const busyTimeoutMillis = 5000
 
 // SchemaVersion is the newest schema understood by this binary.
-const SchemaVersion = 20
+const SchemaVersion = 21
 
 // SupportedSchemaVersion is the newest schema this binary opens: SchemaVersion
 // in every shipped build. A test build (-tags deckoldschema, see
@@ -456,6 +456,9 @@ type Session struct {
 	// freshness of a hook verdict never depends on when the status last
 	// changed.
 	HookAt int64
+	// StatusSeq counts the row's status transitions (schemaV21); with StatusAt
+	// it names the status episode (Episode).
+	StatusSeq int64
 	// EnvDirty is SPEC §6.1/§6.3's env_dirty column (task 021): true once a
 	// session-env edit has been written and mirrored into tmux's own
 	// environment table for future panes, but has NOT yet reached the
@@ -850,7 +853,7 @@ func scanSession(row interface {
 		&session.NotifyEpoch, &lastMessage, &session.SeenStatusAt, &launchArgsJSON, &envJSON, &preLaunch, &postDestroy,
 		&loginShell, &session.PermissionProfile, &permissionProfileReason, &conversationID, &resumePin, &session.ResumeState,
 		&groupID, &groupName, &session.LastProbeAt, &session.LastOutputAt, &session.LastSeenAt, &session.ProbeMissStreak, &session.LastEventAt, &envDirty, &session.DeletedAt, &session.ArchivedAt, &launchDirty,
-		&leaseOwner, &session.PinnedAt, &session.HookExecutable, &eventHookEnabled, &eventHookEvents, &session.NameSource, &pendingName, &pendingAt, &nameAdopt, &nameAdopted, &session.HookAt); err != nil {
+		&leaseOwner, &session.PinnedAt, &session.HookExecutable, &eventHookEnabled, &eventHookEvents, &session.NameSource, &pendingName, &pendingAt, &nameAdopt, &nameAdopted, &session.HookAt, &session.StatusSeq); err != nil {
 		return Session{}, err
 	}
 	session.NameAdopted = nameAdopted != 0
@@ -901,7 +904,7 @@ const sessionColumns = `sessions.id, sessions.name, slug, cwd, agent, captured_p
 		launch_args, env, pre_launch, post_destroy, login_shell, permission_profile, permission_profile_reason, conversation_id, resume_pin, resume_state,
 		sessions.group_id, groups.name, last_probe_at, last_output_at, last_seen_at, probe_miss_streak, COALESCE((SELECT MAX(events.at) FROM events WHERE events.session_id = sessions.id), 0), env_dirty, deleted_at, archived_at, launch_dirty,
 		COALESCE(launch_lease_owner, ''), pinned_at, COALESCE(hook_executable, ''),
-		event_hook_enabled, event_hook_events, name_source, pending_harness_name, pending_harness_name_at, harness_name_adopt, name_adopted, hook_at`
+		event_hook_enabled, event_hook_events, name_source, pending_harness_name, pending_harness_name_at, harness_name_adopt, name_adopted, hook_at, status_seq`
 
 // sessionsFromClause is every sessionColumns-backed query's shared FROM:
 // a LEFT JOIN against groups so GroupName resolves (or reads back empty
@@ -970,6 +973,7 @@ type statusRow struct {
 	status, source, agent string
 	at, notifyEpoch       int64
 	hookAt                int64
+	seq                   int64
 	killedByUser          int
 	seenStatusAt          int64
 	paneExitStatus        sql.NullInt64
@@ -979,10 +983,10 @@ type statusRow struct {
 func readStatusRow(ctx context.Context, tx *sql.Tx, sessionID string) (statusRow, error) {
 	var row statusRow
 	if err := tx.QueryRowContext(ctx, `SELECT status, status_source, status_at, agent,
-		killed_by_user, seen_status_at, notify_epoch, pane_exit_status, hook_at
+		killed_by_user, seen_status_at, notify_epoch, pane_exit_status, hook_at, status_seq
 		FROM sessions WHERE id = ?`, sessionID).Scan(
 		&row.status, &row.source, &row.at, &row.agent, &row.killedByUser,
-		&row.seenStatusAt, &row.notifyEpoch, &row.paneExitStatus, &row.hookAt); err != nil {
+		&row.seenStatusAt, &row.notifyEpoch, &row.paneExitStatus, &row.hookAt, &row.seq); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return statusRow{}, fmt.Errorf("session %q not found", sessionID)
 		}
@@ -1175,6 +1179,18 @@ func nextSeenStatusAt(input StatusUpdateInput, cur statusRow, repeat bool, statu
 	return cur.seenStatusAt
 }
 
+// nextStatusSeq is status_seq after a winning write (R319, R321, R322): it
+// counts the row's status transitions, so (status_at, status_seq) names one
+// status episode even when two episodes share a millisecond or the wall clock
+// stepped backwards. A write repeating the current status opens no episode
+// (R303) and leaves it alone.
+func nextStatusSeq(cur statusRow, repeat bool) int64 {
+	if repeat {
+		return cur.seq
+	}
+	return cur.seq + 1
+}
+
 // nextHookAt is hook_at after a winning write (R303, SPEC §7). Only a hook
 // advances it, and it never moves backwards while the row stays hook-sourced:
 // hook deliveries can arrive out of order, and a delayed repeat dated before
@@ -1236,11 +1252,11 @@ func writeStatusUpdate(ctx context.Context, tx *sql.Tx, input StatusUpdateInput,
 		pane_exit_status = CASE WHEN ? = 1 THEN NULL ELSE COALESCE(?, pane_exit_status) END,
 		crash_tail = CASE WHEN ? = 1 THEN NULL WHEN ? IS NULL THEN crash_tail ELSE ? END,
 		last_message = CASE WHEN ? = '' THEN last_message ELSE ? END,
-		hook_at = ?,
+		hook_at = ?, status_seq = ?,
 		probe_miss_streak = 0
 		WHERE id = ?`, input.Status, input.Reason, input.Source, statusAt,
 		newKilled, seenStatusAt, notifyEpoch, notifyEpoch != cur.notifyEpoch, clearCrash, input.PaneExitStatus,
-		clearCrash, input.PaneExitStatus, input.CrashTail, lastMessage, lastMessage, nextHookAt(input, cur), input.SessionID)
+		clearCrash, input.PaneExitStatus, input.CrashTail, lastMessage, lastMessage, nextHookAt(input, cur), nextStatusSeq(cur, repeat), input.SessionID)
 	if err != nil {
 		return fmt.Errorf("update session status: %w", err)
 	}
@@ -1343,19 +1359,23 @@ func (s *Store) AcknowledgeSession(ctx context.Context, sessionID string) error 
 }
 
 // MarkStatusSeen is engagement's (R321) one durable write: it sets
-// seen_status_at = status_at on a row whose status_at is still statusAt, the
-// stamp the caller saw. It changes no status, source, reason, status_at,
-// notify_epoch or event, and it writes nothing at all when the row is already
-// seen or the status has moved on since the caller looked (a newer prompt
-// must not be marked seen by an engagement with the old one). It reports
-// whether a row was written.
-func (s *Store) MarkStatusSeen(ctx context.Context, sessionID string, statusAt int64) (bool, error) {
+// seen_status_at = status_at on a row that is still in the status episode the
+// caller saw (StatusEpisode: the stamp AND the transition count, because a
+// stamp alone is not an identity -- two episodes can share a millisecond and
+// a stepped clock can repeat an old stamp). It changes no status, source,
+// reason, status_at, notify_epoch or event, and it writes nothing at all when
+// the row is already seen or has moved to another episode since the caller
+// looked (a newer prompt must not be marked seen by an engagement with an
+// older one, however late that write runs). It reports whether a row was
+// written.
+func (s *Store) MarkStatusSeen(ctx context.Context, sessionID string, episode StatusEpisode) (bool, error) {
 	if sessionID == "" {
 		return false, errors.New("session id is required")
 	}
 	result, err := s.db.ExecContext(ctx,
-		`UPDATE sessions SET seen_status_at = status_at WHERE id = ? AND status_at = ? AND seen_status_at <> status_at`,
-		sessionID, statusAt)
+		`UPDATE sessions SET seen_status_at = status_at
+		 WHERE id = ? AND status_at = ? AND status_seq = ? AND seen_status_at <> status_at`,
+		sessionID, episode.At, episode.Seq)
 	if err != nil {
 		return false, fmt.Errorf("mark status seen: %w", err)
 	}
@@ -3042,7 +3062,7 @@ func (s *Store) migrate(version int) error {
 // the schemaVN variables at call time (tests substitute them); a version
 // outside 0..SchemaVersion-1 has no migration path.
 func applySchemaLadder(tx *sql.Tx, version int) error {
-	rungs := [][]string{schemaV1, schemaV2, schemaV3, schemaV4, schemaV5, schemaV6, schemaV7, schemaV8, schemaV9, schemaV10, schemaV11, schemaV12, schemaV13, schemaV14, schemaV15, schemaV16, schemaV17, schemaV18, schemaV19, schemaV20}
+	rungs := [][]string{schemaV1, schemaV2, schemaV3, schemaV4, schemaV5, schemaV6, schemaV7, schemaV8, schemaV9, schemaV10, schemaV11, schemaV12, schemaV13, schemaV14, schemaV15, schemaV16, schemaV17, schemaV18, schemaV19, schemaV20, schemaV21}
 	if version < 0 || version >= len(rungs) {
 		return fmt.Errorf("no migration path from schema version %d", version)
 	}
@@ -3364,6 +3384,29 @@ var schemaV19 = []string{
 var schemaV20 = []string{
 	`ALTER TABLE sessions ADD COLUMN hook_at INTEGER NOT NULL DEFAULT 0`,
 	`UPDATE sessions SET hook_at = status_at WHERE status_source = 'hook'`,
+}
+
+// schemaV21 adds sessions.status_seq (R319, R321, R322): the number of status
+// transitions the row has made. status_at is a wall-clock stamp and so not an
+// identity (two episodes can share a millisecond, a stepped clock can repeat
+// an old stamp); (status_at, status_seq) is, and every asynchronous seen write
+// and cached engagement/dwell decision is bound to it. A repeat of the current
+// status (R303) does not advance it, and seen_status_at == status_at stays the
+// public seen predicate.
+var schemaV21 = []string{
+	`ALTER TABLE sessions ADD COLUMN status_seq INTEGER NOT NULL DEFAULT 0`,
+}
+
+// StatusEpisode names one status episode of a row: the status_at stamp and the
+// transition count (status_seq) it was written at. Two episodes never share
+// both, whatever the clock did.
+type StatusEpisode struct {
+	At, Seq int64
+}
+
+// Episode is the status episode the row is in now.
+func (s Session) Episode() StatusEpisode {
+	return StatusEpisode{At: s.StatusAt, Seq: s.StatusSeq}
 }
 
 // VerdictAt is the time the row's verdict was last vouched for, the anchor of

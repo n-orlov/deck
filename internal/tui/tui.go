@@ -228,7 +228,7 @@ type Model struct {
 	kill                    func(context.Context, store.Session) error
 	acknowledge             func(context.Context, string) error
 	// markSeen is engagement's write (R321, engagement.go); engagement is its shared cell.
-	markSeen func(context.Context, string, int64) (bool, error)
+	markSeen func(context.Context, string, store.StatusEpisode) (bool, error)
 	// markViewed is the R325 viewing write (viewed.go).
 	markViewed func(context.Context, string) (bool, error)
 	// attachSample is the full-attach engagement watcher's read (R321,
@@ -2040,7 +2040,7 @@ type sessionGroupMoved struct {
 // New creates a list model. tmux failures are intentionally retained as a
 // rendered health state: users must be able to read and quit it.
 func New(db *store.Store, settings config.Settings, tmuxNote string) Model {
-	m := Model{store: db, settings: settings, startupNote: tmuxNote, createCWDRecentIndex: -1, interactiveScroll: &interactiveScrollState{}, engagement: &engagementState{issued: map[string]int64{}}, deckExecutable: runningExecutable(), configReloader: newConfigReloader(settings)}
+	m := Model{store: db, settings: settings, startupNote: tmuxNote, createCWDRecentIndex: -1, interactiveScroll: &interactiveScrollState{}, engagement: &engagementState{issued: map[string]store.StatusEpisode{}}, deckExecutable: runningExecutable(), configReloader: newConfigReloader(settings)}
 	if wd, err := os.Getwd(); err == nil {
 		m.startCWD = wd
 	}

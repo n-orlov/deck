@@ -39,10 +39,11 @@ const (
 // write, so a second trigger before the reload lands issues nothing, and the
 // screen baseline the content-change trigger compares against.
 type engagementState struct {
-	// issued maps a session id to the status_at its engagement write named.
-	// It is also the sort hold: a row whose status_at still equals its entry
-	// keeps its pre-engagement attention tier.
-	issued map[string]int64
+	// issued maps a session id to the status episode (status_at AND
+	// status_seq: a stamp alone can repeat) its engagement write named. It is
+	// also the sort hold: a row still in its entry's episode keeps its
+	// pre-engagement attention tier.
+	issued map[string]store.StatusEpisode
 	// screenTarget/screenHash are the baseline of the interactive preview's
 	// live screen; screenTarget is "" outside interactive mode.
 	screenTarget string
@@ -60,7 +61,7 @@ type engagementState struct {
 
 func (m *Model) engagementCell() *engagementState {
 	if m.engagement == nil {
-		m.engagement = &engagementState{issued: map[string]int64{}}
+		m.engagement = &engagementState{issued: map[string]store.StatusEpisode{}}
 	}
 	return m.engagement
 }
@@ -93,7 +94,7 @@ func (m *Model) engage(trigger engagementTrigger) tea.Cmd {
 // engageRow is the one function every engagement trigger ends in -- the
 // interactive preview's (through engage) and a full attach's (through
 // onAttachFinished) alike. It decides and issues the single seen write for
-// session's current status stamp, and records that stamp so the row keeps
+// session's current status episode, and records that episode so the row keeps
 // its sidebar position (engagementHold).
 func (m *Model) engageRow(trigger engagementTrigger, session store.Session) tea.Cmd {
 	if m.markSeen == nil {
@@ -103,13 +104,14 @@ func (m *Model) engageRow(trigger engagementTrigger, session store.Session) tea.
 		return nil
 	}
 	cell := m.engagementCell()
-	if stamp, done := cell.issued[session.ID]; done && stamp == session.StatusAt {
+	episode := session.Episode()
+	if issued, done := cell.issued[session.ID]; done && issued == episode {
 		return nil
 	}
-	cell.issued[session.ID] = session.StatusAt
-	markSeen, id, statusAt := m.markSeen, session.ID, session.StatusAt
+	cell.issued[session.ID] = episode
+	markSeen, id := m.markSeen, session.ID
 	return func() tea.Msg {
-		_, err := markSeen(context.Background(), id, statusAt)
+		_, err := markSeen(context.Background(), id, episode)
 		return sessionEngaged{err: err, trigger: trigger}
 	}
 }
@@ -177,9 +179,9 @@ func (m *Model) engageOnScreenChange() tea.Cmd {
 	return m.engage(engageScreen)
 }
 
-// engagementHold is the attention sort's hold set: session id -> the
-// status_at an engagement write named. Nil when nothing was engaged.
-func (m Model) engagementHold() map[string]int64 {
+// engagementHold is the attention sort's hold set: session id -> the status
+// episode an engagement write named. Nil when nothing was engaged.
+func (m Model) engagementHold() map[string]store.StatusEpisode {
 	if m.engagement == nil || len(m.engagement.issued) == 0 {
 		return nil
 	}

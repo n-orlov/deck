@@ -152,19 +152,19 @@ func sortSessionsByAttentionStable(previous, incoming []store.Session) []store.S
 }
 
 // sortSessionsByAttentionStableHeld is sortSessionsByAttentionStable with
-// R321's engagement hold: a row in held (id -> status_at) whose status_at
+// R321's engagement hold: a row in held (id -> status episode) whose episode
 // still matches keeps the tier it had before engagement set it seen, so
 // engagement moves no row. Model's two attention sort sites pass
 // Model.engagementHold.
-func sortSessionsByAttentionStableHeld(previous, incoming []store.Session, held map[string]int64) []store.Session {
+func sortSessionsByAttentionStableHeld(previous, incoming []store.Session, held map[string]store.StatusEpisode) []store.Session {
 	return sortSessionsStable(previous, incoming, pinnedFirst(attentionLessStableHeld(previous, held)))
 }
 
 // attentionSortRank is the sort's tier: sessionAttentionRank, except that a
-// row engagement set seen (held at its current status_at) keeps the unseen
+// row engagement set seen (held at its current status episode) keeps the unseen
 // tier it had before (R321: engagement moves no row).
-func attentionSortRank(session store.Session, held map[string]int64) int {
-	if at, ok := held[session.ID]; ok && at == session.StatusAt && session.StatusSeen() {
+func attentionSortRank(session store.Session, held map[string]store.StatusEpisode) int {
+	if episode, ok := held[session.ID]; ok && episode == session.Episode() && session.StatusSeen() {
 		return attentionRank(session.Status)
 	}
 	return sessionAttentionRank(session)
@@ -183,7 +183,7 @@ func attentionLessStable(previous []store.Session) func(a, b store.Session) bool
 
 // attentionLessStableHeld is attentionLessStable reading the tier through
 // attentionSortRank's engagement hold.
-func attentionLessStableHeld(previous []store.Session, held map[string]int64) func(a, b store.Session) bool {
+func attentionLessStableHeld(previous []store.Session, held map[string]store.StatusEpisode) func(a, b store.Session) bool {
 	posKey := previousPositionKey(previous)
 	return func(a, b store.Session) bool {
 		ra, rb := attentionSortRank(a, held), attentionSortRank(b, held)

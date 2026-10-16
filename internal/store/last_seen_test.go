@@ -122,7 +122,7 @@ func TestMarkViewedDoesNotSeeAnAttentionStatus(t *testing.T) {
 	if !got.Unseen() {
 		t.Fatal("a view of the output saw an unseen waiting status")
 	}
-	if _, err := db.MarkStatusSeen(ctx, "s", 200); err != nil {
+	if _, err := db.MarkStatusSeen(ctx, "s", StatusEpisode{At: 200, Seq: got.StatusSeq}); err != nil {
 		t.Fatal(err)
 	}
 	if got, _ = db.GetSession(ctx, "s"); got.Unseen() {

@@ -39,7 +39,7 @@ func newDwellRig(t *testing.T) *dwellRig {
 	if inner == nil {
 		t.Fatal("fixture: the model has no markSeen write")
 	}
-	m.markSeen = func(ctx context.Context, id string, at int64) (bool, error) {
+	m.markSeen = func(ctx context.Context, id string, at store.StatusEpisode) (bool, error) {
 		r.writes++
 		return inner(ctx, id, at)
 	}

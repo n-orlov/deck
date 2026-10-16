@@ -35,7 +35,7 @@ func engagementFixture(t *testing.T, sortOrder, target string, interactiveMode b
 	if inner == nil {
 		t.Fatal("fixture: the model has no markSeen write")
 	}
-	m.markSeen = func(ctx context.Context, id string, at int64) (bool, error) {
+	m.markSeen = func(ctx context.Context, id string, at store.StatusEpisode) (bool, error) {
 		writes++
 		return inner(ctx, id, at)
 	}
@@ -232,7 +232,7 @@ func TestSecondEngagementWritesNothing(t *testing.T) {
 			if cmd := stale.engage(engageKey); cmd != nil {
 				t.Fatal("a model that already issued this stamp's write issued another")
 			}
-			changed, err := rig.db.MarkStatusSeen(context.Background(), id, seen.Session.StatusAt)
+			changed, err := rig.db.MarkStatusSeen(context.Background(), id, seen.Session.Episode())
 			if err != nil || changed {
 				t.Fatalf("MarkStatusSeen on a seen row = (%v, %v), want (false, nil)", changed, err)
 			}
@@ -253,7 +253,7 @@ func TestEngagementOfAnOlderPromptDoesNotHideANewerOne(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	changed, err := rig.db.MarkStatusSeen(context.Background(), "row-waiting", before.Session.StatusAt)
+	changed, err := rig.db.MarkStatusSeen(context.Background(), "row-waiting", before.Session.Episode())
 	if err != nil || changed {
 		t.Fatalf("an engagement with the older stamp wrote: (%v, %v)", changed, err)
 	}

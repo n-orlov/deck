@@ -41,7 +41,7 @@ const engageDwell engagementTrigger = "dwell"
 // dwellState is the dwell in progress, if any (engagementState.dwelling).
 type dwellState struct {
 	sessionID     string
-	statusAt      int64
+	episode       store.StatusEpisode
 	status        string
 	startedAt     time.Time
 	promptAtStart bool
@@ -143,7 +143,7 @@ func (m *Model) observeDwell() {
 	}
 	cell.dwell = dwellState{
 		sessionID:     session.ID,
-		statusAt:      session.StatusAt,
+		episode:       session.Episode(),
 		status:        session.Status,
 		startedAt:     cell.dwellClock(),
 		promptAtStart: unseenAttention(session) && m.promptOnScreen(session),
@@ -156,7 +156,7 @@ func (m *Model) observeDwell() {
 // prompt that appeared after the view began: it stays unseen until engagement,
 // and it neither restarts the view's clock nor inherits its prompt-at-start.
 func (d dwellState) stillTheStartingPrompt(session store.Session) bool {
-	return d.sessionID == session.ID && d.status == session.Status && d.statusAt == session.StatusAt
+	return d.sessionID == session.ID && d.status == session.Status && d.episode == session.Episode()
 }
 
 // engageOnDwell is the dwell trigger, run on the preview tick: once seenDwell
