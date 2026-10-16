@@ -1078,15 +1078,18 @@ Rules:
   passive preview deck sees them itself: a forwarded key; the wheel over the interactive preview, a page
   scroll, or a wheel notch over the *passive* preview (which still scrolls nothing, §11.8); and a change of
   the interactive preview's live screen since entry (compared on the preview tick). In a full attach the
-  real tmux client owns the terminal, so a watcher beside it samples tmux read-only every 200 ms
-  (`tmux.Client.AttachSample`: pane size, copy mode and scroll position, the attach client's
-  `client_activity` and key table, and the visible screen) and reports the first trigger when the client
-  exits: a key is the client's `client_activity` moving while its key table is `root`, confirmed by the
-  client still being attached one sample later, so a prefix key and the user's own detach (`prefix d`)
-  never count; a scroll is the pane entering copy mode or moving its scroll position; a screen change is
-  the screen's hash moving at an unchanged size, where a size change (the attach's own resize) and the
-  1 s after it only re-baseline. `client_activity` has one-second resolution, so a key in the attach's
-  first second is seen only through the screen it changes. An attach with none of these stays inert
+  real tmux client draws the terminal, but deck stays in its key path: the client runs on a pty deck owns,
+  and deck copies the user's terminal (put in raw mode, its size and resizes passed on) to it byte for
+  byte. Beside it a watcher samples tmux read-only every 200 ms (`tmux.Client.AttachSample`: pane size,
+  copy mode and scroll position, the `prefix`/`prefix2` options, the attach client's key table, and the
+  visible screen; the first sample is taken before the client exists) and reports the first trigger when
+  the client exits. A key is a key event decoded from the bytes deck forwarded -- not a mouse report, a
+  focus change or the terminal's reply to a tmux query, not the prefix key and not the key after it --
+  confirmed by the client still being attached in its `root` table at the next sample, so `prefix d` and
+  any other detach never count; it involves no clock, so a key in the attach's first instant counts. A
+  scroll is the pane entering copy mode or moving its scroll position; a screen change is the screen's
+  hash moving at an unchanged size from the pre-attach baseline, where a size change (the attach's own
+  resize) and the 1 s after it only re-baseline. An attach with none of these stays inert
   (R320). Engagement sets seen only: no status, reason, source, `status_at`, event or `notify_epoch`
   changes, and no row moves. An engaged `error` row is therefore held in the sidebar tier it had before
   engagement while its `status_at` is the one engagement saw (`attentionSortRank`); the count and `space`
@@ -1099,6 +1102,7 @@ Rules:
   `TestFullAttachFirstForwardedKeyIsReported`, `TestFullAttachFirstScrollIsReported`,
   `TestFullAttachFirstScreenContentChangeIsReported`, `TestFullAttachTriggersSetSeenThroughEngageRow`,
   `TestFullAttachWithoutEngagementReportsNothing`, `TestFullAttachDetachByKeyReportsNothing`,
+  `TestAttachKeyProxyCountsOnlyForwardedKeys`,
   `TestSecondEngagementWritesNothing`, `TestEngagementChangesNoStatusAndMovesNoRow` and
   `TestEngagementHoldEndsWithTheStatus`. Leaving an attention state bumps `notify_epoch` (§10.3).
 - **Needs attention (R319).** A row needs attention when it is `waiting`, or `error` **and

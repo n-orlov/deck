@@ -957,17 +957,18 @@ func (c Client) Bootstrap(ctx context.Context) error {
 
 // AttachSample is one look at a session while a full attach holds it (R321):
 // the active pane's geometry, whether it is in a mode (copy mode: a scroll)
-// and its scroll position, the attached client's last-key time and key table,
-// and the pane's visible screen. It is read by deck's full-attach engagement
-// watcher, which never writes anything to tmux.
+// and its scroll position, tmux's prefix keys, the attached client's key
+// table, and the pane's visible screen. It is read by deck's full-attach
+// engagement watcher, which never writes anything to tmux.
 type AttachSample struct {
 	Width, Height  int
 	InMode         bool
 	ScrollPosition string
+	// Prefix and Prefix2 are the prefix and prefix2 options ("C-b", "None").
+	Prefix, Prefix2 string
 	// ClientFound reports whether the client with the requested pid is still
-	// attached to the session; ClientActivity/ClientKeyTable describe it.
+	// attached to the session; ClientKeyTable is its current key table.
 	ClientFound    bool
-	ClientActivity int64
 	ClientKeyTable string
 	Screen         []byte
 }
@@ -977,7 +978,7 @@ type AttachSample struct {
 const attachSampleSeparator = "::deck-attach-sample-end-of-clients::"
 
 // AttachSample reads one AttachSample for deck_<slug> in a single tmux
-// invocation (display-message, list-clients, a separator, capture-pane), so
+// invocation (display-message x2, list-clients, a separator, capture-pane), so
 // the facts and the screen describe the same moment. clientPID names the
 // attach client deck spawned.
 func (c Client) AttachSample(ctx context.Context, slug string, clientPID int) (AttachSample, error) {
@@ -992,7 +993,9 @@ func (c Client) AttachSample(ctx context.Context, slug string, clientPID int) (A
 	data, err := c.run(ctx,
 		"display-message", "-p", "-t", target, "#{pane_width}|#{pane_height}|#{pane_in_mode}|#{scroll_position}",
 		";",
-		"list-clients", "-t", "="+name, "-F", "#{client_pid}|#{client_activity}|#{client_key_table}",
+		"display-message", "-p", "-t", target, "#{prefix} #{prefix2}",
+		";",
+		"list-clients", "-t", "="+name, "-F", "#{client_pid}|#{client_key_table}",
 		";",
 		"display-message", "-p", attachSampleSeparator,
 		";",
@@ -1019,17 +1022,20 @@ func parseAttachSample(name string, data []byte, clientPID int) (AttachSample, e
 		return AttachSample{}, fmt.Errorf("attach sample %q: parse pane geometry %q", name, lines[0])
 	}
 	sample := AttachSample{Width: width, Height: height, InMode: facts[2] == "1", ScrollPosition: facts[3], Screen: screen}
-	for _, line := range lines[1:] {
-		fields := strings.Split(line, "|")
-		if len(fields) != 3 {
+	if len(lines) < 2 {
+		return AttachSample{}, fmt.Errorf("attach sample %q: no prefix keys", name)
+	}
+	sample.Prefix, sample.Prefix2, _ = strings.Cut(lines[1], " ")
+	for _, line := range lines[2:] {
+		pidText, table, ok := strings.Cut(line, "|")
+		if !ok {
 			continue
 		}
-		pid, perr := strconv.Atoi(fields[0])
+		pid, perr := strconv.Atoi(pidText)
 		if perr != nil || pid != clientPID {
 			continue
 		}
-		activity, _ := strconv.ParseInt(fields[1], 10, 64)
-		sample.ClientFound, sample.ClientActivity, sample.ClientKeyTable = true, activity, fields[2]
+		sample.ClientFound, sample.ClientKeyTable = true, table
 	}
 	return sample, nil
 }

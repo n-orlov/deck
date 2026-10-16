@@ -6,7 +6,6 @@ import (
 	"os/exec"
 	"reflect"
 	"strings"
-	"syscall"
 	"testing"
 	"time"
 
@@ -24,19 +23,28 @@ import (
 // --- the detector, sample by sample ---------------------------------------
 
 func attachSampleAt(width, height int, screen string) tmux.AttachSample {
-	return tmux.AttachSample{Width: width, Height: height, ClientFound: true, ClientActivity: 100, ClientKeyTable: "root", Screen: []byte(screen)}
+	return tmux.AttachSample{Width: width, Height: height, Prefix: "C-b", Prefix2: "None", ClientFound: true, ClientKeyTable: "root", Screen: []byte(screen)}
 }
 
+// preAttachSample is the baseline Run samples before the client exists: an
+// 80x24 pane showing "prompt".
+func preAttachSample() tmux.AttachSample {
+	s := attachSampleAt(80, 24, "prompt")
+	s.ClientFound, s.ClientKeyTable = false, ""
+	return s
+}
+
+// A forwarded key counts the moment it is seen, confirmed by the next
+// sample: no clock resolution is involved, so a key in the attach's first
+// instant is a key.
 func TestAttachDetectorKeyIsConfirmedByTheNextSample(t *testing.T) {
 	d := attachEngagementDetector{settle: time.Second}
 	t0 := time.Unix(1000, 0)
-	d.observe(t0, attachSampleAt(80, 24, "prompt"))
-	bump := attachSampleAt(80, 24, "prompt x")
-	bump.ClientActivity = 101
-	if got := d.observe(t0.Add(2*time.Second), bump); got != "" {
-		t.Fatalf("the bump sample reported %q, want a pending key", got)
+	d.observe(t0, preAttachSample(), 0)
+	if got := d.observe(t0.Add(10*time.Millisecond), attachSampleAt(80, 24, "prompt x"), 1); got != "" {
+		t.Fatalf("the sample after the key reported %q, want a pending key", got)
 	}
-	if got := d.observe(t0.Add(2200*time.Millisecond), bump); got != engageKey {
+	if got := d.observe(t0.Add(210*time.Millisecond), attachSampleAt(80, 24, "prompt x"), 1); got != engageKey {
 		t.Fatalf("the confirming sample reported %q, want %q", got, engageKey)
 	}
 }
@@ -44,22 +52,24 @@ func TestAttachDetectorKeyIsConfirmedByTheNextSample(t *testing.T) {
 func TestAttachDetectorPrefixAndDetachAreNotKeys(t *testing.T) {
 	d := attachEngagementDetector{settle: time.Second}
 	t0 := time.Unix(1000, 0)
-	d.observe(t0, attachSampleAt(80, 24, "prompt"))
-	prefix := attachSampleAt(80, 24, "prompt")
-	prefix.ClientActivity, prefix.ClientKeyTable = 101, "prefix"
-	if got := d.observe(t0.Add(2*time.Second), prefix); got != "" {
-		t.Fatalf("a pending prefix reported %q", got)
+	d.observe(t0, preAttachSample(), 0)
+	// A key the proxy could not name as the prefix leaves the client in the
+	// prefix table: not a forwarded key.
+	if got := d.observe(t0.Add(200*time.Millisecond), attachSampleAt(80, 24, "prompt"), 1); got != "" {
+		t.Fatalf("a pending key reported %q", got)
 	}
-	// The `d` of prefix+d: the server may still list the detaching client
-	// in the root table with its activity moved; it is gone a sample later.
-	detaching := attachSampleAt(80, 24, "prompt")
-	detaching.ClientActivity = 102
-	if got := d.observe(t0.Add(2200*time.Millisecond), detaching); got != "" {
-		t.Fatalf("the detaching sample reported %q", got)
+	prefix := attachSampleAt(80, 24, "prompt")
+	prefix.ClientKeyTable = "prefix"
+	if got := d.observe(t0.Add(400*time.Millisecond), prefix, 1); got != "" {
+		t.Fatalf("a key in the prefix table reported %q", got)
+	}
+	// A key followed by the client's departure is a detach.
+	if got := d.observe(t0.Add(600*time.Millisecond), attachSampleAt(80, 24, "prompt"), 2); got != "" {
+		t.Fatalf("a pending key reported %q", got)
 	}
 	gone := attachSampleAt(80, 24, "prompt")
 	gone.ClientFound = false
-	if got := d.observe(t0.Add(2400*time.Millisecond), gone); got != "" {
+	if got := d.observe(t0.Add(800*time.Millisecond), gone, 2); got != "" {
 		t.Fatalf("a detach was reported as %q", got)
 	}
 }
@@ -67,10 +77,10 @@ func TestAttachDetectorPrefixAndDetachAreNotKeys(t *testing.T) {
 func TestAttachDetectorScrollIsCopyMode(t *testing.T) {
 	d := attachEngagementDetector{settle: time.Second}
 	t0 := time.Unix(1000, 0)
-	d.observe(t0, attachSampleAt(80, 24, "prompt"))
+	d.observe(t0, preAttachSample(), 0)
 	scrolled := attachSampleAt(80, 24, "prompt")
-	scrolled.InMode, scrolled.ScrollPosition, scrolled.ClientActivity = true, "3", 101
-	if got := d.observe(t0.Add(200*time.Millisecond), scrolled); got != engageScroll {
+	scrolled.InMode, scrolled.ScrollPosition = true, "3"
+	if got := d.observe(t0.Add(200*time.Millisecond), scrolled, 0); got != engageScroll {
 		t.Fatalf("entering copy mode reported %q, want %q", got, engageScroll)
 	}
 }
@@ -78,19 +88,105 @@ func TestAttachDetectorScrollIsCopyMode(t *testing.T) {
 func TestAttachDetectorScreenChangeCountsOnlyAfterTheResizeSettles(t *testing.T) {
 	d := attachEngagementDetector{settle: time.Second}
 	t0 := time.Unix(1000, 0)
-	d.observe(t0, attachSampleAt(80, 24, "prompt"))
+	d.observe(t0, preAttachSample(), 0)
 	// The attach's own resize, and the agent's redraws for it, are deck's.
-	if got := d.observe(t0.Add(200*time.Millisecond), attachSampleAt(120, 40, "prompt reflowed")); got != "" {
+	if got := d.observe(t0.Add(200*time.Millisecond), attachSampleAt(120, 40, "prompt reflowed"), 0); got != "" {
 		t.Fatalf("the attach resize reported %q", got)
 	}
-	if got := d.observe(t0.Add(900*time.Millisecond), attachSampleAt(120, 40, "prompt redrawn")); got != "" {
+	if got := d.observe(t0.Add(900*time.Millisecond), attachSampleAt(120, 40, "prompt redrawn"), 0); got != "" {
 		t.Fatalf("the redraw for the resize reported %q", got)
 	}
-	if got := d.observe(t0.Add(1500*time.Millisecond), attachSampleAt(120, 40, "prompt redrawn")); got != "" {
+	if got := d.observe(t0.Add(1500*time.Millisecond), attachSampleAt(120, 40, "prompt redrawn"), 0); got != "" {
 		t.Fatalf("an unchanged screen reported %q", got)
 	}
-	if got := d.observe(t0.Add(1700*time.Millisecond), attachSampleAt(120, 40, "prompt answered")); got != engageScreen {
+	if got := d.observe(t0.Add(1700*time.Millisecond), attachSampleAt(120, 40, "prompt answered"), 0); got != engageScreen {
 		t.Fatalf("a settled screen change reported %q, want %q", got, engageScreen)
+	}
+}
+
+// An attach that does not resize the window has nothing to settle: a screen
+// change in its first instant is a screen change.
+func TestAttachDetectorScreenChangeWithoutResizeCountsAtOnce(t *testing.T) {
+	d := attachEngagementDetector{settle: time.Second}
+	t0 := time.Unix(1000, 0)
+	d.observe(t0, preAttachSample(), 0)
+	if got := d.observe(t0.Add(50*time.Millisecond), attachSampleAt(80, 24, "prompt"), 0); got != "" {
+		t.Fatalf("an unchanged screen reported %q", got)
+	}
+	if got := d.observe(t0.Add(250*time.Millisecond), attachSampleAt(80, 24, "prompt answered"), 0); got != engageScreen {
+		t.Fatalf("a screen change in the first second reported %q, want %q", got, engageScreen)
+	}
+}
+
+// Without a pre-attach baseline the first sample is already attached: its
+// resize may have happened, so the settle starts there.
+func TestAttachDetectorLiveFirstSampleSettles(t *testing.T) {
+	d := attachEngagementDetector{settle: time.Second}
+	t0 := time.Unix(1000, 0)
+	d.observe(t0, attachSampleAt(80, 24, "prompt"), 0)
+	if got := d.observe(t0.Add(200*time.Millisecond), attachSampleAt(80, 24, "prompt redrawn"), 0); got != "" {
+		t.Fatalf("a redraw inside the settle reported %q", got)
+	}
+}
+
+// --- the key proxy: which forwarded bytes are keys ------------------------
+
+func TestAttachKeyProxyCountsOnlyForwardedKeys(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		input string
+		key   bool
+	}{
+		{"a printable key", "x", true},
+		{"an arrow key", "\x1b[A", true},
+		{"enter", "\r", true},
+		{"a bracketed paste", "\x1b[200~hello\x1b[201~", true},
+		{"the prefix alone", "\x02", false},
+		{"prefix+d (detach)", "\x02d", false},
+		{"prefix+[ then a key", "\x02[" + "x", true},
+		{"an SGR mouse click", "\x1b[<0;10;5M\x1b[<0;10;5m", false},
+		{"a mouse wheel", "\x1b[<64;10;5M", false},
+		{"focus in and out", "\x1b[I\x1b[O", false},
+		{"a primary device attributes reply", "\x1b[?62;22c", false},
+		{"a terminal version reply", "\x1bP>|xterm(390)\x1b\\", false},
+		{"a background colour reply", "\x1b]11;rgb:0000/0000/0000\x07", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			p := newAttachKeyProxy("C-b", "None")
+			p.forwarded([]byte(tc.input))
+			if got := p.keys.Load(); (got > 0) != tc.key {
+				t.Fatalf("%q counted %d keys, want a key: %v", tc.input, got, tc.key)
+			}
+		})
+	}
+}
+
+func TestAttachKeyProxyHonoursACustomPrefix(t *testing.T) {
+	p := newAttachKeyProxy("C-a", "M-Space")
+	p.forwarded([]byte("\x01d"))
+	p.forwarded([]byte("\x1b d"))
+	if got := p.keys.Load(); got != 0 {
+		t.Fatalf("custom prefixes and the keys after them counted %d keys", got)
+	}
+	p.forwarded([]byte("\x02"))
+	if got := p.keys.Load(); got != 1 {
+		t.Fatalf("C-b under prefix C-a counted %d keys, want 1", got)
+	}
+}
+
+func TestTmuxKeyStroke(t *testing.T) {
+	for name, want := range map[string]string{
+		"C-b": "ctrl+b", "C-a": "ctrl+a", "M-a": "alt+a", "C-Space": "ctrl+space",
+		"`": "`", "F12": "f12", "C-M-x": "ctrl+alt+x", "Escape": "esc",
+	} {
+		if got, ok := tmuxKeyStroke(name); !ok || got != want {
+			t.Errorf("tmuxKeyStroke(%q) = %q, %v; want %q", name, got, ok, want)
+		}
+	}
+	for _, name := range []string{"None", "", "Q-x", "PPage"} {
+		if got, ok := tmuxKeyStroke(name); ok {
+			t.Errorf("tmuxKeyStroke(%q) = %q, want no keystroke", name, got)
+		}
 	}
 }
 
@@ -104,9 +200,17 @@ type liveAttach struct {
 }
 
 // startLiveAttach runs a real `tmux attach-session` client on a pty against a
-// quiet pane through watchedAttach, and waits until tmux lists the client and
-// its first second of activity is over (client_activity has 1 s resolution).
+// quiet pane through watchedAttach, and waits only until tmux lists the
+// client: the user's first key may come at once.
 func startLiveAttach(t *testing.T) *liveAttach {
+	t.Helper()
+	return startLiveAttachSized(t, 24)
+}
+
+// startLiveAttachSized is startLiveAttach with the pane created paneHeight
+// rows tall; the client's terminal is 80x24, so a 24-row pane is resized by
+// the attach (tmux's status line takes a row) and a 23-row one is not.
+func startLiveAttachSized(t *testing.T, paneHeight int) *liveAttach {
 	t.Helper()
 	socket := selectionTestSocket("engage")
 	slug := "engage-attach"
@@ -114,7 +218,7 @@ func startLiveAttach(t *testing.T) *liveAttach {
 	if err != nil {
 		t.Fatal(err)
 	}
-	newQuietSelectionPane(t, socket, name, 80, 24)
+	newQuietSelectionPane(t, socket, name, 80, paneHeight)
 	client := tmux.Client{Socket: socket}
 	cmd, err := client.AttachCommand(context.Background(), slug)
 	if err != nil {
@@ -129,10 +233,10 @@ func startLiveAttach(t *testing.T) *liveAttach {
 		t.Fatal(err)
 	}
 	go func() { _, _ = io.Copy(io.Discard, ptmx) }()
-	cmd.Stdin, cmd.Stdout, cmd.Stderr = tty, tty, tty
 	cmd.Env = append(cmd.Env, "TERM=xterm-256color")
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true, Setctty: true}
-	w := &watchedAttach{cmd: cmd, slug: slug, sample: client.AttachSample, interval: 50 * time.Millisecond, settle: 300 * time.Millisecond}
+	// The test's pty plays the user's terminal; watchedAttach runs the
+	// client on a pty of its own and proxies this one to it.
+	w := &watchedAttach{cmd: cmd, slug: slug, sample: client.AttachSample, interval: attachWatchInterval, settle: attachWatchSettle, stdin: tty, stdout: tty}
 	live := &liveAttach{socket: socket, name: name, terminal: ptmx, done: make(chan error, 1), watched: w}
 	go func() { live.done <- w.Run() }()
 	t.Cleanup(func() { live.detach(t) })
@@ -147,7 +251,6 @@ func startLiveAttach(t *testing.T) *liveAttach {
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
-	time.Sleep(1100 * time.Millisecond)
 	return live
 }
 
@@ -187,25 +290,31 @@ func TestFullAttachWithoutEngagementReportsNothing(t *testing.T) {
 // keys tmux consumes, never a forwarded key, so an attach ended that way
 // stays inert (R320).
 func TestFullAttachDetachByKeyReportsNothing(t *testing.T) {
-	live := startLiveAttach(t)
-	if _, err := live.terminal.Write([]byte{0x02}); err != nil {
-		t.Fatal(err)
-	}
-	time.Sleep(1100 * time.Millisecond)
-	if _, err := live.terminal.Write([]byte("d")); err != nil {
-		t.Fatal(err)
-	}
-	select {
-	case <-live.done:
-		live.done = nil
-	case <-time.After(5 * time.Second):
-		t.Fatal("prefix+d did not detach the client")
-	}
-	if got := live.watched.Trigger; got != "" {
-		t.Fatalf("an attach ended by prefix+d reported %q", got)
+	for _, gap := range []time.Duration{0, 300 * time.Millisecond} {
+		t.Run(gap.String(), func(t *testing.T) {
+			live := startLiveAttach(t)
+			if _, err := live.terminal.Write([]byte{0x02}); err != nil {
+				t.Fatal(err)
+			}
+			time.Sleep(gap)
+			if _, err := live.terminal.Write([]byte("d")); err != nil {
+				t.Fatal(err)
+			}
+			select {
+			case <-live.done:
+				live.done = nil
+			case <-time.After(5 * time.Second):
+				t.Fatal("prefix+d did not detach the client")
+			}
+			if got := live.watched.Trigger; got != "" {
+				t.Fatalf("an attach ended by prefix+d reported %q", got)
+			}
+		})
 	}
 }
 
+// The key is typed the moment tmux lists the client -- inside the attach's
+// first clock second, where tmux's own client_activity cannot see it.
 func TestFullAttachFirstForwardedKeyIsReported(t *testing.T) {
 	live := startLiveAttach(t)
 	if _, err := live.terminal.Write([]byte("x")); err != nil {
@@ -227,12 +336,23 @@ func TestFullAttachFirstScrollIsReported(t *testing.T) {
 }
 
 func TestFullAttachFirstScreenContentChangeIsReported(t *testing.T) {
-	live := startLiveAttach(t)
-	live.tmux(t, "send-keys", "-t", "="+live.name+":", "-l", "the agent printed this")
-	time.Sleep(500 * time.Millisecond)
-	if got := live.detach(t); got != engageScreen {
-		t.Fatalf("a screen change reported %q, want %q", got, engageScreen)
-	}
+	t.Run("no resize: at once", func(t *testing.T) {
+		live := startLiveAttachSized(t, 23)
+		live.tmux(t, "send-keys", "-t", "="+live.name+":", "-l", "the agent printed this")
+		time.Sleep(500 * time.Millisecond)
+		if got := live.detach(t); got != engageScreen {
+			t.Fatalf("a screen change reported %q, want %q", got, engageScreen)
+		}
+	})
+	t.Run("after the attach's resize settles", func(t *testing.T) {
+		live := startLiveAttachSized(t, 24)
+		time.Sleep(attachWatchSettle + 2*attachWatchInterval)
+		live.tmux(t, "send-keys", "-t", "="+live.name+":", "-l", "the agent printed this")
+		time.Sleep(500 * time.Millisecond)
+		if got := live.detach(t); got != engageScreen {
+			t.Fatalf("a screen change reported %q, want %q", got, engageScreen)
+		}
+	})
 }
 
 // --- the Model: a full attach's trigger goes through engageRow ------------
