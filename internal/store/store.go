@@ -1175,6 +1175,21 @@ func nextSeenStatusAt(input StatusUpdateInput, cur statusRow, repeat bool, statu
 	return cur.seenStatusAt
 }
 
+// nextHookAt is hook_at after a winning write (R303, SPEC §7). Only a hook
+// advances it, and it never moves backwards while the row stays hook-sourced:
+// hook deliveries can arrive out of order, and a delayed repeat dated before
+// a newer one must not age the newest hook evidence. A hook taking the row
+// over from another source starts the clock at its own time.
+func nextHookAt(in StatusUpdateInput, cur statusRow) int64 {
+	switch {
+	case in.Source != "hook":
+		return cur.hookAt
+	case cur.source == "hook":
+		return max(cur.hookAt, in.At)
+	}
+	return in.At
+}
+
 // nextKilledByUser is killed_by_user after the write: set wins over clear.
 func nextKilledByUser(input StatusUpdateInput, cur statusRow) int {
 	switch {
@@ -1221,11 +1236,11 @@ func writeStatusUpdate(ctx context.Context, tx *sql.Tx, input StatusUpdateInput,
 		pane_exit_status = CASE WHEN ? = 1 THEN NULL ELSE COALESCE(?, pane_exit_status) END,
 		crash_tail = CASE WHEN ? = 1 THEN NULL WHEN ? IS NULL THEN crash_tail ELSE ? END,
 		last_message = CASE WHEN ? = '' THEN last_message ELSE ? END,
-		hook_at = CASE WHEN ? = 'hook' THEN ? ELSE hook_at END,
+		hook_at = ?,
 		probe_miss_streak = 0
 		WHERE id = ?`, input.Status, input.Reason, input.Source, statusAt,
 		newKilled, seenStatusAt, notifyEpoch, notifyEpoch != cur.notifyEpoch, clearCrash, input.PaneExitStatus,
-		clearCrash, input.PaneExitStatus, input.CrashTail, lastMessage, lastMessage, input.Source, input.At, input.SessionID)
+		clearCrash, input.PaneExitStatus, input.CrashTail, lastMessage, lastMessage, nextHookAt(input, cur), input.SessionID)
 	if err != nil {
 		return fmt.Errorf("update session status: %w", err)
 	}

@@ -1166,7 +1166,11 @@ Rules:
   state alone (the inert repeat above) but still advances `hook_at`, so a hook that says "still running" or
   "still idle" is fresh for `stale_after` from that moment. The row's *verdict age* is `hook_at` (never
   older than `status_at`) while `status_source` is `hook`, and `status_at` for every other source; a
-  verdict from another writer never advances `hook_at`, and a hook that lost precedence leaves none. The
+  verdict from another writer never advances `hook_at`, and a hook that lost precedence leaves none.
+  `hook_at` **never moves backwards** while the row stays hook-sourced: hook deliveries can arrive out of
+  order, so a delayed hook (a repeat or a transition) dated before a hook the store already applied keeps
+  the newer stamp, and freshness is always measured from the newest hook. A hook taking the row over from
+  another source starts the clock at its own time. The
   age is read twice: by reconcile's eligibility (`probeEligible`, and the movement fallback's pre-check)
   and, atomically against the stored row, by the store's own guards (a probe or movement write younger than
   its `stale_after` over a fresh hook verdict loses, whatever the writer read earlier), so a probe that
