@@ -1107,10 +1107,13 @@ Rules:
   store before every sample, and binds a trigger to the status episode only when the read before the
   sample that opens the trigger's evidence interval and a read after the trigger name the same
   `status_at` **and** `status_seq`; a trigger whose interval straddled an episode change is credited to
-  neither episode. When the client exits it reports the latest trigger so bound together with the row at
-  that observed episode, and `onAttachFinished` engages that observed episode -- never the row as a
-  `sessionsLoaded` delivered meanwhile shows it -- so a delayed trigger from an older prompt leaves a newer
-  one unseen, whether it shares the stamp or a clock step back dated it. A key is a key event decoded from the bytes deck forwarded -- not a mouse report, a
+  neither episode. The moment a trigger is so bound, the watcher engages that observed episode through
+  `Model.engageRow` -- while the attach is still running, from the store's row, so a prompt that arrives
+  after the attach began is marked seen by the first trigger that observes it, not by the row deck showed
+  when the attach began and not at detach. It never engages the row as a `sessionsLoaded` delivered
+  meanwhile shows it, so a trigger from an older prompt leaves a newer, unobserved one unseen, whether it
+  shares the stamp or a clock step back dated it. At exit `onAttachFinished` hands the latest trigger to
+  `engageRow` again (a no-op for an episode already written) and reports a failed mid-attach write. A key is a key event decoded from the bytes deck forwarded -- not a mouse report, a
   focus change or the terminal's reply to a tmux query, not the prefix key and not the key after it --
   confirmed by the client still being attached in its `root` table at the next sample, so `prefix d` and
   any other detach never count; it involves no clock, so a key in the attach's first instant counts. A
@@ -1127,7 +1130,7 @@ Rules:
   the older write runs, and the cached engagement decision, the sidebar hold and the R322 dwell are
   bound to that same episode, not to the stamp. A second
   engagement on an already-seen row issues no write at all. Covering tests:
-  `TestEngagementFirstForwardedKeySetsSeen`, `TestEngagementFirstInteractiveScrollSetsSeen`,
+  `TestFullAttachEngagesPromptThatArrivesWhileAttachedAtTheTrigger`, `TestFullAttachLeavesNewerUnobservedEpisodesUnseen`, `TestEngagementFirstForwardedKeySetsSeen`, `TestEngagementFirstInteractiveScrollSetsSeen`,
   `TestEngagementFirstPassivePreviewScrollSetsSeen`, `TestEngagementFirstScreenContentChangeSetsSeen`,
   `TestFullAttachFirstForwardedKeyIsReported`, `TestFullAttachFirstScrollIsReported`,
   `TestFullAttachFirstScreenContentChangeIsReported`, `TestFullAttachTriggersSetSeenThroughEngageRow`,

@@ -14,6 +14,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	tea "github.com/charmbracelet/bubbletea"
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/term"
 	"github.com/creack/pty"
@@ -51,10 +52,14 @@ import (
 //     and so does every sample for attachWatchSettle after it, so the
 //     agent's redraw for that resize is never counted.
 //
-// The watcher writes nothing to tmux and nothing to the store itself; the
-// one write is engageRow's, after the attach ends, and it names the observed
-// episode, so it is a no-op if the row has moved on to a newer one (a later
-// prompt sharing the millisecond, or a stepped-back clock, included).
+// The watcher writes nothing to tmux. The seen write is engageRow's, issued by
+// the watcher the moment a trigger is attributed to an episode (a prompt that
+// arrives after the attach began is engaged by the first trigger that observes
+// it, not at detach), and it names the observed episode, so it is a no-op if
+// the row has moved on to a newer one (a later prompt sharing the millisecond,
+// or a stepped-back clock, included): a newer unobserved episode stays
+// unseen. onAttachFinished hands the latest trigger to engageRow again, which
+// the once-per-episode record makes a no-op.
 
 const (
 	attachWatchInterval = 200 * time.Millisecond
@@ -352,6 +357,12 @@ type watchedAttach struct {
 	// trigger is attributed to session's own episode.
 	session store.Session
 	read    attachRowReader
+	// engage, when set, is Model.engageRow's seen write for a trigger and
+	// the row of the episode it observed. The watcher runs it the moment the
+	// trigger is attributed, while the attach is still going, so a prompt
+	// that arrives after the attach began is marked seen by the key, scroll
+	// or screen change that observed it, not at detach.
+	engage func(engagementTrigger, store.Session) tea.Cmd
 
 	stdin  io.Reader
 	stdout io.Writer
@@ -361,6 +372,26 @@ type watchedAttach struct {
 	// episode, the only one Trigger may set seen.
 	Trigger  engagementTrigger
 	Observed store.Session
+	// Engaged holds the result of every seen write the watcher issued while
+	// the attach ran; onAttachFinished reports the failed ones.
+	Engaged []sessionEngaged
+}
+
+// engageNow issues the seen write for a trigger the moment it is attributed.
+// The write is engageRow's own (decision, once-per-episode record and store
+// call); a trigger on a row that is not an unseen waiting/error episode, or on
+// an episode already written, issues nothing.
+func (w *watchedAttach) engageNow(engaged attachEngagement) {
+	if w.engage == nil {
+		return
+	}
+	cmd := w.engage(engaged.trigger, engaged.observed)
+	if cmd == nil {
+		return
+	}
+	if result, ok := cmd().(sessionEngaged); ok {
+		w.Engaged = append(w.Engaged, result)
+	}
 }
 
 // readRow is the bracket's read: the store's row, or session when no reader
@@ -578,6 +609,7 @@ func (w *watchedAttach) watch(ctx context.Context, pid int, baseline *tmux.Attac
 	for {
 		if engaged, ok := w.step(ctx, pid, &detector, bracket, keys); ok {
 			latest = engaged
+			w.engageNow(engaged)
 		}
 		select {
 		case <-ctx.Done():

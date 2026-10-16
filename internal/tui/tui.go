@@ -1645,6 +1645,8 @@ type attachFinished struct {
 	err      error
 	engaged  engagementTrigger
 	observed store.Session
+	// writes are the seen writes the watcher issued during the attach.
+	writes []sessionEngaged
 }
 
 // sessionKilled carries the killed session back (not just the error) so a
@@ -3441,6 +3443,7 @@ func (m Model) onAttachFinished(msg attachFinished) (tea.Model, tea.Cmd) {
 		engaged = m.engageRow(msg.engaged, msg.observed)
 	}
 	m.attachingSessionID = ""
+	m.reportEngagementWrites(msg.writes)
 	if msg.err != nil {
 		m.setAttachError("Cannot attach: " + msg.err.Error())
 	}
@@ -3470,6 +3473,17 @@ func (m Model) onAttachFinished(msg attachFinished) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(m.loadSessions, tea.EnableMouseCellMotion, engaged)
 	}
 	return m, tea.Batch(m.loadSessions, engaged)
+}
+
+// reportEngagementWrites surfaces the first failed seen write a full attach's
+// watcher issued while it ran.
+func (m *Model) reportEngagementWrites(writes []sessionEngaged) {
+	for _, write := range writes {
+		if write.err != nil {
+			m.setAttachError("Cannot mark seen: " + write.err.Error())
+			return
+		}
+	}
 }
 
 func (m Model) onSessionKilled(msg sessionKilled) (tea.Model, tea.Cmd) {
@@ -4391,9 +4405,13 @@ func (m Model) attachSelected() (tea.Model, tea.Cmd) {
 		// The trigger is bound to the status episode the watcher read
 		// across its evidence (episodeBracket), from the store when deck
 		// has one.
-		watched := &watchedAttach{cmd: command, slug: session.Slug, sample: m.attachSample, interval: attachWatchInterval, settle: attachWatchSettle, session: session, read: m.attachRowReader(session.ID)}
+		// The cell is created now so the watcher's seen writes and the
+		// Model that comes back from the attach share one record.
+		m.engagementCell()
+		engage := m.engageRow
+		watched := &watchedAttach{cmd: command, slug: session.Slug, sample: m.attachSample, interval: attachWatchInterval, settle: attachWatchSettle, session: session, read: m.attachRowReader(session.ID), engage: engage}
 		return m, tea.Exec(watched, func(err error) tea.Msg {
-			return attachFinished{err: err, engaged: watched.Trigger, observed: watched.Observed}
+			return attachFinished{err: err, engaged: watched.Trigger, observed: watched.Observed, writes: watched.Engaged}
 		})
 	}
 	return m, tea.ExecProcess(command, func(err error) tea.Msg { return attachFinished{err: err} })
