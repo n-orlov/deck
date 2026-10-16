@@ -12,15 +12,19 @@ import (
 
 // R322: a dwell sets seen. A row that stays selected with its pane in view for
 // seenDwell sets seen_status_at = status_at, but only when its prompt was
-// already on screen at the moment the dwell started. A prompt that appears
-// mid-dwell stays unseen until an engagement (R321) sets it. The write itself
+// already on screen at the moment the view started. The view is anchored to
+// the start of the uninterrupted focused visible pane, whatever the row's
+// status then was: a new attention status or status_at arriving mid-view does
+// not restart it. A prompt that appears after the view began stays unseen
+// until an engagement (R321) sets it, whether the capture, the hook or a
+// reload brought it first. The write itself
 // is engageRow's, so it changes no status, writes no event and moves no row.
 //
 // "In view" means the row is the one the preview shows (the selected row, or
-// the interactive target), its status is an unseen waiting/error, the preview
+// the interactive target), the preview
 // panel is on screen (not collapsed away below its floor, no modal or takeover over it),
 // the terminal window has not reported losing focus, and the pane's capture
-// is the row's own. Anything that stops being true ends the dwell: arrowing
+// is the row's own. Anything that stops being true ends the view: arrowing
 // to another row, collapsing the pane, the window blurring. When it is true
 // again a new dwell starts and its prompt-at-start is read afresh.
 //
@@ -38,6 +42,7 @@ const engageDwell engagementTrigger = "dwell"
 type dwellState struct {
 	sessionID     string
 	statusAt      int64
+	status        string
 	startedAt     time.Time
 	promptAtStart bool
 }
@@ -65,14 +70,15 @@ func (m Model) setWindowFocus(blurred bool) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// dwellSubject is the row a dwell would be about right now, or ok=false when
-// nothing is in view for one.
+// dwellSubject is the row in view right now, or ok=false when nothing is. The
+// row's status plays no part: the view is the focused, visible pane, and it
+// begins when the row is first in view, not when it first needs attention.
 func (m Model) dwellSubject() (session store.Session, ok bool) {
 	if m.engagement != nil && m.engagement.blurred {
 		return store.Session{}, false
 	}
 	session, ok = m.engagementTargetSession()
-	if !ok || !unseenAttention(session) || !m.dwellViewLive(session) {
+	if !ok || !m.dwellViewLive(session) {
 		return store.Session{}, false
 	}
 	return session, true
@@ -132,16 +138,25 @@ func (m *Model) observeDwell() {
 		return
 	}
 	cell := m.engagementCell()
-	if cell.dwelling && cell.dwell.sessionID == session.ID && cell.dwell.statusAt == session.StatusAt {
+	if cell.dwelling && cell.dwell.sessionID == session.ID {
 		return
 	}
 	cell.dwell = dwellState{
 		sessionID:     session.ID,
 		statusAt:      session.StatusAt,
+		status:        session.Status,
 		startedAt:     cell.dwellClock(),
-		promptAtStart: m.promptOnScreen(session),
+		promptAtStart: unseenAttention(session) && m.promptOnScreen(session),
 	}
 	cell.dwelling = true
+}
+
+// dwellStillTheStartingPrompt reports whether session still carries the
+// attention status the view began with. A different status or status_at is a
+// prompt that appeared after the view began: it stays unseen until engagement,
+// and it neither restarts the view's clock nor inherits its prompt-at-start.
+func (d dwellState) stillTheStartingPrompt(session store.Session) bool {
+	return d.sessionID == session.ID && d.status == session.Status && d.statusAt == session.StatusAt
 }
 
 // engageOnDwell is the dwell trigger, run on the preview tick: once seenDwell
@@ -153,6 +168,10 @@ func (m *Model) engageOnDwell() tea.Cmd {
 		return nil
 	}
 	if m.engagement.dwellClock().Sub(m.engagement.dwell.startedAt) < seenDwell {
+		return nil
+	}
+	session, ok := m.dwellSubject()
+	if !ok || !unseenAttention(session) || !m.engagement.dwell.stillTheStartingPrompt(session) {
 		return nil
 	}
 	return m.engage(engageDwell)

@@ -232,3 +232,138 @@ func TestPreviewTickRunsTheDwellTrigger(t *testing.T) {
 		t.Fatal("the dwell write did not set seen")
 	}
 }
+
+// setStatus writes a hook status for the target and reloads the list, as a
+// hook followed by a store reload does.
+func (r *dwellRig) setStatus(status string, at int64) {
+	r.t.Helper()
+	if err := r.db.UpdateSessionStatus(context.Background(), store.StatusUpdateInput{
+		SessionID: dwellTarget, Status: status, Reason: "dwell test " + status, Source: "hook", At: at,
+	}); err != nil {
+		r.t.Fatal(err)
+	}
+	r.send(r.m.loadSessions())
+	if got, _ := r.m.selectedSession(); got.ID != dwellTarget {
+		r.t.Fatalf("fixture: the reload moved the selection to %s", got.ID)
+	}
+}
+
+// settle advances past the dwell several times, ticking each time.
+func (r *dwellRig) settle() {
+	for i := 0; i < 4; i++ {
+		r.advance(seenDwell)
+		r.tick()
+	}
+}
+
+// R322: the dwell is anchored to the start of the uninterrupted focused
+// visible view. A prompt that appears after that view began stays unseen
+// until engagement whichever of the capture, the hook or the reload brings it
+// first.
+func TestDwellViewStartedBeforeThePromptStaysUnseenWhateverTheOrdering(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		run  func(r *dwellRig)
+	}{
+		{"capture then hook", func(r *dwellRig) {
+			r.capture(dwellPromptPane)
+			r.advance(100 * time.Millisecond)
+			r.setStatus("waiting", 50_000)
+		}},
+		{"hook then capture", func(r *dwellRig) {
+			r.setStatus("waiting", 50_000)
+			r.advance(100 * time.Millisecond)
+			r.capture(dwellPromptPane)
+		}},
+		{"prompt already in the capture before any status", func(r *dwellRig) {
+			r.setStatus("waiting", 50_000)
+			r.capture(dwellPromptPane)
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := newDwellRig(t)
+			r.setStatus("running", 5_000) // the row is not waiting when the view begins
+			r.capture(dwellQuietPane)
+			r.advance(time.Minute) // a long uninterrupted view
+			r.tick()
+			tc.run(r)
+			r.settle()
+			if r.seen() || r.writes != 0 {
+				t.Fatalf("seen=%v writes=%d: a prompt that appeared after the view began was set seen by the dwell", r.seen(), r.writes)
+			}
+			r.m = settleEngagement(t, r.m, r.m.engage(engageKey))
+			if !r.seen() {
+				t.Fatal("an engagement did not set the late prompt seen")
+			}
+		})
+	}
+}
+
+// A new status_at on a row already waiting is a prompt that appeared after
+// the view began too: it neither restarts the clock nor becomes seen by dwell.
+func TestDwellNewStatusAtMidViewDoesNotRestartOrSetSeen(t *testing.T) {
+	r := newDwellRig(t)
+	r.capture(dwellPromptPane)
+	r.advance(seenDwell - 300*time.Millisecond)
+	r.setStatus("running", 55_000) // the agent moves on and asks again mid-view
+	r.setStatus("waiting", 60_000)
+	r.advance(300 * time.Millisecond)
+	r.tick()
+	if r.seen() || r.writes != 0 {
+		t.Fatalf("seen=%v writes=%d: the new prompt was set seen by the old view's dwell", r.seen(), r.writes)
+	}
+	if !r.m.engagement.dwelling || r.m.engagement.dwell.startedAt != time.Unix(1_700_000_000, 0) {
+		t.Fatalf("the new status_at restarted the view: %+v", r.m.engagement.dwell)
+	}
+}
+
+// The prompt that was on screen at the start becomes seen at 1.5 s from the
+// view's start even when the row's own status was stamped just before it.
+func TestDwellAlreadyVisiblePromptBecomesSeenAfterTheDwellFromViewStart(t *testing.T) {
+	r := newDwellRig(t)
+	r.capture(dwellPromptPane)
+	r.advance(seenDwell / 2)
+	r.tick()
+	r.send(tea.WindowSizeMsg{Width: 100, Height: 30}) // an unrelated message does not restart it
+	r.advance(seenDwell / 2)
+	r.tick()
+	if !r.seen() || r.writes != 1 {
+		t.Fatalf("seen=%v writes=%d at 1.5 s from the view start, want seen by one write", r.seen(), r.writes)
+	}
+}
+
+// Collapsing ends the view: a prompt that arrived while collapsed is on
+// screen at the start of the next view, which then dwells normally.
+func TestDwellCollapseEndsTheViewAndTheNextOneReadsItsPromptAfresh(t *testing.T) {
+	r := newDwellRig(t)
+	r.setStatus("running", 5_000)
+	r.capture(dwellQuietPane)
+	r.advance(time.Minute)
+	full := r.m.height
+	r.m.layoutMode, r.m.height = LayoutStacked, 10
+	r.send(tea.WindowSizeMsg{Width: 100, Height: 10})
+	if r.m.computeLayout().PreviewShown {
+		t.Fatal("fixture: the preview is still shown")
+	}
+	r.setStatus("waiting", 50_000)
+	r.advance(seenDwell)
+	r.tick()
+	if r.seen() {
+		t.Fatal("a collapsed pane dwelled to seen")
+	}
+	r.capture(dwellPromptPane) // the pane's capture already shows the prompt when it reopens
+	r.send(tea.WindowSizeMsg{Width: 100, Height: full})
+	if !r.m.computeLayout().PreviewShown {
+		t.Skip("fixture could not restore the preview")
+	}
+	r.advance(seenDwell - time.Millisecond)
+	r.tick()
+	if r.seen() {
+		t.Fatal("the collapsed time counted toward the new view")
+	}
+	r.advance(time.Millisecond)
+	r.tick()
+	if !r.seen() {
+		t.Fatal("a full view with the prompt on screen at its start did not set seen")
+	}
+}

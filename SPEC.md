@@ -1115,24 +1115,34 @@ Rules:
   `TestSecondEngagementWritesNothing`, `TestEngagementChangesNoStatusAndMovesNoRow` and
   `TestEngagementHoldEndsWithTheStatus`. Leaving an attention state bumps `notify_epoch` (§10.3).
   **Dwell sets seen (R322).** A dwell of 1.5 s (`seenDwell`) with the pane in view also sets seen, through
-  the same `Model.engageRow` write, but only when the row's prompt was already on screen when the dwell
-  started. A row is *in view* when it is the one the preview shows (the selected row, or the interactive
-  target), it is an unseen `waiting`/`error`, the preview panel is shown (not collapsed away below its
-  floor, §11.2, and no modal or the settings takeover over it), the capture on screen is its own, and the
-  terminal window has not reported losing focus. *The prompt on screen* means the row's agent adapter
-  probes the pane text in view (the passive capture, or the interactive grid) and reports the row's own
-  status; an agent with no probe rule for it never reaches seen by dwell. The dwell is followed after
-  every message, so anything that stops being true ends it -- arrowing to another row, the panel
-  collapsing, the window blurring, a new `status_at` -- and the next time the row is in view a new dwell
-  starts and reads its prompt-at-start afresh: time spent before arrowing past a row, or while unfocused,
-  never counts. A prompt that appears mid-dwell (the pane showed no prompt at the start) stays unseen until
-  an engagement (R321) sets it; the dwell only ever sets seen, so it changes no status, writes no event and
-  moves no row, and a row already seen or already written for its `status_at` is not written again. The
-  check runs on the preview tick (`DECK_PREVIEW_MS`), so the write lands on the first tick at or after the
-  1.5 s mark. Focus is learnt from the terminal's focus reports, which `cmd/deck` requests for its own
-  window (`tea.WithReportFocus`); the model consumes them and, as before, never writes a focus report into
-  a pane. A terminal that sends none leaves deck focused. Covering tests:
-  `TestDwellWithPromptOnScreenAtStartSetsSeen`, `TestDwellPromptAppearingMidDwellStaysUnseenUntilEngagement`,
+  the same `Model.engageRow` write, but only when the row's prompt was already on screen when the view
+  started. The *view* is the uninterrupted, focused, visible pane on a row: the row is the one the preview
+  shows (the selected row, or the interactive target), the preview panel is shown (not collapsed away below
+  its floor, §11.2, and no modal or the settings takeover over it), the capture on screen is its own, and the
+  terminal window has not reported losing focus. The view is anchored to its own start, whatever the row's
+  status then was: it begins when the row comes into view, not when the row first needs attention, and a new
+  attention status or `status_at` arriving during it neither restarts it nor counts as a prompt that was
+  there at the start. *The prompt on screen at the start* means that, when the view began, the row was an
+  unseen `waiting`/`error` and its agent adapter's probe of the pane text in view (the passive capture, or
+  the interactive grid) reported that same status; an agent with no probe rule for it never reaches seen by
+  dwell. At 1.5 s from the view's start the row is set seen only if it still carries that status and
+  `status_at`. A prompt that appears after the view began -- the status or `status_at` changing, or the
+  prompt text arriving in the capture -- stays unseen until an engagement (R321) sets it, whichever of the
+  capture, the hook or the reload brought it first. The view is followed after every message, so anything
+  that stops being true ends it -- arrowing to another row, the panel collapsing, the window blurring -- and
+  the next time the row is in view a new view starts and reads its prompt-at-start afresh: time spent before
+  arrowing past a row, while collapsed or while unfocused, never counts. The dwell only ever sets seen, so it
+  changes no status, writes no event and moves no row, and a row already seen or already written for its
+  `status_at` is not written again. The check runs on the preview tick (`DECK_PREVIEW_MS`), so the write
+  lands on the first tick at or after the 1.5 s mark. Focus is learnt from the terminal's focus reports,
+  which `cmd/deck` requests for its own window (`tea.WithReportFocus`); the model consumes them and, as
+  before, never writes a focus report into a pane. A terminal that sends none leaves deck focused. Covering
+  tests: `TestDwellWithPromptOnScreenAtStartSetsSeen`,
+  `TestDwellPromptAppearingMidDwellStaysUnseenUntilEngagement`,
+  `TestDwellViewStartedBeforeThePromptStaysUnseenWhateverTheOrdering`,
+  `TestDwellNewStatusAtMidViewDoesNotRestartOrSetSeen`,
+  `TestDwellAlreadyVisiblePromptBecomesSeenAfterTheDwellFromViewStart`,
+  `TestDwellCollapseEndsTheViewAndTheNextOneReadsItsPromptAfresh`,
   `TestDwellWithPaneCollapsedDoesNotSetSeen`, `TestDwellWithDeckUnfocusedDoesNotSetSeen`,
   `TestDwellArrowingPastARowDoesNotSetSeen` and `TestPreviewTickRunsTheDwellTrigger`.
 - **Needs attention (R319).** A row needs attention when it is `waiting`, or `error` **and
@@ -2892,7 +2902,7 @@ always did), and the permission badge for non-`safe` **last**. The
   shown only when N is at least 1; N counts the rows that carry the marker (§7).
 - **What counts as viewed (R325).** A row is *viewed* when the passive preview has been visible on it for
   at least 1.5 s, or when interactive mode is on it (no dwell: interactive mode is the view). *Visible*
-  is the same test as the R322 dwell's: the row is the one the preview shows (the selected row, or the
+  is the same test as the R322 view's: the row is the one the preview shows (the selected row, or the
   interactive target), the preview panel is on screen (stacked below its floor it is collapsed away and
   views nothing), no modal or takeover covers it, the pane's capture is the row's own and live, and the
   terminal window has not reported losing focus. While a row stays in view the preview tick keeps
