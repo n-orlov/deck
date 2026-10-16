@@ -340,29 +340,28 @@ func frameCuts(lines []string) ([]int, int) {
 // plausibleTops narrows the frame-identical rules (nearest first) to those that
 // can be the composer's top, judged from the pane alone, so a rule the
 // transcript itself drew (a divider printed by a tool, a markdown rule) is not
-// taken for the frame even on the clock's first capture of a session. The
-// shapes the three framed agents draw differ, and each leaves evidence the
-// other side of the frame cannot fake:
+// taken for the frame even on the clock's first capture of a session. Each
+// framed shape leaves evidence a draft cannot fake (a draft is free text, so
+// it can hold indentation, blank lines and frame-drawn rules of its own):
 //   - claude and copilot lead the composer with a column-0 "❯" line, and every
 //     draft continuation is indented by the prompt's width (two columns), so a
 //     rule the composer's first line does not follow, or one with a "●" turn
 //     bullet drawn in column 0 or 1 between it and the bottom rule (claude
 //     draws it flush left, copilot after one space), is transcript.
-//   - pi draws no glyph and starts every composer line at column 0, while its
-//     transcript is padded by one column, so a rule with an indented line
-//     between it and the bottom rule is transcript.
+//   - pi draws no glyph; it pads every transcript line by one column, so a
+//     stretch of text between two of the rules that is padded that way, with
+//     no line at column 0, is transcript (piTops).
 //
 // A pane none of whose rules passes keeps all of them: the evidence ranks, it
 // never leaves the frame without a top. What remains is genuine ambiguity (a
 // draft that mimics the frame and the transcript the same way), which
 // pickTopRule and the clock's alternative cuts handle.
 func plausibleTops(lines []string, bottom int, identical []int) []int {
-	glyphless := glyphlessFrame(lines, bottom)
-	keep := identical
-	if !glyphless {
-		keep = narrow(keep, func(i int) bool { return i+1 < bottom && strings.HasPrefix(lines[i+1], "❯") })
+	if glyphlessFrame(lines, bottom) {
+		return piTops(lines, identical)
 	}
-	return narrow(keep, func(i int) bool { return !transcriptBetween(lines, i, bottom, glyphless) })
+	keep := narrow(identical, func(i int) bool { return i+1 < bottom && strings.HasPrefix(lines[i+1], "❯") })
+	return narrow(keep, func(i int) bool { return !bulletBetween(lines, i, bottom) })
 }
 
 // narrow returns the entries of tops for which ok holds, or tops itself when
@@ -380,21 +379,62 @@ func narrow(tops []int, ok func(int) bool) []int {
 	return out
 }
 
-// transcriptBetween reports a line between the rule at top and the bottom rule
-// that only the transcript draws (plausibleTops).
-func transcriptBetween(lines []string, top, bottom int, glyphless bool) bool {
+// bulletBetween reports a claude/copilot turn bullet ("●" in column 0 or 1)
+// between the rule at top and the bottom rule: a draft continuation is
+// indented by the prompt's width, so only the transcript draws one there.
+func bulletBetween(lines []string, top, bottom int) bool {
 	for _, line := range lines[top+1 : bottom] {
 		trimmed := strings.TrimSpace(line)
-		indent := len(line) - len(strings.TrimLeft(line, " \t"))
-		switch {
-		case trimmed == "" || isSeparatorLine(trimmed):
-		case glyphless && indent > 0:
-			return true
-		case !glyphless && indent < 2 && strings.HasPrefix(trimmed, "●"):
+		if indent := len(line) - len(strings.TrimLeft(line, " \t")); indent < 2 && strings.HasPrefix(trimmed, "●") {
 			return true
 		}
 	}
 	return false
+}
+
+// piTops narrows pi's frame-identical rules (nearest first) to those at or
+// below the transcript's end. The rules cut the pane above the bottom rule
+// into stretches; the composer is the lowest few of them (its top rule, then
+// any rule a draft drew, down to the bottom rule), the transcript everything
+// above. The stretch straight above the bottom rule is always draft. Any other
+// stretch whose text is all indented with at least one line padded by exactly
+// one column, pi's transcript pad, is transcript, and so is every rule above
+// it. A stretch with a line at column 0 (what a draft line starts at unless
+// the user indents it), or with blank lines only, is no evidence: a draft's
+// own indented lines leave the rule above them a candidate as long as the
+// stretch they sit in has a column-0 line or is indented by more than pi's
+// pad. With no transcript stretch every rule stays a candidate.
+func piTops(lines []string, identical []int) []int {
+	// identical is nearest first: identical[k] sits above identical[k-1], and
+	// the stretch under identical[k] ends at identical[k-1]. The nearest
+	// transcript stretch decides.
+	for k := 1; k < len(identical); k++ {
+		if piTranscriptStretch(lines[identical[k]+1 : identical[k-1]]) {
+			return identical[:k]
+		}
+	}
+	return identical
+}
+
+// piTranscriptStretch reports a stretch of pane lines drawn the way pi draws
+// its transcript: some text, none of it at column 0, at least one line padded
+// by exactly one column.
+func piTranscriptStretch(stretch []string) bool {
+	padded := false
+	for _, line := range stretch {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || isSeparatorLine(trimmed) {
+			continue
+		}
+		indent := line[:len(line)-len(strings.TrimLeft(line, " \t"))]
+		if indent == "" {
+			return false
+		}
+		if indent == " " {
+			padded = true
+		}
+	}
+	return padded
 }
 
 // pickTopRule is the index into identical (nearest first) of the frame's top

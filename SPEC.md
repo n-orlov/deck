@@ -1407,15 +1407,23 @@ What only the transcript draws rules a candidate out: claude and copilot lead th
 prompt, so a rule no column-0 `❯` line follows is transcript, as is one with a `●` turn bullet drawn in column
 0 or 1 (claude's flush-left bullet, copilot's ` ●`) between it and the bottom rule, since a draft's
 continuation lines are indented by the prompt's width; pi (no prompt glyph; its frame is recognised by the cwd
-line, a path at column 0, under the bottom rule) draws its composer lines from column 0 and pads its
-transcript by one column, so a rule with an indented line between it and the bottom rule is transcript. If
+line, a path at column 0, under the bottom rule) pads every transcript line by one column, while a draft is
+free text that starts at column 0 unless the user indents it. The identical rules cut the pane above the
+bottom rule into stretches; the one straight above the bottom rule is always draft, and any other stretch
+whose text is all indented with at least one line padded by exactly one column is transcript, which rules out
+the rule above it and every rule higher up. A draft's own indentation is not that evidence when its stretch
+also holds a column-0 line or is indented by more than pi's one-column pad (pasted code, an indented
+paragraph), so the frame's real top stays a candidate. If
 no rule passes, all stay candidates. Of the remaining candidates, claude and copilot take the topmost one a
 column-0 `❯` line follows (a draft can quote `❯` too, but never above the frame's own); in pi a `❯` line is
 draft text and no evidence, and pi leaves a blank line above its frame, so its top is the topmost candidate a
 blank line (or the pane's top) precedes. With neither evidence the nearest identical rule is taken. What is
 left is a genuinely ambiguous pane: a frame-identical transcript line with nothing under it but blank lines
-(the divider is the last transcript line), or in pi a draft that adds a blank line and a frame-identical rule
-when the transcript runs up to the frame with no blank line; the clock below covers the draft case. A pane with no identical pair is cut at the earlier of its last two
+(the divider is the last transcript line), in pi a draft that adds a blank line and a frame-identical rule
+when the transcript runs up to the frame with no blank line (the clock below covers that draft case), and in pi
+a draft holding a frame-identical rule with, between it and the line drawn above it, text that is all indented
+and partly by exactly one column, drawn the way pi draws its transcript: that stretch reads as transcript, so
+an edit inside it counts as output. A pane with no identical pair is cut at the earlier of its last two
 separator lines. For a pane that draws no
 separators, **codex's `›` composer line**: codex draws every transcript cell from column 0 and
 indents continuation lines, so the composer is the pane's last column-0 line when that line is a
@@ -1439,8 +1447,9 @@ vanishing, or its words changing, still is. Only a
 changed hash counts: it writes `last_output_at` as `window_activity` in milliseconds. A bucket
 whose transcript hash did not change, such as a footer-only update, writes nothing. When a framed draft
 holds frame-identical rules, the bucket counts only if **no** candidate top leaves exactly the baseline
-region above it, so once deck has read the frame, adding or editing such a draft is never output however it
-mimics the frame; output above the draft still changes every candidate's region and counts. The new
+region above it, so once deck has read the frame, adding or editing such a draft is not output however it
+mimics the frame, unless a stretch of it reads as transcript by the evidence above (the last pi case listed,
+which rules the real top out); output above the draft still changes every candidate's region and counts. The new
 baseline is the candidate that matched, else the one whose composer (top rule to bottom rule, footer
 excluded) is unchanged since the last reading (output arrived above an untouched draft), else the chosen cut.
 A draft that already mimics the frame in a way the evidence above cannot rule out when deck first reads
