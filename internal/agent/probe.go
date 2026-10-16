@@ -325,24 +325,8 @@ func isSeparatorLine(line string) bool {
 // its end.
 func codexTerminalError(pane string) bool {
 	lines := strings.Split(strings.ReplaceAll(pane, "\r\n", "\n"), "\n")
-	end := len(lines)
-	for end > 0 && strings.TrimSpace(lines[end-1]) == "" {
-		end--
-	}
-	seen := 0
-	for i := end - 1; i >= 0 && seen < 3; i-- {
-		if strings.TrimSpace(lines[i]) == "" {
-			continue
-		}
-		seen++
-		if strings.HasPrefix(lines[i], "›") {
-			end = i
-			break
-		}
-	}
-	for end > 0 && strings.TrimSpace(lines[end-1]) == "" {
-		end--
-	}
+	end := trimTrailingBlank(lines, len(lines))
+	end = trimTrailingBlank(lines, codexComposerStart(lines, end))
 	if end == 0 {
 		return false
 	}
@@ -351,6 +335,31 @@ func codexTerminalError(pane string) bool {
 		i--
 	}
 	return strings.HasPrefix(lines[i], "■ ")
+}
+
+// trimTrailingBlank is end moved up past blank lines.
+func trimTrailingBlank(lines []string, end int) int {
+	for end > 0 && strings.TrimSpace(lines[end-1]) == "" {
+		end--
+	}
+	return end
+}
+
+// codexComposerStart is the index of codex's composer: the last "›" line
+// within the final three non-blank lines before end, or end itself when there
+// is none.
+func codexComposerStart(lines []string, end int) int {
+	seen := 0
+	for i := end - 1; i >= 0 && seen < 3; i-- {
+		if strings.TrimSpace(lines[i]) == "" {
+			continue
+		}
+		seen++
+		if strings.HasPrefix(lines[i], "›") {
+			return i
+		}
+	}
+	return end
 }
 
 // copilotWorkingFooter reports whether the pane's live footer is Copilot's

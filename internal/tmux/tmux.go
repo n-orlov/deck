@@ -856,12 +856,9 @@ func parsePaneFacts(name, line string) (Pane, error) {
 	if err != nil {
 		return Pane{}, fmt.Errorf("parse pane height for session %q: %w", name, err)
 	}
-	var activity int64
-	if len(fields) == 8 && fields[7] != "" { // a fixture predating window_activity sends seven
-		activity, err = strconv.ParseInt(fields[7], 10, 64)
-		if err != nil {
-			return Pane{}, fmt.Errorf("parse pane window activity for session %q: %w", name, err)
-		}
+	activity, err := parseWindowActivity(name, fields)
+	if err != nil {
+		return Pane{}, err
 	}
 	pane := Pane{ID: fields[0], PID: pid, Dead: fields[2] == "1", Width: width, Height: height, WindowActivity: activity}
 	pane.DeadStatus, err = parseDeadStatus(name, fields[3], fields[4])
@@ -869,6 +866,19 @@ func parsePaneFacts(name, line string) (Pane, error) {
 		return Pane{}, err
 	}
 	return pane, nil
+}
+
+// parseWindowActivity reads the optional eighth pane fact; a fixture
+// predating window_activity sends seven.
+func parseWindowActivity(name string, fields []string) (int64, error) {
+	if len(fields) != 8 || fields[7] == "" {
+		return 0, nil
+	}
+	activity, err := strconv.ParseInt(fields[7], 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("parse pane window activity for session %q: %w", name, err)
+	}
+	return activity, nil
 }
 
 // parseDeadStatus reads a pane's exit status from its pane_dead_status and
@@ -1006,6 +1016,23 @@ func (c Client) AttachSample(ctx context.Context, slug string, clientPID int) (A
 	return parseAttachSample(name, data, clientPID)
 }
 
+// findAttachClient scans list-clients lines ("pid|key table") for the attach
+// client's pid; the last matching line wins.
+func findAttachClient(lines []string, clientPID int) (found bool, table string) {
+	for _, line := range lines {
+		pidText, keyTable, ok := strings.Cut(line, "|")
+		if !ok {
+			continue
+		}
+		pid, perr := strconv.Atoi(pidText)
+		if perr != nil || pid != clientPID {
+			continue
+		}
+		found, table = true, keyTable
+	}
+	return found, table
+}
+
 func parseAttachSample(name string, data []byte, clientPID int) (AttachSample, error) {
 	head, screen, ok := bytes.Cut(data, []byte(attachSampleSeparator+"\n"))
 	if !ok {
@@ -1026,16 +1053,6 @@ func parseAttachSample(name string, data []byte, clientPID int) (AttachSample, e
 		return AttachSample{}, fmt.Errorf("attach sample %q: no prefix keys", name)
 	}
 	sample.Prefix, sample.Prefix2, _ = strings.Cut(lines[1], " ")
-	for _, line := range lines[2:] {
-		pidText, table, ok := strings.Cut(line, "|")
-		if !ok {
-			continue
-		}
-		pid, perr := strconv.Atoi(pidText)
-		if perr != nil || pid != clientPID {
-			continue
-		}
-		sample.ClientFound, sample.ClientKeyTable = true, table
-	}
+	sample.ClientFound, sample.ClientKeyTable = findAttachClient(lines[2:], clientPID)
 	return sample, nil
 }

@@ -2538,80 +2538,90 @@ func (m *Model) previewFit() tea.Cmd {
 	// fit for the rest of the session's lifetime.
 	m.previewFitInFlight = sessionID
 	return func() tea.Msg {
-		ctx := context.Background()
-		pane, ok, err := client.PreviewPane(ctx, slug)
-		if err != nil || !ok {
-			// No live pane (stopped/starting/archived/reaped) or a read
-			// error: nothing to fit, and nothing to retry until the
-			// selection changes again -- the same best-effort treatment
-			// capturePreview's own previewCaptured{err} gives a transport
-			// failure (it does not spam attachError every tick either).
-			//
-			// noLivePane: true (task 035) -- nothing was resized here, so
-			// this return must NOT latch previewFitSessionID the way a
-			// real fit attempt does. Without this, a session that has no
-			// live pane right now permanently loses eligibility for every
-			// future fit for the rest of the model's lifetime, even after
-			// its pane later becomes live again while the row stays (or is
-			// re-)selected -- see docs/reports/phase3g-034-previewfit-derivation.
-			return previewFitDone{sessionID: sessionID, noLivePane: true}
-		}
-		windowTarget, err := tmux.SessionName(slug)
-		if err != nil {
-			return previewFitDone{sessionID: sessionID}
-		}
-		// Task 103/124: a foreign LIVE claim on this window (someone else's
-		// `F` steal, or a plain attach) means passive fit must stand down --
-		// resizing a window another live process now holds races whatever
-		// that process is doing with it. foreignLiveClaim: true (not
-		// noLivePane) so this does NOT latch previewFitSessionID: the claim
-		// is read fresh on every attempt, exactly like task 035's no-live-
-		// pane return, so the session regains eligibility the moment the
-		// claim clears without waiting for the selection to change.
-		if state, perr := client.ProbeWindowOwnership(ctx, windowTarget); perr == nil && state == tmux.ClaimForeignLive {
-			return previewFitDone{sessionID: sessionID, foreignLiveClaim: true}
-		}
-		// A real tmux client is attached to this session (a full `a`
-		// attach, someone's plain `tmux attach`): under `window-size
-		// latest` that client owns the window's size, so a fit here picks
-		// a size it cannot hold -- the unpin below hands it straight back
-		// -- and the two resizes it costs are a visible reflow of a
-		// terminal somebody is looking at. So skip the resize and issue
-		// only the unpin, which is the part that matters while a client is
-		// attached: it releases any pin an EARLIER preview fit left on the
-		// window (another deck build's, or one this process wrote before
-		// the client attached), so the attach cannot stay cropped to a
-		// preview-sized box. That is SPEC §3.3's promise that deck's own
-		// preview never crops a full attach, kept from the preview side
-		// too, not only from `a`'s.
+		return fitPreviewPane(client, slug, sessionID, width, height, discounter)
+	}
+}
+
+// fitPreviewPane is the command previewFit schedules: it fits the session's
+// window to the panel, or stands down. EVERY return owes a previewFitDone for
+// sessionID, the only thing that clears previewFitInFlight.
+func fitPreviewPane(client tmux.Client, slug, sessionID string, width, height int, discounter OutputDiscounter) tea.Msg {
+	ctx := context.Background()
+	pane, ok, err := client.PreviewPane(ctx, slug)
+	if err != nil || !ok {
+		// No live pane (stopped/starting/archived/reaped) or a read
+		// error: nothing to fit, and nothing to retry until the
+		// selection changes again -- the same best-effort treatment
+		// capturePreview's own previewCaptured{err} gives a transport
+		// failure (it does not spam attachError every tick either).
 		//
-		// A foreign live claim is already handled above, so an interactive
-		// holder's deliberate pin is never the one released here.
-		//
-		// clientAttached, exactly like foreignLiveClaim, does NOT latch:
-		// the attach is transient and the row must regain its fit the
-		// moment the client detaches.
-		if attached, aerr := client.SessionAttachedCount(ctx, windowTarget); aerr == nil && attached > 0 {
-			_ = client.UnpinWindowSize(ctx, windowTarget)
-			return previewFitDone{sessionID: sessionID, clientAttached: true}
-		}
-		// FitWindowToPane already no-ops (0 resize-window calls) when the
-		// pane already matches width/height, so a settled selection whose
-		// window some other action (an attaching client, a prior fit) has
-		// already brought to the panel's own size costs nothing beyond the
-		// one display-message read that discovers that.
-		//
-		// The Unpinned variant is what makes passive fit's "owning and
-		// restoring nothing" true rather than merely intended -- see its
-		// own doc comment, and the paragraph on the crop it removes above.
-		resizes, _ := client.FitWindowToPaneUnpinned(ctx, windowTarget, pane.ID, width, height)
-		if resizes > 0 && discounter != nil {
-			// R305: the resize makes the pane's program redraw (SIGWINCH);
-			// that output is deck's, not the agent's.
-			discounter.Discount(sessionID, service.DiscountResize)
-		}
+		// noLivePane: true (task 035) -- nothing was resized here, so
+		// this return must NOT latch previewFitSessionID the way a
+		// real fit attempt does. Without this, a session that has no
+		// live pane right now permanently loses eligibility for every
+		// future fit for the rest of the model's lifetime, even after
+		// its pane later becomes live again while the row stays (or is
+		// re-)selected -- see docs/reports/phase3g-034-previewfit-derivation.
+		return previewFitDone{sessionID: sessionID, noLivePane: true}
+	}
+	windowTarget, err := tmux.SessionName(slug)
+	if err != nil {
 		return previewFitDone{sessionID: sessionID}
 	}
+	if done, standDown := previewFitStandDown(ctx, client, windowTarget, sessionID); standDown {
+		return done
+	}
+	// FitWindowToPane already no-ops (0 resize-window calls) when the
+	// pane already matches width/height, so a settled selection whose
+	// window some other action (an attaching client, a prior fit) has
+	// already brought to the panel's own size costs nothing beyond the
+	// one display-message read that discovers that.
+	//
+	// The Unpinned variant is what makes passive fit's "owning and
+	// restoring nothing" true rather than merely intended -- see its
+	// own doc comment, and the paragraph on the crop it removes above.
+	resizes, _ := client.FitWindowToPaneUnpinned(ctx, windowTarget, pane.ID, width, height)
+	if resizes > 0 && discounter != nil {
+		// R305: the resize makes the pane's program redraw (SIGWINCH);
+		// that output is deck's, not the agent's.
+		discounter.Discount(sessionID, service.DiscountResize)
+	}
+	return previewFitDone{sessionID: sessionID}
+}
+
+// previewFitStandDown reports the two reasons passive fit must not resize.
+//
+// Task 103/124: a foreign LIVE claim on this window (someone else's `F`
+// steal, or a plain attach) means passive fit must stand down -- resizing a
+// window another live process now holds races whatever that process is doing
+// with it. foreignLiveClaim: true (not noLivePane) so this does NOT latch
+// previewFitSessionID: the claim is read fresh on every attempt, exactly like
+// task 035's no-live-pane return, so the session regains eligibility the
+// moment the claim clears without waiting for the selection to change.
+//
+// A real tmux client is attached to this session (a full `a` attach,
+// someone's plain `tmux attach`): under `window-size latest` that client owns
+// the window's size, so a fit here picks a size it cannot hold -- the unpin
+// below hands it straight back -- and the two resizes it costs are a visible
+// reflow of a terminal somebody is looking at. So skip the resize and issue
+// only the unpin, which is the part that matters while a client is attached:
+// it releases any pin an EARLIER preview fit left on the window, so the
+// attach cannot stay cropped to a preview-sized box. That is SPEC §3.3's
+// promise that deck's own preview never crops a full attach, kept from the
+// preview side too, not only from `a`'s. A foreign live claim is handled
+// first, so an interactive holder's deliberate pin is never the one released
+// here. clientAttached, exactly like foreignLiveClaim, does NOT latch: the
+// attach is transient and the row must regain its fit the moment the client
+// detaches.
+func previewFitStandDown(ctx context.Context, client tmux.Client, windowTarget, sessionID string) (previewFitDone, bool) {
+	if state, perr := client.ProbeWindowOwnership(ctx, windowTarget); perr == nil && state == tmux.ClaimForeignLive {
+		return previewFitDone{sessionID: sessionID, foreignLiveClaim: true}, true
+	}
+	if attached, aerr := client.SessionAttachedCount(ctx, windowTarget); aerr == nil && attached > 0 {
+		_ = client.UnpinWindowSize(ctx, windowTarget)
+		return previewFitDone{sessionID: sessionID, clientAttached: true}, true
+	}
+	return previewFitDone{}, false
 }
 
 // Task 012: one eligibility predicate per action, each taking the

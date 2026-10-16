@@ -240,14 +240,19 @@ func (m Model) updateStateText(ind updateIndicator) string {
 	case updateInstalling:
 		return fmt.Sprintf("updating to %s — downloading and verifying…", ind.tag)
 	case updateInstalled:
-		if ind.attestation == upd.AttestationSkipped {
-			return fmt.Sprintf("update installed: %s (checksum-only, attestation not verified) — restart deck to apply", ind.tag)
-		}
-		return fmt.Sprintf("update installed: %s — restart deck to apply", ind.tag)
+		return updateInstalledText(ind)
 	case updateFailed:
 		return updateFailedText(ind.reason)
 	}
 	return ""
+}
+
+// updateInstalledText is the Installed note; a checksum-only install says so.
+func updateInstalledText(ind updateIndicator) string {
+	if ind.attestation == upd.AttestationSkipped {
+		return fmt.Sprintf("update installed: %s (checksum-only, attestation not verified) — restart deck to apply", ind.tag)
+	}
+	return fmt.Sprintf("update installed: %s — restart deck to apply", ind.tag)
 }
 
 // updateFailedText is the Failed note: the fixed phrase plus the cause, with

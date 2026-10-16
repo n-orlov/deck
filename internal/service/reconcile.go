@@ -231,15 +231,23 @@ func (s Service) reconcileLivePane(ctx context.Context, session store.Session, o
 	if err := s.promoteLiveShell(ctx, session); err != nil {
 		return err
 	}
-	if staleAfter > 0 {
-		if err := s.observeOutput(ctx, session, observed); err != nil {
-			return err
-		}
-		if moved, err := s.applyMovement(ctx, session, staleAfter); err != nil || moved {
-			return err
-		}
+	return s.samplePane(ctx, session, observed, staleAfter)
+}
+
+// samplePane is the probing path of reconcileLivePane (staleAfter > 0 only):
+// the output clock reads the pane, the movement fallback may write a verdict
+// (which ends the pass), and an eligible agent row is probed.
+func (s Service) samplePane(ctx context.Context, session store.Session, observed tmux.Session, staleAfter time.Duration) error {
+	if staleAfter <= 0 {
+		return nil
 	}
-	if staleAfter > 0 && session.Agent != "shell" && probeEligible(session, s.Clock.Now(), staleAfter) {
+	if err := s.observeOutput(ctx, session, observed); err != nil {
+		return err
+	}
+	if moved, err := s.applyMovement(ctx, session, staleAfter); err != nil || moved {
+		return err
+	}
+	if session.Agent != "shell" && probeEligible(session, s.Clock.Now(), staleAfter) {
 		return s.probeLivePane(ctx, session, observed, staleAfter)
 	}
 	return nil
@@ -274,23 +282,14 @@ func (s Service) applyMovement(ctx context.Context, session store.Session, stale
 	if s.Output == nil || session.Agent == "shell" {
 		return false, nil
 	}
-	moving := s.Output.Moving(session.ID)
-	var status, reason string
-	switch {
-	case session.Status == "idle" && moving:
-		status, reason = "running", "output movement"
-	case session.Status == "running" && session.StatusSource == "movement" && !moving:
-		status, reason = "idle", "output quiet"
-	default:
+	status, reason, ok := movementVerdict(session, s.Output.Moving(session.ID))
+	if !ok {
 		return false, nil
 	}
 	now := s.Clock.Now()
-	var stale int64
-	if session.Agent != "pi" {
-		stale = staleAfter.Milliseconds()
-		if status == "running" && session.StatusSource == "hook" && now.UnixMilli()-session.StatusAt < stale {
-			return false, nil
-		}
+	stale, vetoed := movementStaleAfter(session, status, now, staleAfter)
+	if vetoed {
+		return false, nil
 	}
 	kind := "movement." + status
 	if err := s.Store.UpdateSessionStatus(ctx, store.StatusUpdateInput{
@@ -303,6 +302,30 @@ func (s Service) applyMovement(ctx context.Context, session store.Session, stale
 		return false, fmt.Errorf("audit output movement for session %q: %w", session.ID, err)
 	}
 	return true, nil
+}
+
+// movementVerdict is the status movement asks for: idle and moving goes to
+// running, and a running row the fallback itself set goes back to idle once
+// output is quiet. ok is false when movement has nothing to say.
+func movementVerdict(session store.Session, moving bool) (status, reason string, ok bool) {
+	switch {
+	case session.Status == "idle" && moving:
+		return "running", "output movement", true
+	case session.Status == "running" && session.StatusSource == "movement" && !moving:
+		return "idle", "output quiet", true
+	}
+	return "", "", false
+}
+
+// movementStaleAfter is the hook-freshness window (in milliseconds) the store
+// re-checks a movement write against: Pi has no hook verdict to defer to (0).
+// vetoed reports a running write that a still-fresh hook verdict overrules.
+func movementStaleAfter(session store.Session, status string, now time.Time, staleAfter time.Duration) (stale int64, vetoed bool) {
+	if session.Agent == "pi" {
+		return 0, false
+	}
+	stale = staleAfter.Milliseconds()
+	return stale, status == "running" && session.StatusSource == "hook" && now.UnixMilli()-session.StatusAt < stale
 }
 
 // promoteLiveShell: shells have no higher-quality signal or probe, so a live

@@ -80,28 +80,42 @@ func screenHash(screen []byte) uint64 {
 func (d *attachEngagementDetector) observe(now time.Time, s tmux.AttachSample, keys int64) engagementTrigger {
 	sum := screenHash(s.Screen)
 	if !d.started {
-		d.started = true
-		d.width, d.height, d.inMode, d.scrollPosition, d.screenHash = s.Width, s.Height, s.InMode, s.ScrollPosition, sum
-		d.keys = keys
-		if s.ClientFound {
-			// No pre-attach baseline: this sample may already hold the
-			// attach's resize, and the agent's redraw for it may follow.
-			d.settleUntil = now.Add(d.settle)
-		}
+		d.start(now, s, keys, sum)
 		return ""
 	}
 	// Scroll: copy mode is entered, or scrolled, only by the user.
-	if (s.InMode && !d.inMode) || (s.InMode && s.ScrollPosition != d.scrollPosition) {
+	if s.InMode && (!d.inMode || s.ScrollPosition != d.scrollPosition) {
 		return engageScroll
 	}
 	d.inMode, d.scrollPosition = s.InMode, s.ScrollPosition
-	// Key: forwarded since the last sample, confirmed by the client still
-	// being attached in the root table (a detach removes it; a prefix the
-	// proxy could not name leaves it in the prefix table).
+	if trigger, done := d.observeKey(s, keys); done {
+		return trigger
+	}
+	return d.observeScreen(now, s, sum)
+}
+
+// start takes the first sample as the baseline.
+func (d *attachEngagementDetector) start(now time.Time, s tmux.AttachSample, keys int64, sum uint64) {
+	d.started = true
+	d.width, d.height, d.inMode, d.scrollPosition, d.screenHash = s.Width, s.Height, s.InMode, s.ScrollPosition, sum
+	d.keys = keys
+	if s.ClientFound {
+		// No pre-attach baseline: this sample may already hold the
+		// attach's resize, and the agent's redraw for it may follow.
+		d.settleUntil = now.Add(d.settle)
+	}
+}
+
+// observeKey is the key rule: a key forwarded since the last sample is
+// confirmed by the client still being attached in the root table (a detach
+// removes it; a prefix the proxy could not name leaves it in the prefix
+// table). done reports that this sample is decided (a trigger, or a key
+// waiting for its confirming sample).
+func (d *attachEngagementDetector) observeKey(s tmux.AttachSample, keys int64) (trigger engagementTrigger, done bool) {
 	if d.pendingKey {
 		d.pendingKey = false
 		if s.ClientFound && s.ClientKeyTable == "root" {
-			return engageKey
+			return engageKey, true
 		}
 	}
 	if keys > d.keys {
@@ -109,9 +123,13 @@ func (d *attachEngagementDetector) observe(now time.Time, s tmux.AttachSample, k
 		// The key's own echo may already be on this screen: wait for the
 		// confirming sample rather than calling it a screen change.
 		d.pendingKey = true
-		return ""
+		return "", true
 	}
-	// Screen-content change at a settled, unchanged size.
+	return "", false
+}
+
+// observeScreen is the screen-content rule, at a settled, unchanged size.
+func (d *attachEngagementDetector) observeScreen(now time.Time, s tmux.AttachSample, sum uint64) engagementTrigger {
 	if s.Width != d.width || s.Height != d.height {
 		d.width, d.height, d.screenHash = s.Width, s.Height, sum
 		d.settleUntil = now.Add(d.settle)
@@ -187,35 +205,50 @@ func (p *attachKeyProxy) event(event uv.Event) {
 // into uv's keystroke form ("ctrl+b"); "None" and names it does not know
 // give false, and then only the watcher's key-table check stands guard.
 func tmuxKeyStroke(name string) (string, bool) {
-	var mods []string
-	for len(name) > 2 && name[1] == '-' {
-		switch name[0] {
-		case 'C':
-			mods = append(mods, "ctrl")
-		case 'M':
-			mods = append(mods, "alt")
-		case 'S':
-			mods = append(mods, "shift")
-		default:
-			return "", false
-		}
-		name = name[2:]
+	mods, name, ok := tmuxKeyModifiers(name)
+	if !ok {
+		return "", false
 	}
-	named := map[string]string{"Space": "space", "Escape": "esc", "Tab": "tab", "Enter": "enter", "BSpace": "backspace"}
-	key, ok := named[name]
-	switch {
-	case ok:
-	case utf8.RuneCountInString(name) == 1:
-		key = name
-		if len(mods) > 0 {
-			key = strings.ToLower(name)
-		}
-	case len(name) >= 2 && name[0] == 'F' && strings.Trim(name[1:], "0123456789") == "":
-		key = strings.ToLower(name)
-	default:
+	key, ok := tmuxBaseKey(name, len(mods) > 0)
+	if !ok {
 		return "", false
 	}
 	return strings.Join(append(mods, key), "+"), true
+}
+
+// tmuxKeyModifiers strips the "C-", "M-" and "S-" prefixes off a tmux key
+// name, returning uv's modifier names and the rest; any other prefix letter
+// is a name it does not know.
+func tmuxKeyModifiers(name string) (mods []string, rest string, ok bool) {
+	names := map[byte]string{'C': "ctrl", 'M': "alt", 'S': "shift"}
+	for len(name) > 2 && name[1] == '-' {
+		mod, known := names[name[0]]
+		if !known {
+			return nil, "", false
+		}
+		mods = append(mods, mod)
+		name = name[2:]
+	}
+	return mods, name, true
+}
+
+// tmuxBaseKey is uv's name for a tmux key name without modifiers: a named key,
+// one character (lower-cased under a modifier), or a function key.
+func tmuxBaseKey(name string, hasMods bool) (string, bool) {
+	named := map[string]string{"Space": "space", "Escape": "esc", "Tab": "tab", "Enter": "enter", "BSpace": "backspace"}
+	if key, ok := named[name]; ok {
+		return key, true
+	}
+	switch {
+	case utf8.RuneCountInString(name) == 1:
+		if hasMods {
+			return strings.ToLower(name), true
+		}
+		return name, true
+	case len(name) >= 2 && name[0] == 'F' && strings.Trim(name[1:], "0123456789") == "":
+		return strings.ToLower(name), true
+	}
+	return "", false
 }
 
 // attachSampler reads one AttachSample of the session a full attach holds;
@@ -292,36 +325,13 @@ func (w *watchedAttach) Run() error {
 	defer func() { _ = ptmx.Close() }()
 	inFile, _ := w.stdin.(fileDescriptor)
 	outFile, _ := w.stdout.(fileDescriptor)
-	resize := func() {
-		for _, f := range []fileDescriptor{outFile, inFile} {
-			if f == nil || !term.IsTerminal(f.Fd()) {
-				continue
-			}
-			if cols, rows, err := term.GetSize(f.Fd()); err == nil {
-				_ = pty.Setsize(ptmx, &pty.Winsize{Rows: clampUint16(rows), Cols: clampUint16(cols)})
-				return
-			}
-		}
-	}
+	resize := func() { resizePty(ptmx, outFile, inFile) }
 	resize()
-	if inFile != nil && term.IsTerminal(inFile.Fd()) {
-		if state, err := term.MakeRaw(inFile.Fd()); err == nil {
-			defer func() { _ = term.Restore(inFile.Fd(), state) }()
-		}
-	}
+	defer makeRawRestorer(inFile)()
 	winch := make(chan os.Signal, 1)
 	signal.Notify(winch, syscall.SIGWINCH)
 	defer signal.Stop(winch)
-	go func() {
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-winch:
-				resize()
-			}
-		}
-	}()
+	go relayResizes(ctx, winch, resize)
 
 	w.cmd.Stdin, w.cmd.Stdout, w.cmd.Stderr = tty, tty, tty
 	w.cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true, Setctty: true}
@@ -334,36 +344,9 @@ func (w *watchedAttach) Run() error {
 	outDone := make(chan struct{})
 	go func() {
 		defer close(outDone)
-		if w.stdout != nil {
-			_, _ = io.Copy(w.stdout, ptmx)
-		} else {
-			_, _ = io.Copy(io.Discard, ptmx)
-		}
+		copyOutput(w.stdout, ptmx)
 	}()
-	var inDone chan struct{}
-	var input cancelreader.CancelReader
-	if w.stdin != nil {
-		// Cancelable, so no read of deck's own terminal outlives the attach
-		// and steals the first key meant for deck's UI.
-		if input, err = cancelreader.NewReader(w.stdin); err == nil {
-			inDone = make(chan struct{})
-			go func() {
-				defer close(inDone)
-				buf := make([]byte, 4096)
-				for {
-					n, err := input.Read(buf)
-					if n > 0 {
-						if _, werr := ptmx.Write(buf[:n]); werr == nil {
-							proxy.forwarded(buf[:n])
-						}
-					}
-					if err != nil {
-						return
-					}
-				}
-			}()
-		}
-	}
+	inDone, input := w.startInputProxy(ptmx, proxy)
 
 	found := make(chan engagementTrigger, 1)
 	go func() {
@@ -378,15 +361,99 @@ func (w *watchedAttach) Run() error {
 	case <-outDone:
 	case <-time.After(attachOutputDrain):
 	}
-	if inDone != nil && input.Cancel() {
-		// A reader that cannot be canceled (stdin that is not a real file)
-		// is left behind rather than waited on.
-		<-inDone
-		_ = input.Close()
-	}
+	stopInputProxy(inDone, input)
 	cancel()
 	w.Trigger = <-found
 	return err
+}
+
+// resizePty gives the attach client's pty the size of the first of the user's
+// terminals (out, then in) that reports one.
+func resizePty(ptmx *os.File, outFile, inFile fileDescriptor) {
+	for _, f := range []fileDescriptor{outFile, inFile} {
+		if f == nil || !term.IsTerminal(f.Fd()) {
+			continue
+		}
+		if cols, rows, err := term.GetSize(f.Fd()); err == nil {
+			_ = pty.Setsize(ptmx, &pty.Winsize{Rows: clampUint16(rows), Cols: clampUint16(cols)})
+			return
+		}
+	}
+}
+
+// makeRawRestorer puts the user's terminal in raw mode and returns the func
+// that restores it; with no terminal it does nothing and returns a no-op.
+func makeRawRestorer(inFile fileDescriptor) func() {
+	if inFile == nil || !term.IsTerminal(inFile.Fd()) {
+		return func() {}
+	}
+	state, err := term.MakeRaw(inFile.Fd())
+	if err != nil {
+		return func() {}
+	}
+	return func() { _ = term.Restore(inFile.Fd(), state) }
+}
+
+// relayResizes calls resize for every SIGWINCH until ctx ends.
+func relayResizes(ctx context.Context, winch <-chan os.Signal, resize func()) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-winch:
+			resize()
+		}
+	}
+}
+
+// copyOutput relays the client's pty output to the user's terminal, or drops
+// it when there is none.
+func copyOutput(out io.Writer, ptmx io.Reader) {
+	if out != nil {
+		_, _ = io.Copy(out, ptmx)
+	} else {
+		_, _ = io.Copy(io.Discard, ptmx)
+	}
+}
+
+// startInputProxy forwards the user's terminal to the client's pty, telling
+// the key proxy about every forwarded chunk. The reader is cancelable, so no
+// read of deck's own terminal outlives the attach and steals the first key
+// meant for deck's UI. inDone is nil when there is no stdin to read.
+func (w *watchedAttach) startInputProxy(ptmx io.Writer, proxy *attachKeyProxy) (chan struct{}, cancelreader.CancelReader) {
+	if w.stdin == nil {
+		return nil, nil
+	}
+	input, err := cancelreader.NewReader(w.stdin)
+	if err != nil {
+		return nil, nil
+	}
+	inDone := make(chan struct{})
+	go func() {
+		defer close(inDone)
+		buf := make([]byte, 4096)
+		for {
+			n, err := input.Read(buf)
+			if n > 0 {
+				if _, werr := ptmx.Write(buf[:n]); werr == nil {
+					proxy.forwarded(buf[:n])
+				}
+			}
+			if err != nil {
+				return
+			}
+		}
+	}()
+	return inDone, input
+}
+
+// stopInputProxy ends the input forwarder. A reader that cannot be canceled
+// (stdin that is not a real file) is left behind rather than waited on.
+func stopInputProxy(inDone chan struct{}, input cancelreader.CancelReader) {
+	if inDone != nil && input.Cancel() {
+		<-inDone
+		_ = input.Close()
+	}
 }
 
 func (w *watchedAttach) watch(ctx context.Context, pid int, baseline *tmux.AttachSample, keys *atomic.Int64) engagementTrigger {

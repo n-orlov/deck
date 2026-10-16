@@ -594,6 +594,12 @@ func (m *Model) settingsApplyLiveScalars(edited, previous config.FileConfig) {
 		m.settings.PreviewFit = edited.PreviewFit
 	}
 	m.settingsApplyLiveAttach(overrides, edited, previous)
+	m.settingsApplyLiveTimingAndUpdates(overrides, edited, previous)
+}
+
+// settingsApplyLiveTimingAndUpdates copies the note timeout, output bucket,
+// bookmarks, update and preview-paint scalars whose saved value changed.
+func (m *Model) settingsApplyLiveTimingAndUpdates(overrides map[string]string, edited, previous config.FileConfig) {
 	if settingsLiveChanged(overrides, "ui.note_timeout", edited.NoteTimeout, previous.NoteTimeout) {
 		m.settings.NoteTimeout = edited.NoteTimeout
 	}

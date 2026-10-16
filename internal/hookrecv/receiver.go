@@ -280,12 +280,7 @@ func ReceiveFrom(ctx context.Context, db Store, raw []byte, origin Origin, at in
 	eventKind := mapping.Kind
 
 	reason := payloadReason(p, mapping)
-	var allowedFrom []string
-	if p.EventName == "SessionEnd" && sessionEndInSessionReasons[reason] {
-		// Requirement 43: this is not the process going away. Keep the event
-		// (kind session_end, this reason) but never let it stop the row.
-		allowedFrom = noCurrentStatusMatches
-	}
+	allowedFrom := sessionEndAllowedFrom(p, reason)
 	result := Result{
 		Status: mapping.Status, Kind: mapping.Kind, Reason: reason,
 		Message:   payloadField(p, mapping.MessageField),
@@ -304,29 +299,44 @@ func ReceiveFrom(ctx context.Context, db Store, raw []byte, origin Origin, at in
 	if copilotMismatch(p, session.ConversationID) {
 		return receiveMismatch(ctx, db, p, mapping, session, raw, at, result)
 	}
-	write := hookWrite{status: mapping.Status, reason: reason, eventKind: eventKind, allowedFrom: allowedFrom}
-	if write.status == "" {
-		// A Copilot event that is not a status (errorOccurred, a notification
-		// of another type): recorded, never applied.
-		write.status = session.Status
-		write.allowedFrom = noCurrentStatusMatches
-	}
-	if supersededLaunch(session.LaunchGeneration, injectedLaunchGeneration) {
-		// Recorded, never applied -- the same mechanism requirement 43 uses
-		// for an in-session SessionEnd. The event keeps the evidence that a
-		// superseded pane spoke, while the unsatisfiable AllowedFrom makes the
-		// status write a no-op inside the store's own transaction, so the row
-		// is never wrong even momentarily and nothing has to repair it after.
-		result.Superseded = true
-		write.allowedFrom = noCurrentStatusMatches
-		write.eventKind = supersededEventKind(mapping.Kind)
-		write.reason = supersededReason(session.LaunchGeneration, injectedLaunchGeneration)
-	}
+	write := newHookWrite(mapping, session, reason, eventKind, allowedFrom, injectedLaunchGeneration, &result)
 	result, err = persistHook(ctx, db, p, mapping, session, raw, origin, at, write, result)
 	if err == nil {
 		adoptAfterHook(ctx, origin, p, result)
 	}
 	return result, err
+}
+
+// sessionEndAllowedFrom is the AllowedFrom list for a SessionEnd that is not
+// the process going away (requirement 43): the event is kept (kind
+// session_end, this reason) but the unsatisfiable list never lets it stop the
+// row. Any other event has no restriction (nil).
+func sessionEndAllowedFrom(p payload, reason string) []string {
+	if p.EventName == "SessionEnd" && sessionEndInSessionReasons[reason] {
+		return noCurrentStatusMatches
+	}
+	return nil
+}
+
+// newHookWrite is the status write a resolved hook asks for. An event that is
+// not a status (a Copilot errorOccurred, a notification of another type) is
+// recorded, never applied. A hook of a launch deck has replaced is recorded,
+// never applied, by the same mechanism: the unsatisfiable AllowedFrom makes the
+// status write a no-op inside the store's own transaction, so the row is never
+// wrong even momentarily and nothing has to repair it after.
+func newHookWrite(mapping Mapping, session store.Session, reason, eventKind string, allowedFrom []string, injectedLaunchGeneration string, result *Result) hookWrite {
+	write := hookWrite{status: mapping.Status, reason: reason, eventKind: eventKind, allowedFrom: allowedFrom}
+	if write.status == "" {
+		write.status = session.Status
+		write.allowedFrom = noCurrentStatusMatches
+	}
+	if supersededLaunch(session.LaunchGeneration, injectedLaunchGeneration) {
+		result.Superseded = true
+		write.allowedFrom = noCurrentStatusMatches
+		write.eventKind = supersededEventKind(mapping.Kind)
+		write.reason = supersededReason(session.LaunchGeneration, injectedLaunchGeneration)
+	}
+	return write
 }
 
 // adoptAfterHook hands a landed trigger hook's row to origin.Adopt. A hook of

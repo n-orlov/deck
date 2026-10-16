@@ -229,13 +229,9 @@ func (c *OutputClock) Observe(ctx context.Context, store OutputStore, sessionID 
 	if c == nil || windowActivity <= 0 {
 		return false, nil
 	}
-	bucketWidth := c.bucketWidth()
-	if bucketWidth <= 0 {
-		return false, errors.New("output clock bucket must be positive")
-	}
-	width := int64(bucketWidth / time.Second)
-	if width < 1 {
-		width = 1
+	width, err := c.bucketSeconds()
+	if err != nil {
+		return false, err
 	}
 	bucket := windowActivity / width
 
@@ -243,43 +239,22 @@ func (c *OutputClock) Observe(ctx context.Context, store OutputStore, sessionID 
 	previous, seen := c.state[sessionID]
 	c.mu.Unlock()
 	if seen && bucket <= previous.bucket {
-		// R305: output inside a deck-caused window in a bucket already
-		// examined is still hashed, so the deck-caused text becomes the
-		// baseline and the next bucket's read does not count it. Only a
-		// window_activity that moved and lies in a window costs a capture.
-		if windowActivity <= previous.activity {
-			return false, nil
-		}
-		if !c.discounted(sessionID, windowActivity) {
-			previous.activity = windowActivity
-			c.mu.Lock()
-			c.state[sessionID] = previous
-			c.mu.Unlock()
-			return false, nil
-		}
-		pane, err := capture(ctx)
-		if err != nil {
-			return false, fmt.Errorf("capture pane for output clock of session %q: %w", sessionID, err)
-		}
-		c.mu.Lock()
-		previous.activity = windowActivity
-		previous.hash = sha256.Sum256([]byte(agent.TranscriptRegion(pane)))
-		c.state[sessionID] = previous
-		c.mu.Unlock()
-		return false, nil
+		return false, c.observeExaminedBucket(ctx, sessionID, windowActivity, previous, capture)
 	}
-	pane, err := capture(ctx)
+	return c.observeNewBucket(ctx, store, sessionID, windowActivity, bucket, previous, seen, capture)
+}
+
+// observeNewBucket reads the pane for a bucket not yet examined: a transcript
+// change it shows counts (writes last_output_at) unless it lies inside a
+// deck-caused window (R305). The new hash is remembered either way, so the
+// same text never counts later. It reports whether it wrote.
+func (c *OutputClock) observeNewBucket(ctx context.Context, store OutputStore, sessionID string, windowActivity, bucket int64, previous outputState, seen bool, capture func(context.Context) (string, error)) (bool, error) {
+	hash, err := captureTranscriptHash(ctx, sessionID, capture)
 	if err != nil {
-		return false, fmt.Errorf("capture pane for output clock of session %q: %w", sessionID, err)
+		return false, err
 	}
-	hash := sha256.Sum256([]byte(agent.TranscriptRegion(pane)))
-	changed := seen && hash != previous.hash
-	// R305: a transcript change the pane shows inside a deck-caused window
-	// is deck's own doing. The new hash is still remembered below, so the
-	// same text never counts later.
-	if c.discounted(sessionID, windowActivity) {
-		changed = false
-	}
+	discounted := c.discounted(sessionID, windowActivity)
+	changed := seen && hash != previous.hash && !discounted
 	if changed {
 		if err := store.RecordOutput(ctx, sessionID, windowActivity*1000); err != nil {
 			return false, fmt.Errorf("record output for session %q: %w", sessionID, err)
@@ -287,17 +262,64 @@ func (c *OutputClock) Observe(ctx context.Context, store OutputStore, sessionID 
 	}
 	next := outputState{bucket: bucket, activity: windowActivity, hash: hash, counted: previous.counted, streak: previous.streak}
 	if changed {
-		if previous.counted != 0 && previous.counted == bucket-1 {
-			next.streak++
-		} else {
-			next.streak = 1
-		}
-		next.counted = bucket
+		next.countBucket(previous)
 	}
 	c.mu.Lock()
 	c.state[sessionID] = next
 	c.mu.Unlock()
 	return changed, nil
+}
+
+// bucketSeconds is the bucket width in whole seconds (at least one).
+func (c *OutputClock) bucketSeconds() (int64, error) {
+	bucketWidth := c.bucketWidth()
+	if bucketWidth <= 0 {
+		return 0, errors.New("output clock bucket must be positive")
+	}
+	return max(int64(bucketWidth/time.Second), 1), nil
+}
+
+// captureTranscriptHash reads the pane and hashes its transcript region.
+func captureTranscriptHash(ctx context.Context, sessionID string, capture func(context.Context) (string, error)) ([sha256.Size]byte, error) {
+	pane, err := capture(ctx)
+	if err != nil {
+		return [sha256.Size]byte{}, fmt.Errorf("capture pane for output clock of session %q: %w", sessionID, err)
+	}
+	return sha256.Sum256([]byte(agent.TranscriptRegion(pane))), nil
+}
+
+// countBucket marks next as the bucket a change was counted in: consecutive
+// counted buckets extend the streak, any gap restarts it at one.
+func (next *outputState) countBucket(previous outputState) {
+	if previous.counted != 0 && previous.counted == next.bucket-1 {
+		next.streak++
+	} else {
+		next.streak = 1
+	}
+	next.counted = next.bucket
+}
+
+// observeExaminedBucket handles a tick whose bucket was already examined
+// (R305): output inside a deck-caused window in such a bucket is still hashed,
+// so the deck-caused text becomes the baseline and the next bucket's read does
+// not count it. Only a window_activity that moved and lies in a window costs a
+// capture. It never writes last_output_at.
+func (c *OutputClock) observeExaminedBucket(ctx context.Context, sessionID string, windowActivity int64, previous outputState, capture func(context.Context) (string, error)) error {
+	if windowActivity <= previous.activity {
+		return nil
+	}
+	if c.discounted(sessionID, windowActivity) {
+		hash, err := captureTranscriptHash(ctx, sessionID, capture)
+		if err != nil {
+			return err
+		}
+		previous.hash = hash
+	}
+	previous.activity = windowActivity
+	c.mu.Lock()
+	c.state[sessionID] = previous
+	c.mu.Unlock()
+	return nil
 }
 
 // Moving reports the movement fallback's reading for a session (R316): its

@@ -72,22 +72,27 @@ func (m Model) dwellSubject() (session store.Session, ok bool) {
 		return store.Session{}, false
 	}
 	session, ok = m.engagementTargetSession()
-	if !ok || (session.Status != "waiting" && session.Status != "error") || session.StatusSeen() {
-		return store.Session{}, false
-	}
-	if m.takeoverActive() || !m.computeLayout().PreviewShown {
-		return store.Session{}, false
-	}
-	if m.interactive {
-		if m.interactiveGrid == nil || m.interactiveGrid.Grid() == nil {
-			return store.Session{}, false
-		}
-		return session, true
-	}
-	if !m.previewLive || m.previewSessionID != session.ID {
+	if !ok || !unseenAttention(session) || !m.dwellViewLive(session) {
 		return store.Session{}, false
 	}
 	return session, true
+}
+
+// unseenAttention reports a waiting or error row whose prompt is still unseen.
+func unseenAttention(session store.Session) bool {
+	return (session.Status == "waiting" || session.Status == "error") && !session.StatusSeen()
+}
+
+// dwellViewLive reports whether the preview (or interactive grid) in view is
+// live and shows session, with no takeover covering it.
+func (m Model) dwellViewLive(session store.Session) bool {
+	if m.takeoverActive() || !m.computeLayout().PreviewShown {
+		return false
+	}
+	if m.interactive {
+		return m.interactiveGrid != nil && m.interactiveGrid.Grid() != nil
+	}
+	return m.previewLive && m.previewSessionID == session.ID
 }
 
 // dwellScreenText is the plain text of the pane in view.

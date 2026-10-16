@@ -1138,6 +1138,34 @@ func statusWins(in StatusUpdateInput, cur statusRow) bool {
 	return true
 }
 
+// nextSeenStatusAt is the seen stamp a verdict leaves on the row. A transition
+// into an attention status opens an unseen episode whatever stamp it carries,
+// so a status_at equal to an older seen stamp cannot hide it. Any other
+// transition keeps the row's seen answer (what the acknowledged bit did): a
+// seen row stays seen at its new stamp, an unseen one stays unseen.
+func nextSeenStatusAt(input StatusUpdateInput, cur statusRow, repeat bool, statusAt int64) int64 {
+	switch {
+	case repeat:
+		return cur.seenStatusAt
+	case isAttentionStatus(input.Status):
+		return 0
+	case cur.seenStatusAt == cur.at:
+		return statusAt
+	}
+	return cur.seenStatusAt
+}
+
+// nextKilledByUser is killed_by_user after the write: set wins over clear.
+func nextKilledByUser(input StatusUpdateInput, cur statusRow) int {
+	switch {
+	case input.KilledByUser:
+		return 1
+	case input.ClearKilledByUser:
+		return 0
+	}
+	return cur.killedByUser
+}
+
 // writeStatusUpdate stores the winning verdict on the session row.
 //
 // A write that leaves the status unchanged is inert (SPEC §7, R303): it
@@ -1157,26 +1185,8 @@ func writeStatusUpdate(ctx context.Context, tx *sql.Tx, input StatusUpdateInput,
 	if isAttentionStatus(cur.status) && !isAttentionStatus(input.Status) {
 		notifyEpoch++
 	}
-	// A transition into an attention status opens an unseen episode whatever
-	// stamp it carries, so a status_at equal to an older seen stamp cannot
-	// hide it. Any other transition keeps the row's seen answer (what the
-	// acknowledged bit did): a seen row stays seen at its new stamp, an
-	// unseen one stays unseen.
-	seenStatusAt := cur.seenStatusAt
-	switch {
-	case repeat:
-	case isAttentionStatus(input.Status):
-		seenStatusAt = 0
-	case cur.seenStatusAt == cur.at:
-		seenStatusAt = statusAt
-	}
-	newKilled := cur.killedByUser
-	if input.ClearKilledByUser {
-		newKilled = 0
-	}
-	if input.KilledByUser {
-		newKilled = 1
-	}
+	seenStatusAt := nextSeenStatusAt(input, cur, repeat, statusAt)
+	newKilled := nextKilledByUser(input, cur)
 	lastMessage := truncateUTF8(input.LastMessage, 2*1024)
 	// clearCrash drops both crash columns; otherwise they keep their existing
 	// pre-clear behaviour, where a tail is written only alongside the exit
@@ -1228,19 +1238,24 @@ func (s *Store) UpdateSessionStatus(ctx context.Context, input StatusUpdateInput
 		return nil
 	}
 
-	if statusWins(input, cur) {
-		if err := writeStatusUpdate(ctx, tx, input, cur); err != nil {
-			return err
-		}
-	} else if input.Source == "probe" || input.Source == "hook" {
-		// A verdict that lost precedence is still proof the pane matched a
-		// probe rule or the agent spoke, so the miss streak (R315) ends.
-		if err := clearProbeMissStreakTx(ctx, tx, input.SessionID); err != nil {
-			return err
-		}
+	if err := applyStatusVerdict(ctx, tx, input, cur); err != nil {
+		return err
 	}
 
 	return recordStatusEventTx(ctx, tx, input)
+}
+
+// applyStatusVerdict writes a winning verdict; a verdict that lost precedence
+// is still proof the pane matched a probe rule or the agent spoke, so a probe
+// or hook loser ends the miss streak (R315).
+func applyStatusVerdict(ctx context.Context, tx *sql.Tx, input StatusUpdateInput, cur statusRow) error {
+	if statusWins(input, cur) {
+		return writeStatusUpdate(ctx, tx, input, cur)
+	}
+	if input.Source == "probe" || input.Source == "hook" {
+		return clearProbeMissStreakTx(ctx, tx, input.SessionID)
+	}
+	return nil
 }
 
 // clearProbeMissStreakTx zeroes sessions.probe_miss_streak (R315) with a plain
@@ -1525,6 +1540,18 @@ func (s *Store) SetPermissionProfile(ctx context.Context, sessionID, profile, so
 		`UPDATE sessions SET permission_profile = ? WHERE id = ?`, profile)
 }
 
+// validateSetEnvArgs refuses a SetSessionEnvValue call missing its row, key or
+// event timestamp.
+func validateSetEnvArgs(sessionID, key string, at int64) error {
+	if sessionID == "" || key == "" {
+		return errors.New("session id and environment key are required")
+	}
+	if at == 0 {
+		return errors.New("event timestamp is required")
+	}
+	return nil
+}
+
 // SetSessionEnvValue edits exactly one key in a session's own env map --
 // SPEC §6.1/§6.3's highest-priority layer -- and marks the row env_dirty
 // (task 021): a change has been persisted but not yet applied to the live
@@ -1537,11 +1564,8 @@ func (s *Store) SetPermissionProfile(ctx context.Context, sessionID, profile, so
 // never-log-a-value convention (task 019/024): a value a user typed here
 // may be secret-shaped, and nothing durable should ever quote it back.
 func (s *Store) SetSessionEnvValue(ctx context.Context, sessionID, key, value, source string, at int64) error {
-	if sessionID == "" || key == "" {
-		return errors.New("session id and environment key are required")
-	}
-	if at == 0 {
-		return errors.New("event timestamp is required")
+	if err := validateSetEnvArgs(sessionID, key, at); err != nil {
+		return err
 	}
 	if source == "" {
 		source = "user"
