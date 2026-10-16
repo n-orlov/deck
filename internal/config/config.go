@@ -7,6 +7,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
+	"math/big"
 	"os"
 	"path/filepath"
 	"slices"
@@ -1117,11 +1119,28 @@ func (s Settings) UpdateCheckEnabled() bool { return s.UpdateCheck || s.AutoUpda
 // (which receives tmux's whole-second window_activity), the activity sort
 // (which reads last_output_at, written as that second in milliseconds) and
 // every other reader share it, so they agree on every bucket boundary for a
-// whole-second or a fractional width alike. A width under MinOutputBucket
-// means the minimum, never a division by zero.
+// whole-second or a fractional width alike. The division is floor(instant /
+// width) in exact nanoseconds, so a width with a sub-millisecond fraction
+// (2.000000001s) keeps every boundary where the configured duration puts it;
+// past the int64 nanosecond range it falls back to big.Int, so it never
+// overflows. A width under MinOutputBucket means the minimum, never a
+// division by zero.
 func OutputBucketIndex(unixMillis int64, width time.Duration) int64 {
 	if width < MinOutputBucket {
 		width = MinOutputBucket
 	}
-	return unixMillis / width.Milliseconds()
+	nanosPerMilli := int64(time.Millisecond)
+	divisor := int64(width)
+	if limit := int64(math.MaxInt64) / nanosPerMilli; unixMillis >= -limit && unixMillis <= limit {
+		nanos := unixMillis * nanosPerMilli
+		index := nanos / divisor
+		if nanos%divisor != 0 && nanos < 0 {
+			index--
+		}
+		return index
+	}
+	// Past the year 2262 the nanosecond instant leaves int64; big.Int's
+	// Euclidean division equals floor division for a positive divisor.
+	nanos := new(big.Int).Mul(big.NewInt(unixMillis), big.NewInt(nanosPerMilli))
+	return new(big.Int).Div(nanos, big.NewInt(divisor)).Int64()
 }

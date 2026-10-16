@@ -278,3 +278,37 @@ func TestOutputClockSetBucketKeepsAFractionalWidth(t *testing.T) {
 		t.Fatalf("bucketOf(4) = %d at 1.5s, want 2", b)
 	}
 }
+
+// R306: a sub-millisecond fraction is part of the configured width too. At
+// real Unix seconds, a width rounded to whole milliseconds would put a
+// boundary between seconds the exact width keeps in one bucket, and the clock
+// would write twice inside one configured bucket.
+func TestOutputClockSubMillisecondBucketNeverWritesTwiceInOneBucket(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		width    time.Duration
+		baseline int64
+		samples  []int64 // activities after the baseline, each a transcript change
+		writes   []bool
+	}{
+		// 1700000001 and 1700000002 are both bucket 850000000.
+		{"2.000000001s", 2*time.Second + 1, 1699999999, []int64{1700000001, 1700000002, 1700000003}, []bool{true, false, true}},
+		// 1700000000..1700000002 are all bucket 566666591.
+		{"3.0000004s", 3*time.Second + 400, 1699999999, []int64{1700000000, 1700000001, 1700000002, 1700000003}, []bool{true, false, false, true}},
+		// 1700000000 and 1700000001 are both bucket 850000000.
+		{"1.999999999s", 2*time.Second - 1, 1699999998, []int64{1700000000, 1700000001, 1700000002}, []bool{true, false, true}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h := newOutputHarness(t)
+			h.clock = NewOutputClock(tc.width)
+			h.pane = pane("base", "f")
+			h.tick(tc.baseline)
+			for i, activity := range tc.samples {
+				h.pane = pane("base"+strings.Repeat("+", i+1), "f")
+				if got := h.tick(activity); got != tc.writes[i] {
+					t.Fatalf("activity %d: wrote = %v, want %v", activity, got, tc.writes[i])
+				}
+			}
+		})
+	}
+}

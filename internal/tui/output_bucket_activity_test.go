@@ -154,3 +154,55 @@ func TestReloadAppliesAFractionalOutputBucketLive(t *testing.T) {
 		t.Fatalf("order at 1.5s = %v, want [c a b]", got)
 	}
 }
+
+// R306: the activity sort keeps a sub-millisecond fraction of the width, on
+// the same boundaries the output clock writes at, so rows the exact width
+// puts in one bucket tie and fall back to id order.
+func TestActivitySortHonoursASubMillisecondBucketWidth(t *testing.T) {
+	ms := func(sec int64) int64 { return sec * 1000 }
+	// 2.000000001s: 1700000001 and 1700000002 are both bucket 850000000.
+	tied := []store.Session{{ID: "b", LastOutputAt: ms(1700000002)}, {ID: "a", LastOutputAt: ms(1700000001)}}
+	assertIDOrder(t, sortSessionsByOrder(nil, tied, SortOrderActivity, 2*time.Second+1), []string{"a", "b"})
+	// 3.0000004s: 1700000000..1700000002 share bucket 566666591, 1700000003 opens the next.
+	three := []store.Session{
+		{ID: "c", LastOutputAt: ms(1700000002)},
+		{ID: "a", LastOutputAt: ms(1700000000)},
+		{ID: "d", LastOutputAt: ms(1700000003)},
+		{ID: "b", LastOutputAt: ms(1700000001)},
+	}
+	assertIDOrder(t, sortSessionsByOrder(nil, three, SortOrderActivity, 3*time.Second+400), []string{"d", "a", "b", "c"})
+	// 1.999999999s: 1700000000 and 1700000001 tie; 1699999999 is older.
+	under := []store.Session{
+		{ID: "z", LastOutputAt: ms(1699999999)},
+		{ID: "y", LastOutputAt: ms(1700000001)},
+		{ID: "x", LastOutputAt: ms(1700000000)},
+	}
+	assertIDOrder(t, sortSessionsByOrder(nil, under, SortOrderActivity, 2*time.Second-1), []string{"x", "y", "z"})
+}
+
+// A reload of a sub-millisecond duration reaches the settings, the clock and
+// the on-screen order exactly.
+func TestReloadAppliesASubMillisecondOutputBucketLive(t *testing.T) {
+	h := newReloadHarness(t, "[ui]\nsort_order = \"activity\"\noutput_bucket = 10\n")
+	clock := &bucketClock{}
+	h.m = h.m.WithOutputDiscounter(clock)
+	sessions := []store.Session{
+		{ID: "a", Name: "a", Agent: "shell", Status: "idle", LastOutputAt: 1_700_000_001_000},
+		{ID: "b", Name: "b", Agent: "shell", Status: "idle", LastOutputAt: 1_700_000_002_000},
+		{ID: "c", Name: "c", Agent: "shell", Status: "idle", LastOutputAt: 1_700_000_003_000},
+	}
+	next, _ := h.m.Update(sessionsLoaded{sessions: sessions})
+	h.m = next.(Model)
+	h.writeConfig("[ui]\nsort_order = \"activity\"\noutput_bucket = \"2.000000001s\"\n")
+	h.reload()
+	want := 2*time.Second + 1
+	if h.m.settings.OutputBucket != want {
+		t.Fatalf("OutputBucket = %v after reload, want exactly %v", h.m.settings.OutputBucket, want)
+	}
+	if clock.bucket != want {
+		t.Fatalf("output clock bucket = %v, want %v", clock.bucket, want)
+	}
+	if got := idsOf(h.m.sessions); !equalStrings(got, []string{"c", "a", "b"}) {
+		t.Fatalf("order at 2.000000001s = %v, want [c a b]", got)
+	}
+}

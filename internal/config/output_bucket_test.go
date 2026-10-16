@@ -1,6 +1,7 @@
 package config
 
 import (
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -126,6 +127,10 @@ func TestOutputBucketQuotedDurationKeepsItsExactValue(t *testing.T) {
 		`"1.001s"`: 1001 * time.Millisecond,
 		`"2m"`:     2 * time.Minute,
 		`"1m0.5s"`: 60*time.Second + 500*time.Millisecond,
+		// Sub-millisecond fractions are exact too.
+		`"2.000000001s"`: 2*time.Second + 1,
+		`"3.0000004s"`:   3*time.Second + 400,
+		`"1.999999999s"`: 2*time.Second - 1,
 	}
 	for value, want := range cases {
 		dir := writeConfigFile(t, "[ui]\noutput_bucket = "+value+"\n")
@@ -207,5 +212,50 @@ func TestOutputBucketIndexUsesTheExactWidth(t *testing.T) {
 		if got := OutputBucketIndex(tc.ms, tc.width); got != tc.want {
 			t.Errorf("OutputBucketIndex(%d, %v) = %d, want %d", tc.ms, tc.width, got, tc.want)
 		}
+	}
+}
+
+// R306: a width with a sub-millisecond fraction keeps its exact boundaries.
+// Rounding the width to whole milliseconds would move the boundary by up to
+// one second per million buckets, which at a real Unix clock splits seconds
+// that the exact width puts in one bucket (and merges seconds it separates).
+func TestOutputBucketIndexKeepsSubMillisecondFractions(t *testing.T) {
+	for _, tc := range []struct {
+		width   time.Duration
+		seconds []int64 // Unix seconds, each a window_activity value
+		want    []int64 // floor(seconds*1e9 / width-in-ns)
+	}{
+		{2*time.Second + 1, []int64{1699999999, 1700000000, 1700000001, 1700000002, 1700000003}, []int64{849999999, 849999999, 850000000, 850000000, 850000001}},
+		{3*time.Second + 400, []int64{1699999999, 1700000000, 1700000001, 1700000002, 1700000003}, []int64{566666590, 566666591, 566666591, 566666591, 566666592}},
+		{2*time.Second - 1, []int64{1699999999, 1700000000, 1700000001, 1700000002}, []int64{849999999, 850000000, 850000000, 850000001}},
+		{time.Second + 500, []int64{1700000000, 1700000001}, []int64{1699999150, 1699999151}},
+	} {
+		for i, sec := range tc.seconds {
+			if got := OutputBucketIndex(sec*1000, tc.width); got != tc.want[i] {
+				t.Errorf("OutputBucketIndex(%d s, %v) = %d, want %d", sec, tc.width, got, tc.want[i])
+			}
+		}
+	}
+	// The far end of the int64 millisecond range neither overflows nor
+	// loses the fraction; a negative instant floors toward minus infinity.
+	if got, want := OutputBucketIndex(1<<62, 2*time.Second+1), int64(2305843008060772); got != want {
+		t.Errorf("OutputBucketIndex(2^62 ms, 2.000000001s) = %d, want %d", got, want)
+	}
+	if got, want := OutputBucketIndex(-(1<<62), 2*time.Second+1), int64(-2305843008060773); got != want {
+		t.Errorf("OutputBucketIndex(-2^62 ms, 2.000000001s) = %d, want %d", got, want)
+	}
+	// Either side of the last millisecond whose nanoseconds fit in int64.
+	limit := int64(math.MaxInt64) / int64(time.Millisecond)
+	if got, want := OutputBucketIndex(limit, 2*time.Second+1), int64(4611686016); got != want {
+		t.Errorf("OutputBucketIndex(limit, 2.000000001s) = %d, want %d", got, want)
+	}
+	if got, want := OutputBucketIndex(limit+1, 2*time.Second+1), int64(4611686016); got != want {
+		t.Errorf("OutputBucketIndex(limit+1, 2.000000001s) = %d, want %d", got, want)
+	}
+	if got := OutputBucketIndex(-1, time.Second); got != -1 {
+		t.Errorf("OutputBucketIndex(-1 ms, 1s) = %d, want -1", got)
+	}
+	if got := OutputBucketIndex(-2000, time.Second); got != -2 {
+		t.Errorf("OutputBucketIndex(-2000 ms, 1s) = %d, want -2", got)
 	}
 }
