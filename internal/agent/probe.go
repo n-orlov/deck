@@ -452,14 +452,20 @@ var (
 // maskLiveIndicator makes an agent's live working indicator, the line the
 // agent redraws every tick while it works, a constant: its spinner frame and
 // its elapsed/retry counters are statusline churn, not output (R304). Only the
-// exact shapes the agents draw are masked, so transcript prose that merely
-// reads "Working on ticket 41" or "Elapsed 41 seconds" still counts:
-//   - claude/codex: the lowest region line shaped "<glyph> <phrase> (… esc to
-//     interrupt)" loses its glyph and the digits inside the parenthetical
-//     (and codex's "Reconnecting... n/m" counter); the phrase is kept.
+// exact shapes the agents draw, in the one place they draw them (the bottom of
+// the region, straight above the composer), are masked, so transcript prose
+// that merely reads "Working on ticket 41" or "Elapsed 41 seconds", and a
+// completed indicator- or counter-shaped line further up the transcript, still
+// count:
+//   - claude/codex: the head of the region's last cell (the lowest column-0
+//     line; only indented continuation lines such as codex's "└ …" error
+//     detail or claude's "⎿ Tip" may sit under it), when it is shaped
+//     "<glyph> <phrase> (… esc to interrupt)", loses its glyph and the digits
+//     inside the parenthetical (and codex's "Reconnecting... n/m" counter);
+//     the phrase is kept.
 //   - pi: a region whose last line is the braille spinner line loses that
-//     frame glyph, and the last line reading exactly "Elapsed N.Ns" above it
-//     (the running tool's counter) is digit-masked.
+//     frame glyph, and the last non-blank line above it, when it reads exactly
+//     "Elapsed N.Ns" (the running tool's counter), is digit-masked.
 //
 // The indicator appearing or vanishing still changes the region, so a turn
 // starting or ending counts; any other line is untouched.
@@ -468,29 +474,41 @@ func maskLiveIndicator(region string) string {
 		return region
 	}
 	lines := strings.Split(region, "\n")
-	for i := len(lines) - 1; i >= 0; i-- {
-		m := liveEscIndicator.FindStringSubmatch(lines[i])
-		if m == nil {
-			continue
+	if i := lastCellHead(lines); i >= 0 {
+		if m := liveEscIndicator.FindStringSubmatch(lines[i]); m != nil {
+			phrase := m[2]
+			if liveRetryCounter.MatchString(phrase) {
+				phrase = liveDigits.ReplaceAllString(phrase, "#")
+			}
+			lines[i] = m[1] + phrase + " " + liveDigits.ReplaceAllString(m[3], "#")
 		}
-		phrase := m[2]
-		if liveRetryCounter.MatchString(phrase) {
-			phrase = liveDigits.ReplaceAllString(phrase, "#")
-		}
-		lines[i] = m[1] + phrase + " " + liveDigits.ReplaceAllString(m[3], "#")
-		break
 	}
 	last := len(lines) - 1
 	if m := livePiSpinner.FindStringSubmatch(lines[last]); m != nil {
 		lines[last] = m[1] + m[2]
-		for i := last - 1; i >= 0; i-- {
-			if livePiElapsed.MatchString(lines[i]) {
-				lines[i] = liveDigits.ReplaceAllString(lines[i], "#")
-				break
-			}
+		i := last - 1
+		for i >= 0 && strings.TrimSpace(lines[i]) == "" {
+			i--
+		}
+		if i >= 0 && livePiElapsed.MatchString(lines[i]) {
+			lines[i] = liveDigits.ReplaceAllString(lines[i], "#")
 		}
 	}
 	return strings.Join(lines, "\n")
+}
+
+// lastCellHead is the index of the region's lowest non-blank line drawn from
+// column 0 (the head of the last transcript cell), or -1 when every non-blank
+// line is indented.
+func lastCellHead(lines []string) int {
+	for i := len(lines) - 1; i >= 0; i-- {
+		line := lines[i]
+		if strings.TrimSpace(line) == "" || strings.HasPrefix(line, " ") || strings.HasPrefix(line, "\t") {
+			continue
+		}
+		return i
+	}
+	return -1
 }
 
 // normaliseRegion joins lines with trailing whitespace and trailing blank lines

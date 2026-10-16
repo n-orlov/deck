@@ -27,6 +27,25 @@ func TestIndicatorLikeTranscriptNumbersStillCount(t *testing.T) {
 		{"claude-thinking-prose", "claude", "claude/idle-draft.txt", "  Ran 14 tests, all passed.", "  Thinking about test %d next."},
 		{"pi-working-prose-above-live-spinner", "pi", "pi/running.txt", "run: echo hello-from-tool", "Working... step %d"},
 		{"codex-reconnecting-prose-above-live-indicator", "codex", "codex/running.txt", "summarise this directory", "Reconnecting... %d/5"},
+		// A completed counter- or indicator-shaped line further up the
+		// transcript is output even while a live indicator is drawn below it:
+		// only the indicator at the bottom of the region is churn.
+		{"pi-completed-elapsed-above-live-spinner", "pi", "pi/running.txt", " run: echo hello-from-tool",
+			" Benchmark finished:\n\n ```text\n Elapsed %d.0s\n ```\n\n run: echo hello-from-tool"},
+		{"pi-earlier-tool-elapsed-above-running-tool-counter", "pi", "pi/sleep-midrun.txt", " run: sleep 25",
+			" $ make bench\n\n Elapsed %d.5s\n\n run: sleep 25"},
+		{"claude-completed-indicator-line-above-live-indicator", "claude", "claude/running-footer.txt", "  I'll refactor the parser next.",
+			"✻ Worked… (%ds · esc to interrupt)\n  I'll refactor the parser next."},
+		{"codex-earlier-working-cell-above-live-indicator", "codex", "codex/running.txt", "⚠ Model metadata",
+			"• Working (%ds • esc to interrupt)\n⚠ Model metadata"},
+		{"pi-completed-tool-elapsed-above-live-spinner", "pi", "pi/running.txt", " run: echo hello-from-tool",
+			" $ make bench\n\n Elapsed %d.5s\n\n run: echo hello-from-tool"},
+		{"claude-completed-indicator-line-while-idle", "claude", "claude/idle-draft.txt", "  Done. The status parser",
+			"✻ Worked… (%ds · esc to interrupt)\n⏺ Done. The status parser"},
+		{"codex-earlier-working-cell-while-idle", "codex", "codex/idle.txt", "⚠ Model metadata",
+			"• Working (%ds • esc to interrupt)\n⚠ Model metadata"},
+		{"codex-earlier-reconnecting-cell-above-live-indicator", "codex", "codex/retrying.txt", "• Reconnecting... 4/5",
+			"• Reconnecting... %d/5 (9s • esc to interrupt)\n• Reconnecting... 4/5"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

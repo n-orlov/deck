@@ -62,6 +62,14 @@ func TestTranscriptRegionCountsIndicatorLikeProse(t *testing.T) {
 		{"claude/idle-draft.txt", "  Ran 14 tests, all passed.", "  Thinking about test %d next."},
 		{"pi/running.txt", "run: echo hello-from-tool", "Working... step %d"},
 		{"codex/running.txt", "summarise this directory", "Reconnecting... %d/5"},
+		{"pi/running.txt", " run: echo hello-from-tool", " Benchmark finished:\n\n ```text\n Elapsed %d.0s\n ```\n\n run: echo hello-from-tool"},
+		{"pi/sleep-midrun.txt", " run: sleep 25", " $ make bench\n\n Elapsed %d.5s\n\n run: sleep 25"},
+		{"claude/running-footer.txt", "  I'll refactor the parser next.", "✻ Worked… (%ds · esc to interrupt)\n  I'll refactor the parser next."},
+		{"codex/running.txt", "⚠ Model metadata", "• Working (%ds • esc to interrupt)\n⚠ Model metadata"},
+		{"pi/running.txt", " run: echo hello-from-tool", " $ make bench\n\n Elapsed %d.5s\n\n run: echo hello-from-tool"},
+		{"claude/idle-draft.txt", "  Done. The status parser", "✻ Worked… (%ds · esc to interrupt)\n⏺ Done. The status parser"},
+		{"codex/idle.txt", "⚠ Model metadata", "• Working (%ds • esc to interrupt)\n⚠ Model metadata"},
+		{"codex/retrying.txt", "• Reconnecting... 4/5", "• Reconnecting... %d/5 (9s • esc to interrupt)\n• Reconnecting... 4/5"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.golden+"/"+tc.line, func(t *testing.T) {
