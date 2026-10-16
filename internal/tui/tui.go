@@ -8124,7 +8124,7 @@ func (m Model) writeDetailStatus(b *strings.Builder, session store.Session) {
 	// only surfaced here, distinct from "never sampled": a miss strictly newer
 	// than the row's current verdict is the freshest evidence deck has, and is
 	// superseded (stops rendering) the instant any later verdict lands.
-	if session.LastProbeAt > session.StatusAt {
+	if session.LastProbeAt > session.StatusAt && session.ProbeMissStreak > 0 {
 		fmt.Fprintf(b, "%s\n", m.detailField("Probe:              ", fmt.Sprintf("sampled, no rule matched (%s)", m.relativeAge(session.LastProbeAt))))
 	}
 }

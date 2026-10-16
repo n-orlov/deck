@@ -1539,6 +1539,25 @@ func (s *Store) RecordProbeMiss(ctx context.Context, sessionID string, at int64)
 	return nil
 }
 
+// RecordProbeSample stamps last_probe_at with the time a pane was sampled and
+// touches nothing else: no status, no events, no miss streak. It is the idle
+// cadence's anchor (R314) for a sample that did not move the row -- a matching
+// idle verdict repeats the status and so leaves status_at old, and a loser
+// leaves the row as it was -- so the row waits another full cadence instead of
+// being sampled on every pass.
+func (s *Store) RecordProbeSample(ctx context.Context, sessionID string, at int64) error {
+	if sessionID == "" {
+		return errors.New("session id is required")
+	}
+	if at == 0 {
+		return errors.New("event timestamp is required")
+	}
+	if _, err := s.db.ExecContext(ctx, `UPDATE sessions SET last_probe_at = ? WHERE id = ?`, at, sessionID); err != nil {
+		return fmt.Errorf("set last_probe_at: %w", err)
+	}
+	return nil
+}
+
 // RecordOutput sets sessions.last_output_at to at (R304). Like RecordProbeMiss
 // it is a plain UPDATE of one column and never appends to events: the output
 // clock advances once per bucket per session, and an event kind nothing reads

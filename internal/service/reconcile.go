@@ -418,6 +418,13 @@ func (s Service) recordProbe(ctx context.Context, session store.Session, status,
 	}); err != nil {
 		return fmt.Errorf("record probe for session %q: %w", session.ID, err)
 	}
+	if session.Status == "idle" {
+		// An idle row is sampled at the sparse cadence measured from this
+		// sample, whatever it said (R314).
+		if err := s.Store.RecordProbeSample(ctx, session.ID, now); err != nil {
+			return fmt.Errorf("record probe sample for session %q: %w", session.ID, err)
+		}
+	}
 	// Only a probe that CHANGED the status is an event of its own; a verdict
 	// that repeats what a hook (or an earlier probe) already put on the row is
 	// the same attention episode, not a second event to ping about.
@@ -495,7 +502,10 @@ func probeEligible(session store.Session, now time.Time, staleAfter time.Duratio
 	case "starting", "running", "waiting":
 		return now.UnixMilli()-session.VerdictAt() >= staleAfter.Milliseconds()
 	case "idle":
-		return now.UnixMilli()-session.VerdictAt() >= idleProbeFactor*staleAfter.Milliseconds()
+		// The anchor is the newer of the verdict and the last sample: a
+		// probe that matched idle again or nothing at all leaves the verdict
+		// old, and must still push the next sample a whole cadence out.
+		return now.UnixMilli()-max(session.VerdictAt(), session.LastProbeAt) >= idleProbeFactor*staleAfter.Milliseconds()
 	default:
 		return false
 	}

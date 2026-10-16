@@ -251,6 +251,7 @@ func TestDetailDistinguishesTotalProbeMissFromNoSignalYet(t *testing.T) {
 	clock.Advance()
 	missAt := clock.Now().UnixMilli()
 	model.sessions[0].LastProbeAt = missAt
+	model.sessions[0].ProbeMissStreak = 1
 	sampled := model.View()
 	if !strings.Contains(sampled, "Probe:              sampled, no rule matched (just now)") {
 		t.Fatalf("detail missing probe-miss copy with sample age:\n%s", sampled)

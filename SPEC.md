@@ -1038,8 +1038,13 @@ Rules:
   **4 × `stale_after`** old (`starting`, `running` and `waiting` stay at 1 × `stale_after`). The multiple is
   fixed, not a setting, and it applies only on the TUI's probing path, never in `deck _hook`. This is the
   sparse check for a turn begun without a hook: a probe that sees the working indicator moves the row to
-  `running` with source `probe`; a probe that matches nothing leaves it `idle` (`last_probe_at` only). An
-  `error` or `stopped` row is never probed.
+  `running` with source `probe`; a probe that matches nothing leaves it `idle` (`last_probe_at` only). The
+  cadence repeats: after any sample of an `idle` row (a miss, a matching `idle` verdict that repeats the
+  status and so leaves `status_at` alone, or a verdict that lost precedence) the row is next due
+  **4 × `stale_after` after that sample**, so the age is measured from the newer of the verdict and
+  `sessions.last_probe_at`, never re-met on every reconcile. A sample writes `last_probe_at` only (no
+  event beyond the verdict's own, no new bound); the detail pane's "sampled, no rule matched" line needs
+  a live miss streak, so a matched sample never prints it. An `error` or `stopped` row is never probed.
 - **Unverified running row (R315).** A `running` row with no event for at least **3 × `stale_after`**
   and whose probe has matched no rule on **3 consecutive** passes is shown as *unverified*: its status
   glyph is `◔` (ASCII `-`) instead of `◐` (ASCII `~`), in the same one column (§11). The miss streak is the
