@@ -23,7 +23,7 @@ Feature: a session launched under an older deck binary survives a newer state da
     When fake Claude session "bound" fires "Notification" for itself using injected identity:
       | notification_type | permission_prompt |
     Then session "bound" has 1 "notification" event
-    And the state database session "bound" has hook status "waiting", reason "permission_prompt", message "", acknowledged 0, and notify_epoch 0
+    And the state database session "bound" has hook status "waiting", reason "permission_prompt", message "", unseen, and notify_epoch 0
     When deck client "B" exits cleanly
 
   Scenario: a codex session launched under binary A heals through the re-exec once deck runs as binary B

@@ -145,7 +145,7 @@ Feature: The event hook (SPEC section 10), end to end against the released binar
     And session "slow"'s latest "notification" event records a timed out hook
     And the structured log holds 1 event-hook invocation for session "slow", the last of kind "waiting" timed out
     And the capture script process of invocation 1 is gone within 3 seconds
-    And the state database session "slow" has hook status "waiting", reason "permission_prompt", message "", acknowledged 0, and notify_epoch 0
+    And the state database session "slow" has hook status "waiting", reason "permission_prompt", message "", unseen, and notify_epoch 0
     When deck client "A" exits cleanly
 
   Scenario: A session-end payload never waits for the script
@@ -187,7 +187,7 @@ Feature: The event hook (SPEC section 10), end to end against the released binar
       | notification_type | permission_prompt |
     Then the capture script has recorded exactly 1 invocation
     And the structured log holds 1 event-hook invocation for session "episode", the last of kind "waiting" exit status 0
-    And the state database session "episode" has hook status "waiting", reason "permission_prompt", message "", acknowledged 0, and notify_epoch 0
+    And the state database session "episode" has hook status "waiting", reason "permission_prompt", message "", unseen, and notify_epoch 0
     When deck client "A" attaches to and detaches from its selected agent
     Then the state database session "episode" is "waiting" from "hook" and is unseen, with notify_epoch=0, and 0 attached events
     When the released deck _hook receives "Notification" for session "episode" using injected identity:

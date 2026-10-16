@@ -47,7 +47,6 @@ func registerBlackBoxAssertionSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^the released waiting hook fires for session "([^"]+)"$`, releasedWaitingHookForSession)
 	sc.Step(`^the state database session "([^"]+)" is "([^"]+)" from "([^"]+)" and is (seen|unseen), with notify_epoch=([0-9]+), and ([0-9]+) attached events?$`, databaseSessionSeenFields)
 	sc.Step(`^after one configured reconcile interval deck client "([^"]+)" row "([^"]+)" still contains "([^"]+)"$`, clientRowStillContainsAfterReconcileInterval)
-	sc.Step(`^the state database session "([^"]+)" is "([^"]+)" from "([^"]+)" with acknowledged=([01]), notify_epoch=([0-9]+), and ([0-9]+) attached events?$`, databaseSessionAttentionFields)
 	sc.Step(`^the state database session "([^"]+)" has ([0-9]+) attached events?$`, databaseSessionAttachedEventCount)
 	sc.Step(`^the audit log is valid JSONL$`, auditLogIsJSONL)
 	sc.Step(`^the audit log contains event "([^"]+)" for a session$`, auditContainsSessionEvent)
@@ -632,7 +631,7 @@ func databaseSessionSeenFields(ctx context.Context, name, wantStatus, wantSource
 	return databaseSessionAttentionFields(ctx, name, wantStatus, wantSource, wantSeen, wantEpoch, wantAttachedEvents)
 }
 
-func databaseSessionAttentionFields(ctx context.Context, name, wantStatus, wantSource string, wantAcknowledged, wantEpoch, wantAttachedEvents int) error {
+func databaseSessionAttentionFields(ctx context.Context, name, wantStatus, wantSource string, wantSeen, wantEpoch, wantAttachedEvents int) error {
 	h, err := assertionHarness(ctx)
 	if err != nil {
 		return err
@@ -643,17 +642,17 @@ func databaseSessionAttentionFields(ctx context.Context, name, wantStatus, wantS
 	}
 	defer db.Close()
 	var status, source, sessionID string
-	var acknowledged, epoch, attachedEvents int
+	var seen, epoch, attachedEvents int
 	if err := db.QueryRowContext(ctx, `SELECT id, status, status_source, (seen_status_at = status_at), notify_epoch FROM sessions WHERE name = ?`, name).Scan(
-		&sessionID, &status, &source, &acknowledged, &epoch); err != nil {
+		&sessionID, &status, &source, &seen, &epoch); err != nil {
 		return fmt.Errorf("observe attention fields for session %q: %w", name, err)
 	}
 	if err := db.QueryRowContext(ctx, `SELECT count(*) FROM events WHERE session_id = ? AND kind = 'attached'`, sessionID).Scan(&attachedEvents); err != nil {
 		return fmt.Errorf("observe attached events for session %q: %w", name, err)
 	}
-	if status != wantStatus || source != wantSource || acknowledged != wantAcknowledged || epoch != wantEpoch || attachedEvents != wantAttachedEvents {
-		return fmt.Errorf("session %q attention fields = status %q source %q acknowledged=%d notify_epoch=%d attached_events=%d; want %q %q %d %d %d",
-			name, status, source, acknowledged, epoch, attachedEvents, wantStatus, wantSource, wantAcknowledged, wantEpoch, wantAttachedEvents)
+	if status != wantStatus || source != wantSource || seen != wantSeen || epoch != wantEpoch || attachedEvents != wantAttachedEvents {
+		return fmt.Errorf("session %q attention fields = status %q source %q seen=%d notify_epoch=%d attached_events=%d; want %q %q %d %d %d",
+			name, status, source, seen, epoch, attachedEvents, wantStatus, wantSource, wantSeen, wantEpoch, wantAttachedEvents)
 	}
 	return nil
 }
@@ -662,7 +661,7 @@ func databaseSessionAttentionFields(ctx context.Context, name, wantStatus, wantS
 // databaseSessionAttentionFields for scenarios that only need to prove
 // requirement 24 (a mouse gesture reaching the hidden main view while a
 // full-screen takeover is painted must never attach) -- pinning the
-// session's status/status_source/acknowledged/notify_epoch as well would
+// session's status/status_source/seen/notify_epoch as well would
 // couple this proof to unrelated probe timing.
 func databaseSessionAttachedEventCount(ctx context.Context, name string, wantAttachedEvents int) error {
 	h, err := assertionHarness(ctx)

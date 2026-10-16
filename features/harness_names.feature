@@ -61,7 +61,7 @@ Feature: Claude session names travel between deck and the harness
     When deck client "A" creates claude session "push me" with permission profile "safe"
     And fake Claude session "push me" fires "Stop" for itself using injected identity:
       | last_assistant_message | ready |
-    Then the state database session "push me" has hook status "idle", reason "", message "ready", acknowledged 1, and notify_epoch 0
+    Then the state database session "push me" has hook status "idle", reason "", message "ready", seen, and notify_epoch 0
     When deck client "A" renames session "push me" to "pushed title" from its detail dialog
     Then the fake Claude transcript of session "pushed title" has a "custom-title" record titled "pushed title"
     And deck client "A" screen contains "pushed title"
@@ -99,7 +99,7 @@ Feature: Claude session names travel between deck and the harness
     When deck client "A" creates claude session "dialog guard" with permission profile "safe"
     And fake Claude session "dialog guard" fires "Notification" for itself using injected identity:
       | notification_type | permission_prompt |
-    Then the state database session "dialog guard" has hook status "waiting", reason "permission_prompt", message "", acknowledged 0, and notify_epoch 0
+    Then the state database session "dialog guard" has hook status "waiting", reason "permission_prompt", message "", unseen, and notify_epoch 0
     When deck client "A" renames session "dialog guard" to "guard renamed" from its detail dialog
     Then the state database session "guard renamed" has an event of kind "harness_rename_refused" with reason containing "waiting for an answer"
     And the state database session "guard renamed" has name source "user"
