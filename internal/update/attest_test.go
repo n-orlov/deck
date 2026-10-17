@@ -22,6 +22,7 @@ func TestMain(m *testing.M) {
 	}
 	_ = os.Setenv("PATH", dir)
 	_ = os.Unsetenv(EnvRequireAttestation)
+	_ = os.Unsetenv(EnvRequireImmutable)
 	// Behind a rejecting proxy: a test that forgot its fake release server
 	// fails the package naming the public host it reached.
 	code := testnet.Main(m)

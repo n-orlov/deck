@@ -33,7 +33,13 @@ type Options struct {
 	// RequireAttestation aborts when the attestation cannot be checked, like
 	// DECK_REQUIRE_ATTESTATION=1.
 	RequireAttestation bool
+	// RequireImmutable aborts unless the GitHub release API reports the
+	// release immutable, like DECK_REQUIRE_IMMUTABLE=1.
+	RequireImmutable bool
 
+	// apiBase is test-only: the release API to ask in place of
+	// DefaultAPIBase, whatever the release base is.
+	apiBase string
 	// root is test-only: the tree the managed prefixes are matched under.
 	root string
 	// writeFile and rename are the two filesystem steps that can fail after
@@ -53,6 +59,11 @@ type Result struct {
 	// Attestation is AttestationVerified, or AttestationSkipped when only the
 	// checksum was verified (no authenticated gh).
 	Attestation string
+	// Immutable is what the GitHub release API said about the installed
+	// release: ImmutableVerified, ImmutableNot or ImmutableUnknown (a mirror,
+	// or no usable answer). Only ImmutableVerified is a verified immutable
+	// release.
+	Immutable string
 }
 
 // Run downloads, verifies and installs the release over the executable. On
@@ -71,6 +82,12 @@ func run(ctx context.Context, o Options) (Result, error) {
 	if o.OnlyIfNewer && o.Version == "" && !IsNewer(pl.tag, o.Current) {
 		return Result{Tag: pl.tag, Path: pl.target, Unchanged: true}, nil
 	}
+	// The release's immutability is settled before checksums.txt is trusted,
+	// and before anything is downloaded or staged.
+	imm, err := o.checkImmutable(ctx, pl.base, pl.tag)
+	if err != nil {
+		return Result{}, err
+	}
 	work, err := os.MkdirTemp("", "deck-update-")
 	if err != nil {
 		return Result{}, fmt.Errorf("create a scratch directory: %w", err)
@@ -83,7 +100,7 @@ func run(ctx context.Context, o Options) (Result, error) {
 	if err := o.replace(pl.target, bin); err != nil {
 		return Result{}, err
 	}
-	return Result{Tag: pl.tag, Path: pl.target, Attestation: att}, nil
+	return Result{Tag: pl.tag, Path: pl.target, Attestation: att, Immutable: imm}, nil
 }
 
 // runPlan is what Run settles before it downloads anything.

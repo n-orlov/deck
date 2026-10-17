@@ -95,11 +95,29 @@ func runUpdateCommand(args []string, stdout, stderr io.Writer) int {
 		return 0
 	}
 	sayf(stdout, "deck updated: %s -> %s (%s)\n", old, res.Tag, res.Path)
-	if res.Attestation == update.AttestationSkipped {
-		sayln(stdout, "note: only the checksum was verified; the build attestation could not be checked")
+	for _, n := range updateNotes(res) {
+		sayln(stdout, "note: "+n)
 	}
-	sayln(stdout, "note: restart any running deck to use the new version; running sessions are not disturbed")
 	return 0
+}
+
+// updateNotes are the notes printed after an install: what was not verified,
+// then the restart reminder. Each is deck's own wording, chosen from a
+// Result state; no server text reaches them.
+func updateNotes(res update.Result) []string {
+	var notes []string
+	if res.Attestation == update.AttestationSkipped {
+		notes = append(notes, "only the checksum was verified; the build attestation could not be checked")
+	}
+	switch res.Immutable {
+	case update.ImmutableVerified:
+		notes = append(notes, "the release is a GitHub immutable release")
+	case update.ImmutableNot:
+		notes = append(notes, "the release is not verified immutable: GitHub reports it is not an immutable release ("+update.EnvRequireImmutable+"=1 refuses such a release)")
+	case update.ImmutableUnknown:
+		notes = append(notes, "the release is not verified immutable: its immutability could not be checked ("+update.EnvRequireImmutable+"=1 refuses such a release)")
+	}
+	return append(notes, "restart any running deck to use the new version; running sessions are not disturbed")
 }
 
 // reportUpdateCheck is `deck update --check`: one request, nothing written.
