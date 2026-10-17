@@ -93,5 +93,11 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$GITHUB_REF_NAME" dist/* \
+          # Draft first, then publish: with GitHub's immutable-releases
+          # setting on, a release freezes the moment it is published, so
+          # every asset has to be attached before that. Making the order
+          # explicit does not depend on what `gh release create` does when
+          # it is given assets.
+          gh release create "$GITHUB_REF_NAME" dist/* --draft \
             --title "$GITHUB_REF_NAME" --generate-notes --verify-tag
+          gh release edit "$GITHUB_REF_NAME" --draft=false --latest
