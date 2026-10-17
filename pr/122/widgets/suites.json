@@ -1,0 +1,1 @@
+{"total":2,"items":[{"uid":"633d1af35b62a462a3ba180f99de8dd3","name":"unit","statistic":{"failed":0,"broken":0,"skipped":6,"passed":7949,"unknown":0,"total":7955}},{"uid":"f99b463540ecda29679180a04320d574","name":"features","statistic":{"failed":0,"broken":0,"skipped":0,"passed":478,"unknown":0,"total":478}}]}
