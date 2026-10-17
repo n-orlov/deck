@@ -50,6 +50,11 @@ type updateIndicator struct {
 	// only): anything but upd.ImmutableVerified means the release was not
 	// verified immutable (#104).
 	immutable string
+	// notImmutable marks an updateFailed that is the immutability refusal
+	// (upd.RefusedNotImmutable): the release was held back, not broken, so
+	// the note reads calmly and the same release is not retried while this
+	// deck runs.
+	notImmutable bool
 }
 
 // updateSource is how the model learns about releases: the throttled daily
@@ -70,7 +75,10 @@ type updateChecked struct {
 // updateInstalledMsg and updateFailedMsg report an update attempt's end. The
 // ctrl+u flow and the auto-install send them.
 type updateInstalledMsg struct{ tag, attestation, immutable string }
-type updateFailedMsg struct{ cause string }
+type updateFailedMsg struct {
+	cause        string
+	notImmutable bool // the failure is an upd.RefusedNotImmutable refusal
+}
 
 // WithUpdateSource wires the daily update check into the model: check is the
 // throttled check (update.Checker.Check) and preflight says whether this
@@ -161,7 +169,7 @@ func (m Model) onUpdateFailed(msg updateFailedMsg) (tea.Model, tea.Cmd) {
 	if m.updateInd.state == updateInstalled {
 		return m, nil
 	}
-	m.updateInd = updateIndicator{state: updateFailed, tag: m.updateInd.tag, reason: msg.cause}
+	m.updateInd = updateIndicator{state: updateFailed, tag: m.updateInd.tag, reason: msg.cause, notImmutable: msg.notImmutable}
 	m.footerNoteSets[noteUpdate]++
 	return m, nil
 }
@@ -170,7 +178,7 @@ func (m Model) onUpdateFailed(msg updateFailedMsg) (tea.Model, tea.Cmd) {
 // the process: a later check never replaces it. A refusal that is not a
 // Refusal (the binary cannot be located) hides the indicator.
 func (m *Model) applyUpdateCheck(st upd.Status, refusal error) {
-	if m.updateInd.state == updateInstalled || m.updateInd.state == updateInstalling {
+	if m.updateInd.state == updateInstalled || m.updateInd.state == updateInstalling || m.heldNotImmutable(st) {
 		return
 	}
 	next := m.classifyUpdateCheck(st, refusal)
@@ -178,6 +186,14 @@ func (m *Model) applyUpdateCheck(st upd.Status, refusal error) {
 		m.footerNoteSets[noteUpdate]++
 	}
 	m.updateInd = next
+}
+
+// heldNotImmutable reports whether st offers the very release an update
+// already refused as not verified immutable. That answer stands for the life
+// of the process (DECK_REQUIRE_IMMUTABLE is read from its environment), so a
+// later check neither offers nor auto-installs it again; a newer tag does.
+func (m *Model) heldNotImmutable(st upd.Status) bool {
+	return m.updateInd.state == updateFailed && m.updateInd.notImmutable && st.Latest == m.updateInd.tag
 }
 
 // classifyUpdateCheck maps a check result and its preflight refusal to the
@@ -246,7 +262,7 @@ func (m Model) updateStateText(ind updateIndicator) string {
 	case updateInstalled:
 		return updateInstalledText(ind)
 	case updateFailed:
-		return updateFailedText(ind.reason)
+		return updateFailedNote(ind)
 	}
 	return ""
 }
@@ -266,6 +282,16 @@ func updateInstalledText(ind updateIndicator) string {
 		return fmt.Sprintf("update installed: %s — restart deck to apply", ind.tag)
 	}
 	return fmt.Sprintf("update installed: %s (%s) — restart deck to apply", ind.tag, strings.Join(caveats, "; "))
+}
+
+// updateFailedNote is the Failed note for ind. The immutability refusal
+// held a release back on purpose (#104), so it reads as a calm "not
+// installed" rather than "update failed".
+func updateFailedNote(ind updateIndicator) string {
+	if ind.notImmutable {
+		return fmt.Sprintf("update not installed: %s is not verified immutable — see deck update", ind.tag)
+	}
+	return updateFailedText(ind.reason)
 }
 
 // updateFailedText is the Failed note: the fixed phrase plus the cause, with

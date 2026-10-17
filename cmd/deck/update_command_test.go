@@ -232,6 +232,18 @@ func copyFile(t *testing.T, src, dst string) {
 // stderr and the exit code.
 func updRun(t *testing.T, binary, home, path string, env []string, args ...string) (string, string, int) {
 	t.Helper()
+	return updExec(t, binary, home, path, append([]string{updImmutableOptOut}, env...), args...)
+}
+
+// updImmutableOptOut is updRun's baseline: the fake release servers are
+// mirrors with no GitHub release API, which the default immutability
+// requirement refuses, so the tests of the other steps opt out. A later env
+// entry overrides it; updExec runs without it (the default).
+const updImmutableOptOut = "DECK_REQUIRE_IMMUTABLE=0"
+
+// updExec is updRun without the immutability opt-out baseline.
+func updExec(t *testing.T, binary, home, path string, env []string, args ...string) (string, string, int) {
+	t.Helper()
 	cmd := exec.Command(binary, args...)
 	cmd.Env = append([]string{"PATH=" + path, "HOME=" + home, "DECK_HOME=" + filepath.Join(home, "deck-home"), "XDG_CONFIG_HOME=" + filepath.Join(home, "cfg"), "XDG_DATA_HOME=" + filepath.Join(home, "data"), "XDG_CACHE_HOME=" + filepath.Join(home, "cache")}, env...)
 	var stdout, stderr bytes.Buffer
@@ -393,18 +405,27 @@ func TestUpdateVerbAgainstFakeServer(t *testing.T) {
 			}
 		})
 
-		t.Run("immutability required on a mirror", func(t *testing.T) {
-			dir, exe := place(v100())
-			before := updSum(t, exe)
-			_, stderr, code := updRun(t, exe, t.TempDir(), emptyPath, []string{goodURL, "DECK_REQUIRE_IMMUTABLE=1"}, "update")
-			expect(t, stderr, code, "could not be verified immutable")
-			if !strings.Contains(stderr, "DECK_REQUIRE_IMMUTABLE=1 is set; nothing was installed") {
-				t.Errorf("stderr %q does not name the switch", stderr)
-			}
-			if updSum(t, exe) != before || len(updNames(t, dir)) != 1 {
-				t.Errorf("binary or directory changed: %v", updNames(t, dir))
-			}
-		})
+		// A mirror has no release API, so its release cannot be confirmed
+		// immutable: refused by default (no DECK_REQUIRE_IMMUTABLE at all),
+		// with it empty, and with =1, naming the mirror and the =0 opt-out.
+		for _, require := range []string{"", "DECK_REQUIRE_IMMUTABLE=", "DECK_REQUIRE_IMMUTABLE=1"} {
+			t.Run("immutability required on a mirror "+require, func(t *testing.T) {
+				dir, exe := place(v100())
+				before := updSum(t, exe)
+				env := []string{goodURL}
+				if require != "" {
+					env = append(env, require)
+				}
+				_, stderr, code := updExec(t, exe, t.TempDir(), emptyPath, env, "update", "--version", updLatest)
+				expect(t, stderr, code, "could not be confirmed immutable: the release source is a mirror with no GitHub release API")
+				if !strings.Contains(stderr, "nothing was installed (set DECK_REQUIRE_IMMUTABLE=0 to install it anyway)") {
+					t.Errorf("stderr %q does not name the opt-out", stderr)
+				}
+				if updSum(t, exe) != before || len(updNames(t, dir)) != 1 {
+					t.Errorf("binary or directory changed: %v", updNames(t, dir))
+				}
+			})
+		}
 
 		t.Run("dev build", func(t *testing.T) {
 			dir, exe := place(bins.build(t, "dev", ""))
@@ -663,9 +684,9 @@ func TestUpdateNotes(t *testing.T) {
 		{"attested immutable", update.Result{Attestation: update.AttestationVerified, Immutable: update.ImmutableVerified},
 			[]string{"the release is a GitHub immutable release", restart}},
 		{"attested not immutable", update.Result{Attestation: update.AttestationVerified, Immutable: update.ImmutableNot},
-			[]string{"the release is not verified immutable: GitHub reports it is not an immutable release (DECK_REQUIRE_IMMUTABLE=1 refuses such a release)", restart}},
+			[]string{"the release is not verified immutable: GitHub reports it is not an immutable release (installed because DECK_REQUIRE_IMMUTABLE=0 is set)", restart}},
 		{"checksum-only unknown", update.Result{Attestation: update.AttestationSkipped, Immutable: update.ImmutableUnknown},
-			[]string{"only the checksum was verified; the build attestation could not be checked", "the release is not verified immutable: its immutability could not be checked (DECK_REQUIRE_IMMUTABLE=1 refuses such a release)", restart}},
+			[]string{"only the checksum was verified; the build attestation could not be checked", "the release is not verified immutable: its immutability could not be checked (installed because DECK_REQUIRE_IMMUTABLE=0 is set)", restart}},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			if got := updateNotes(c.res); !reflect.DeepEqual(got, c.want) {

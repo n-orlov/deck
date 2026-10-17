@@ -2,18 +2,34 @@ package tui
 
 import (
 	"context"
+	"os"
 	"strings"
 	"testing"
 
 	upd "github.com/n-orlov/deck/internal/update"
 )
 
+// immutableUnset stands for "DECK_REQUIRE_IMMUTABLE is not in the
+// environment" (the default) in setRequireImmutable.
+const immutableUnset = "unset"
+
+// setRequireImmutable sets DECK_REQUIRE_IMMUTABLE for one test, or removes
+// it for immutableUnset; either is restored afterwards. The package
+// baseline (TestMain) is the "0" opt-out.
+func setRequireImmutable(t *testing.T, value string) {
+	t.Helper()
+	t.Setenv(upd.EnvRequireImmutable, value)
+	if value == immutableUnset {
+		_ = os.Unsetenv(upd.EnvRequireImmutable)
+	}
+}
+
 // TestCtrlUConfirmationStatesImmutablePlan: the confirmation carries, on a
 // line `Immutable release: <plan>`, what the update will do about the
 // release's immutability (#104), asked through the real upd.PlanImmutable.
 // The fake release server is a mirror with no release API, so requiring
-// immutability there is a certain refusal and Enter is not offered as an
-// install.
+// immutability there -- the default -- is a certain refusal and Enter is not
+// offered as an install; DECK_REQUIRE_IMMUTABLE=0 opts out.
 func TestCtrlUConfirmationStatesImmutablePlan(t *testing.T) {
 	for _, c := range []struct {
 		name    string
@@ -21,12 +37,13 @@ func TestCtrlUConfirmationStatesImmutablePlan(t *testing.T) {
 		want    string
 		hint    string
 	}{
-		{"reported", "", upd.ImmutableReported, "Enter installs · Esc cancels"},
+		{"default on a mirror", immutableUnset, upd.ImmutableRefused, "Enter tries anyway and is refused · Esc cancels"},
+		{"opted out", "0", upd.ImmutableReported, "Enter installs · Esc cancels"},
 		{"required on a mirror", "1", upd.ImmutableRefused, "Enter tries anyway and is refused · Esc cancels"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			t.Setenv(upd.EnvRequireAttestation, "")
-			t.Setenv(upd.EnvRequireImmutable, c.require)
+			setRequireImmutable(t, c.require)
 			m, _, _, runs := ctrlUInstallModel(t, false)
 			m, _ = ctrlUPress(t, m, ctrlUKey)
 			if m.updateImmPlan != c.want {
@@ -54,14 +71,20 @@ func TestCtrlUImmutablePlanInjected(t *testing.T) {
 	m = m.WithUpdateImmutablePlan(func() string { return plan })
 	m, _ = ctrlUPress(t, m, ctrlUKey)
 	body := m.updateConfirmBody()
-	if m.updateImmPlan != upd.ImmutableRequired || !strings.Contains(body, "unless GitHub reports the release immutable") || !strings.Contains(body, "Enter installs") {
+	if m.updateImmPlan != upd.ImmutableRequired || !strings.Contains(body, "unless GitHub reports the release\nimmutable") || !strings.Contains(body, "(DECK_REQUIRE_IMMUTABLE=0 opts out)") || !strings.Contains(body, "Enter installs") {
 		t.Fatalf("first plan = %q, body:\n%s", m.updateImmPlan, body)
 	}
 	m, _ = ctrlUPress(t, m, key("esc"))
 	plan = upd.ImmutableReported
 	m, _ = ctrlUPress(t, m, ctrlUKey)
-	if m.updateImmPlan != upd.ImmutableReported || !strings.Contains(m.updateConfirmBody(), "still installs, and the result says so") {
-		t.Fatalf("second plan = %q, want a fresh answer", m.updateImmPlan)
+	if body := m.updateConfirmBody(); m.updateImmPlan != upd.ImmutableReported || !strings.Contains(body, "DECK_REQUIRE_IMMUTABLE=0 is set") || !strings.Contains(body, "still installs, and the\nresult says so") {
+		t.Fatalf("second plan = %q, want a fresh answer:\n%s", m.updateImmPlan, body)
+	}
+	m, _ = ctrlUPress(t, m, key("esc"))
+	plan = upd.ImmutableRefused
+	m, _ = ctrlUPress(t, m, ctrlUKey)
+	if body := m.updateConfirmBody(); !strings.Contains(body, "mirror with no GitHub release API") || !strings.Contains(body, "(DECK_REQUIRE_IMMUTABLE=0 opts out)") || !strings.Contains(body, "Enter tries anyway and is refused") {
+		t.Fatalf("third plan = %q:\n%s", m.updateImmPlan, body)
 	}
 }
 
@@ -99,39 +122,82 @@ func TestInstalledIndicatorNamesImmutability(t *testing.T) {
 }
 
 // TestRealInstallFromMirrorIsNotVerifiedImmutable: the real update against a
-// mirror (no release API) installs and the indicator says the release is not
-// verified immutable; with DECK_REQUIRE_IMMUTABLE=1 it fails and the binary
-// is untouched.
+// mirror (no release API). With DECK_REQUIRE_IMMUTABLE=0 it installs and the
+// indicator says the release is not verified immutable; by default, and with
+// DECK_REQUIRE_IMMUTABLE=1, it is refused: the indicator reads a calm "not
+// installed" (not "update failed"), the cause names the opt-out, and the
+// binary is untouched.
 func TestRealInstallFromMirrorIsNotVerifiedImmutable(t *testing.T) {
-	for _, require := range []bool{false, true} {
-		name := "reported"
-		if require {
-			name = "required"
-		}
-		t.Run(name, func(t *testing.T) {
+	for _, require := range []string{"0", immutableUnset, "1"} {
+		t.Run(require, func(t *testing.T) {
 			t.Setenv(upd.EnvRequireAttestation, "")
-			if require {
-				t.Setenv(upd.EnvRequireImmutable, "1")
-			} else {
-				t.Setenv(upd.EnvRequireImmutable, "")
-			}
+			setRequireImmutable(t, require)
 			m, exe, oldSum, _ := ctrlUInstallModel(t, false)
 			m, _ = ctrlUPress(t, m, ctrlUKey)
 			m, cmd := ctrlUPress(t, m, key("enter"))
 			next, _ := m.Update(cmd())
 			m = next.(Model)
-			if !require {
+			if require == "0" {
 				if m.updateInd.state != updateInstalled || m.updateInd.immutable != upd.ImmutableUnknown || !strings.Contains(m.updateIndicatorText(), "not verified immutable") {
 					t.Fatalf("indicator = %+v %q, want installed, unknown, named", m.updateInd, m.updateIndicatorText())
 				}
 				return
 			}
-			if m.updateInd.state != updateFailed || !strings.Contains(m.updateIndicatorText(), upd.EnvRequireImmutable+"=1") {
-				t.Fatalf("indicator = %+v %q, want failed naming the switch", m.updateInd, m.updateIndicatorText())
+			const want = "update not installed: v1.2.3 is not verified immutable — see deck update"
+			if m.updateInd.state != updateFailed || !m.updateInd.notImmutable || m.updateIndicatorText() != want {
+				t.Fatalf("indicator = %+v %q, want %q", m.updateInd, m.updateIndicatorText(), want)
+			}
+			if !strings.Contains(m.updateInd.reason, "mirror with no GitHub release API") || !strings.Contains(m.updateInd.reason, upd.EnvRequireImmutable+"=0") {
+				t.Errorf("cause %q does not name the mirror and the opt-out", m.updateInd.reason)
 			}
 			if got := ctrlUFileSum(t, exe); got != oldSum {
 				t.Errorf("binary sha256 = %s, want %s unchanged", got, oldSum)
 			}
 		})
+	}
+}
+
+// TestOtherFailureIsNotHeld: a failure that is not the immutability refusal
+// keeps the "update failed" note and is not held against a later check.
+func TestOtherFailureIsNotHeld(t *testing.T) {
+	msg := updateFailure(&upd.Refusal{Reason: upd.RefusedUnwritable, Message: "cannot write"})
+	if msg.notImmutable || msg.cause != "cannot write" {
+		t.Fatalf("updateFailure = %+v, want a plain failure", msg)
+	}
+	ind := updateIndicator{state: updateFailed, tag: indicatorTag, reason: msg.cause}
+	if got := updateFailedNote(ind); got != "update failed — see deck update (cannot write)" {
+		t.Errorf("note = %q", got)
+	}
+	m := Model{updateInd: ind}
+	if m.heldNotImmutable(upd.Status{Latest: indicatorTag, Newer: true}) {
+		t.Error("a plain failure held the release")
+	}
+}
+
+// TestAutoUpdateRefusedNotImmutableIsNotRetried: with auto_update on and the
+// default requirement, a mirror's release is refused once, with no download;
+// a later check offering the same release neither re-offers nor re-installs
+// it while deck runs, and a newer release is offered again.
+func TestAutoUpdateRefusedNotImmutableIsNotRetried(t *testing.T) {
+	setRequireImmutable(t, immutableUnset)
+	srv := newAutoServer(t, false)
+	exe, oldSum := autoBinary(t)
+	m := autoRun(t, srv, exe, ctrlUCurrent, true)
+	const want = "update not installed: v1.2.3 is not verified immutable — see deck update"
+	if got := m.footerNote(); got != want {
+		t.Fatalf("indicator = %q, want %q", got, want)
+	}
+	if srv.archives.Load() != 0 || ctrlUFileSum(t, exe) != oldSum {
+		t.Fatal("the refused release was downloaded or installed")
+	}
+	next, cmd := m.Update(updateChecked{status: upd.Status{Latest: indicatorTag, Newer: true}})
+	m = next.(Model)
+	if cmd != nil || m.footerNote() != want {
+		t.Fatalf("a re-check of the same release retried it (cmd %v) or changed the note to %q", cmd != nil, m.footerNote())
+	}
+	next, cmd = m.Update(updateChecked{status: upd.Status{Latest: "v1.2.4", Newer: true}})
+	m = next.(Model)
+	if cmd == nil || m.updateInd.state != updateInstalling || m.updateInd.tag != "v1.2.4" {
+		t.Fatalf("a newer release was not taken up: %+v", m.updateInd)
 	}
 }

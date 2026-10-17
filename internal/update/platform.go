@@ -1,7 +1,8 @@
 // Package update installs the latest deck release over the running binary.
 //
 // It resolves the latest stable tag, asks the GitHub release API whether that
-// release is immutable (reported, or required with DECK_REQUIRE_IMMUTABLE=1),
+// release is immutable (required by default, only reported with
+// DECK_REQUIRE_IMMUTABLE=0),
 // downloads the platform archive and checksums.txt from the same release,
 // verifies the archive's sha256,
 // extracts the binary and rename(2)s it over the symlink-resolved current
