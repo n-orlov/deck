@@ -351,6 +351,10 @@ type Model struct {
 	// the attestation (upd.AttestationVerified / Skipped / Refused), set when
 	// the dialog opened (R331).
 	updateAttPlan string
+	// updateImmPlan is what the open ctrl+u confirmation told the user about
+	// the release's immutability (upd.ImmutableReported / Required /
+	// Refused), set when the dialog opened (#104).
+	updateImmPlan string
 	// pendingDelete is true for exactly one keypress after a lone `d`
 	// (SPEC's dd chord): a second `d` opens deleteConfirming; ANY other
 	// key (including Esc) clears pendingDelete without performing any

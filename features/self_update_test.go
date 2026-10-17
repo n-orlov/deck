@@ -28,7 +28,9 @@ func registerSelfUpdateSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^a deck binary at version "([^"]+)" installed in a scratch directory$`, selfUpdateInstallBinary)
 	sc.Step(`^a fake release server whose latest release is "([^"]+)"$`, selfUpdateStartServer)
 	sc.Step(`^the operator runs "([^"]+)"$`, selfUpdateRun)
+	sc.Step(`^the operator runs "([^"]+)" with "([A-Z_]+=[^"]*)"$`, selfUpdateRunEnv)
 	sc.Step(`^the command exits 0$`, selfUpdateExitsZero)
+	sc.Step(`^the command exits 1$`, selfUpdateExitsOne)
 	sc.Step(`^the output mentions "([^"]+)", "([^"]+)" and "([^"]+)"$`, selfUpdateOutputMentions3)
 	sc.Step(`^the output mentions "([^"]+)" and "([^"]+)"$`, selfUpdateOutputMentions2)
 	sc.Step(`^the installed binary is the release's binary$`, selfUpdateBinaryIsRelease)
@@ -140,7 +142,11 @@ func selfUpdateStartServer(latest string) error {
 	return nil
 }
 
-func selfUpdateRun(command string) error {
+func selfUpdateRun(command string) error { return selfUpdateRunEnv(command, "") }
+
+// selfUpdateRunEnv runs the deck command with the hermetic environment plus
+// one NAME=value assignment (none when env is empty).
+func selfUpdateRunEnv(command, env string) error {
 	s, err := selfUpdateCurrent()
 	if err != nil {
 		return err
@@ -155,6 +161,9 @@ func selfUpdateRun(command string) error {
 	}
 	cmd := exec.Command(s.exe, fields[1:]...)
 	cmd.Env = []string{"PATH=" + empty, "HOME=" + s.home, "DECK_UPDATE_URL=" + s.url}
+	if env != "" {
+		cmd.Env = append(cmd.Env, env)
+	}
 	out, err := cmd.CombinedOutput()
 	s.output = string(out)
 	var exit *exec.ExitError
@@ -176,6 +185,17 @@ func selfUpdateExitsZero() error {
 	}
 	if s.code != 0 {
 		return fmt.Errorf("exit code %d, output:\n%s", s.code, s.output)
+	}
+	return nil
+}
+
+func selfUpdateExitsOne() error {
+	s, err := selfUpdateCurrent()
+	if err != nil {
+		return err
+	}
+	if s.code != 1 {
+		return fmt.Errorf("exit code %d, want 1, output:\n%s", s.code, s.output)
 	}
 	return nil
 }

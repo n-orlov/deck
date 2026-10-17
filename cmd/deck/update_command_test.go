@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"strings"
 	"testing"
@@ -282,7 +283,8 @@ func TestUpdateVerbAgainstFakeServer(t *testing.T) {
 			if code != 0 {
 				t.Fatalf("exit %d, stderr %q", code, stderr)
 			}
-			for _, want := range []string{"v1.0.0", updLatest, "restart"} {
+			// A mirror has no release API: the install says so (#104).
+			for _, want := range []string{"v1.0.0", updLatest, "restart", "note: the release is not verified immutable: its immutability could not be checked"} {
 				if !strings.Contains(stdout, want) {
 					t.Errorf("stdout %q lacks %q", stdout, want)
 				}
@@ -386,6 +388,19 @@ func TestUpdateVerbAgainstFakeServer(t *testing.T) {
 			before := updSum(t, exe)
 			_, stderr, code := updRun(t, exe, t.TempDir(), ghDir, []string{goodURL}, "update")
 			expect(t, stderr, code, "attestation verification failed")
+			if updSum(t, exe) != before || len(updNames(t, dir)) != 1 {
+				t.Errorf("binary or directory changed: %v", updNames(t, dir))
+			}
+		})
+
+		t.Run("immutability required on a mirror", func(t *testing.T) {
+			dir, exe := place(v100())
+			before := updSum(t, exe)
+			_, stderr, code := updRun(t, exe, t.TempDir(), emptyPath, []string{goodURL, "DECK_REQUIRE_IMMUTABLE=1"}, "update")
+			expect(t, stderr, code, "could not be verified immutable")
+			if !strings.Contains(stderr, "DECK_REQUIRE_IMMUTABLE=1 is set; nothing was installed") {
+				t.Errorf("stderr %q does not name the switch", stderr)
+			}
 			if updSum(t, exe) != before || len(updNames(t, dir)) != 1 {
 				t.Errorf("binary or directory changed: %v", updNames(t, dir))
 			}
@@ -630,6 +645,31 @@ func TestUpdateVerbStderrStripsControlCharacters(t *testing.T) {
 				if stderrHasControl(strings.TrimSuffix(got, "\n")) {
 					t.Errorf("%v: stderr %q holds a control character", args, got)
 				}
+			}
+		})
+	}
+}
+
+// TestUpdateNotes: the notes after an install name a checksum-only
+// attestation and each immutability state in deck's own words, and always end
+// with the restart reminder (#104).
+func TestUpdateNotes(t *testing.T) {
+	const restart = "restart any running deck to use the new version; running sessions are not disturbed"
+	for _, c := range []struct {
+		name string
+		res  update.Result
+		want []string
+	}{
+		{"attested immutable", update.Result{Attestation: update.AttestationVerified, Immutable: update.ImmutableVerified},
+			[]string{"the release is a GitHub immutable release", restart}},
+		{"attested not immutable", update.Result{Attestation: update.AttestationVerified, Immutable: update.ImmutableNot},
+			[]string{"the release is not verified immutable: GitHub reports it is not an immutable release (DECK_REQUIRE_IMMUTABLE=1 refuses such a release)", restart}},
+		{"checksum-only unknown", update.Result{Attestation: update.AttestationSkipped, Immutable: update.ImmutableUnknown},
+			[]string{"only the checksum was verified; the build attestation could not be checked", "the release is not verified immutable: its immutability could not be checked (DECK_REQUIRE_IMMUTABLE=1 refuses such a release)", restart}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			if got := updateNotes(c.res); !reflect.DeepEqual(got, c.want) {
+				t.Errorf("notes = %q, want %q", got, c.want)
 			}
 		})
 	}

@@ -46,6 +46,10 @@ type updateIndicator struct {
 	// (updateInstalled only): upd.AttestationSkipped means only the checksum
 	// was verified (R331).
 	attestation string
+	// immutable is Result.Immutable of an installed update (updateInstalled
+	// only): anything but upd.ImmutableVerified means the release was not
+	// verified immutable (#104).
+	immutable string
 }
 
 // updateSource is how the model learns about releases: the throttled daily
@@ -65,7 +69,7 @@ type updateChecked struct {
 
 // updateInstalledMsg and updateFailedMsg report an update attempt's end. The
 // ctrl+u flow and the auto-install send them.
-type updateInstalledMsg struct{ tag, attestation string }
+type updateInstalledMsg struct{ tag, attestation, immutable string }
 type updateFailedMsg struct{ cause string }
 
 // WithUpdateSource wires the daily update check into the model: check is the
@@ -148,7 +152,7 @@ func (m Model) onUpdateChecked(msg updateChecked) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) onUpdateInstalled(msg updateInstalledMsg) (tea.Model, tea.Cmd) {
-	m.updateInd = updateIndicator{state: updateInstalled, tag: msg.tag, attestation: msg.attestation}
+	m.updateInd = updateIndicator{state: updateInstalled, tag: msg.tag, attestation: msg.attestation, immutable: msg.immutable}
 	m.footerNoteSets[noteUpdate]++
 	return m, nil
 }
@@ -247,12 +251,21 @@ func (m Model) updateStateText(ind updateIndicator) string {
 	return ""
 }
 
-// updateInstalledText is the Installed note; a checksum-only install says so.
+// updateInstalledText is the Installed note; a checksum-only install and a
+// release not verified immutable say so. An empty immutability (an install
+// that did not report one) adds nothing.
 func updateInstalledText(ind updateIndicator) string {
+	var caveats []string
 	if ind.attestation == upd.AttestationSkipped {
-		return fmt.Sprintf("update installed: %s (checksum-only, attestation not verified) — restart deck to apply", ind.tag)
+		caveats = append(caveats, "checksum-only, attestation not verified")
 	}
-	return fmt.Sprintf("update installed: %s — restart deck to apply", ind.tag)
+	if ind.immutable == upd.ImmutableNot || ind.immutable == upd.ImmutableUnknown {
+		caveats = append(caveats, "not verified immutable")
+	}
+	if len(caveats) == 0 {
+		return fmt.Sprintf("update installed: %s — restart deck to apply", ind.tag)
+	}
+	return fmt.Sprintf("update installed: %s (%s) — restart deck to apply", ind.tag, strings.Join(caveats, "; "))
 }
 
 // updateFailedText is the Failed note: the fixed phrase plus the cause, with
