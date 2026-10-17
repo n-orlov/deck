@@ -23,7 +23,10 @@ import (
 // registerSelfUpdateSteps backs features/self_update.feature (R296). The
 // scenario builds its own deck with a release version (a plain build is `dev`
 // and refuses to update), runs it with a hermetic environment and an empty
-// PATH, and points it at a loopback fake release server.
+// PATH, and points it at a loopback fake release server. That server is a
+// mirror with no GitHub release API, so the default immutability requirement
+// refuses its release; a scenario that installs passes DECK_REQUIRE_IMMUTABLE=0
+// through "the operator runs ... with ...".
 func registerSelfUpdateSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^a deck binary at version "([^"]+)" installed in a scratch directory$`, selfUpdateInstallBinary)
 	sc.Step(`^a fake release server whose latest release is "([^"]+)"$`, selfUpdateStartServer)

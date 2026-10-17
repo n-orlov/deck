@@ -139,7 +139,7 @@ func (m *Model) startUpdate() tea.Cmd {
 		}
 		res, err := run(context.Background())
 		if err != nil {
-			return updateFailedMsg{cause: upd.RedactText(upd.StripControl(err.Error()))}
+			return updateFailure(err)
 		}
 		if res.Unchanged {
 			return updateFailedMsg{cause: "no newer release to install"}
@@ -148,6 +148,16 @@ func (m *Model) startUpdate() tea.Cmd {
 			res.Tag = tag
 		}
 		return updateInstalledMsg{tag: res.Tag, attestation: res.Attestation, immutable: res.Immutable}
+	}
+}
+
+// updateFailure is the updateFailedMsg for a failed update: its cleaned
+// cause, and whether it is the immutability refusal.
+func updateFailure(err error) updateFailedMsg {
+	r, ok := upd.AsRefusal(err)
+	return updateFailedMsg{
+		cause:        upd.RedactText(upd.StripControl(err.Error())),
+		notImmutable: ok && r.Reason == upd.RefusedNotImmutable,
 	}
 }
 
@@ -210,11 +220,11 @@ func attestationSentence(plan string) string {
 func immutableSentence(plan string) string {
 	switch plan {
 	case upd.ImmutableRequired:
-		return upd.EnvRequireImmutable + "=1 is set: unless GitHub reports the release immutable,\nthe update will be refused and nothing will be installed."
+		return "An immutable release is required: unless GitHub reports the release\nimmutable, the update will be refused and nothing will be installed\n(" + upd.EnvRequireImmutable + "=0 opts out)."
 	case upd.ImmutableRefused:
-		return upd.EnvRequireImmutable + "=1 is set and the release source has no GitHub release\nAPI: the update will be refused and nothing will be installed."
+		return "The release source is a mirror with no GitHub release API, so its\nimmutability cannot be confirmed: the update will be refused and nothing\nwill be installed (" + upd.EnvRequireImmutable + "=0 opts out)."
 	}
-	return "GitHub is asked whether the release is immutable; one that is not\nverified immutable still installs, and the result says so."
+	return upd.EnvRequireImmutable + "=0 is set: GitHub is asked whether the release is\nimmutable; one that is not verified immutable still installs, and the\nresult says so."
 }
 
 func (m Model) styledUpdateConfirmBody() string {

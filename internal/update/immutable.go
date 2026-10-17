@@ -9,10 +9,16 @@ import (
 	"time"
 )
 
-// EnvRequireImmutable turns "the release is not verified immutable" from a
-// note into an abort, the way DECK_REQUIRE_ATTESTATION does for the build
-// attestation.
+// EnvRequireImmutable controls whether a release that is not verified
+// immutable may be installed. Requiring it is the default (fail closed): only
+// the exact value "0" opts out, turning the refusal into a note. Any other
+// value, an empty one included, keeps it required. This is the mirror image of
+// DECK_REQUIRE_ATTESTATION, whose default is the note and whose exact value
+// "1" makes it an abort.
 const EnvRequireImmutable = "DECK_REQUIRE_IMMUTABLE"
+
+// immutableOptOut is the one EnvRequireImmutable value that opts out.
+const immutableOptOut = "0"
 
 // DefaultAPIBase is the GitHub REST API the release's immutability is read
 // from. Only the default release base has it: a DECK_UPDATE_URL mirror has no
@@ -33,12 +39,12 @@ const (
 
 // Immutability plans, the PlanImmutable answers.
 const (
-	// ImmutableReported: the immutability is looked up and reported; a
-	// release not verified immutable still installs.
+	// ImmutableReported: DECK_REQUIRE_IMMUTABLE=0 opted out; the
+	// immutability is looked up and reported, and a release not verified
+	// immutable still installs.
 	ImmutableReported = "reported"
-	// ImmutableRequired: DECK_REQUIRE_IMMUTABLE=1 (or
-	// Options.RequireImmutable); only a release the API reports immutable
-	// installs.
+	// ImmutableRequired: the default (or Options.RequireImmutable); only a
+	// release the API reports immutable installs.
 	ImmutableRequired = "required"
 	// ImmutableRefused: immutability is required but the base is a mirror
 	// with no API, so the update would be refused whatever the release is.
@@ -52,10 +58,11 @@ const maxReleaseAPIBytes = 1 << 20
 // immutableTimeout bounds the release API request; tests shorten it.
 var immutableTimeout = 15 * time.Second
 
-// requireImmutable reports whether o (or the environment) makes a release
-// that is not verified immutable an abort.
+// requireImmutable reports whether a release that is not verified immutable
+// is an abort: always, unless DECK_REQUIRE_IMMUTABLE is exactly "0" and
+// Options.RequireImmutable is not set.
 func (o Options) requireImmutable() bool {
-	return o.RequireImmutable || os.Getenv(EnvRequireImmutable) == "1"
+	return o.RequireImmutable || os.Getenv(EnvRequireImmutable) != immutableOptOut
 }
 
 // releaseAPIBase is the API base the release's immutability is read from, or
@@ -124,16 +131,28 @@ func parseImmutable(body []byte) (string, error) {
 	return ImmutableUnknown, fmt.Errorf("the release API's immutable field is not a boolean")
 }
 
-// checkImmutable looks the release up and returns its immutability, or an
-// error when it is not verified immutable and DECK_REQUIRE_IMMUTABLE=1 (or
-// Options.RequireImmutable) forbids installing it.
+// checkImmutable looks the release up and returns its immutability, or a
+// RefusedNotImmutable Refusal when it is not verified immutable and
+// immutability is required (the default). The refusal is deck's own wording,
+// chosen from the state; no server text reaches it.
 func (o Options) checkImmutable(ctx context.Context, base, tag string) (string, error) {
-	state, why := o.releaseImmutability(ctx, base, tag)
+	state, _ := o.releaseImmutability(ctx, base, tag)
 	if state == ImmutableVerified || !o.requireImmutable() {
 		return state, nil
 	}
-	if state == ImmutableNot {
-		return "", fmt.Errorf("release %s is not a GitHub immutable release and %s=1 is set; nothing was installed", tag, EnvRequireImmutable)
+	return "", refuse(RefusedNotImmutable, "release %s %s, and an immutable release is required; nothing was installed (set %s=%s to install it anyway)",
+		tag, notImmutableCause(state, o.releaseAPIBase(base) == ""), EnvRequireImmutable, immutableOptOut)
+}
+
+// notImmutableCause says why a release is not verified immutable: GitHub
+// said so, the release source is a mirror with no release API, or the API
+// gave no usable answer.
+func notImmutableCause(state string, mirror bool) string {
+	switch {
+	case state == ImmutableNot:
+		return "is not a GitHub immutable release"
+	case mirror:
+		return "could not be confirmed immutable: the release source is a mirror with no GitHub release API"
 	}
-	return "", fmt.Errorf("release %s could not be verified immutable (%w) and %s=1 is set; nothing was installed", tag, why, EnvRequireImmutable)
+	return "could not be confirmed immutable: the GitHub release API gave no usable answer (offline, rate-limited or an unexpected reply)"
 }

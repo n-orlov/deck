@@ -34,7 +34,8 @@ type Options struct {
 	// DECK_REQUIRE_ATTESTATION=1.
 	RequireAttestation bool
 	// RequireImmutable aborts unless the GitHub release API reports the
-	// release immutable, like DECK_REQUIRE_IMMUTABLE=1.
+	// release immutable even when DECK_REQUIRE_IMMUTABLE=0 opts out (that
+	// abort is already the default).
 	RequireImmutable bool
 
 	// apiBase is test-only: the release API to ask in place of

@@ -113,9 +113,9 @@ func updateNotes(res update.Result) []string {
 	case update.ImmutableVerified:
 		notes = append(notes, "the release is a GitHub immutable release")
 	case update.ImmutableNot:
-		notes = append(notes, "the release is not verified immutable: GitHub reports it is not an immutable release ("+update.EnvRequireImmutable+"=1 refuses such a release)")
+		notes = append(notes, "the release is not verified immutable: GitHub reports it is not an immutable release (installed because "+update.EnvRequireImmutable+"=0 is set)")
 	case update.ImmutableUnknown:
-		notes = append(notes, "the release is not verified immutable: its immutability could not be checked ("+update.EnvRequireImmutable+"=1 refuses such a release)")
+		notes = append(notes, "the release is not verified immutable: its immutability could not be checked (installed because "+update.EnvRequireImmutable+"=0 is set)")
 	}
 	return append(notes, "restart any running deck to use the new version; running sessions are not disturbed")
 }
