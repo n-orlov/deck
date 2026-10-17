@@ -93,7 +93,7 @@ func ctrlUInstallModel(t *testing.T, badChecksum bool) (Model, string, string, *
 	t.Helper()
 	srv := ctrlUFakeServer(t, badChecksum)
 	t.Setenv("DECK_UPDATE_URL", srv.URL)
-	t.Setenv("PATH", t.TempDir()) // no gh: the update is checksum-verified only
+	verifyingGhPath(t) // a mirror requires the attestation (#102)
 	dir := t.TempDir()
 	exe := filepath.Join(dir, "deck")
 	if err := os.WriteFile(exe, []byte(ctrlUOldBody), 0o755); err != nil {
@@ -180,7 +180,7 @@ func TestCtrlUConfirmInstall(t *testing.T) {
 		t.Fatalf("update ran %d times, want 1", runs.Load())
 	}
 	m = sendUpdateMsg(t, m, msg)
-	const want = "update installed: v1.2.3 (checksum-only, attestation not verified; not verified immutable) — restart deck to apply"
+	const want = "update installed: v1.2.3 (not verified immutable) — restart deck to apply"
 	if got := m.footerNote(); got != want {
 		t.Fatalf("after the update: note = %q, want %q", got, want)
 	}
@@ -639,4 +639,17 @@ func TestCtrlUFailureNeverShowsBreakingSecret(t *testing.T) {
 			}
 		})
 	}
+}
+
+// verifyingGhPath puts a fake authenticated gh alone on PATH whose
+// `attestation verify` passes. A DECK_UPDATE_URL mirror refuses a
+// checksum-only install (#102), so a test that installs from its loopback
+// mirror needs one; the archive itself still comes over HTTP from the mirror.
+func verifyingGhPath(t *testing.T) {
+	t.Helper()
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "gh"), []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir)
 }

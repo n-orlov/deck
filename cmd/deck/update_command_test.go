@@ -260,6 +260,11 @@ func updExec(t *testing.T, binary, home, path string, env []string, args ...stri
 	return stdout.String(), stderr.String(), code
 }
 
+// fakeGhVerifies is an authenticated gh whose attestation check passes: a
+// DECK_UPDATE_URL mirror refuses a checksum-only install (#102), so a test
+// that installs from the loopback mirror puts it alone on PATH.
+const fakeGhVerifies = "#!/bin/sh\nexit 0\n"
+
 const fakeGhVerifyFails = `#!/bin/sh
 case "$1 $2" in
 "auth status") exit 0 ;;
@@ -275,6 +280,10 @@ func TestUpdateVerbAgainstFakeServer(t *testing.T) {
 	v100 := func() string { return bins.build(t, "v1.0.0", "-X main.version=v1.0.0") }
 	v120 := func() string { return bins.build(t, "v1.2.0", "-X main.version="+updLatest) }
 	emptyPath := t.TempDir()
+	verifyingPath := t.TempDir()
+	if err := os.WriteFile(filepath.Join(verifyingPath, "gh"), []byte(fakeGhVerifies), 0o755); err != nil {
+		t.Fatal(err)
+	}
 
 	// place copies the binary into a fresh install directory.
 	place := func(src string) (dir, exe string) {
@@ -291,9 +300,12 @@ func TestUpdateVerbAgainstFakeServer(t *testing.T) {
 		t.Run("install", func(t *testing.T) {
 			dir, exe := place(v100())
 			home := t.TempDir()
-			stdout, stderr, code := updRun(t, exe, home, emptyPath, []string{url}, "update")
+			stdout, stderr, code := updRun(t, exe, home, verifyingPath, []string{url}, "update")
 			if code != 0 {
 				t.Fatalf("exit %d, stderr %q", code, stderr)
+			}
+			if strings.Contains(stdout, "only the checksum was verified") {
+				t.Errorf("stdout %q says checksum-only although gh verified the attestation", stdout)
 			}
 			// A mirror has no release API: the install says so (#104).
 			for _, want := range []string{"v1.0.0", updLatest, "restart", "note: the release is not verified immutable: its immutability could not be checked"} {
@@ -306,6 +318,21 @@ func TestUpdateVerbAgainstFakeServer(t *testing.T) {
 			}
 			if names := updNames(t, dir); len(names) != 1 {
 				t.Errorf("install directory holds %v, want only deck", names)
+			}
+		})
+
+		// #102: a mirror serves both the archive and checksums.txt, so with
+		// no authenticated gh to check the attestation it is refused, as if
+		// DECK_REQUIRE_ATTESTATION=1 were set; nothing is installed.
+		t.Run("mirror without gh is refused", func(t *testing.T) {
+			dir, exe := place(v100())
+			before := updSum(t, exe)
+			_, stderr, code := updRun(t, exe, t.TempDir(), emptyPath, []string{url}, "update")
+			if code != 1 || !strings.Contains(stderr, "the attestation was not checked (no authenticated gh) and the release source is a mirror (DECK_UPDATE_URL), which requires it; nothing was installed") {
+				t.Fatalf("exit %d, stderr %q, want the mirror refusal", code, stderr)
+			}
+			if updSum(t, exe) != before || len(updNames(t, dir)) != 1 {
+				t.Errorf("a refused install changed the install directory: %v", updNames(t, dir))
 			}
 		})
 
@@ -338,7 +365,7 @@ func TestUpdateVerbAgainstFakeServer(t *testing.T) {
 		t.Run("version downgrade", func(t *testing.T) {
 			_, exe := place(v120())
 			home := t.TempDir()
-			stdout, stderr, code := updRun(t, exe, home, emptyPath, []string{url}, "update", "--version", "v1.0.0")
+			stdout, stderr, code := updRun(t, exe, home, verifyingPath, []string{url}, "update", "--version", "v1.0.0")
 			if code != 0 {
 				t.Fatalf("exit %d, stderr %q", code, stderr)
 			}

@@ -30,7 +30,7 @@ func newLiveUpdateRig(t *testing.T, config string) *liveUpdateRig {
 	srv := newAutoServer(t, false)
 	exe, _ := autoBinary(t)
 	t.Setenv("DECK_UPDATE_URL", srv.URL)
-	t.Setenv("PATH", t.TempDir()) // no gh: checksum-verified only
+	verifyingGhPath(t) // a mirror requires the attestation (#102)
 	t.Setenv("DECK_UPDATE_CHECK", "")
 	t.Setenv("DECK_AUTO_UPDATE", "")
 	_ = os.Unsetenv("DECK_UPDATE_CHECK")
@@ -151,7 +151,7 @@ func TestLiveSaveEnablingAutoUpdateInstallsWithoutRestart(t *testing.T) {
 	r.startup()
 	r.assertRequests(0)
 	r.saveToggle("auto_update")
-	if got := r.h.m.footerNote(); got != "update installed: v1.2.3 (checksum-only, attestation not verified; not verified immutable) — restart deck to apply" {
+	if got := r.h.m.footerNote(); got != "update installed: v1.2.3 (not verified immutable) — restart deck to apply" {
 		t.Fatalf("after enabling auto_update: note = %q", got)
 	}
 	if r.binary() != ctrlUNewBody || r.srv.archives.Load() != 1 {

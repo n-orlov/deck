@@ -342,6 +342,9 @@ type Model struct {
 	// (update_indicator.go, R298).
 	updateSrc updateSource
 	updateInd updateIndicator
+	// updateRecheckAfter replaces the recheck tick's delay
+	// (updateRecheckDelay) in a test; nil in production.
+	updateRecheckAfter func() time.Duration
 	// updateInstall and updateConfirming are R299's ctrl+u flow: the verified
 	// update to run, and the confirmation dialog that gates it
 	// (update_install.go).
@@ -2348,6 +2351,9 @@ func (m Model) Init() tea.Cmd {
 	if cmd := m.updateCheckCmd(); cmd != nil {
 		commands = append(commands, cmd)
 	}
+	if cmd := m.updateRecheckCmd(); cmd != nil {
+		commands = append(commands, cmd)
+	}
 	if m.configReloader != nil {
 		commands = append(commands, m.configPollTickCmd())
 	}
@@ -2866,6 +2872,7 @@ func init() {
 		reflect.TypeFor[archiveUndoExpired]():             handlerFor(Model.onArchiveUndoExpired),
 		reflect.TypeFor[footerNoteExpired]():              handlerFor(Model.onFooterNoteExpired),
 		reflect.TypeFor[updateChecked]():                  handlerFor(Model.onUpdateChecked),
+		reflect.TypeFor[updateRecheckTick]():              handlerFor(Model.onUpdateRecheckTick),
 		reflect.TypeFor[updateInstalledMsg]():             handlerFor(Model.onUpdateInstalled),
 		reflect.TypeFor[updateFailedMsg]():                handlerFor(Model.onUpdateFailed),
 		reflect.TypeFor[teardownHookNoteExpired]():        handlerFor(Model.onTeardownHookNoteExpired),
