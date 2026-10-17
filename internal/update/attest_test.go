@@ -18,7 +18,10 @@ import (
 // their release from a loopback mirror, which has no release API and so is
 // refused by the default immutability requirement; the package baseline is
 // therefore the DECK_REQUIRE_IMMUTABLE=0 opt-out, and the tests of the
-// default (immutable_test.go) unset it themselves.
+// default (immutable_test.go) unset it themselves. For the same reason the
+// loopback mirror stands in for the default base in the attestation rule
+// (mirrorIsOfficial), so the checksum-only fallback can be tested; the tests
+// of the mirror rule (#102) clear it themselves.
 func TestMain(m *testing.M) {
 	dir, err := os.MkdirTemp("", "deck-update-nopath-")
 	if err != nil {
@@ -27,6 +30,7 @@ func TestMain(m *testing.M) {
 	_ = os.Setenv("PATH", dir)
 	_ = os.Unsetenv(EnvRequireAttestation)
 	_ = os.Setenv(EnvRequireImmutable, "0")
+	mirrorIsOfficial = true
 	// Behind a rejecting proxy: a test that forgot its fake release server
 	// fails the package naming the public host it reached.
 	code := testnet.Main(m)
@@ -348,6 +352,99 @@ func TestPlanAttestationPredictsWhatRunDoes(t *testing.T) {
 			res, err := Run(context.Background(), o)
 			if (err != nil) != c.runFails || res.Attestation != c.wantRun {
 				t.Errorf("Run: attestation %q, err %v; want %q, fails=%v", res.Attestation, err, c.wantRun, c.runFails)
+			}
+		})
+	}
+}
+
+// useMirrorRule makes the loopback server a mirror again for one test: the
+// package baseline (TestMain) lets it stand in for the default base.
+func useMirrorRule(t *testing.T) {
+	t.Helper()
+	mirrorIsOfficial = false
+	t.Cleanup(func() { mirrorIsOfficial = true })
+}
+
+// TestMirrorRequiresAttestation (#102): a release base other than the default
+// (a DECK_UPDATE_URL mirror, or Options.BaseURL) serves both the archive and
+// checksums.txt, so a checksum-only install from it is refused as if
+// DECK_REQUIRE_ATTESTATION=1 were set, whether the base comes from the
+// environment or the option; an authenticated gh that verifies the
+// attestation against the pinned repository still installs it.
+func TestMirrorRequiresAttestation(t *testing.T) {
+	for _, c := range []struct {
+		name    string
+		auth    int // -1: no gh on PATH
+		fromEnv bool
+		want    string
+	}{
+		{"absent, option", -1, false, AttestationRefused},
+		{"absent, env", -1, true, AttestationRefused},
+		{"unauthenticated, env", 1, true, AttestationRefused},
+		{"authenticated, env", 0, true, AttestationVerified},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			useMirrorRule(t)
+			t.Setenv(EnvRequireAttestation, "")
+			rel := newRelease(t)
+			srv := rel.serve(t)
+			if c.auth >= 0 {
+				installFakeGh(t, rel, c.auth, 0, "")
+			} else {
+				t.Setenv("PATH", t.TempDir())
+			}
+			o := Options{GOOS: "linux", GOARCH: "amd64"}
+			if c.fromEnv {
+				t.Setenv(EnvBaseURL, srv.URL)
+			} else {
+				o.BaseURL = srv.URL
+			}
+			if got := PlanAttestation(context.Background(), o); got != c.want {
+				t.Fatalf("PlanAttestation = %q, want %q", got, c.want)
+			}
+			dir, exe := installOld(t)
+			beforeSum, beforeList := fileSum(t, exe), listing(t, dir)
+			o.Exe = exe
+			res, err := Run(context.Background(), o)
+			if c.want == AttestationVerified {
+				if err != nil || res.Attestation != AttestationVerified || fileSum(t, exe) != sum([]byte(newBody)) {
+					t.Fatalf("Run = %+v, %v; want the release installed and verified", res, err)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), "the release source is a mirror (DECK_UPDATE_URL), which requires it; nothing was installed") {
+				t.Fatalf("err = %v, want the mirror refusal", err)
+			}
+			if fileSum(t, exe) != beforeSum || !reflect.DeepEqual(listing(t, dir), beforeList) {
+				t.Fatal("a refused mirror install touched the install directory")
+			}
+		})
+	}
+}
+
+// TestRequireAttestation names why an unverifiable attestation aborts: the
+// environment and the option win over the mirror rule, and the default base
+// requires nothing.
+func TestRequireAttestation(t *testing.T) {
+	useMirrorRule(t)
+	t.Setenv(EnvBaseURL, "")
+	for _, c := range []struct {
+		name string
+		o    Options
+		env  string
+		want string
+	}{
+		{"default base", Options{}, "", ""},
+		{"default base, trailing slash", Options{BaseURL: DefaultBaseURL + "/"}, "", ""},
+		{"default base, env", Options{}, "1", EnvRequireAttestation + "=1 is set"},
+		{"default base, option", Options{RequireAttestation: true}, "", EnvRequireAttestation + "=1 is set"},
+		{"mirror", Options{BaseURL: "https://mirror.example"}, "", "the release source is a mirror (DECK_UPDATE_URL), which requires it"},
+		{"mirror, env", Options{BaseURL: "https://mirror.example"}, "1", EnvRequireAttestation + "=1 is set"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			t.Setenv(EnvRequireAttestation, c.env)
+			if got := c.o.requireAttestation(); got != c.want {
+				t.Fatalf("requireAttestation = %q, want %q", got, c.want)
 			}
 		})
 	}

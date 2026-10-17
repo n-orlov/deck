@@ -16,7 +16,8 @@ import (
 const DefaultRepo = "n-orlov/deck"
 
 // EnvRequireAttestation turns "the attestation could not be checked" from a
-// note into an abort, as it does for install.sh.
+// note into an abort, as it does for install.sh. A release base other than
+// the default (a DECK_UPDATE_URL mirror) always requires it (#102).
 const EnvRequireAttestation = "DECK_REQUIRE_ATTESTATION"
 
 // Attestation outcomes reported in Result.Attestation.
@@ -25,7 +26,8 @@ const (
 	AttestationSkipped  = "checksum-only"
 	// AttestationRefused is only ever a PlanAttestation answer: the update
 	// would be refused, because the attestation cannot be checked and
-	// DECK_REQUIRE_ATTESTATION=1 forbids falling back to the checksum.
+	// DECK_REQUIRE_ATTESTATION=1 or a mirror base forbids falling back to
+	// the checksum.
 	AttestationRefused = "refused"
 )
 
@@ -33,17 +35,39 @@ const (
 // about the build attestation: AttestationVerified (an authenticated gh is
 // present, so the attestation is verified and a failure aborts),
 // AttestationSkipped (no authenticated gh: the checksum alone is used, which
-// catches corruption only) or AttestationRefused (no authenticated gh and
-// DECK_REQUIRE_ATTESTATION=1 or Options.RequireAttestation). It asks the same
-// question attest does and touches nothing.
+// catches corruption only) or AttestationRefused (no authenticated gh and the
+// attestation is required: requireAttestation). It asks the same question
+// attest does and touches nothing.
 func PlanAttestation(ctx context.Context, o Options) string {
 	if findGh(ctx) != nil {
 		return AttestationVerified
 	}
-	if o.RequireAttestation || os.Getenv(EnvRequireAttestation) == "1" {
+	if o.requireAttestation() != "" {
 		return AttestationRefused
 	}
 	return AttestationSkipped
+}
+
+// mirrorIsOfficial is false in every shipped build and in every test that
+// does not set it: only this package's tests set it, so their loopback
+// release server stands in for DefaultBaseURL in requireAttestation and the
+// checksum-only fallback stays testable without the network.
+var mirrorIsOfficial bool
+
+// requireAttestation says why an attestation that cannot be checked aborts
+// the update rather than falling back to the checksum, or "" when it does
+// not: DECK_REQUIRE_ATTESTATION=1 or Options.RequireAttestation, or a release
+// base other than DefaultBaseURL. A mirror serves both the archive and
+// checksums.txt, so its checksum proves nothing about where the binary came
+// from; only the attestation, pinned to DefaultRepo, does (#102).
+func (o Options) requireAttestation() string {
+	if o.RequireAttestation || os.Getenv(EnvRequireAttestation) == "1" {
+		return EnvRequireAttestation + "=1 is set"
+	}
+	if !mirrorIsOfficial && baseURL(o.BaseURL) != DefaultBaseURL {
+		return "the release source is a mirror (" + EnvBaseURL + "), which requires it"
+	}
+	return ""
 }
 
 const ghTimeout = 2 * time.Minute
@@ -103,13 +127,13 @@ var errAttestationFailed = errors.New("attestation verification failed")
 // attest checks the downloaded archive file's build attestation. It returns
 // the outcome, or an error when the update must abort. Only an unauthenticated
 // or absent gh is "cannot verify": a checksum-only outcome, unless
-// DECK_REQUIRE_ATTESTATION=1 turns it into an abort. With an authenticated gh
+// requireAttestation turns it into an abort. With an authenticated gh
 // every nonzero verification result aborts (R294), including a release that
 // has no attestation.
 func (o Options) attest(ctx context.Context, g *gh, archive string) (string, error) {
 	cannot := func(why string) (string, error) {
-		if o.RequireAttestation || os.Getenv(EnvRequireAttestation) == "1" {
-			return "", fmt.Errorf("%s and %s=1 is set; nothing was installed", why, EnvRequireAttestation)
+		if required := o.requireAttestation(); required != "" {
+			return "", fmt.Errorf("%s and %s; nothing was installed", why, required)
 		}
 		return AttestationSkipped, nil
 	}

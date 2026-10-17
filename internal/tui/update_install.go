@@ -210,7 +210,7 @@ func attestationSentence(plan string) string {
 	case upd.AttestationVerified:
 		return "The build attestation will be verified with your authenticated gh."
 	case upd.AttestationRefused:
-		return "No authenticated gh is available and " + upd.EnvRequireAttestation + "=1 is set:\nthe update will be refused and nothing will be installed."
+		return "No authenticated gh is available and the attestation is required\n(" + upd.EnvRequireAttestation + "=1, or a " + upd.EnvBaseURL + " mirror): the\nupdate will be refused and nothing will be installed."
 	}
 	return "No authenticated gh is available, so the build attestation will not be\nverified: only the checksum is used, which catches corruption only."
 }

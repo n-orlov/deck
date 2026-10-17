@@ -70,7 +70,7 @@ func autoRun(t *testing.T, srv *autoServer, exe, current string, autoUpdate bool
 func autoRunCache(t *testing.T, srv *autoServer, exe, current string, autoUpdate bool, cache string) Model {
 	t.Helper()
 	t.Setenv("DECK_UPDATE_URL", srv.URL)
-	t.Setenv("PATH", t.TempDir()) // no gh: checksum-verified only
+	verifyingGhPath(t) // a mirror requires the attestation (#102)
 	settings := config.Settings{AutoUpdate: autoUpdate, UpdateCheck: true}
 	opts := upd.Options{Exe: exe, Current: current}
 	checker := &upd.Checker{
@@ -119,7 +119,7 @@ func TestAutoUpdate(t *testing.T) {
 	if m.updateConfirming {
 		t.Fatal("auto-update opened a confirmation")
 	}
-	if got, want := m.footerNote(), "update installed: v1.2.3 (checksum-only, attestation not verified; not verified immutable) — restart deck to apply"; got != want {
+	if got, want := m.footerNote(), "update installed: v1.2.3 (not verified immutable) — restart deck to apply"; got != want {
 		t.Fatalf("indicator = %q, want %q", got, want)
 	}
 	if got := srv.archives.Load(); got != 1 {

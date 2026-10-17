@@ -3,7 +3,9 @@ package tui
 import (
 	"context"
 	"fmt"
+	"math/rand/v2"
 	"strings"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 
@@ -119,6 +121,47 @@ func (m Model) updateCheckCmd() tea.Cmd {
 		}
 		return out
 	}
+}
+
+// updateRecheckTick fires about once per upd.CheckInterval while deck runs
+// (SPEC §6.5): it runs the daily check again, so a deck left open for days
+// still learns of a release published after it started.
+type updateRecheckTick struct{}
+
+// updateRecheckJitter bounds the random delay added to each recheck, so
+// instances started together do not all ask at the same moment (the cache
+// lock already makes them share one request).
+const updateRecheckJitter = time.Hour
+
+// updateRecheckDelay is the wait before the next recheck: upd.CheckInterval
+// plus a random jitter in [0, updateRecheckJitter), or m.updateRecheckAfter's
+// answer when a test set it.
+func (m Model) updateRecheckDelay() time.Duration {
+	if m.updateRecheckAfter != nil {
+		return m.updateRecheckAfter()
+	}
+	return upd.CheckInterval + rand.N(updateRecheckJitter) //nolint:gosec // scheduling jitter, not a secret
+}
+
+// updateRecheckCmd schedules the next recheck, or nil without a source. The
+// tick runs whatever the settings say: updateCheckCmd reads them when it
+// fires, so a check that is off makes no request.
+func (m Model) updateRecheckCmd() tea.Cmd {
+	if m.updateSrc.check == nil {
+		return nil
+	}
+	return tea.Tick(m.updateRecheckDelay(), func(time.Time) tea.Msg { return updateRecheckTick{} })
+}
+
+// onUpdateRecheckTick runs the daily check again and schedules the next
+// recheck. The check is still throttled by the shared cache and its lock:
+// across every instance and profile at most one request is made per
+// upd.CheckInterval, and an instance whose window has not run out reads the
+// cached answer another one recorded, so it shows the same indicator. The
+// answer is applied by onUpdateChecked, which keeps an Installed, Installing
+// or held-not-immutable state (applyUpdateCheck).
+func (m Model) onUpdateRecheckTick(updateRecheckTick) (tea.Model, tea.Cmd) {
+	return m, tea.Batch(m.updateCheckCmd(), m.updateRecheckCmd())
 }
 
 // updateSettingsApplied runs after a live settings save or an external reload

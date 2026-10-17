@@ -13,15 +13,20 @@ import (
 // attestationModes are the three things the ctrl+u confirmation can promise
 // about the build attestation (R331). Each is reached through the real
 // detection (upd.PlanAttestation), by what is on PATH and in the environment.
+// Only the default release base can fall back to the checksum: a
+// DECK_UPDATE_URL mirror requires the attestation (#102). Opening the dialog
+// asks no server, so the default base is never reached.
 var attestationModes = []struct {
 	name    string
 	gh      bool // an authenticated gh is on PATH
 	require bool // DECK_REQUIRE_ATTESTATION=1
+	mirror  bool // DECK_UPDATE_URL names the loopback mirror
 	want    string
 }{
-	{"attested", true, false, upd.AttestationVerified},
-	{"checksum-only", false, false, upd.AttestationSkipped},
-	{"require-variable-with-no-gh", false, true, upd.AttestationRefused},
+	{"attested", true, false, true, upd.AttestationVerified},
+	{"checksum-only", false, false, false, upd.AttestationSkipped},
+	{"require-variable-with-no-gh", false, true, false, upd.AttestationRefused},
+	{"mirror-with-no-gh", false, false, true, upd.AttestationRefused},
 }
 
 func attestationPath(t *testing.T, gh bool) {
@@ -49,7 +54,10 @@ func TestCtrlUConfirmationStatesAttestationPlan(t *testing.T) {
 				t.Setenv(upd.EnvRequireAttestation, "")
 			}
 			m, _, _, runs := ctrlUInstallModel(t, false)
-			attestationPath(t, c.gh) // ctrlUInstallModel empties PATH
+			attestationPath(t, c.gh) // ctrlUInstallModel sets its own PATH
+			if !c.mirror {
+				t.Setenv(upd.EnvBaseURL, "")
+			}
 			m, _ = ctrlUPress(t, m, ctrlUKey)
 			if !m.updateConfirming {
 				t.Fatal("ctrl+u opened no confirmation")
@@ -124,18 +132,36 @@ func TestInstalledIndicatorKeepsAttestation(t *testing.T) {
 	}
 }
 
-// TestRealInstallWithoutGhIsMarkedChecksumOnly: the real update with no gh on
-// PATH ends in the Installed state with the checksum-only attestation.
-func TestRealInstallWithoutGhIsMarkedChecksumOnly(t *testing.T) {
-	m, _, _, runs := ctrlUInstallModel(t, false)
+// TestRealInstallFromMirrorWithoutGhIsRefused (#102): the real update from a
+// DECK_UPDATE_URL mirror with no gh on PATH is refused: the dialog says so
+// before anything runs, and the attempt fails naming the mirror with the
+// binary unchanged.
+func TestRealInstallFromMirrorWithoutGhIsRefused(t *testing.T) {
+	m, exe, oldSum, runs := ctrlUInstallModel(t, false)
+	attestationPath(t, false)
 	m, _ = ctrlUPress(t, m, ctrlUKey)
-	if m.updateAttPlan != upd.AttestationSkipped {
-		t.Fatalf("plan = %q, want checksum-only with no gh", m.updateAttPlan)
+	if m.updateAttPlan != upd.AttestationRefused {
+		t.Fatalf("plan = %q, want refused for a mirror with no gh", m.updateAttPlan)
+	}
+	if body := m.updateConfirmBody(); !strings.Contains(body, "a DECK_UPDATE_URL mirror") || !strings.Contains(body, "Enter tries anyway and is refused") {
+		t.Fatalf("confirmation does not name the mirror refusal:\n%s", body)
 	}
 	m, cmd := ctrlUPress(t, m, key("enter"))
 	next, _ := m.Update(cmd())
 	m = next.(Model)
-	if runs.Load() != 1 || m.updateInd.state != updateInstalled || m.updateInd.attestation != upd.AttestationSkipped {
-		t.Fatalf("runs=%d indicator=%+v, want one install, installed, checksum-only", runs.Load(), m.updateInd)
+	if runs.Load() != 1 || m.updateInd.state != updateFailed || !strings.Contains(m.updateInd.reason, "the release source is a mirror") {
+		t.Fatalf("runs=%d indicator=%+v, want one attempt, failed naming the mirror", runs.Load(), m.updateInd)
 	}
+	if got := ctrlUSum(mustRead(t, exe)); got != oldSum {
+		t.Fatal("a refused mirror install changed the binary")
+	}
+}
+
+func mustRead(t *testing.T, path string) []byte {
+	t.Helper()
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return b
 }
