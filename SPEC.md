@@ -4641,7 +4641,7 @@ in the help view.
   workflow (such as `pages-pr-publish.yml`) is ignored, green or red. A run whose workflow path is
   missing, null, empty or anything other than `.github/workflows/ci.yml` (with or without GitHub's
   `@<ref>` suffix) is not `ci.yml`'s, so its suite check never gates. `release.yml` pins its
-  actions by commit SHA like the other workflows. **Release attestation (R236):** `release.yml`
+  actions by commit SHA like the other workflows. **Publish order:** `release.yml` creates the GitHub release as a draft with every asset attached and only then publishes it (`--draft=false --latest`), so the repository's immutable-releases setting, which freezes a release at publication, never sees a half-populated release. **Release attestation (R236):** `release.yml`
   attests the four tarballs and `checksums.txt` with `actions/attest-build-provenance` (pinned by
   commit SHA, tag in a trailing comment), the job holding exactly the extra `id-token: write` and
   `attestations: write` permissions. `install.sh`, after the checksum check, runs
