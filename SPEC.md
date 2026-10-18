@@ -4292,14 +4292,18 @@ must be restored afterwards.
   comparison reads the option through tmux's format lookup, which is pane first, then the
   window (with the global window options), then the session and the global options — so a
   value at a scope other than the window can defeat it: a pane value always does, and a
-  global-window, session or global value does while the window's own option is unset. Whether
+  global-window, session or global value does while the window's own option is absent — a
+  window option set to the empty string is present and ends the lookup, so nothing behind it
+  is a shadow. Whether
   such a value exists is asked of tmux scope by scope (`show-options` at the pane, global-window,
   session and global scope), never inferred from comparing values: a shadow holding the very
   value the window holds, an empty one, or one with control characters shadows all the same. A
   claim or a release that finds such a value refuses with an error naming the scope
   (`pane-scope`, `global-window-scope`, `session-scope` or `global-scope`) and tells the
   operator to unset it with `set-option -u`; it writes nothing, so a release leaves the window
-  option as it was and a claim never writes over a live window claim, and neither retries. The stored value is read verbatim: the read uses tmux's escaped
+  option as it was — whether the window still holds this claim, holds a later claimant's, or
+  is unset — and a claim never writes over a live window claim, and neither retries. With no
+  such value, a release whose claim the window no longer holds writes nothing and succeeds. The stored value is read verbatim: the read uses tmux's escaped
   `show-options -w` form and decodes it, because `show-options -wv` and `display-message`
   print a control character as `_`. The single newline tmux prints after the line is the only
   one removed, so a value that itself ends in one or more newlines is compared with them, and

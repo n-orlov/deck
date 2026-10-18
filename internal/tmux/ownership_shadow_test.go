@@ -244,3 +244,184 @@ func TestReleaseWithEqualPaneShadowLeavesWindowOption(t *testing.T) {
 		t.Fatalf("window option = %q after Release; want it left as the claim %q", got, ownership.claim)
 	}
 }
+
+// displayOwnershipForShadowTest reads `#{@deck_isize_owner}` through tmux's
+// own format lookup, the scope chain the compare-and-set condition uses.
+func displayOwnershipForShadowTest(t *testing.T, socket string) string {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	output, err := exec.CommandContext(ctx, "tmux", "-L", socket, "display-message", "-p", "-t", "s0", "#{"+OwnershipOption+"}").CombinedOutput()
+	if err != nil {
+		t.Fatalf("display-message: %v: %s", err, output)
+	}
+	return strings.TrimSuffix(string(output), "\n")
+}
+
+// assertReleaseRefusesDisplacedShadow: the claim was acquired and then
+// displaced on the window (replaced by windowAfter, or unset when it is
+// empty), and shadowArgs puts the ORIGINAL claim at another scope, where the
+// compare-and-set condition would read it and match. Release refuses naming
+// wantScope and the window option stays exactly as the displacement left it.
+func assertReleaseRefusesDisplacedShadow(t *testing.T, name, wantScope string, shadowArgs []string, windowAfter string) {
+	t.Helper()
+	socket := shadowTestSocket(name)
+	cleanup := newBareOwnershipSession(t, socket)
+	defer cleanup()
+	client := Client{Socket: socket, Timeout: 3 * time.Second}
+
+	ownership, owned, err := client.ClaimWindowOwnership(context.Background(), "s0")
+	if err != nil || !owned {
+		t.Fatalf("claim: owned=%v err=%v", owned, err)
+	}
+	if windowAfter != "" {
+		setWindowOwnershipRaw(t, socket, windowAfter)
+	} else if output, err := exec.Command("tmux", "-L", socket, "set-option", "-w", "-u", "-t", "s0", OwnershipOption).CombinedOutput(); err != nil {
+		t.Fatalf("unset window option: %v: %s", err, output)
+	}
+	setShadowOwnership(t, socket, shadowArgs, ownership.claim)
+
+	releaseErr := ownership.Release(context.Background())
+	if releaseErr == nil || !strings.Contains(releaseErr.Error(), wantScope) {
+		t.Fatalf("Release err = %v; want an error naming %s", releaseErr, wantScope)
+	}
+	after, err := client.readWindowOwnership(context.Background(), "s0")
+	if err != nil {
+		t.Fatalf("read window option: %v", err)
+	}
+	if after.Value != windowAfter || after.Present != (windowAfter != "") {
+		t.Fatalf("window option = %+v after Release; want it left as %q", after, windowAfter)
+	}
+}
+
+// TestReleaseDisplacedWindowWithOriginalClaimInPaneRefuses: the window now
+// holds another live claim and the pane holds the original one. The pane is
+// what the compare-and-set reads, so without the scope check it would match
+// and unset the replacement claim.
+func TestReleaseDisplacedWindowWithOriginalClaimInPaneRefuses(t *testing.T) {
+	assertReleaseRefusesDisplacedShadow(t, "releasedisplacedpane", "pane-scope", []string{"-p", "-t", "s0"},
+		formatOwnershipClaim("replacement", os.Getpid()))
+}
+
+// TestReleaseDisplacedWindowWithOriginalClaimInPaneControlCharacterRefuses:
+// the replacement differs from the original only where a display form would
+// print `_`; the scope still decides.
+func TestReleaseDisplacedWindowWithOriginalClaimInPaneControlCharacterRefuses(t *testing.T) {
+	assertReleaseRefusesDisplacedShadow(t, "releasedisplacedctl", "pane-scope", []string{"-p", "-t", "s0"},
+		formatOwnershipClaim("replace\nment", os.Getpid()))
+}
+
+// TestReleaseUnsetWindowWithOriginalClaimInSessionRefuses: the window option
+// is absent, so the lookup falls back to the session, which holds the claim.
+func TestReleaseUnsetWindowWithOriginalClaimInSessionRefuses(t *testing.T) {
+	assertReleaseRefusesDisplacedShadow(t, "releaseunsetsession", "session-scope", []string{"-t", "s0"}, "")
+}
+
+// TestReleaseUnsetWindowWithOriginalClaimInGlobalWindowRefuses: the same
+// fallback through the global window options.
+func TestReleaseUnsetWindowWithOriginalClaimInGlobalWindowRefuses(t *testing.T) {
+	assertReleaseRefusesDisplacedShadow(t, "releaseunsetglobalwindow", "global-window-scope", []string{"-wg"}, "")
+}
+
+// TestReleaseDisplacedWindowIgnoresFallbackScopes: a window option that is
+// present ends the lookup, so session and global-window values holding the
+// original claim are not read; Release is a no-op that leaves the
+// replacement claim in place and reports nothing.
+func TestReleaseDisplacedWindowIgnoresFallbackScopes(t *testing.T) {
+	socket := shadowTestSocket("releasedisplacedfallback")
+	cleanup := newBareOwnershipSession(t, socket)
+	defer cleanup()
+	client := Client{Socket: socket, Timeout: 3 * time.Second}
+
+	ownership, owned, err := client.ClaimWindowOwnership(context.Background(), "s0")
+	if err != nil || !owned {
+		t.Fatalf("claim: owned=%v err=%v", owned, err)
+	}
+	replacement := formatOwnershipClaim("replacement", os.Getpid())
+	setWindowOwnershipRaw(t, socket, replacement)
+	setShadowOwnership(t, socket, []string{"-t", "s0"}, ownership.claim)
+	setShadowOwnership(t, socket, []string{"-wg"}, ownership.claim)
+
+	if err := ownership.Release(context.Background()); err != nil {
+		t.Fatalf("Release: %v; want a no-op (the window option ends the lookup)", err)
+	}
+	got, err := readTmuxOptionForOwnershipTest(t, socket)
+	if err != nil {
+		t.Fatalf("read window option: %v", err)
+	}
+	if got != replacement {
+		t.Fatalf("window option = %q after Release; want the replacement %q untouched", got, replacement)
+	}
+}
+
+// assertClaimOverEmptyWindowIgnoresFallback: the window option is present
+// but explicitly empty, and fallbackArgs puts a value at a scope tmux's
+// lookup only reaches when the window option is absent. tmux itself reads
+// the empty window value, so the claim is acquired and the fallback value is
+// neither reported as a shadow nor touched.
+func assertClaimOverEmptyWindowIgnoresFallback(t *testing.T, name string, fallbackArgs []string, fallbackValue string) {
+	t.Helper()
+	socket := shadowTestSocket(name)
+	cleanup := newBareOwnershipSession(t, socket)
+	defer cleanup()
+	client := Client{Socket: socket, Timeout: 3 * time.Second}
+
+	setWindowOwnershipRaw(t, socket, "")
+	setShadowOwnership(t, socket, fallbackArgs, fallbackValue)
+	if looked := displayOwnershipForShadowTest(t, socket); looked != "" {
+		t.Fatalf("tmux's lookup reads %q; want the empty window value (the fixture is wrong)", looked)
+	}
+	before, err := client.readWindowOwnership(context.Background(), "s0")
+	if err != nil || !before.Present || before.Set {
+		t.Fatalf("window read = %+v, %v; want present and empty", before, err)
+	}
+
+	ownership, owned, err := client.ClaimWindowOwnership(context.Background(), "s0")
+	if err != nil || !owned || ownership == nil {
+		t.Fatalf("claim: owned=%v err=%v; want acquired over an empty window option", owned, err)
+	}
+	if got, _ := readTmuxOptionForOwnershipTest(t, socket); got != ownership.claim {
+		t.Fatalf("window option = %q; want the claim %q", got, ownership.claim)
+	}
+	if looked := displayOwnershipForShadowTest(t, socket); looked != ownership.claim {
+		t.Fatalf("tmux's lookup reads %q after the claim; want %q", looked, ownership.claim)
+	}
+	if err := ownership.Release(context.Background()); err != nil {
+		t.Fatalf("Release: %v", err)
+	}
+}
+
+// TestClaimEmptyWindowDoesNotFallBackToSession: a present empty window option
+// is not an absent one; the session value behind it is not a shadow.
+func TestClaimEmptyWindowDoesNotFallBackToSession(t *testing.T) {
+	assertClaimOverEmptyWindowIgnoresFallback(t, "emptywindowsession", []string{"-t", "s0"}, formatOwnershipClaim("sessionowner", os.Getpid()))
+}
+
+func TestClaimEmptyWindowDoesNotFallBackToGlobalWindow(t *testing.T) {
+	assertClaimOverEmptyWindowIgnoresFallback(t, "emptywindowglobalwindow", []string{"-wg"}, "dead:1\n")
+}
+
+func TestClaimEmptyWindowDoesNotFallBackToGlobal(t *testing.T) {
+	assertClaimOverEmptyWindowIgnoresFallback(t, "emptywindowglobal", []string{"-g"}, "")
+}
+
+// TestClaimRefusesPaneShadowOverEmptyWindowOption: an empty window option
+// stops the fallback, never the pane, which the lookup reads first.
+func TestClaimRefusesPaneShadowOverEmptyWindowOption(t *testing.T) {
+	socket := shadowTestSocket("emptywindowpane")
+	cleanup := newBareOwnershipSession(t, socket)
+	defer cleanup()
+	client := Client{Socket: socket, Timeout: 3 * time.Second}
+
+	setWindowOwnershipRaw(t, socket, "")
+	setShadowOwnership(t, socket, []string{"-p", "-t", "s0"}, "")
+
+	ownership, owned, err := client.ClaimWindowOwnership(context.Background(), "s0")
+	if owned || ownership != nil || err == nil || !strings.Contains(err.Error(), "pane-scope") {
+		t.Fatalf("claim: owned=%v err=%v; want a refusal naming pane-scope", owned, err)
+	}
+	after, readErr := client.readWindowOwnership(context.Background(), "s0")
+	if readErr != nil || !after.Present || after.Set {
+		t.Fatalf("window read = %+v, %v after the refusal; want it still present and empty", after, readErr)
+	}
+}

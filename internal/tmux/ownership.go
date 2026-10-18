@@ -117,9 +117,16 @@ func pidAlive(pid int) bool {
 // distinction; OwnershipOption is a user option, so only the error shape
 // ever applies to it, but this function does not assume that and treats an
 // empty successful read as unset too).
+//
+// Present is narrower than "holds a claim": it reports whether the window
+// scope holds the option at all, a value explicitly set to the empty string
+// (which show-options prints as an empty quoted pair) included. tmux's
+// format lookup stops at a present window option whatever it holds, so only
+// an absent one lets the global-window, session or global scope through.
 type windowOwnershipState struct {
-	Value string
-	Set   bool
+	Value   string
+	Set     bool
+	Present bool
 }
 
 func (c Client) readWindowOwnership(ctx context.Context, target string) (windowOwnershipState, error) {
@@ -154,9 +161,9 @@ func (c Client) parseWindowOwnershipRead(output []byte, err error, what string) 
 		return windowOwnershipState{}, fmt.Errorf("tmux -L %s %s: %w", c.Socket, what, decodeErr)
 	}
 	if value == "" {
-		return windowOwnershipState{}, nil
+		return windowOwnershipState{Present: true}, nil
 	}
-	return windowOwnershipState{Value: value, Set: true}, nil
+	return windowOwnershipState{Value: value, Set: true, Present: true}, nil
 }
 
 // decodeShowOptionsValue recovers the stored string from one line of tmux's
@@ -236,11 +243,12 @@ var ownershipShadowScopes = []struct {
 
 // findOwnershipShadow names the scope whose OwnershipOption value the
 // compare-and-set condition would read instead of the window's. A pane value
-// shadows a set window option; with the window option unset a value at the
-// global window, session or global scope is what the lookup falls back to.
+// always shadows; with the window option absent from the window scope (not
+// merely empty: a present empty value ends the lookup) a value at the global
+// window, session or global scope is what the lookup falls back to.
 func (c Client) findOwnershipShadow(ctx context.Context, target string, window windowOwnershipState) (string, error) {
 	for _, scope := range ownershipShadowScopes {
-		if window.Set && scope.name != "pane-scope" {
+		if window.Present && scope.name != "pane-scope" {
 			continue
 		}
 		commandCtx, cancel := context.WithTimeout(ctx, c.timeout())
@@ -317,10 +325,10 @@ func quoteTmuxCommandArg(arg string) string {
 //
 // The comparison reads `#{@deck_isize_owner}`, which expands to "" when the
 // option is unset, so an unset expected compares against "". (A format
-// lookup falls back to the session and global scopes where show-options
-// -w does not; deck only ever sets OwnershipOption per window, so the two
-// agree. A stray global value would make every compare-and-set fail and
-// ClaimWindowOwnership give up with an error rather than mis-claim.) The trailing
+// lookup reads a pane value first and falls back to the global-window,
+// session and global scopes when the window option is absent, where
+// show-options -w does not; callers ask findOwnershipShadow first and refuse
+// rather than compare against such a value.) The trailing
 // show-options is the confirm-read: it reports what the option holds after
 // the conditional, which is how the caller learns whether its set took
 // effect (the option reads exactly next) or the comparison failed because
@@ -586,20 +594,21 @@ func (o *WindowOwnership) Probe(ctx context.Context) (ClaimState, error) {
 // compare-and-set, so a steal can never land between them.
 func (o *WindowOwnership) Release(ctx context.Context) error {
 	// A value at another scope the format lookup reads before the window's
-	// decides the comparison whatever it holds, so a release that finds one
-	// refuses before writing: the window option is left untouched.
+	// decides the comparison whatever it holds -- and whatever the window
+	// holds: a shadow equal to this claim would let the compare-and-set unset
+	// a window option a later claimant replaced it with. So a release that
+	// finds one refuses before writing, the window option left untouched.
 	current, err := o.client.readWindowOwnership(ctx, o.target)
 	if err != nil {
 		return err
 	}
-	if current.Set && current.Value == o.claim {
-		scope, err := o.client.findOwnershipShadow(ctx, o.target, current)
-		if err != nil {
-			return err
-		}
-		if scope != "" {
-			return shadowedOwnershipError("release", o.target, scope)
-		}
+	if err := o.refuseShadowedRelease(ctx, current); err != nil {
+		return err
+	}
+	if !current.Set || current.Value != o.claim {
+		// Displaced (or already released): the window holds no claim of
+		// this call's, so there is nothing of ours to unset.
+		return nil
 	}
 	confirm, err := o.client.compareAndSetWindowOwnership(ctx, o.target, windowOwnershipState{Value: o.claim, Set: true}, "")
 	if err != nil {
@@ -608,13 +617,20 @@ func (o *WindowOwnership) Release(ctx context.Context) error {
 	if confirm.Set && confirm.Value == o.claim {
 		// The claim is still there: the comparison failed although the window
 		// holds it, which only a value at another scope can cause. Report it.
-		scope, err := o.client.findOwnershipShadow(ctx, o.target, confirm)
-		if err != nil {
-			return err
-		}
-		if scope != "" {
-			return shadowedOwnershipError("release", o.target, scope)
-		}
+		return o.refuseShadowedRelease(ctx, confirm)
+	}
+	return nil
+}
+
+// refuseShadowedRelease returns the release refusal naming the scope that
+// shadows the window option as read in window (nil when none does).
+func (o *WindowOwnership) refuseShadowedRelease(ctx context.Context, window windowOwnershipState) error {
+	scope, err := o.client.findOwnershipShadow(ctx, o.target, window)
+	if err != nil {
+		return err
+	}
+	if scope != "" {
+		return shadowedOwnershipError("release", o.target, scope)
 	}
 	return nil
 }
