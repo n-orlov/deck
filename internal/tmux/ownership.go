@@ -19,17 +19,17 @@ import (
 // simultaneously, and scoping to the window is what makes that possible.
 const OwnershipOption = "@deck_isize_owner"
 
-// maxOwnershipClaimAttempts bounds the read/write/confirm-read loop in
+// maxOwnershipClaimAttempts bounds the read/compare-and-set loop in
 // ClaimWindowOwnership. It is not a retry-until-it-works loop for a live
 // contended option -- a live owner is respected on its very first read,
 // before this call ever writes anything -- it only bounds how many times a
-// write can be raced away by a concurrent writer between this call's own
-// write and its confirm-read (each loss loops back to a fresh read, which
-// validates the winning writer's liveness in turn). A small fixed bound,
-// not a timer, is enough to make that converge; there is deliberately no
-// heartbeat and no TTL anywhere in this file (every writer of a tmux socket
-// runs on the socket's own host, so liveness is a kill(pid, 0) syscall
-// rather than a lease -- PRD II-14).
+// compare-and-set can fail because a concurrent writer changed the option
+// between this call's read and its compare-and-set (each loss loops back
+// to a fresh read, which validates the winning writer's liveness in
+// turn). A small fixed bound, not a timer, is enough to make that
+// converge; there is deliberately no heartbeat and no TTL anywhere in this
+// file (every writer of a tmux socket runs on the socket's own host, so
+// liveness is a kill(pid, 0) syscall rather than a lease -- PRD II-14).
 const maxOwnershipClaimAttempts = 3
 
 // WindowOwnership is a confirmed claim to OwnershipOption on one tmux
@@ -126,12 +126,19 @@ func (c Client) readWindowOwnership(ctx context.Context, target string) (windowO
 	commandCtx, cancel := context.WithTimeout(ctx, c.timeout())
 	defer cancel()
 	output, err := c.command(commandCtx, "show-options", "-wv", "-t", target, OwnershipOption).CombinedOutput()
+	return c.parseWindowOwnershipRead(output, err, "show-options -wv -t "+target+" "+OwnershipOption)
+}
+
+// parseWindowOwnershipRead turns the output of a tmux invocation whose last
+// (or only) command is `show-options -wv -t <target> OwnershipOption` into a
+// windowOwnershipState, mapping tmux's "invalid option" error shape to unset.
+func (c Client) parseWindowOwnershipRead(output []byte, err error, what string) (windowOwnershipState, error) {
 	trimmed := strings.TrimRight(string(output), "\n")
 	if err != nil {
 		if strings.Contains(trimmed, "invalid option") {
 			return windowOwnershipState{}, nil
 		}
-		return windowOwnershipState{}, fmt.Errorf("tmux -L %s show-options -wv -t %s %s: %w: %s", c.Socket, target, OwnershipOption, err, trimmed)
+		return windowOwnershipState{}, fmt.Errorf("tmux -L %s %s: %w: %s", c.Socket, what, err, trimmed)
 	}
 	if trimmed == "" {
 		return windowOwnershipState{}, nil
@@ -153,21 +160,78 @@ func (c Client) unsetWindowOwnership(ctx context.Context, target string) error {
 	return nil
 }
 
+// formatLiteralEscaper escapes a literal so it can stand as one operand of a
+// tmux format comparison (`#{==:a,b}`): `#` would start an expansion, `,`
+// would end the operand and `}` would close the conditional, so each gets
+// tmux's own `#` escape.
+var formatLiteralEscaper = strings.NewReplacer("#", "##", ",", "#,", "}", "#}")
+
+// quoteTmuxCommandArg single-quotes one argument of a command string that
+// tmux's own command parser will parse (if-shell's command argument). Like a
+// POSIX shell, tmux's parser joins adjacent quoted and escaped pieces into
+// one token, so each embedded single quote closes the quoted piece, is
+// emitted backslash-escaped, and reopens it.
+func quoteTmuxCommandArg(arg string) string {
+	return "'" + strings.ReplaceAll(arg, "'", `'\''`) + "'"
+}
+
+// compareAndSetWindowOwnership is the single atomic step every non-forced
+// change to OwnershipOption goes through: in ONE tmux invocation, set
+// OwnershipOption on target to next (or unset it when next is "") if and
+// only if it currently reads exactly expected, then read it back.
+//
+// The atomicity comes from the tmux server, not from this process. The
+// invocation is one command list (`if-shell -F <cond> <set> ; show-options`)
+// queued on one client; the server is single-threaded, and `if-shell -F`
+// evaluates its format condition synchronously and inserts its command
+// directly after itself in that same queue, which the server drains before
+// it runs any other client's command. So no other writer can land between
+// the comparison and the set -- which a read and a write issued as two
+// separate tmux processes (the protocol this replaced) cannot promise.
+//
+// The comparison reads `#{@deck_isize_owner}`, which expands to "" when the
+// option is unset, so an unset expected compares against "". (A format
+// lookup falls back to the session and global scopes where show-options
+// -w does not; deck only ever sets OwnershipOption per window, so the two
+// agree. A stray global value would make every compare-and-set fail and
+// ClaimWindowOwnership give up with an error rather than mis-claim.) The trailing
+// show-options is the confirm-read: it reports what the option holds after
+// the conditional, which is how the caller learns whether its set took
+// effect (the option reads exactly next) or the comparison failed because
+// somebody else changed the option first.
+func (c Client) compareAndSetWindowOwnership(ctx context.Context, target string, expected windowOwnershipState, next string) (windowOwnershipState, error) {
+	condition := "#{==:#{" + OwnershipOption + "}," + formatLiteralEscaper.Replace(expected.Value) + "}"
+	set := "set-option -w -t " + quoteTmuxCommandArg(target) + " " + OwnershipOption + " " + quoteTmuxCommandArg(next)
+	if next == "" {
+		set = "set-option -w -u -t " + quoteTmuxCommandArg(target) + " " + OwnershipOption
+	}
+	commandCtx, cancel := context.WithTimeout(ctx, c.timeout())
+	defer cancel()
+	output, err := c.command(commandCtx,
+		"if-shell", "-F", "-t", target, condition, set,
+		";", "show-options", "-wv", "-t", target, OwnershipOption,
+	).CombinedOutput()
+	return c.parseWindowOwnershipRead(output, err, "compare-and-set "+OwnershipOption+" on "+target)
+}
+
 // ClaimWindowOwnership implements PRD phase3b II-14 / SPEC.md §11.9's
 // interactive-mode ownership protocol for one tmux window:
 //
 //  1. Read the option first. If it names a LIVE owner (kill(pid, 0)
 //     succeeds), stand down without writing anything -- a live owner is
 //     respected untouched, never raced against.
-//  2. Otherwise (unset, or a DEAD owner) write this process's fresh
-//     pid-tagged `<tag>:<pid>` claim.
-//  3. Re-read it (the confirm-read). The write and the read are two
-//     separate tmux commands, not one atomic operation, so a competing
-//     writer can land between them. If the confirm-read shows exactly the
-//     value just written, the claim is acquired. If it shows something
-//     else, this call lost the race to a concurrent writer; loop back to
-//     step 1, which will validate THAT writer's liveness in turn -- a live
-//     winner is respected on the very next iteration, not thrashed against.
+//  2. Otherwise (unset, or a DEAD owner) replace exactly the value just read
+//     with this process's fresh pid-tagged `<tag>:<pid>` claim, as ONE
+//     atomic tmux compare-and-set that also confirm-reads the result
+//     (compareAndSetWindowOwnership). Of any number of concurrent claimants
+//     that all read the same unset or dead value, the tmux server applies
+//     exactly one compare-and-set; every other comparison fails and leaves
+//     the winner's value untouched.
+//  3. If the confirm-read shows exactly the value just written, the claim
+//     is acquired. If it shows something else, the option changed between
+//     this call's read and its compare-and-set; loop back to step 1, which
+//     will validate THAT writer's liveness in turn -- a live winner is
+//     respected on the very next iteration, not thrashed against.
 //
 // The three returns are: the held ownership (nil unless acquired), whether
 // it was acquired at all, and an error only for a genuine tmux/transport
@@ -212,7 +276,8 @@ const (
 )
 
 // attemptWindowClaim is steps 1-3 of ClaimWindowOwnership's protocol, once:
-// read, stand down for a live owner, otherwise write mine and confirm-read it.
+// read, stand down for a live owner, otherwise atomically replace exactly the
+// value read with mine and confirm-read the result.
 func (c Client) attemptWindowClaim(ctx context.Context, target, mine string) (claimAttemptOutcome, error) {
 	got, err := c.readWindowOwnership(ctx, target)
 	if err != nil {
@@ -221,14 +286,12 @@ func (c Client) attemptWindowClaim(ctx context.Context, target, mine string) (cl
 	// An unset option, an unparseable value (a bug or a hand-edited option,
 	// never something formatOwnershipClaim itself produces) and a
 	// confirmed-dead owner are all stolen from by falling through to the
-	// write below.
+	// compare-and-set below, which only takes effect if the option still
+	// holds exactly the value whose deadness was just judged.
 	if holdsLiveClaim(got) {
 		return claimStoodDown, nil
 	}
-	if err := c.writeWindowOwnership(ctx, target, mine); err != nil {
-		return claimRaceLost, err
-	}
-	confirm, err := c.readWindowOwnership(ctx, target)
+	confirm, err := c.compareAndSetWindowOwnership(ctx, target, got, mine)
 	if err != nil {
 		return claimRaceLost, err
 	}
@@ -384,16 +447,11 @@ func (o *WindowOwnership) Probe(ctx context.Context) (ClaimState, error) {
 // If it does not (a later claimant already validated this process as dead
 // and stole it, or Release raced a steal in progress), unsetting would
 // clobber that later claim instead of merely tidying up this one, so
-// Release leaves it alone.
+// Release leaves it alone. The check and the unset are one atomic tmux
+// compare-and-set, so a steal can never land between them.
 func (o *WindowOwnership) Release(ctx context.Context) error {
-	got, err := o.client.readWindowOwnership(ctx, o.target)
-	if err != nil {
-		return err
-	}
-	if !got.Set || got.Value != o.claim {
-		return nil
-	}
-	return o.client.unsetWindowOwnership(ctx, o.target)
+	_, err := o.client.compareAndSetWindowOwnership(ctx, o.target, windowOwnershipState{Value: o.claim, Set: true}, "")
+	return err
 }
 
 // InteractiveTick is one interactive preview tick's whole tmux read
