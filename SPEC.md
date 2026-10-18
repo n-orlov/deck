@@ -4308,7 +4308,11 @@ must be restored afterwards.
   print a control character as `_`. The single newline tmux prints after the line is the only
   one removed, so a value that itself ends in one or more newlines is compared with them, and
   a dead or unparseable claim carrying them is stolen and a claim carrying them is released
-  by the same exact comparison.
+  by the same exact comparison. The read does not depend on the locale deck or the tmux
+  server runs under: every ownership read and compare-and-set tells the tmux client its
+  terminal is UTF-8 (`LC_ALL` set for that one invocation), because tmux otherwise prints each
+  non-ASCII byte as `_`. A value with non-ASCII text, and a trailing newline, therefore reads
+  back exactly under a non-UTF-8 locale, and the compare-and-set compares that exact string.
 - **Refused rather than degraded, in three cases**, each naming its reason and offering `a`:
   another client is attached to that session — one window has one size, and an attached client
   re-expresses its own under `window-size latest`, so the fit cannot be *held*, and unlike

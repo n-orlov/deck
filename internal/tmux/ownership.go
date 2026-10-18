@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"strconv"
 	"strings"
 	"syscall"
@@ -129,10 +130,24 @@ type windowOwnershipState struct {
 	Present bool
 }
 
+// utf8Command is command for a read or write of OwnershipOption: the tmux
+// client is told its terminal speaks UTF-8 whatever locale this process and
+// the tmux server run under. tmux prints a non-ASCII byte as `_` to a client
+// that does not (the server renders show-options and display-message output
+// per client), so a value with non-ASCII text would not read back verbatim.
+// tmux takes the flag from the first of LC_ALL, LC_CTYPE and LANG that is set,
+// so LC_ALL is the one override that always wins; the locale name only has to
+// contain "UTF-8" (tmux never loads it).
+func (c Client) utf8Command(ctx context.Context, args ...string) *exec.Cmd {
+	cmd := c.command(ctx, args...)
+	cmd.Env = append(os.Environ(), "LC_ALL=C.UTF-8")
+	return cmd
+}
+
 func (c Client) readWindowOwnership(ctx context.Context, target string) (windowOwnershipState, error) {
 	commandCtx, cancel := context.WithTimeout(ctx, c.timeout())
 	defer cancel()
-	output, err := c.command(commandCtx, "show-options", "-w", "-t", target, OwnershipOption).CombinedOutput()
+	output, err := c.utf8Command(commandCtx, "show-options", "-w", "-t", target, OwnershipOption).CombinedOutput()
 	return c.parseWindowOwnershipRead(output, err, "show-options -w -t "+target+" "+OwnershipOption)
 }
 
@@ -254,7 +269,7 @@ func (c Client) findOwnershipShadow(ctx context.Context, target string, window w
 		commandCtx, cancel := context.WithTimeout(ctx, c.timeout())
 		args := append([]string{"show-options"}, scope.args...)
 		args = append(args, "-v", "-t", target, OwnershipOption)
-		output, err := c.command(commandCtx, args...).CombinedOutput()
+		output, err := c.utf8Command(commandCtx, args...).CombinedOutput()
 		cancel()
 		trimmed := strings.TrimRight(string(output), "\n")
 		if err == nil {
@@ -341,7 +356,7 @@ func (c Client) compareAndSetWindowOwnership(ctx context.Context, target string,
 	}
 	commandCtx, cancel := context.WithTimeout(ctx, c.timeout())
 	defer cancel()
-	output, err := c.command(commandCtx,
+	output, err := c.utf8Command(commandCtx,
 		"if-shell", "-F", "-t", target, condition, set,
 		";", "show-options", "-w", "-t", target, OwnershipOption,
 	).CombinedOutput()
@@ -659,11 +674,11 @@ func (c Client) InteractiveTickRead(ctx context.Context, target string) (Interac
 	commandCtx, cancel := context.WithTimeout(ctx, c.timeout())
 	defer cancel()
 	format := "#{pane_dead}|#{session_attached}|#{" + OwnershipOption + "}"
-	output, err := c.command(commandCtx, "display-message", "-p", "-t", target, format).CombinedOutput()
+	output, err := c.utf8Command(commandCtx, "display-message", "-p", "-t", target, format).CombinedOutput()
 	if err != nil {
 		return InteractiveTick{}, fmt.Errorf("tmux -L %s display-message -p -t %s interactive tick: %w: %s", c.Socket, target, err, strings.TrimSpace(string(output)))
 	}
-	line := strings.TrimRight(string(output), "\n")
+	line := strings.TrimSuffix(string(output), "\n")
 	parts := strings.SplitN(line, "|", 3)
 	if len(parts) != 3 {
 		return InteractiveTick{}, fmt.Errorf("tmux -L %s display-message -p -t %s interactive tick: unexpected output %q", c.Socket, target, line)

@@ -76,8 +76,7 @@ func TestReleaseUnsetsAClaimEndingInNewline(t *testing.T) {
 
 // TestDecodeShowOptionsValueRoundTripsTmuxEscaping: every value tmux's
 // `show-options -w` can print for a stored ASCII string decodes back to it
-// (tmux prints a non-ASCII byte as `_` under a non-UTF-8 locale, so none is
-// stored here).
+// (the non-ASCII case is TestDecodeRoundTripNonASCIIUnderNonUTF8Locale).
 func TestDecodeShowOptionsValueRoundTripsTmuxEscaping(t *testing.T) {
 	socket := fmt.Sprintf("priv-ownership-decode-%d-%d", os.Getpid(), time.Now().UnixNano())
 	cleanup := newBareOwnershipSession(t, socket)
@@ -101,6 +100,81 @@ func TestDecodeShowOptionsValueRoundTripsTmuxEscaping(t *testing.T) {
 		}
 		if strings.Contains(raw, "\n") && !strings.Contains(got.Value, "\n") {
 			t.Errorf("read of %q lost its newline: %q", raw, got.Value)
+		}
+	}
+}
+
+// nonUTF8Locale makes this process, and so the private tmux server and every
+// client the test starts, run under a locale that is not UTF-8: tmux then
+// renders non-ASCII bytes of its output as `_` unless the client says its
+// terminal is UTF-8.
+func nonUTF8Locale(t *testing.T) {
+	t.Helper()
+	t.Setenv("LC_ALL", "C")
+	t.Setenv("LC_CTYPE", "C")
+	t.Setenv("LANG", "C")
+}
+
+// TestClaimStealsNonASCIIUnparseableOwnerEndingInNewlineUnderNonUTF8Locale:
+// R406 -- the value is read exactly, non-ASCII text and the stored trailing
+// newline included, and the compare-and-set steals exactly that string.
+func TestClaimStealsNonASCIIUnparseableOwnerEndingInNewlineUnderNonUTF8Locale(t *testing.T) {
+	nonUTF8Locale(t)
+	claimStealsStoredValue(t, "u8nl", "héllo ☃ wörld, 日本語 #{x}\n")
+}
+
+func TestClaimStealsNonASCIIDeadClaimUnderNonUTF8Locale(t *testing.T) {
+	nonUTF8Locale(t)
+	claimStealsStoredValue(t, "u8dead", formatOwnershipClaim("tagé☃", 999999999))
+}
+
+func TestClaimStealsFourByteRuneOwnerWithTwoTrailingNewlinesUnderNonUTF8Locale(t *testing.T) {
+	nonUTF8Locale(t)
+	claimStealsStoredValue(t, "u8emoji", "owner-🚀\n\n")
+}
+
+func TestClaimStealsNonASCIIOwnerWithEmbeddedNewlineAndQuotesUnderNonUTF8Locale(t *testing.T) {
+	nonUTF8Locale(t)
+	claimStealsStoredValue(t, "u8mix", "ñ\"'é\nü;\\ \n")
+}
+
+// TestReleaseUnsetsANonASCIIClaimEndingInNewlineUnderNonUTF8Locale: the
+// release compare-and-set uses the exact stored string too.
+func TestReleaseUnsetsANonASCIIClaimEndingInNewlineUnderNonUTF8Locale(t *testing.T) {
+	nonUTF8Locale(t)
+	socket := fmt.Sprintf("priv-ownership-relu8-%d-%d", os.Getpid(), time.Now().UnixNano())
+	cleanup := newBareOwnershipSession(t, socket)
+	defer cleanup()
+	client := Client{Socket: socket, Timeout: 3 * time.Second}
+
+	claim := formatOwnershipClaim("tagé☃", os.Getpid()) + "\n"
+	setWindowOwnershipRaw(t, socket, claim)
+	ownership := &WindowOwnership{client: client, target: "s0", claim: claim}
+	if err := ownership.Release(context.Background()); err != nil {
+		t.Fatalf("release: %v", err)
+	}
+	got, err := client.readWindowOwnership(context.Background(), "s0")
+	if err != nil {
+		t.Fatalf("read after release: %v", err)
+	}
+	if got.Set {
+		t.Fatalf("option still set to %q after releasing a non-ASCII claim; want unset", got.Value)
+	}
+}
+
+// TestDecodeRoundTripNonASCIIUnderNonUTF8Locale: non-ASCII values read back
+// verbatim through the decode, whatever else the value holds.
+func TestDecodeRoundTripNonASCIIUnderNonUTF8Locale(t *testing.T) {
+	nonUTF8Locale(t)
+	socket := fmt.Sprintf("priv-ownership-dec8-%d-%d", os.Getpid(), time.Now().UnixNano())
+	cleanup := newBareOwnershipSession(t, socket)
+	defer cleanup()
+	client := Client{Socket: socket, Timeout: 3 * time.Second}
+	for _, raw := range []string{"é", "é\n", "日本 語", "~é", "a\tü\r\n", "ÿ\\n"} {
+		setWindowOwnershipRaw(t, socket, raw)
+		got, err := client.readWindowOwnership(context.Background(), "s0")
+		if err != nil || !got.Set || got.Value != raw {
+			t.Errorf("read of %q = %+v, %v; want it verbatim", raw, got, err)
 		}
 	}
 }
