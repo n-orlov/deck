@@ -797,3 +797,19 @@ func TestUpdateNotes(t *testing.T) {
 		})
 	}
 }
+
+// TestReportUpdateInstall: an unchanged result says nothing changed, and an
+// install names the version move, the path and the notes.
+func TestReportUpdateInstall(t *testing.T) {
+	var unchanged bytes.Buffer
+	reportUpdateInstall(update.Result{Tag: "v1.2.0", Unchanged: true}, "v1.0.0", &unchanged)
+	if want := "deck v1.0.0 is already the latest release (v1.2.0); nothing changed\n"; unchanged.String() != want {
+		t.Errorf("unchanged output = %q, want %q", unchanged.String(), want)
+	}
+	var installed bytes.Buffer
+	reportUpdateInstall(update.Result{Tag: "v1.2.0", Path: "/bin/deck", Attestation: update.AttestationVerified, Immutable: update.ImmutableVerified}, "v1.0.0", &installed)
+	want := "deck updated: v1.0.0 -> v1.2.0 (/bin/deck)\nnote: the release is a GitHub immutable release\nnote: restart any running deck to use the new version; running sessions are not disturbed\n"
+	if installed.String() != want {
+		t.Errorf("installed output = %q, want %q", installed.String(), want)
+	}
+}

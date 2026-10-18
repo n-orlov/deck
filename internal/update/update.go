@@ -101,6 +101,12 @@ func run(ctx context.Context, o Options) (Result, error) {
 	if o.OnlyIfNewer && o.Version == "" && !IsNewer(pl.tag, o.installedVersion(pl.target)) {
 		return Result{Tag: pl.tag, Path: pl.target, Unchanged: true}, nil
 	}
+	return o.install(ctx, pl)
+}
+
+// install runs the part of Run that fetches, verifies and replaces, once the
+// tag to install is settled and the install lock is held.
+func (o Options) install(ctx context.Context, pl runPlan) (Result, error) {
 	// The release's immutability is settled before checksums.txt is trusted,
 	// and before anything is downloaded or staged.
 	imm, err := o.checkImmutable(ctx, pl.base, pl.tag)

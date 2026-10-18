@@ -90,16 +90,21 @@ func runUpdateCommand(args []string, stdout, stderr io.Writer) int {
 		sayln(stderr, "deck update:", update.RedactText(update.StripControl(err.Error())))
 		return 1
 	}
-	old := buildVersion()
+	reportUpdateInstall(res, buildVersion(), stdout)
+	return 0
+}
+
+// reportUpdateInstall prints what `deck update` did: nothing changed, or the
+// version moved and the notes that go with the install.
+func reportUpdateInstall(res update.Result, old string, stdout io.Writer) {
 	if res.Unchanged {
 		sayf(stdout, "deck %s is already the latest release (%s); nothing changed\n", old, res.Tag)
-		return 0
+		return
 	}
 	sayf(stdout, "deck updated: %s -> %s (%s)\n", old, res.Tag, res.Path)
 	for _, n := range updateNotes(res) {
 		sayln(stdout, "note: "+n)
 	}
-	return 0
 }
 
 // updateNotes are the notes printed after an install: what was not verified,

@@ -178,6 +178,12 @@ func decodeShowOptionsValue(line, name string) (string, error) {
 	return unvisCStyle(body), nil
 }
 
+// visSimpleEscapes maps the letter after a backslash to the control character
+// vis(3)'s C-style escaping wrote it for.
+var visSimpleEscapes = map[byte]byte{
+	'n': '\n', 'r': '\r', 't': '\t', 'a': '\a', 'b': '\b', 'f': '\f', 'v': '\v', 's': ' ', 'E': 0x1b,
+}
+
 // unvisCStyle undoes vis(3)'s VIS_CSTYLE|VIS_OCTAL escaping as tmux applies it.
 func unvisCStyle(escaped string) string {
 	var out strings.Builder
@@ -188,40 +194,31 @@ func unvisCStyle(escaped string) string {
 			continue
 		}
 		i++
-		next := escaped[i]
-		switch {
-		case next >= '0' && next <= '7':
-			value, digits := 0, 0
-			for digits < 3 && i < len(escaped) && escaped[i] >= '0' && escaped[i] <= '7' {
-				value = value*8 + int(escaped[i]-'0')
-				i++
-				digits++
-			}
-			i--
-			out.WriteByte(byte(value))
-		case next == 'n':
-			out.WriteByte('\n')
-		case next == 'r':
-			out.WriteByte('\r')
-		case next == 't':
-			out.WriteByte('\t')
-		case next == 'a':
-			out.WriteByte('\a')
-		case next == 'b':
-			out.WriteByte('\b')
-		case next == 'f':
-			out.WriteByte('\f')
-		case next == 'v':
-			out.WriteByte('\v')
-		case next == 's':
-			out.WriteByte(' ')
-		case next == 'E':
-			out.WriteByte(0x1b)
-		default:
-			out.WriteByte(next)
+		if isOctalDigit(escaped[i]) {
+			value, consumed := parseOctalEscape(escaped[i:])
+			out.WriteByte(value)
+			i += consumed - 1
+			continue
 		}
+		if mapped, ok := visSimpleEscapes[escaped[i]]; ok {
+			out.WriteByte(mapped)
+			continue
+		}
+		out.WriteByte(escaped[i])
 	}
 	return out.String()
+}
+
+func isOctalDigit(ch byte) bool { return ch >= '0' && ch <= '7' }
+
+// parseOctalEscape reads up to three octal digits from the start of s and
+// returns their value and how many digits it consumed.
+func parseOctalEscape(s string) (value byte, consumed int) {
+	for consumed < 3 && consumed < len(s) && isOctalDigit(s[consumed]) {
+		value = value*8 + (s[consumed] - '0')
+		consumed++
+	}
+	return value, consumed
 }
 
 // readEffectiveOwnership reads OwnershipOption through the same format lookup
