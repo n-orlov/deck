@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sync"
 	"sync/atomic"
 	"syscall"
 	"testing"
@@ -160,5 +161,65 @@ func TestInstallLockWaiterCancelledReturnsContextError(t *testing.T) {
 	unlock()
 	if !lockIsFree(t, lock) {
 		t.Error("the cancelled waiter left the lock held")
+	}
+}
+
+// TestConcurrentOnlyIfNewerInstallsDownloadOnce: two OnlyIfNewer installs
+// racing on one target, one install lock and one release server whose archive
+// download is slow enough that the calls overlap. The loser waits on the lock,
+// re-reads the binary on disk and finds the tag already installed, so the
+// archive is downloaded and installed once.
+func TestConcurrentOnlyIfNewerInstallsDownloadOnce(t *testing.T) {
+	rel := newRelease(t)
+	srv := rel.serve(t)
+	orig := srv.Config.Handler
+	var hits atomic.Int64
+	srv.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if filepath.Base(r.URL.Path) == rel.asset {
+			hits.Add(1)
+			time.Sleep(400 * time.Millisecond) // keep the other call in flight meanwhile
+		}
+		orig.ServeHTTP(w, r)
+	})
+	_, exe := installOld(t)
+	lock := lockPathIn(t)
+
+	var wg sync.WaitGroup
+	results := make([]Result, 2)
+	errs := make([]error, 2)
+	start := make(chan struct{})
+	for i := range results {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			results[i], errs[i] = Run(context.Background(), Options{BaseURL: srv.URL, Exe: exe, Current: "v1.0.0", OnlyIfNewer: true, InstallLock: lock})
+		}()
+	}
+	close(start)
+	wg.Wait()
+
+	for i, err := range errs {
+		if err != nil {
+			t.Fatalf("Run #%d: %v", i, err)
+		}
+	}
+	unchanged := 0
+	for _, r := range results {
+		if r.Unchanged {
+			unchanged++
+		}
+		if r.Tag != tagV {
+			t.Errorf("Result.Tag = %q, want %q", r.Tag, tagV)
+		}
+	}
+	if unchanged != 1 {
+		t.Errorf("%d of 2 results Unchanged, want exactly 1 (results: %+v)", unchanged, results)
+	}
+	if n := hits.Load(); n != 1 {
+		t.Errorf("%d archive downloads, want exactly 1", n)
+	}
+	if got := (Options{}).installedVersion(exe); got != tagV {
+		t.Errorf("target build info reads %q, want %q", got, tagV)
 	}
 }
