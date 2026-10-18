@@ -202,7 +202,7 @@ func runTUI(settings config.Settings, stderr io.Writer) int {
 		sessions.Output = service.NewOutputClock(settings.OutputBucket)
 	}
 	tuiReconcile := newTUIReconcile(db, sessions, settings)
-	model := newDeckModel(db, settings, sessions, client, registry, tuiReconcile).WithEventHookLive(eventHook).WithUpdateSource(updateIndicatorSource(settings)).WithUpdateInstaller(updateInstallSource())
+	model := newDeckModel(db, settings, sessions, client, registry, tuiReconcile).WithEventHookLive(eventHook).WithUpdateSource(updateIndicatorSource(settings)).WithUpdateInstaller(updateInstallSource(settings))
 	// wrapForInteractiveShutdownOnPanic is deliberately the OUTERMOST wrap
 	// (applied last, around everything else): its own recover must see a
 	// panic thrown by any of the layers below it too, not only one from

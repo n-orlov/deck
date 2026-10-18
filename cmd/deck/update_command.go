@@ -8,6 +8,7 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/n-orlov/deck/internal/config"
 	"github.com/n-orlov/deck/internal/update"
 )
 
@@ -80,7 +81,7 @@ func runUpdateCommand(args []string, stdout, stderr io.Writer) int {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	uo := update.Options{Current: version, Version: opts.version, OnlyIfNewer: true}
+	uo := updateCommandOptions(opts.version)
 	if opts.check {
 		return reportUpdateCheck(ctx, uo, stdout, stderr)
 	}
@@ -137,4 +138,20 @@ func reportUpdateCheck(ctx context.Context, uo update.Options, stdout, stderr io
 		sayf(stdout, "deck %s is up to date (latest release: %s)\n", cur, res.Latest)
 	}
 	return 0
+}
+
+// commandInstallLockPath is the install lock `deck update` takes: beside the
+// shared update cache, which does not depend on the config file. No resolvable
+// cache means no lock, like an uncreatable lock file.
+func commandInstallLockPath() string {
+	cache, err := config.UpdateCachePath(os.Getenv, os.UserHomeDir)
+	if err != nil {
+		return ""
+	}
+	return update.InstallLockPath(cache)
+}
+
+// updateCommandOptions is what `deck update` hands update.Run and update.Check.
+func updateCommandOptions(pinned string) update.Options {
+	return update.Options{Current: version, Version: pinned, OnlyIfNewer: true, InstallLock: commandInstallLockPath()}
 }

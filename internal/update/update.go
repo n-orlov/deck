@@ -27,6 +27,11 @@ type Options struct {
 	// always installs.
 	OnlyIfNewer bool
 	Client      *http.Client // default: HTTPS-only redirects, 2 min timeout
+	// InstallLock is the lock file that serialises installs machine-wide: Run
+	// holds an exclusive advisory flock on it from before the latest tag is
+	// asked until the install ends. Empty, or a file that cannot be created,
+	// means no lock. It is distinct from the daily check's cache lock.
+	InstallLock string
 
 	// Repo is the GitHub repository an authenticated gh downloads the release
 	// from. Empty means DefaultRepo when the base is DefaultBaseURL, and "no gh
@@ -78,11 +83,22 @@ func Run(ctx context.Context, o Options) (Result, error) {
 
 func run(ctx context.Context, o Options) (Result, error) {
 	o = o.withDefaults()
-	pl, err := o.prepare(ctx)
+	pl, err := o.prepare()
 	if err != nil {
 		return Result{}, err
 	}
-	if o.OnlyIfNewer && o.Version == "" && !IsNewer(pl.tag, o.Current) {
+	// The lock is held to the end of the install, and what the binary on disk
+	// is, is decided only once it is held: another deck may have just
+	// replaced it.
+	unlock, ok := flockPath(ctx, o.InstallLock)
+	if !ok {
+		return Result{}, fmt.Errorf("wait for another update to finish: %w", ctx.Err())
+	}
+	defer unlock()
+	if pl.tag, err = o.tag(ctx, pl.base); err != nil {
+		return Result{}, err
+	}
+	if o.OnlyIfNewer && o.Version == "" && !IsNewer(pl.tag, o.installedVersion(pl.target)) {
 		return Result{Tag: pl.tag, Path: pl.target, Unchanged: true}, nil
 	}
 	// The release's immutability is settled before checksums.txt is trusted,
@@ -115,8 +131,8 @@ type runPlan struct {
 }
 
 // prepare runs Run's refusals and lookups in order: dev build, platform,
-// release URL, install target, then the tag to install.
-func (o Options) prepare(ctx context.Context) (runPlan, error) {
+// release URL, then install target. The tag to install is settled after.
+func (o Options) prepare() (runPlan, error) {
 	var pl runPlan
 	if err := refuseDev(o.Current); err != nil {
 		return pl, err
@@ -129,11 +145,18 @@ func (o Options) prepare(ctx context.Context) (runPlan, error) {
 	if err = CheckURL(pl.base); err != nil {
 		return pl, err
 	}
-	if pl.target, err = o.checkTarget(); err != nil {
-		return pl, err
-	}
-	pl.tag, err = o.tag(ctx, pl.base)
+	pl.target, err = o.checkTarget()
 	return pl, err
+}
+
+// installedVersion is the version of the binary at target, read from its Go
+// build info on disk (never by running it). When that is not a stable release
+// tag (a text file, a source build) the running build's version stands.
+func (o Options) installedVersion(target string) string {
+	if info, err := buildinfo.ReadFile(target); err == nil && stableTag.MatchString(info.Main.Version) {
+		return info.Main.Version
+	}
+	return o.Current
 }
 
 func (o Options) withDefaults() Options {

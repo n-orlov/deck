@@ -7,7 +7,6 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
-	"syscall"
 	"time"
 )
 
@@ -102,10 +101,6 @@ func (c *Checker) Start(ctx context.Context) <-chan Status {
 	return out
 }
 
-// lockPoll is how often a check waiting on another process's check retries
-// the cache lock.
-const lockPoll = 20 * time.Millisecond
-
 // lock takes the exclusive advisory lock on the cache's sibling lock file and
 // returns its release. A check that cannot create the lock file (an
 // unwritable cache directory: there is no shared cache to coordinate on)
@@ -113,42 +108,10 @@ const lockPoll = 20 * time.Millisecond
 // ctx ends while waiting, in which case no request is made and nothing is
 // recorded.
 func (c *Checker) lock(ctx context.Context) (unlock func(), ok bool) {
-	f := c.openLock()
-	if f == nil {
+	if c.CachePath == "" {
 		return func() {}, true
 	}
-	for {
-		err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB)
-		if err == nil {
-			return func() {
-				_ = syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
-				_ = f.Close()
-			}, true
-		}
-		if err != syscall.EWOULDBLOCK && err != syscall.EINTR {
-			_ = f.Close()
-			return func() {}, true
-		}
-		select {
-		case <-ctx.Done():
-			_ = f.Close()
-			return nil, false
-		case <-time.After(lockPoll):
-		}
-	}
-}
-
-// openLock opens the cache's sibling lock file, or returns nil when there is
-// no cache or its directory cannot be created or written.
-func (c *Checker) openLock() *os.File {
-	if c.CachePath == "" || os.MkdirAll(filepath.Dir(c.CachePath), 0o750) != nil {
-		return nil
-	}
-	f, err := os.OpenFile(c.CachePath+".lock", os.O_CREATE|os.O_RDWR, 0o600)
-	if err != nil {
-		return nil
-	}
-	return f
+	return flockPath(ctx, c.CachePath+".lock")
 }
 
 func (c *Checker) status(latest string, requested bool) Status {

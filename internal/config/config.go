@@ -663,6 +663,14 @@ func HistoryFile(home, sessionID string) string {
 // UpdateCacheName is the file name of the shared update-check cache.
 const UpdateCacheName = "update-check.json"
 
+// UpdateCachePath is the shared update-check cache file for the environment,
+// the same for every profile. It does not read the config file, so a broken
+// config cannot hide where the update cache lives.
+func UpdateCachePath(getenv func(string) string, userHome func() (string, error)) (string, error) {
+	paths, err := resolvePaths(getenv, userHome, DefaultProfile)
+	return paths.UpdateCache, err
+}
+
 // resolvePaths resolves Paths for the given (already-resolved) profile
 // name: the default profile is the flat layout unchanged, byte-for-byte;
 // any other name gets "profiles/<name>" inserted after "deck/" in XDG mode,
