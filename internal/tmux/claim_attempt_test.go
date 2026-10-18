@@ -10,7 +10,8 @@ import (
 )
 
 // optionFake is a tmux whose window option OwnershipOption lives in a file:
-// show-options prints it (or fails "invalid option" when unset). The
+// show-options -w prints it as `@deck_isize_owner <value>` (or fails
+// "invalid option" when unset). The
 // compare-and-set invocation (`if-shell -F -t T COND SET ; show-options ...`)
 // logs the call to "$0.sent", and when COND's expected value equals the
 // stored one runs writeBody with $VALUE holding the value SET would write;
@@ -26,7 +27,7 @@ func optionFake(t *testing.T, initial, writeBody string) Client {
 	}
 	return fakeTmuxClient(t, setup+`
 show() {
-  if [ -s "$0.state" ]; then cat "$0.state"; else echo "invalid option: @deck_isize_owner" >&2; exit 1; fi
+  if [ -s "$0.state" ]; then printf '@deck_isize_owner %s\n' "$(cat "$0.state")"; else echo "invalid option: @deck_isize_owner" >&2; exit 1; fi
 }
 case "$3" in
 show-options)

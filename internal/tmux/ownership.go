@@ -111,7 +111,7 @@ func pidAlive(pid int) bool {
 
 // windowOwnershipState is a read of OwnershipOption in the window scope.
 // Both of tmux's "unset" shapes for a "@"-prefixed user option collapse to
-// Set == false here: `show-options -wv` on a window where it was never set
+// Set == false here: `show-options -w` on a window where it was never set
 // exits non-zero with "invalid option: <name>" (unlike an unset BUILTIN
 // window option, which prints an empty line and exits 0 -- task 028's
 // distinction; OwnershipOption is a user option, so only the error shape
@@ -125,25 +125,103 @@ type windowOwnershipState struct {
 func (c Client) readWindowOwnership(ctx context.Context, target string) (windowOwnershipState, error) {
 	commandCtx, cancel := context.WithTimeout(ctx, c.timeout())
 	defer cancel()
-	output, err := c.command(commandCtx, "show-options", "-wv", "-t", target, OwnershipOption).CombinedOutput()
-	return c.parseWindowOwnershipRead(output, err, "show-options -wv -t "+target+" "+OwnershipOption)
+	output, err := c.command(commandCtx, "show-options", "-w", "-t", target, OwnershipOption).CombinedOutput()
+	return c.parseWindowOwnershipRead(output, err, "show-options -w -t "+target+" "+OwnershipOption)
 }
 
 // parseWindowOwnershipRead turns the output of a tmux invocation whose last
-// (or only) command is `show-options -wv -t <target> OwnershipOption` into a
+// (or only) command is `show-options -w -t <target> OwnershipOption` into a
 // windowOwnershipState, mapping tmux's "invalid option" error shape to unset.
+//
+// The value is read verbatim: `show-options -wv` and `display-message` print a
+// control character (a newline included) as `_`, so the read uses the
+// escaped `name value` form and decodes it (decodeShowOptionsValue). Only the
+// one newline tmux prints after that line is removed; a newline the stored
+// value itself ends in is part of the value.
 func (c Client) parseWindowOwnershipRead(output []byte, err error, what string) (windowOwnershipState, error) {
-	trimmed := strings.TrimRight(string(output), "\n")
 	if err != nil {
+		trimmed := strings.TrimRight(string(output), "\n")
 		if strings.Contains(trimmed, "invalid option") {
 			return windowOwnershipState{}, nil
 		}
 		return windowOwnershipState{}, fmt.Errorf("tmux -L %s %s: %w: %s", c.Socket, what, err, trimmed)
 	}
-	if trimmed == "" {
+	if len(output) == 0 {
 		return windowOwnershipState{}, nil
 	}
-	return windowOwnershipState{Value: trimmed, Set: true}, nil
+	value, decodeErr := decodeShowOptionsValue(strings.TrimSuffix(string(output), "\n"), OwnershipOption)
+	if decodeErr != nil {
+		return windowOwnershipState{}, fmt.Errorf("tmux -L %s %s: %w", c.Socket, what, decodeErr)
+	}
+	if value == "" {
+		return windowOwnershipState{}, nil
+	}
+	return windowOwnershipState{Value: value, Set: true}, nil
+}
+
+// decodeShowOptionsValue recovers the stored string from one line of tmux's
+// `show-options` output (`<name> <escaped value>`, the terminating newline
+// already removed). tmux renders the value with its args_escape: the empty
+// string is `”`; a value holding a space, `#`, `'`, `;`, `$`, `{`, `}` or `%`
+// is wrapped in double quotes, one holding only a space or `"` in single
+// quotes; a leading `~` and a one-character value that needs quoting are
+// backslash-escaped; and inside, vis(3)'s C-style escapes stand for control
+// characters (`\n`, `\t`, `\\`, `\ooo` octal, ...), so no raw newline reaches the line.
+func decodeShowOptionsValue(line, name string) (string, error) {
+	body, found := strings.CutPrefix(line, name+" ")
+	if !found {
+		return "", fmt.Errorf("unexpected show-options output %q for %s", line, name)
+	}
+	if len(body) >= 2 && (body[0] == '"' || body[0] == '\'') && body[len(body)-1] == body[0] {
+		body = body[1 : len(body)-1]
+	}
+	return unvisCStyle(body), nil
+}
+
+// unvisCStyle undoes vis(3)'s VIS_CSTYLE|VIS_OCTAL escaping as tmux applies it.
+func unvisCStyle(escaped string) string {
+	var out strings.Builder
+	for i := 0; i < len(escaped); i++ {
+		ch := escaped[i]
+		if ch != '\\' || i+1 == len(escaped) {
+			out.WriteByte(ch)
+			continue
+		}
+		i++
+		next := escaped[i]
+		switch {
+		case next >= '0' && next <= '7':
+			value, digits := 0, 0
+			for digits < 3 && i < len(escaped) && escaped[i] >= '0' && escaped[i] <= '7' {
+				value = value*8 + int(escaped[i]-'0')
+				i++
+				digits++
+			}
+			i--
+			out.WriteByte(byte(value))
+		case next == 'n':
+			out.WriteByte('\n')
+		case next == 'r':
+			out.WriteByte('\r')
+		case next == 't':
+			out.WriteByte('\t')
+		case next == 'a':
+			out.WriteByte('\a')
+		case next == 'b':
+			out.WriteByte('\b')
+		case next == 'f':
+			out.WriteByte('\f')
+		case next == 'v':
+			out.WriteByte('\v')
+		case next == 's':
+			out.WriteByte(' ')
+		case next == 'E':
+			out.WriteByte(0x1b)
+		default:
+			out.WriteByte(next)
+		}
+	}
+	return out.String()
 }
 
 // readEffectiveOwnership reads OwnershipOption through the same format lookup
@@ -281,7 +359,7 @@ func (c Client) compareAndSetWindowOwnership(ctx context.Context, target string,
 	defer cancel()
 	output, err := c.command(commandCtx,
 		"if-shell", "-F", "-t", target, condition, set,
-		";", "show-options", "-wv", "-t", target, OwnershipOption,
+		";", "show-options", "-w", "-t", target, OwnershipOption,
 	).CombinedOutput()
 	return c.parseWindowOwnershipRead(output, err, "compare-and-set "+OwnershipOption+" on "+target)
 }

@@ -4286,6 +4286,22 @@ must be restored afterwards.
   `set -g window-size latest` does not substitute for it: `resize-window` writes `manual`
   into the **window** options, which shadow the global. Cost is exactly two `SIGWINCH` per
   cycle.
+- **The claim is one window option, read verbatim and compared exactly.** Every change to the
+  claim (`@deck_isize_owner`) is one atomic tmux compare-and-set: the new value is written, or
+  the option unset on release, only if the option holds exactly the value last read. That
+  comparison reads the option through tmux's format lookup, which is pane first, then the
+  window (with the global window options), then the session and the global options — so a
+  value at a scope other than the window can defeat it: a pane value always does, and a
+  global-window, session or global value does while the window's own option is unset. A claim
+  or a release that finds such a value refuses with an error naming the scope
+  (`pane-scope`, `global-window-scope`, `session-scope` or `global-scope`) and tells the
+  operator to unset it with `set-option -u`; it never writes over a live window claim, and it
+  does not retry. The stored value is read verbatim: the read uses tmux's escaped
+  `show-options -w` form and decodes it, because `show-options -wv` and `display-message`
+  print a control character as `_`. The single newline tmux prints after the line is the only
+  one removed, so a value that itself ends in one or more newlines is compared with them, and
+  a dead or unparseable claim carrying them is stolen and a claim carrying them is released
+  by the same exact comparison.
 - **Refused rather than degraded, in three cases**, each naming its reason and offering `a`:
   another client is attached to that session — one window has one size, and an attached client
   re-expresses its own under `window-size latest`, so the fit cannot be *held*, and unlike
