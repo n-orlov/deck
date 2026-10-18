@@ -226,7 +226,7 @@ func (o Options) fetchBinary(ctx context.Context, p fetchPlan) ([]byte, string, 
 	if err := os.WriteFile(file, archive, 0o600); err != nil {
 		return nil, "", fmt.Errorf("stage %s: %w", p.asset, err)
 	}
-	att, err := o.attest(ctx, g, file)
+	att, err := o.attest(ctx, g, file, p.tag)
 	if err != nil {
 		return nil, "", err
 	}

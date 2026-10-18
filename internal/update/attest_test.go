@@ -2,6 +2,7 @@ package update
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -166,8 +167,8 @@ func TestAttestation(t *testing.T) {
 				return
 			}
 			verifies := g.callsStarting(t, "attestation verify")
-			if len(verifies) != 1 || !strings.HasSuffix(verifies[0], "/"+rel.asset+" --repo n-orlov/deck") {
-				t.Fatalf("verify calls = %q, want one `attestation verify <dir>/%s --repo n-orlov/deck`", verifies, rel.asset)
+			if len(verifies) != 1 || !strings.HasSuffix(verifies[0], "/"+rel.asset+" --source-ref refs/tags/"+tagV+" --signer-workflow n-orlov/deck/.github/workflows/release.yml --repo n-orlov/deck") {
+				t.Fatalf("verify calls = %q, want one `attestation verify <dir>/%s --source-ref refs/tags/<tag> --signer-workflow <release.yml> --repo n-orlov/deck`", verifies, rel.asset)
 			}
 			got, err := os.ReadFile(g.log + ".verified")
 			if err != nil || string(got) != string(rel.archive) {
@@ -216,6 +217,70 @@ func TestAttestationFailureWithAuthenticatedGhAlwaysAborts(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+// verifyArgv runs a passing update with an authenticated fake gh and returns
+// the one recorded `attestation verify` call.
+func verifyArgv(t *testing.T) string {
+	t.Helper()
+	rel := newRelease(t)
+	srv := rel.serve(t)
+	g := installFakeGh(t, rel, 0, 0, "")
+	_, exe := installOld(t)
+	if _, err := Run(context.Background(), Options{BaseURL: srv.URL, Exe: exe, GOOS: "linux", GOARCH: "amd64"}); err != nil {
+		t.Fatal(err)
+	}
+	verifies := g.callsStarting(t, "attestation verify")
+	if len(verifies) != 1 {
+		t.Fatalf("verify calls = %q, want exactly one", verifies)
+	}
+	return verifies[0]
+}
+
+// TestAttestationVerifyBindsTheReleaseTagSourceRef: the attestation must be
+// for the tag being installed, not any ref of the repository (R401).
+func TestAttestationVerifyBindsTheReleaseTagSourceRef(t *testing.T) {
+	argv := verifyArgv(t)
+	for _, want := range []string{" --source-ref refs/tags/" + tagV + " ", " --repo n-orlov/deck"} {
+		if !strings.Contains(argv+" ", want) {
+			t.Errorf("verify argv = %q, want it to contain %q", argv, want)
+		}
+	}
+}
+
+// TestAttestationVerifyBindsTheReleaseSignerWorkflow: the attestation must be
+// signed by the release workflow, not any workflow of the repository (R401).
+func TestAttestationVerifyBindsTheReleaseSignerWorkflow(t *testing.T) {
+	argv := verifyArgv(t)
+	for _, want := range []string{" --signer-workflow n-orlov/deck/.github/workflows/release.yml ", " --repo n-orlov/deck"} {
+		if !strings.Contains(argv+" ", want) {
+			t.Errorf("verify argv = %q, want it to contain %q", argv, want)
+		}
+	}
+}
+
+// TestAttestationRefMismatchAbortsAndInstallsNothing: gh exits nonzero when the
+// attestation is for another ref or workflow; the update aborts, the old
+// binary is byte-identical and the directory is unchanged (R401).
+func TestAttestationRefMismatchAbortsAndInstallsNothing(t *testing.T) {
+	rel := newRelease(t)
+	srv := rel.serve(t)
+	g := installFakeGh(t, rel, 0, 1, "Error: verifying with issuer: source ref refs/heads/main does not match refs/tags/"+tagV)
+	dir, exe := installOld(t)
+	beforeSum, beforeList := fileSum(t, exe), listing(t, dir)
+	_, err := Run(context.Background(), Options{BaseURL: srv.URL, Exe: exe, GOOS: "linux", GOARCH: "amd64"})
+	if !errors.Is(err, errAttestationFailed) {
+		t.Fatalf("err = %v, want errAttestationFailed", err)
+	}
+	if got := fileSum(t, exe); got != beforeSum {
+		t.Errorf("old binary sha256 = %s, want %s unchanged", got, beforeSum)
+	}
+	if got := listing(t, dir); !reflect.DeepEqual(got, beforeList) {
+		t.Errorf("install dir = %v, want %v", got, beforeList)
+	}
+	if n := len(g.callsStarting(t, "attestation verify")); n != 1 {
+		t.Errorf("verify calls = %d, want 1", n)
 	}
 }
 

@@ -115,9 +115,16 @@ func (g *gh) download(ctx context.Context, repo, tag, asset, dir string, limit i
 	return os.ReadFile(name) //nolint:gosec // a file in our own temp dir
 }
 
-// verify runs `gh attestation verify <file> --repo <repo>`.
-func (g *gh) verify(ctx context.Context, file, repo string) (string, error) {
-	return g.run(ctx, "attestation", "verify", file, "--repo", repo)
+// ReleaseWorkflow is the workflow file, in DefaultRepo, that builds and attests
+// every release. A verified attestation must have been signed by it.
+const ReleaseWorkflow = DefaultRepo + "/.github/workflows/release.yml"
+
+// verify runs `gh attestation verify <file> --source-ref refs/tags/<tag>
+// --signer-workflow <workflow> --repo <repo>`: the attestation must be for the
+// tag being installed and signed by the release workflow, so an attestation
+// of the same repository's other refs or workflows does not pass.
+func (g *gh) verify(ctx context.Context, file, repo, tag string) (string, error) {
+	return g.run(ctx, "attestation", "verify", file, "--source-ref", "refs/tags/"+tag, "--signer-workflow", ReleaseWorkflow, "--repo", repo)
 }
 
 // errAttestationFailed marks a real verification failure (as opposed to
@@ -130,7 +137,7 @@ var errAttestationFailed = errors.New("attestation verification failed")
 // requireAttestation turns it into an abort. With an authenticated gh
 // every nonzero verification result aborts (R294), including a release that
 // has no attestation.
-func (o Options) attest(ctx context.Context, g *gh, archive string) (string, error) {
+func (o Options) attest(ctx context.Context, g *gh, archive, tag string) (string, error) {
 	cannot := func(why string) (string, error) {
 		if required := o.requireAttestation(); required != "" {
 			return "", fmt.Errorf("%s and %s; nothing was installed", why, required)
@@ -140,7 +147,7 @@ func (o Options) attest(ctx context.Context, g *gh, archive string) (string, err
 	if g == nil {
 		return cannot("the attestation was not checked (no authenticated gh)")
 	}
-	out, err := g.verify(ctx, archive, DefaultRepo)
+	out, err := g.verify(ctx, archive, DefaultRepo, tag)
 	if err == nil {
 		return AttestationVerified, nil
 	}
