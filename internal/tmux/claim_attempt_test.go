@@ -14,7 +14,9 @@ import (
 // compare-and-set invocation (`if-shell -F -t T COND SET ; show-options ...`)
 // logs the call to "$0.sent", and when COND's expected value equals the
 // stored one runs writeBody with $VALUE holding the value SET would write;
-// it then prints the option as its trailing show-options would. A plain
+// it then prints the option as its trailing show-options would. A
+// display-message (the effective-value read) prints the stored value, or
+// nothing when unset: the fake has no pane, session or global scope. A plain
 // set-option is handled the same way, unconditionally.
 func optionFake(t *testing.T, initial, writeBody string) Client {
 	t.Helper()
@@ -29,6 +31,8 @@ show() {
 case "$3" in
 show-options)
   show;;
+display-message)
+  cat "$0.state" 2>/dev/null || :;;
 if-shell)
   echo "$*" >> "$0.sent"
   EXPECTED="${7#'#{==:#{@deck_isize_owner},'}"
