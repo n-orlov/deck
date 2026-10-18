@@ -135,30 +135,62 @@ func TestClaimWindowOwnershipStealsFromADeadOwner(t *testing.T) {
 }
 
 // TestClaimWindowOwnershipConfirmReadLosesToACompetingWriter proves the
-// mandatory "confirm-read loses to a competing writer and stands down"
-// case with a REAL concurrent race, not a scripted sequence: two goroutines
-// call ClaimWindowOwnership against the very same unclaimed window at the
-// same time. Because the read-then-write is not one atomic tmux operation,
-// either goroutine's write can land in between the other's read and its own
-// write; the confirm-read is what a naive "write then trust it" attempt
-// lacks, and it is what makes exactly one goroutine win here, deterministically,
-// with no thrash: the loser's confirm-read observes the winner's claim
-// (which is live, since both share this test's own pid) and stands down
-// rather than looping forever or both believing they won.
+// mandatory "a competing writer wins and the loser stands down" case with a
+// REAL concurrent race, not a scripted sequence: two goroutines call
+// ClaimWindowOwnership against the very same unclaimed window at the same
+// time. Both may read the option as unset before either writes. A
+// read-then-write-then-confirm-read protocol does NOT resolve that: if one
+// claimant writes and confirm-reads before the other writes, the other
+// overwrites it and confirm-reads its own value too, and both win (nightly
+// CI caught exactly that, wins=2). What makes exactly one goroutine win is
+// that the write is a single tmux compare-and-set against the value each
+// claimant read: the tmux server applies only the first; the loser's
+// comparison fails, its confirm-read shows the winner's claim, and its next
+// read finds that claim live (both share this test's own pid) and stands
+// down rather than looping or both believing they won.
 func TestClaimWindowOwnershipConfirmReadLosesToACompetingWriter(t *testing.T) {
 	socket := fmt.Sprintf("priv-ownership-race-%d-%d", os.Getpid(), time.Now().UnixNano())
 	cleanup := newBareOwnershipSession(t, socket)
 	defer cleanup()
 	client := Client{Socket: socket, Timeout: 3 * time.Second}
+	raceClaimantsOnce(t, client, socket, 2)
+}
 
+// TestClaimWindowOwnershipIsExclusiveUnderStress repeats the concurrent race
+// many times with more claimants, releasing between rounds, so a protocol
+// that only usually resolves the race (as the old read/write/confirm-read
+// one did) fails here reliably instead of once in a while on nightly CI.
+func TestClaimWindowOwnershipIsExclusiveUnderStress(t *testing.T) {
+	socket := fmt.Sprintf("priv-ownership-stress-%d-%d", os.Getpid(), time.Now().UnixNano())
+	cleanup := newBareOwnershipSession(t, socket)
+	defer cleanup()
+	client := Client{Socket: socket, Timeout: 3 * time.Second}
+	const rounds, claimants = 50, 4
+	for round := 0; round < rounds; round++ {
+		winner := raceClaimantsOnce(t, client, socket, claimants)
+		if err := winner.Release(context.Background()); err != nil {
+			t.Fatalf("round %d: release winner: %v", round, err)
+		}
+		if got, err := client.readWindowOwnership(context.Background(), "s0"); err != nil || got.Set {
+			t.Fatalf("round %d: option after release = %+v, err=%v; want unset", round, got, err)
+		}
+	}
+}
+
+// raceClaimantsOnce starts n goroutines that all call ClaimWindowOwnership on
+// s0 at once and asserts exactly one acquired, every other one stood down
+// without error, and the option holds the sole winner's claim. It returns
+// the winner.
+func raceClaimantsOnce(t *testing.T, client Client, socket string, n int) *WindowOwnership {
+	t.Helper()
 	type result struct {
 		ownership *WindowOwnership
 		owned     bool
 		err       error
 	}
-	results := make(chan result, 2)
+	results := make(chan result, n)
 	start := make(chan struct{})
-	for i := 0; i < 2; i++ {
+	for i := 0; i < n; i++ {
 		go func() {
 			<-start
 			ownership, owned, err := client.ClaimWindowOwnership(context.Background(), "s0")
@@ -169,7 +201,7 @@ func TestClaimWindowOwnershipConfirmReadLosesToACompetingWriter(t *testing.T) {
 
 	var wins, standDowns int
 	var winner *WindowOwnership
-	for i := 0; i < 2; i++ {
+	for i := 0; i < n; i++ {
 		r := <-results
 		if r.err != nil {
 			t.Fatalf("concurrent claim attempt %d: %v", i, r.err)
@@ -187,8 +219,8 @@ func TestClaimWindowOwnershipConfirmReadLosesToACompetingWriter(t *testing.T) {
 			}
 		}
 	}
-	if wins != 1 || standDowns != 1 {
-		t.Fatalf("wins=%d standDowns=%d; want exactly one winner and one stand-down out of two concurrent claimants racing the same window", wins, standDowns)
+	if wins != 1 || standDowns != n-1 {
+		t.Fatalf("wins=%d standDowns=%d; want exactly one winner and %d stand-downs out of %d concurrent claimants racing the same window", wins, standDowns, n-1, n)
 	}
 	got, err := readTmuxOptionForOwnershipTest(t, socket)
 	if err != nil {
@@ -196,6 +228,32 @@ func TestClaimWindowOwnershipConfirmReadLosesToACompetingWriter(t *testing.T) {
 	}
 	if got != winner.claim {
 		t.Fatalf("option = %q after the race, want the sole winner's claim %q -- a value belonging to neither would mean the race corrupted the option instead of resolving it", got, winner.claim)
+	}
+	return winner
+}
+
+// TestClaimWindowOwnershipStealsAnUnparseableValue proves the
+// compare-and-set's format escaping: a hand-edited value full of characters
+// that mean something to tmux's format and command parsers (`#`, `,`, `}`,
+// `{`, quotes, `;`) is still matched exactly and stolen, exactly as the old
+// unconditional write stole it.
+func TestClaimWindowOwnershipStealsAnUnparseableValue(t *testing.T) {
+	socket := fmt.Sprintf("priv-ownership-garbage-%d-%d", os.Getpid(), time.Now().UnixNano())
+	cleanup := newBareOwnershipSession(t, socket)
+	defer cleanup()
+	client := Client{Socket: socket, Timeout: 3 * time.Second}
+
+	setWindowOwnershipRaw(t, socket, `x,y}z#{w"q'r;s #,`)
+	ownership, owned, err := client.ClaimWindowOwnership(context.Background(), "s0")
+	if err != nil || !owned {
+		t.Fatalf("claim over an unparseable value: owned=%v err=%v", owned, err)
+	}
+	got, err := readTmuxOptionForOwnershipTest(t, socket)
+	if err != nil {
+		t.Fatalf("read after steal: %v", err)
+	}
+	if got != ownership.claim {
+		t.Fatalf("option = %q after steal, want %q", got, ownership.claim)
 	}
 }
 
