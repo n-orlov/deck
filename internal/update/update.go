@@ -1,8 +1,10 @@
 package update
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
+	"debug/buildinfo"
 	"encoding/hex"
 	"fmt"
 	"net/http"
@@ -96,6 +98,9 @@ func run(ctx context.Context, o Options) (Result, error) {
 	defer func() { _ = os.RemoveAll(work) }()
 	bin, att, err := o.fetchBinary(ctx, fetchPlan{releaseURL: pl.base + "/releases/download/" + pl.tag, tag: pl.tag, asset: pl.asset, repo: o.ghRepo(pl.base), work: work})
 	if err != nil {
+		return Result{}, err
+	}
+	if err := checkStagedVersion(bin, pl.tag); err != nil {
 		return Result{}, err
 	}
 	if err := o.replace(pl.target, bin); err != nil {
@@ -232,6 +237,26 @@ func (o Options) fetchBinary(ctx context.Context, p fetchPlan) ([]byte, string, 
 	}
 	bin, err := extractBinary(archive)
 	return bin, att, err
+}
+
+// checkStagedVersion refuses a staged binary whose embedded module version is
+// not the release tag. The version is read from the build info inside the
+// bytes (debug/buildinfo); the staged binary is never executed to learn it.
+// It runs before anything is written beside the target, so a refusal leaves
+// the old binary and its directory untouched.
+func checkStagedVersion(bin []byte, tag string) error {
+	info, err := buildinfo.Read(bytes.NewReader(bin))
+	if err != nil {
+		return fmt.Errorf("refusing to install: cannot read the version embedded in the staged binary (release %s): %w", tag, err)
+	}
+	got := info.Main.Version
+	if got == "" || got == "(devel)" {
+		return fmt.Errorf("refusing to install: the staged binary embeds no release version (release %s)", tag)
+	}
+	if got != tag {
+		return fmt.Errorf("refusing to install: the staged binary embeds version %q but the release is %s", got, tag)
+	}
+	return nil
 }
 
 // replace writes bin beside target and renames it over target. The

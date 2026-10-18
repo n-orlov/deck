@@ -21,3 +21,13 @@ func TestBinaryCarriesTheRequestedVersion(t *testing.T) {
 		}
 	}
 }
+
+func TestDevelBinaryCarriesNoReleaseVersion(t *testing.T) {
+	info, err := buildinfo.Read(bytes.NewReader(Devel(t)))
+	if err != nil {
+		t.Fatalf("build info unreadable: %v", err)
+	}
+	if info.Main.Version != develVersion {
+		t.Errorf("Main.Version = %q, want %q", info.Main.Version, develVersion)
+	}
+}

@@ -65,6 +65,20 @@ func Bytes(tb testing.TB, tag string) []byte {
 	return b
 }
 
+// Devel returns the executable bytes of a Go binary whose build info is
+// readable but carries no release version: Main.Version is "(devel)", as for a
+// `go build` outside any tagged checkout. The returned slice is the caller's own.
+func Devel(tb testing.TB) []byte {
+	tb.Helper()
+	mu.Lock()
+	defer mu.Unlock()
+	templateOnce.Do(func() { template, templateErr = buildTemplate() })
+	if templateErr != nil {
+		tb.Fatalf("testrelbin: %v", templateErr)
+	}
+	return append([]byte(nil), template...)
+}
+
 // Build is Bytes for callers without a testing.TB.
 func Build(tag string) ([]byte, error) {
 	if tag == "" || strings.ContainsAny(tag, "\t\n\r ") {

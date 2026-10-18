@@ -81,13 +81,16 @@ type release struct {
 	missing   map[string]bool // paths answered with 404
 }
 
-func newRelease(t *testing.T) *release {
+func newRelease(t *testing.T) *release { t.Helper(); return newReleaseWith(t, newBody(t)) }
+
+// newReleaseWith is a release whose "deck" binary is body.
+func newReleaseWith(t *testing.T, body string) *release {
 	t.Helper()
 	asset, err := AssetName("linux", "amd64")
 	if err != nil {
 		t.Fatal(err)
 	}
-	archive := tarGz(t, "deck", newBody(t))
+	archive := tarGz(t, "deck", body)
 	return &release{asset: asset, archive: archive, checksums: sum(archive) + "  " + asset + "\n" + strings.Repeat("0", 64) + "  other.tar.gz\n", missing: map[string]bool{}}
 }
 
@@ -423,5 +426,102 @@ func TestResolveExecutableErrors(t *testing.T) {
 	}
 	if _, err := resolveExecutable(filepath.Join(t.TempDir(), "missing")); err == nil {
 		t.Error("missing exe accepted")
+	}
+}
+
+// runStaged serves a release (latest = tagV) whose binary is body and runs the
+// update over a fresh old binary.
+func runStaged(t *testing.T, body string) stagedRun {
+	t.Helper()
+	srv := newReleaseWith(t, body).serve(t)
+	dir, exe := installOld(t)
+	st := stagedRun{dir: dir, exe: exe, beforeSum: fileSum(t, exe), beforeList: listing(t, dir)}
+	o := Options{BaseURL: srv.URL, Exe: exe, GOOS: "linux", GOARCH: "amd64"}
+	_, st.err = Run(context.Background(), o)
+	return st
+}
+
+// stagedRun is one update attempt and what the install directory held before it.
+type stagedRun struct {
+	err        error
+	dir, exe   string
+	beforeSum  string
+	beforeList []string
+}
+
+func assertRefusedUntouched(t *testing.T, st stagedRun, wants ...string) {
+	t.Helper()
+	err, dir, exe, beforeSum, beforeList := st.err, st.dir, st.exe, st.beforeSum, st.beforeList
+	if err == nil {
+		t.Fatal("Run installed a staged binary whose embedded version is not the release tag")
+	}
+	for _, w := range wants {
+		if !strings.Contains(err.Error(), w) {
+			t.Errorf("err = %v, want it to name %q", err, w)
+		}
+	}
+	if got := fileSum(t, exe); got != beforeSum {
+		t.Errorf("old binary sha256 = %s, want %s (byte-identical)", got, beforeSum)
+	}
+	if got := listing(t, dir); !reflect.DeepEqual(got, beforeList) {
+		t.Errorf("install dir = %v, want %v (no temporary file left behind)", got, beforeList)
+	}
+}
+
+func TestStagedVersionEqualToTagInstalls(t *testing.T) {
+	st := runStaged(t, newBody(t))
+	if st.err != nil {
+		t.Fatal(st.err)
+	}
+	dir, exe := st.dir, st.exe
+	if got, _ := os.ReadFile(exe); string(got) != newBody(t) {
+		t.Error("the staged binary was not installed")
+	}
+	if l := listing(t, dir); !reflect.DeepEqual(l, []string{"deck"}) {
+		t.Errorf("install dir = %v, want only deck", l)
+	}
+}
+
+func TestStagedOlderVersionRefusesNamingBoth(t *testing.T) {
+	older := string(testrelbin.Bytes(t, "v1.2.2"))
+	assertRefusedUntouched(t, runStaged(t, older), "v1.2.2", tagV)
+}
+
+func TestStagedNewerVersionRefuses(t *testing.T) {
+	newer := string(testrelbin.Bytes(t, "v1.2.4"))
+	assertRefusedUntouched(t, runStaged(t, newer), "v1.2.4", tagV)
+}
+
+func TestStagedUnreadableVersionRefuses(t *testing.T) {
+	assertRefusedUntouched(t, runStaged(t, "#!/bin/sh\necho not a go binary\n"), tagV)
+}
+
+func TestStagedAbsentVersionRefuses(t *testing.T) {
+	assertRefusedUntouched(t, runStaged(t, string(testrelbin.Devel(t))), tagV)
+}
+
+func TestPinnedOlderVersionInstallsWhenStagedMatches(t *testing.T) {
+	const pinned = "v1.0.0"
+	body := string(testrelbin.Bytes(t, pinned))
+	asset, err := AssetName("linux", "amd64")
+	if err != nil {
+		t.Fatal(err)
+	}
+	archive := tarGz(t, "deck", body)
+	mux := http.NewServeMux()
+	dl := "/releases/download/" + pinned + "/"
+	mux.HandleFunc(dl+asset, func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write(archive) })
+	mux.HandleFunc(dl+"checksums.txt", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(sum(archive) + "  " + asset + "\n"))
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	_, exe := installOld(t)
+	res, err := Run(context.Background(), Options{BaseURL: srv.URL, Version: pinned, Current: "v1.5.0", Exe: exe, GOOS: "linux", GOARCH: "amd64"})
+	if err != nil || res.Tag != pinned {
+		t.Fatalf("Run = %+v, %v", res, err)
+	}
+	if got, _ := os.ReadFile(exe); string(got) != body {
+		t.Error("the older pinned binary was not installed")
 	}
 }
