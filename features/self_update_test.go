@@ -16,6 +16,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 
 	"github.com/cucumber/godog"
 
@@ -115,40 +116,68 @@ func selfUpdateStartServer(latest string) error {
 		return err
 	}
 	asset := "deck_" + runtime.GOOS + "_" + runtime.GOARCH + ".tar.gz"
-	var buf bytes.Buffer
-	zw := gzip.NewWriter(&buf)
-	tw := tar.NewWriter(zw)
-	// The release's binary is a real Go executable whose build info reports
-	// the tag the server serves.
+	// A tag's release binary is a real Go executable whose build info reports
+	// that tag; each tag's archive and checksums.txt are built once.
+	type served struct {
+		archive   []byte
+		checksums string
+	}
+	var mu sync.Mutex
+	tags := map[string]served{}
+	forTag := func(tag string) (served, error) {
+		mu.Lock()
+		defer mu.Unlock()
+		if sv, ok := tags[tag]; ok {
+			return sv, nil
+		}
+		body, err := testrelbin.Build(tag)
+		if err != nil {
+			return served{}, err
+		}
+		var buf bytes.Buffer
+		zw := gzip.NewWriter(&buf)
+		tw := tar.NewWriter(zw)
+		if err := tw.WriteHeader(&tar.Header{Name: "deck", Mode: 0o755, Size: int64(len(body)), Typeflag: tar.TypeReg}); err != nil {
+			return served{}, err
+		}
+		if _, err := tw.Write(body); err != nil {
+			return served{}, err
+		}
+		if err := errors.Join(tw.Close(), zw.Close()); err != nil {
+			return served{}, err
+		}
+		sum := sha256.Sum256(buf.Bytes())
+		sv := served{archive: buf.Bytes(), checksums: hex.EncodeToString(sum[:]) + "  " + asset + "\n"}
+		tags[tag] = sv
+		return sv, nil
+	}
+	if _, err := forTag(latest); err != nil {
+		return err
+	}
 	body, err := testrelbin.Build(latest)
 	if err != nil {
 		return err
 	}
 	s.release = body
-	if err := tw.WriteHeader(&tar.Header{Name: "deck", Mode: 0o755, Size: int64(len(body)), Typeflag: tar.TypeReg}); err != nil {
-		return err
-	}
-	if _, err := tw.Write(body); err != nil {
-		return err
-	}
-	if err := errors.Join(tw.Close(), zw.Close()); err != nil {
-		return err
-	}
-	archive := buf.Bytes()
-	sum := sha256.Sum256(archive)
-	checksums := hex.EncodeToString(sum[:]) + "  " + asset + "\n"
 	mux := http.NewServeMux()
 	mux.HandleFunc("/releases/latest", func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/releases/tag/"+latest, http.StatusFound)
 	})
 	mux.HandleFunc("/releases/download/", func(w http.ResponseWriter, r *http.Request) {
-		switch {
-		case strings.HasSuffix(r.URL.Path, "/"+asset):
-			_, _ = w.Write(archive)
-		case strings.HasSuffix(r.URL.Path, "/checksums.txt"):
-			_, _ = w.Write([]byte(checksums))
-		default:
+		tag, file, ok := strings.Cut(strings.TrimPrefix(r.URL.Path, "/releases/download/"), "/")
+		if !ok || tag == "" || (file != asset && file != "checksums.txt") {
 			http.NotFound(w, r)
+			return
+		}
+		sv, err := forTag(tag)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		if file == asset {
+			_, _ = w.Write(sv.archive)
+		} else {
+			_, _ = w.Write([]byte(sv.checksums))
 		}
 	})
 	s.server = httptest.NewServer(mux)

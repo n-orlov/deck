@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"crypto/sha256"
+	"debug/buildinfo"
 	"encoding/hex"
 	"errors"
 	"net/http"
@@ -28,12 +29,49 @@ const (
 	updLatest = "v1.2.0"
 )
 
-// fakeRelease is a loopback release server: any tag's downloads answer with
-// the same archive, `/releases/latest` redirects to updLatest.
+// fakeRelease is a loopback release server: `/releases/latest` redirects to
+// updLatest, and a tag's downloads answer with an archive whose "deck" is a
+// real Go executable stamped with that tag, plus its checksums.txt.
 type fakeRelease struct {
+	asset        string
+	goodChecksum bool
+	server       *httptest.Server
+
+	mu   sync.Mutex
+	tags map[string]fakeTag
+}
+
+// fakeTag is one tag's served archive and checksums.txt.
+type fakeTag struct {
 	archive   []byte
 	checksums string
-	server    *httptest.Server
+}
+
+// forTag builds (once) the archive and checksums.txt the server serves for
+// tag. It runs on the server's goroutine, so it reports errors instead of
+// failing the test.
+func (r *fakeRelease) forTag(tag string) (fakeTag, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if ft, ok := r.tags[tag]; ok {
+		return ft, nil
+	}
+	body, err := testrelbin.Build(tag)
+	if err != nil {
+		return fakeTag{}, err
+	}
+	archive, err := updTarGzBytes(string(body))
+	if err != nil {
+		return fakeTag{}, err
+	}
+	sum := sha256.Sum256(archive)
+	hexSum := hex.EncodeToString(sum[:])
+	if !r.goodChecksum {
+		hexSum = strings.Repeat("0", 64)
+	}
+	ft := fakeTag{archive: archive, checksums: hexSum + "  " + r.asset + "\n"}
+	r.tags[tag] = ft
+	return ft, nil
 }
 
 // updNewBody is the release's "deck" binary: a real Go executable whose build
@@ -61,22 +99,28 @@ func updTarGz(t *testing.T, body string) []byte {
 
 func buildUpdTarGz(t *testing.T, body string) []byte {
 	t.Helper()
+	b, err := updTarGzBytes(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return b
+}
+
+// updTarGzBytes is the .tar.gz holding body as "deck".
+func updTarGzBytes(body string) ([]byte, error) {
 	var buf bytes.Buffer
 	zw := gzip.NewWriter(&buf)
 	tw := tar.NewWriter(zw)
 	if err := tw.WriteHeader(&tar.Header{Name: "deck", Mode: 0o755, Size: int64(len(body)), Typeflag: tar.TypeReg}); err != nil {
-		t.Fatal(err)
+		return nil, err
 	}
 	if _, err := tw.Write([]byte(body)); err != nil {
-		t.Fatal(err)
+		return nil, err
 	}
-	if err := tw.Close(); err != nil {
-		t.Fatal(err)
+	if err := errors.Join(tw.Close(), zw.Close()); err != nil {
+		return nil, err
 	}
-	if err := zw.Close(); err != nil {
-		t.Fatal(err)
-	}
-	return buf.Bytes()
+	return buf.Bytes(), nil
 }
 
 func newFakeRelease(t *testing.T, goodChecksum bool) *fakeRelease {
@@ -85,25 +129,29 @@ func newFakeRelease(t *testing.T, goodChecksum bool) *fakeRelease {
 	if err != nil {
 		t.Skip(err)
 	}
-	r := &fakeRelease{archive: updTarGz(t, updNewBody(t))}
-	sum := sha256.Sum256(r.archive)
-	hexSum := hex.EncodeToString(sum[:])
-	if !goodChecksum {
-		hexSum = strings.Repeat("0", 64)
+	r := &fakeRelease{asset: asset, goodChecksum: goodChecksum, tags: map[string]fakeTag{}}
+	if _, err := r.forTag(updLatest); err != nil {
+		t.Fatal(err)
 	}
-	r.checksums = hexSum + "  " + asset + "\n"
 	mux := http.NewServeMux()
 	mux.HandleFunc("/releases/latest", func(w http.ResponseWriter, req *http.Request) {
 		http.Redirect(w, req, "/releases/tag/"+updLatest, http.StatusFound)
 	})
 	mux.HandleFunc("/releases/download/", func(w http.ResponseWriter, req *http.Request) {
-		switch {
-		case strings.HasSuffix(req.URL.Path, "/"+asset):
-			_, _ = w.Write(r.archive)
-		case strings.HasSuffix(req.URL.Path, "/checksums.txt"):
-			_, _ = w.Write([]byte(r.checksums))
-		default:
+		tag, file, ok := strings.Cut(strings.TrimPrefix(req.URL.Path, "/releases/download/"), "/")
+		if !ok || tag == "" || (file != asset && file != "checksums.txt") {
 			http.NotFound(w, req)
+			return
+		}
+		ft, err := r.forTag(tag)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		if file == asset {
+			_, _ = w.Write(ft.archive)
+		} else {
+			_, _ = w.Write([]byte(ft.checksums))
 		}
 	})
 	r.server = httptest.NewServer(mux)
@@ -400,6 +448,9 @@ func TestUpdateVerbAgainstFakeServer(t *testing.T) {
 			}
 			if updSum(t, exe) == updSum(t, v120()) {
 				t.Error("the pinned downgrade left the binary unchanged")
+			}
+			if info, err := buildinfo.ReadFile(exe); err != nil || info.Main.Version != "v1.0.0" {
+				t.Errorf("installed binary's build info = %v, %v; want Main.Version v1.0.0, the pinned tag", info, err)
 			}
 		})
 
