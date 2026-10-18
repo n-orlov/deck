@@ -145,3 +145,102 @@ func TestReleaseWithShadowLeavesWindowOption(t *testing.T) {
 		t.Fatalf("window option = %q after Release; want it left as the claim %q", got, ownership.claim)
 	}
 }
+
+// assertClaimRefusesShadowValue is assertClaimRefusesShadow for a shadow whose
+// value is chosen by the caller (equal to the window's, empty, or holding
+// control characters), with the window option optionally set first. The
+// refusal comes from the scope tmux's lookup reads, not from the values
+// differing, so no value may hide the shadow.
+func assertClaimRefusesShadowValue(t *testing.T, name, wantScope string, scopeArgs []string, windowValue, shadowValue string) {
+	t.Helper()
+	socket := shadowTestSocket(name)
+	cleanup := newBareOwnershipSession(t, socket)
+	defer cleanup()
+	client := Client{Socket: socket, Timeout: 3 * time.Second}
+
+	if windowValue != "" {
+		setWindowOwnershipRaw(t, socket, windowValue)
+	}
+	setShadowOwnership(t, socket, scopeArgs, shadowValue)
+
+	started := time.Now()
+	ownership, owned, claimErr := client.ClaimWindowOwnership(context.Background(), "s0")
+	if owned || ownership != nil {
+		t.Fatalf("owned = %v, ownership = %v; want a refusal", owned, ownership)
+	}
+	if claimErr == nil || !strings.Contains(claimErr.Error(), wantScope) {
+		t.Fatalf("err = %v; want an error naming %s", claimErr, wantScope)
+	}
+	if strings.Contains(claimErr.Error(), "gave up after") || time.Since(started) > 2*time.Second {
+		t.Fatalf("err = %v after %v; want an immediate refusal, not a retry", claimErr, time.Since(started))
+	}
+	after, err := client.readWindowOwnership(context.Background(), "s0")
+	if err != nil {
+		t.Fatalf("read window option after: %v", err)
+	}
+	if after.Value != windowValue {
+		t.Fatalf("window option = %q after the refusal; want it untouched (%q)", after.Value, windowValue)
+	}
+}
+
+// TestClaimRefusesPaneShadowEqualToWindowValue: a pane value equal to the
+// window's dead claim is still a pane value, so the claim is refused.
+func TestClaimRefusesPaneShadowEqualToWindowValue(t *testing.T) {
+	dead := formatOwnershipClaim("samevalue", 999999999)
+	assertClaimRefusesShadowValue(t, "paneequal", "pane-scope", []string{"-p", "-t", "s0"}, dead, dead)
+}
+
+// TestClaimRefusesPaneShadowDifferingOnlyByControlCharacter: tmux's display
+// forms print the pane's newline as `_`, which equals the window's literal
+// underscore, so a display comparison sees no difference; the scope is the same.
+func TestClaimRefusesPaneShadowDifferingOnlyByControlCharacter(t *testing.T) {
+	assertClaimRefusesShadowValue(t, "panectl", "pane-scope", []string{"-p", "-t", "s0"}, "dead:1_", "dead:1\n")
+}
+
+// TestClaimRefusesSessionShadowWithControlCharacters: the window option is
+// unset and the session holds a value with a newline in it.
+func TestClaimRefusesSessionShadowWithControlCharacters(t *testing.T) {
+	assertClaimRefusesShadowValue(t, "sessionctl", "session-scope", []string{"-t", "s0"}, "", "dead:1\n\n")
+}
+
+// TestClaimRefusesEmptySessionShadow: an empty session value reads the same as
+// an absent window option through a display, and still shadows.
+func TestClaimRefusesEmptySessionShadow(t *testing.T) {
+	assertClaimRefusesShadowValue(t, "sessionempty", "session-scope", []string{"-t", "s0"}, "", "")
+}
+
+func TestClaimRefusesEmptyGlobalShadow(t *testing.T) {
+	assertClaimRefusesShadowValue(t, "globalempty", "global-scope", []string{"-g"}, "", "")
+}
+
+func TestClaimRefusesGlobalWindowShadowWithControlCharacters(t *testing.T) {
+	assertClaimRefusesShadowValue(t, "globalwindowctl", "global-window-scope", []string{"-wg"}, "", "a\tb\nc")
+}
+
+// TestReleaseWithEqualPaneShadowLeavesWindowOption: the pane holds exactly the
+// claim, so the compare-and-set would match and unset the window option; the
+// release refuses by scope and writes nothing.
+func TestReleaseWithEqualPaneShadowLeavesWindowOption(t *testing.T) {
+	socket := shadowTestSocket("releaseequal")
+	cleanup := newBareOwnershipSession(t, socket)
+	defer cleanup()
+	client := Client{Socket: socket, Timeout: 3 * time.Second}
+
+	ownership, owned, err := client.ClaimWindowOwnership(context.Background(), "s0")
+	if err != nil || !owned {
+		t.Fatalf("claim: owned=%v err=%v", owned, err)
+	}
+	setShadowOwnership(t, socket, []string{"-p", "-t", "s0"}, ownership.claim)
+
+	releaseErr := ownership.Release(context.Background())
+	if releaseErr == nil || !strings.Contains(releaseErr.Error(), "pane-scope") {
+		t.Fatalf("Release err = %v; want an error naming the pane-scope shadow", releaseErr)
+	}
+	got, err := readTmuxOptionForOwnershipTest(t, socket)
+	if err != nil {
+		t.Fatalf("read window option: %v", err)
+	}
+	if got != ownership.claim {
+		t.Fatalf("window option = %q after Release; want it left as the claim %q", got, ownership.claim)
+	}
+}
