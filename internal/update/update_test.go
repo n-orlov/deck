@@ -15,16 +15,43 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
+	"sync"
 	"testing"
+
+	"github.com/n-orlov/deck/internal/testrelbin"
 )
 
 const (
 	oldBody = "old deck binary\n"
-	newBody = "new deck binary\n"
 	tagV    = "v1.2.3"
 )
 
+// newBody is the release's "deck" binary: a real Go executable whose build
+// info reports the tag the fixture serves (tagV).
+func newBody(t testing.TB) string { return string(testrelbin.Bytes(t, tagV)) }
+
+var (
+	tarGzMu    sync.Mutex
+	tarGzCache = map[[2]string][]byte{}
+)
+
+// tarGz builds a .tar.gz holding one file. The result is memoized per
+// (name, body) because the release binary is megabytes and most tests build
+// the same archive; every caller gets its own copy.
 func tarGz(t *testing.T, name, body string) []byte {
+	t.Helper()
+	key := [2]string{name, body}
+	tarGzMu.Lock()
+	defer tarGzMu.Unlock()
+	if b, ok := tarGzCache[key]; ok {
+		return append([]byte(nil), b...)
+	}
+	b := buildTarGz(t, name, body)
+	tarGzCache[key] = b
+	return append([]byte(nil), b...)
+}
+
+func buildTarGz(t *testing.T, name, body string) []byte {
 	t.Helper()
 	var buf bytes.Buffer
 	zw := gzip.NewWriter(&buf)
@@ -60,7 +87,7 @@ func newRelease(t *testing.T) *release {
 	if err != nil {
 		t.Fatal(err)
 	}
-	archive := tarGz(t, "deck", newBody)
+	archive := tarGz(t, "deck", newBody(t))
 	return &release{asset: asset, archive: archive, checksums: sum(archive) + "  " + asset + "\n" + strings.Repeat("0", 64) + "  other.tar.gz\n", missing: map[string]bool{}}
 }
 
@@ -130,7 +157,7 @@ func TestUpdateReplacesBinary(t *testing.T) {
 		t.Fatal(err)
 	}
 	got, err := os.ReadFile(exe)
-	if err != nil || string(got) != newBody {
+	if err != nil || string(got) != newBody(t) {
 		t.Fatalf("binary = %q, %v; want the new body", got, err)
 	}
 	if res.Tag != tagV {
@@ -175,7 +202,7 @@ func TestUpdateResolvesSymlinkedExecutable(t *testing.T) {
 	if want, _ := filepath.EvalSymlinks(realExe); res.Path != want {
 		t.Errorf("replaced %q, want the symlink target %q", res.Path, want)
 	}
-	if b, _ := os.ReadFile(realExe); string(b) != newBody {
+	if b, _ := os.ReadFile(realExe); string(b) != newBody(t) {
 		t.Errorf("symlink target = %q, want the new body", b)
 	}
 	if fi, err := os.Lstat(link); err != nil || fi.Mode()&os.ModeSymlink == 0 {
@@ -367,7 +394,7 @@ func TestDownloadLimitsAndStatus(t *testing.T) {
 }
 
 func TestExtractBinaryFindsNestedAndRejectsMissing(t *testing.T) {
-	if b, err := extractBinary(tarGz(t, "deck_linux_amd64/deck", newBody)); err != nil || string(b) != newBody {
+	if b, err := extractBinary(tarGz(t, "deck_linux_amd64/deck", newBody(t))); err != nil || string(b) != newBody(t) {
 		t.Errorf("nested = %q, %v", b, err)
 	}
 	if _, err := extractBinary(tarGz(t, "README", "x")); err == nil || !strings.Contains(err.Error(), "no deck binary") {
@@ -376,7 +403,7 @@ func TestExtractBinaryFindsNestedAndRejectsMissing(t *testing.T) {
 	if _, err := extractBinary(tarGz(t, "deck", "")); err == nil || !strings.Contains(err.Error(), "implausible") {
 		t.Errorf("empty binary: err = %v", err)
 	}
-	trunc := tarGz(t, "deck", newBody)
+	trunc := tarGz(t, "deck", newBody(t))
 	if _, err := extractBinary(trunc[:len(trunc)/2]); err == nil {
 		t.Error("a truncated archive was extracted")
 	}

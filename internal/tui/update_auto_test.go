@@ -31,7 +31,7 @@ func newAutoServer(t *testing.T, badChecksum bool) *autoServer {
 	if err != nil {
 		t.Skipf("no release asset for this platform: %v", err)
 	}
-	archive := ctrlUArchive(t, ctrlUNewBody)
+	archive := ctrlUArchive(t, ctrlUNewBody(t))
 	digest := ctrlUSum(archive)
 	if badChecksum {
 		digest = strings.Repeat("0", 64)
@@ -125,7 +125,7 @@ func TestAutoUpdate(t *testing.T) {
 	if got := srv.archives.Load(); got != 1 {
 		t.Fatalf("archive downloads = %d, want 1", got)
 	}
-	if got, _ := os.ReadFile(exe); string(got) != ctrlUNewBody {
+	if got, _ := os.ReadFile(exe); string(got) != ctrlUNewBody(t) {
 		t.Fatalf("binary = %q, want the new release", got)
 	}
 }

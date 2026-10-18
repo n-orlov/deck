@@ -16,15 +16,16 @@ import (
 	"reflect"
 	"runtime"
 	"strings"
+	"sync"
 	"testing"
 	"unicode/utf8"
 
+	"github.com/n-orlov/deck/internal/testrelbin"
 	"github.com/n-orlov/deck/internal/update"
 )
 
 const (
-	updNewBody = "the new deck binary\n"
-	updLatest  = "v1.2.0"
+	updLatest = "v1.2.0"
 )
 
 // fakeRelease is a loopback release server: any tag's downloads answer with
@@ -35,7 +36,30 @@ type fakeRelease struct {
 	server    *httptest.Server
 }
 
+// updNewBody is the release's "deck" binary: a real Go executable whose build
+// info reports the tag the fixture serves (updLatest).
+func updNewBody(t testing.TB) string { return string(testrelbin.Bytes(t, updLatest)) }
+
+var (
+	updTarGzMu    sync.Mutex
+	updTarGzCache = map[string][]byte{}
+)
+
+// updTarGz builds a .tar.gz holding body as "deck", memoized per body because
+// the release binary is megabytes; each caller gets a copy.
 func updTarGz(t *testing.T, body string) []byte {
+	t.Helper()
+	updTarGzMu.Lock()
+	defer updTarGzMu.Unlock()
+	if b, ok := updTarGzCache[body]; ok {
+		return append([]byte(nil), b...)
+	}
+	b := buildUpdTarGz(t, body)
+	updTarGzCache[body] = b
+	return append([]byte(nil), b...)
+}
+
+func buildUpdTarGz(t *testing.T, body string) []byte {
 	t.Helper()
 	var buf bytes.Buffer
 	zw := gzip.NewWriter(&buf)
@@ -61,7 +85,7 @@ func newFakeRelease(t *testing.T, goodChecksum bool) *fakeRelease {
 	if err != nil {
 		t.Skip(err)
 	}
-	r := &fakeRelease{archive: updTarGz(t, updNewBody)}
+	r := &fakeRelease{archive: updTarGz(t, updNewBody(t))}
 	sum := sha256.Sum256(r.archive)
 	hexSum := hex.EncodeToString(sum[:])
 	if !goodChecksum {
@@ -313,7 +337,7 @@ func TestUpdateVerbAgainstFakeServer(t *testing.T) {
 					t.Errorf("stdout %q lacks %q", stdout, want)
 				}
 			}
-			if got, want := updSum(t, exe), func() string { s := sha256.Sum256([]byte(updNewBody)); return hex.EncodeToString(s[:]) }(); got != want {
+			if got, want := updSum(t, exe), func() string { s := sha256.Sum256([]byte(updNewBody(t))); return hex.EncodeToString(s[:]) }(); got != want {
 				t.Errorf("binary sha256 = %s, want the release binary %s", got, want)
 			}
 			if names := updNames(t, dir); len(names) != 1 {
@@ -539,7 +563,7 @@ func TestUpdateVerbRedactsMirrorCredentials(t *testing.T) {
 		}), "unexpected EOF", []string{"update"}},
 		{"size limit", mirror(func(w http.ResponseWriter, r *http.Request) {
 			if strings.HasSuffix(r.URL.Path, "/"+asset) {
-				_, _ = w.Write(updTarGz(t, updNewBody))
+				_, _ = w.Write(updTarGz(t, updNewBody(t)))
 				return
 			}
 			_, _ = w.Write(bytes.Repeat([]byte("a"), 2<<20))

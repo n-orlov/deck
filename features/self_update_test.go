@@ -18,6 +18,8 @@ import (
 	"strings"
 
 	"github.com/cucumber/godog"
+
+	"github.com/n-orlov/deck/internal/testrelbin"
 )
 
 // registerSelfUpdateSteps backs features/self_update.feature (R296). The
@@ -54,11 +56,10 @@ func registerSelfUpdateSteps(sc *godog.ScenarioContext) {
 	})
 }
 
-const selfUpdateReleaseBody = "the release's deck binary\n"
-
 type selfUpdateScenario struct {
 	dir, home, exe string
 	before         string // sha256 of the installed binary before the verb
+	release        []byte // the "deck" binary the fake release serves
 	server         *httptest.Server
 	url            string
 	path           string // PATH for the verb: empty unless a fake gh was installed
@@ -117,7 +118,13 @@ func selfUpdateStartServer(latest string) error {
 	var buf bytes.Buffer
 	zw := gzip.NewWriter(&buf)
 	tw := tar.NewWriter(zw)
-	body := []byte(selfUpdateReleaseBody)
+	// The release's binary is a real Go executable whose build info reports
+	// the tag the server serves.
+	body, err := testrelbin.Build(latest)
+	if err != nil {
+		return err
+	}
+	s.release = body
 	if err := tw.WriteHeader(&tar.Header{Name: "deck", Mode: 0o755, Size: int64(len(body)), Typeflag: tar.TypeReg}); err != nil {
 		return err
 	}
@@ -250,7 +257,7 @@ func selfUpdateBinaryIsRelease() error {
 	if err != nil {
 		return err
 	}
-	sum := sha256.Sum256([]byte(selfUpdateReleaseBody))
+	sum := sha256.Sum256(s.release)
 	if want := hex.EncodeToString(sum[:]); got != want {
 		return fmt.Errorf("installed binary sha256 %s, want the release's %s", got, want)
 	}

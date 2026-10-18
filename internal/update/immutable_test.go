@@ -129,7 +129,7 @@ func TestImmutabilityReportedWhenOptedOut(t *testing.T) {
 			if res.Immutable != c.want {
 				t.Errorf("Immutable = %q, want %q", res.Immutable, c.want)
 			}
-			if fileSum(t, exe) != sum([]byte(newBody)) {
+			if fileSum(t, exe) != sum([]byte(newBody(t))) {
 				t.Error("the release was not installed")
 			}
 			if api.hits.Load() != 1 || api.wrongPath.Load() != 0 || api.withAuth.Load() != 0 {
@@ -205,7 +205,7 @@ func TestImmutabilityRequiredRefusesEveryOtherState(t *testing.T) {
 				_, exe := installOld(t)
 				o.Exe = exe
 				res, err := Run(context.Background(), o)
-				if err != nil || res.Immutable != ImmutableVerified || fileSum(t, exe) != sum([]byte(newBody)) {
+				if err != nil || res.Immutable != ImmutableVerified || fileSum(t, exe) != sum([]byte(newBody(t))) {
 					t.Fatalf("res %+v err %v, want the immutable release installed", res, err)
 				}
 			})
@@ -234,7 +234,7 @@ func TestImmutabilityOnAMirrorIsUnknown(t *testing.T) {
 	setImmutableEnv(t, "0")
 	_, exe := installOld(t)
 	res, err := Run(context.Background(), Options{Exe: exe, GOOS: "linux", GOARCH: "amd64"})
-	if err != nil || res.Immutable != ImmutableUnknown || fileSum(t, exe) != sum([]byte(newBody)) {
+	if err != nil || res.Immutable != ImmutableUnknown || fileSum(t, exe) != sum([]byte(newBody(t))) {
 		t.Fatalf("res %+v err %v, want an install with the state unknown", res, err)
 	}
 	for _, mode := range requiringValues {

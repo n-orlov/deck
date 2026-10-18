@@ -151,7 +151,7 @@ func TestAttestation(t *testing.T) {
 				t.Fatal(err)
 			}
 			if row.wantReplaced {
-				if got := fileSum(t, exe); got != sum([]byte(newBody)) {
+				if got := fileSum(t, exe); got != sum([]byte(newBody(t))) {
 					t.Errorf("binary sha256 = %s, want the new binary's", got)
 				}
 				if res.Attestation != row.wantAtt {
@@ -305,7 +305,7 @@ func TestAttestationUnauthenticatedGhIsCannotVerify(t *testing.T) {
 			}
 			continue
 		}
-		if err != nil || res.Attestation != AttestationSkipped || fileSum(t, exe) != sum([]byte(newBody)) {
+		if err != nil || res.Attestation != AttestationSkipped || fileSum(t, exe) != sum([]byte(newBody(t))) {
 			t.Errorf("not required: res = %+v, err = %v", res, err)
 		}
 	}
@@ -340,7 +340,7 @@ func TestDownloadPrefersGh(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if fileSum(t, exe) != sum([]byte(newBody)) {
+			if fileSum(t, exe) != sum([]byte(newBody(t))) {
 				t.Errorf("binary not replaced (%+v)", res)
 			}
 			serverDl := 0
@@ -472,7 +472,7 @@ func TestMirrorRequiresAttestation(t *testing.T) {
 			o.Exe = exe
 			res, err := Run(context.Background(), o)
 			if c.want == AttestationVerified {
-				if err != nil || res.Attestation != AttestationVerified || fileSum(t, exe) != sum([]byte(newBody)) {
+				if err != nil || res.Attestation != AttestationVerified || fileSum(t, exe) != sum([]byte(newBody(t))) {
 					t.Fatalf("Run = %+v, %v; want the release installed and verified", res, err)
 				}
 				return
