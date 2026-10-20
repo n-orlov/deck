@@ -11,6 +11,11 @@
 // Everything Go runs in the deck-ci image through ci/run.sh, like a local
 // run; only Allure (needs the agent's JRE) and ci/stability.sh (starts its
 // own ci/run.sh siblings) run on the agent itself.
+//
+// Telegram: notifyTelegram from the homelab shared library
+// (github.com/n-orlov/jenkins-library), last, in post { cleanup }.
+@Library('homelab') _
+
 pipeline {
   agent { label 'linux && amd64 && docker' }
 
@@ -39,7 +44,6 @@ pipeline {
     DECK_CI_CACHE_VOLUME = 'deck-go-cache-jenkins'
     DECK_CI_RUN_URL = "${env.BUILD_URL}"
     DECK_CI_BUILD_NAME = "${env.JOB_NAME} #${env.BUILD_NUMBER}"
-    TELEGRAM_NOTIFY = 'http://100.71.162.65:8090/notify'
   }
 
   stages {
@@ -198,19 +202,15 @@ pipeline {
         }
       }
     }
-    // A red main or nightly build posts one Telegram message (R145).
-    unsuccessful {
+    // Every build posts one Telegram message (R145), with the result,
+    // failed stage, commit and test counts. Only a red or aborted main or
+    // nightly build makes a sound; everything else arrives silently. cleanup
+    // runs after success {}, so the message carries the final result.
+    cleanup {
       script {
-        if (env.BRANCH_NAME == 'main' || env.CI_NIGHTLY == 'true') {
-          def msg = 'deck CI ' + currentBuild.currentResult + ': ' + env.JOB_NAME + ' #' + env.BUILD_NUMBER +
-                    (env.CI_NIGHTLY == 'true' ? ' (nightly)' : '') + ' -- ' + env.BUILD_URL
-          withEnv(['NOTIFY_TEXT=' + msg]) {
-            sh '''
-              python3 -c 'import json, os; print(json.dumps({"text": os.environ["NOTIFY_TEXT"]}))' |
-                curl -fsS -X POST "$TELEGRAM_NOTIFY" -H "Content-Type: application/json" --data @- || true
-            '''
-          }
-        }
+        def watched = env.BRANCH_NAME == 'main' || env.CI_NIGHTLY == 'true'
+        notifyTelegram(notifyOn: 'ALL', silent: watched ? null : true,
+                       extra: env.CI_NIGHTLY == 'true' ? 'nightly (extended lane)' : null)
       }
     }
   }

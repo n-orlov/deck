@@ -51,9 +51,14 @@ which runs after the reports, so nothing can turn the build unstable after
 the file is written. Only `deck/release` reads it (`copyArtifactPermission`
 allows `/deck/release`, and `/deck/ci/*` for the Allure history).
 
-**Telegram:** a red (failed, unstable or aborted) build of `main`, or a red
-nightly, posts one message with the build link to the homelab notifier
-(`http://100.71.162.65:8090/notify`). Other branches only show red in Jenkins.
+**Telegram:** every build posts one message to the homelab notifier
+(`http://100.71.162.65:8090/notify`) through `notifyTelegram` from the homelab
+shared library (`@Library('homelab')`, github.com/n-orlov/jenkins-library), in
+`post { cleanup }` so it carries the final result. The message has the
+result (FIXED after a red build), branch, build link, failed stage, commit,
+test counts and duration. Only a red (failed, unstable or aborted) build of
+`main`, or a red nightly, makes a sound; other branches and green builds
+arrive silently. `deck/release` posts every result, with sound.
 
 ## Reports
 

@@ -6,7 +6,10 @@
 // Candidate -> Checkout -> Version check -> Build -> Publish. The tag is
 // created on GitHub by `gh release create --target`, together with the
 // release; nothing is ever pushed from the agent. DRY_RUN stops before
-// publishing.
+// publishing. Every result posts a Telegram message (notifyTelegram, from
+// the homelab shared library github.com/n-orlov/jenkins-library).
+@Library('homelab') _
+
 pipeline {
   agent { label 'linux && amd64 && docker' }
 
@@ -151,6 +154,14 @@ pipeline {
                                                                    : 'symbol-close-circle-outline plugin-ionicons-api',
                      text: text)
         }
+      }
+    }
+    cleanup {
+      script {
+        def note = env.RELEASE_URL ? 'GitHub release: ' + env.RELEASE_URL
+                 : params.DRY_RUN ? 'dry run, not published' : 'not published'
+        notifyTelegram(notifyOn: 'ALL', silent: false, title: 'deck release ' + params.VERSION,
+                       commit: env.RELEASE_SHA, extra: note)
       }
     }
   }

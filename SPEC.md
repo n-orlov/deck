@@ -4138,8 +4138,9 @@ in the help view.
   `ci/run.sh` in the same `ci/Dockerfile` image as a local run. Only this repository's own
   branches build, never tags; the project takes no pull requests, so no outside code ever runs
   on the agent. Lint runs first and a red lint stops the build. A failing test is retried once,
-  and a pass on the retry is green but recorded as **flaky**, never hidden. A red build of
-  `main`, or a red nightly, sends the operator one Telegram message with the build link. `main`
+  and a pass on the retry is green but recorded as **flaky**, never hidden. Every build sends
+  the operator one Telegram message with the result and the build link; only a red build of
+  `main`, or a red nightly, sends it with sound. `main`
   is also built nightly in the extended lane (`-race`, fresh vulnerability databases and three
   clean-state stability runs; the `EXTENDED` parameter asks for it on demand); a wall-clock
   budget (such as `_hook`'s 20 ms, §3.1) is asserted on normal builds only, never on the

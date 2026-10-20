@@ -273,3 +273,28 @@ func TestJenkinsfileDeclaresTheReadmeBadges(t *testing.T) {
 		t.Errorf("README shows no badges from %s", prefix)
 	}
 }
+
+// TestJenkinsfilesNotifyTelegram: both jobs load the homelab shared library
+// and post their result to Telegram from post { cleanup }, which runs after
+// every other post condition, so the message carries the final result.
+func TestJenkinsfilesNotifyTelegram(t *testing.T) {
+	for _, name := range []string{"Jenkinsfile", "Jenkinsfile.release"} {
+		jf := readRepoFile(t, name)
+		lib := strings.Index(jf, "@Library('homelab') _")
+		if lib < 0 || lib > strings.Index(jf, "\npipeline {") {
+			t.Errorf("%s does not load @Library('homelab') before the pipeline", name)
+		}
+		_, post, ok := strings.Cut(jf, "\n  post {")
+		if !ok {
+			t.Errorf("%s has no pipeline-level post { } block", name)
+			continue
+		}
+		_, cleanup, ok := strings.Cut(post, "\n    cleanup {")
+		if !ok || !strings.Contains(cleanup, "notifyTelegram(notifyOn: 'ALL'") {
+			t.Errorf("%s does not call notifyTelegram(notifyOn: 'ALL', ...) in post { cleanup }", name)
+		}
+		if strings.Contains(jf, "100.71.162.65") {
+			t.Errorf("%s still talks to the notifier itself; notifyTelegram owns that", name)
+		}
+	}
+}
