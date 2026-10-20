@@ -54,6 +54,43 @@ type HookStoreWriteRecord struct {
 	Succeeded       bool    `json:"succeeded"`
 }
 
+// OutputRecordedRecord is written for every last_output_at write the output
+// clock makes (R413). It carries the numbers that explain the write and never
+// the captured pane text or a hash of it. The old value is 0 for a session
+// that had no output yet.
+type OutputRecordedRecord struct {
+	Record
+	OldLastOutputAt  int64  `json:"old_last_output_at"`
+	NewLastOutputAt  int64  `json:"new_last_output_at"`
+	WindowActivity   int64  `json:"window_activity"`
+	Bucket           int64  `json:"bucket"`
+	PaneSize         string `json:"pane_size"`
+	BaselinePaneSize string `json:"baseline_pane_size"`
+	DiscountSpan     bool   `json:"discount_span"`
+}
+
+// OutputRebaselinedRecord is written when the output clock re-baselines a pane
+// whose size differs from its stored reading's (R409, R413).
+type OutputRebaselinedRecord struct {
+	Record
+	OldSize string `json:"old_size"`
+	NewSize string `json:"new_size"`
+}
+
+// OutputRecorded appends one output.recorded line.
+func (l *Logger) OutputRecorded(sessionID string, rec OutputRecordedRecord) error {
+	rec.Record = Record{Event: "output.recorded", SessionID: sessionID, Timestamp: l.clock.Now().Format(time.RFC3339Nano), DurationMS: positiveMilliseconds(l.clock.Elapsed())}
+	return l.write(rec)
+}
+
+// OutputRebaselined appends one output.rebaselined line.
+func (l *Logger) OutputRebaselined(sessionID, oldSize, newSize string) error {
+	return l.write(OutputRebaselinedRecord{
+		Record:  Record{Event: "output.rebaselined", SessionID: sessionID, Timestamp: l.clock.Now().Format(time.RFC3339Nano), DurationMS: positiveMilliseconds(l.clock.Elapsed())},
+		OldSize: oldSize, NewSize: newSize,
+	})
+}
+
 // New creates the log directory if needed and returns a logger rooted at paths.
 // It intentionally does not retain an open descriptor: each append is visible
 // promptly to another deck client or an external black-box observer.

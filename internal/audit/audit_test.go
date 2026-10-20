@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -259,4 +260,41 @@ func splitLines(value string) []string {
 		lines = append(lines, value[start:])
 	}
 	return lines
+}
+
+func TestOutputLinesCarryTheirFieldsAndTheEnvelope(t *testing.T) {
+	t.Parallel()
+	home := t.TempDir()
+	clock, err := config.NewClock("2030-01-02T03:04:05Z", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	logger, err := New(config.Paths{Home: home, LogDir: filepath.Join(home, "log")}, clock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := logger.OutputRecorded("s1", OutputRecordedRecord{OldLastOutputAt: 1000, NewLastOutputAt: 2000, WindowActivity: 2, Bucket: 0, PaneSize: "80x24", BaselinePaneSize: "60x24", DiscountSpan: true}); err != nil {
+		t.Fatal(err)
+	}
+	if err := logger.OutputRebaselined("s1", "80x24", "60x24"); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(logger.Path())
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(strings.TrimSpace(string(data)), "\n")
+	if len(lines) != 2 {
+		t.Fatalf("got %d lines, want 2: %s", len(lines), data)
+	}
+	for _, want := range []string{`"event":"output.recorded"`, `"session_id":"s1"`, `"old_last_output_at":1000`, `"new_last_output_at":2000`, `"window_activity":2`, `"bucket":0`, `"pane_size":"80x24"`, `"baseline_pane_size":"60x24"`, `"discount_span":true`} {
+		if !strings.Contains(lines[0], want) {
+			t.Errorf("output.recorded %s lacks %s", lines[0], want)
+		}
+	}
+	for _, want := range []string{`"event":"output.rebaselined"`, `"session_id":"s1"`, `"old_size":"80x24"`, `"new_size":"60x24"`} {
+		if !strings.Contains(lines[1], want) {
+			t.Errorf("output.rebaselined %s lacks %s", lines[1], want)
+		}
+	}
 }

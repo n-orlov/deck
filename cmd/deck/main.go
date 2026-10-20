@@ -200,6 +200,7 @@ func runTUI(settings config.Settings, stderr io.Writer) int {
 	// running client keeps enforcing the OLD window until deck restarts.
 	if sessions.Output == nil {
 		sessions.Output = service.NewOutputClock(settings.OutputBucket)
+		sessions.Output.Audit = sessions.Audit
 	}
 	tuiReconcile := newTUIReconcile(db, sessions, settings)
 	model := newDeckModel(db, settings, sessions, client, registry, tuiReconcile).WithEventHookLive(eventHook).WithUpdateSource(updateIndicatorSource(settings)).WithUpdateInstaller(updateInstallSource(settings))
@@ -506,6 +507,7 @@ func preFrameTombstoneSweep(ctx context.Context, db *store.Store, settings confi
 func newTUIReconcile(db *store.Store, sessions service.Service, settings config.Settings) func(context.Context) error {
 	if sessions.Output == nil {
 		sessions.Output = service.NewOutputClock(settings.OutputBucket)
+		sessions.Output.Audit = sessions.Audit
 	}
 	return func(ctx context.Context) error {
 		if err := sessions.ReconcileWithProbes(ctx, settings.StaleAfter); err != nil {

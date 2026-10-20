@@ -1495,7 +1495,16 @@ again. A transcript change at an unchanged size counts as described above. A res
 and is never output, whatever its source: deck's own, another process's, a real tmux client's or a
 terminal's. The size key does not depend on the discount window (the R305 paragraph below), which only
 covers deck's own actions. The write is a plain `UPDATE` of that one column, never an `events` row (the same rule
-as `last_probe_at` above), and it leaves `status`, `status_source` and `status_at` untouched.
+as `last_probe_at` above), and it leaves `status`, `status_source` and `status_at` untouched. **The clock logs why it wrote (R413).**
+Each `last_output_at` write appends exactly one `output.recorded` line to `deck.jsonl` (`$DECK_HOME/log/`) carrying
+`session_id`, `old_last_output_at` (the stored value before the write, 0 for none) and `new_last_output_at`,
+`window_activity` (seconds), `bucket` (the index at the configured width), `pane_size` (`WxH` of the pane
+read), `baseline_pane_size` (the size the stored reading was taken at) and `discount_span` (whether an R305 span
+covered that `window_activity` second; a covered second never writes, so on a written line it is `false`).
+Each size re-baseline (the R409 paragraph's re-capture on a pane whose size differs from its stored reading's)
+appends exactly one `output.rebaselined` line carrying `session_id`, `old_size` and `new_size`. Both lines also carry the
+common `event`, `timestamp` and `duration_ms`; neither carries the captured pane text or a transcript hash.
+Test: `TestOutputClockLogsWhyItWroteAndRebaselined`.
 
 **The unseen marker (`sessions.last_seen_at`, R324).** One marker answers "is there something here I have
 not looked at". A row is **unseen** iff `last_output_at > last_seen_at`, or its status is `waiting` or

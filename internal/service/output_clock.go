@@ -9,7 +9,9 @@ import (
 	"time"
 
 	"github.com/n-orlov/deck/internal/agent"
+	"github.com/n-orlov/deck/internal/audit"
 	"github.com/n-orlov/deck/internal/config"
+	"github.com/n-orlov/deck/internal/store"
 )
 
 // DefaultOutputBucket is the width of one output-clock bucket (R304). The
@@ -55,6 +57,10 @@ type OutputClock struct {
 	Bucket time.Duration
 	// Now reads the wall clock for discount windows; nil means time.Now.
 	Now func() time.Time
+	// Audit, when set, receives one output.recorded line per last_output_at
+	// write and one output.rebaselined line per size re-baseline (R413). It
+	// never carries pane text or a hash, and a failed append changes nothing.
+	Audit *audit.Logger
 
 	mu       sync.Mutex
 	state    map[string]outputState
@@ -96,6 +102,14 @@ type outputState struct {
 type PaneSize struct{ Width, Height int }
 
 func (p PaneSize) known() bool { return p.Width > 0 && p.Height > 0 }
+
+// String is "WxH", or "unknown" for the zero size.
+func (p PaneSize) String() string {
+	if !p.known() {
+		return "unknown"
+	}
+	return fmt.Sprintf("%dx%d", p.Width, p.Height)
+}
 
 // PaneCapture reads the pane. It returns the text and the pane size read just
 // after the capture (the zero PaneSize when it did not re-read the size).
@@ -257,8 +271,8 @@ func (c *OutputClock) discounted(sessionID string, windowActivity int64) bool {
 }
 
 // Observe is ObserveSized for a caller that does not know the pane size.
-func (c *OutputClock) Observe(ctx context.Context, store OutputStore, sessionID string, windowActivity int64, capture func(context.Context) (string, error)) (bool, error) {
-	return c.ObserveSized(ctx, store, sessionID, windowActivity, PaneSize{}, func(ctx context.Context) (string, PaneSize, error) {
+func (c *OutputClock) Observe(ctx context.Context, db OutputStore, sessionID string, windowActivity int64, capture func(context.Context) (string, error)) (bool, error) {
+	return c.ObserveSized(ctx, db, sessionID, windowActivity, PaneSize{}, func(ctx context.Context) (string, PaneSize, error) {
 		text, err := capture(ctx)
 		return text, PaneSize{}, err
 	})
@@ -278,7 +292,7 @@ func (c *OutputClock) Observe(ctx context.Context, store OutputStore, sessionID 
 // size, capture is called when the bucket advanced, or when window_activity
 // moved inside a discount window (to remember the deck-caused text); any other
 // tick captures and writes nothing.
-func (c *OutputClock) ObserveSized(ctx context.Context, store OutputStore, sessionID string, windowActivity int64, size PaneSize, capture PaneCapture) (bool, error) {
+func (c *OutputClock) ObserveSized(ctx context.Context, db OutputStore, sessionID string, windowActivity int64, size PaneSize, capture PaneCapture) (bool, error) {
 	if c == nil || windowActivity <= 0 {
 		return false, nil
 	}
@@ -296,7 +310,7 @@ func (c *OutputClock) ObserveSized(ctx context.Context, store OutputStore, sessi
 	if seen && bucket <= secondBucket(previous.activity, width) {
 		return false, c.observeExaminedBucket(ctx, sessionID, windowActivity, size, previous, capture)
 	}
-	return c.observeNewBucket(ctx, store, sessionID, windowActivity, width, size, previous, seen, capture)
+	return c.observeNewBucket(ctx, db, sessionID, windowActivity, width, size, previous, seen, capture)
 }
 
 // rebaseline is the tick of a pane whose size differs from its stored
@@ -322,6 +336,9 @@ func (c *OutputClock) rebaseline(ctx context.Context, sessionID string, windowAc
 	c.mu.Lock()
 	c.state[sessionID] = next
 	c.mu.Unlock()
+	if c.Audit != nil {
+		_ = c.Audit.OutputRebaselined(sessionID, previous.size.String(), size.String())
+	}
 	return nil
 }
 
@@ -335,7 +352,7 @@ func secondBucket(unixSeconds int64, width time.Duration) int64 {
 // change it shows counts (writes last_output_at) unless it lies inside a
 // deck-caused window (R305). The new hash is remembered either way, so the
 // same text never counts later. It reports whether it wrote.
-func (c *OutputClock) observeNewBucket(ctx context.Context, store OutputStore, sessionID string, windowActivity int64, width time.Duration, size PaneSize, previous outputState, seen bool, capture PaneCapture) (bool, error) {
+func (c *OutputClock) observeNewBucket(ctx context.Context, db OutputStore, sessionID string, windowActivity int64, width time.Duration, size PaneSize, previous outputState, seen bool, capture PaneCapture) (bool, error) {
 	readings, after, err := captureTranscriptReadings(ctx, sessionID, capture)
 	if err != nil {
 		return false, err
@@ -345,15 +362,47 @@ func (c *OutputClock) observeNewBucket(ctx context.Context, store OutputStore, s
 	discounted := c.discounted(sessionID, windowActivity)
 	changed := seen && !same && !discounted && !resized
 	if changed {
-		if err := store.RecordOutput(ctx, sessionID, windowActivity*1000); err != nil {
+		old := c.storedOutputAt(ctx, db, sessionID)
+		if err := db.RecordOutput(ctx, sessionID, windowActivity*1000); err != nil {
 			return false, fmt.Errorf("record output for session %q: %w", sessionID, err)
 		}
+		c.logRecorded(sessionID, old, windowActivity, secondBucket(windowActivity, width), size, previous.size, discounted)
 	}
 	next := newBucketState(previous, reading, windowActivity, width, size, changed, resized)
 	c.mu.Lock()
 	c.state[sessionID] = next
 	c.mu.Unlock()
 	return changed, nil
+}
+
+// storedOutputAt is the last_output_at the store holds before a write, read
+// only when an audit logger will report it (0 when the store cannot say).
+func (c *OutputClock) storedOutputAt(ctx context.Context, db OutputStore, sessionID string) int64 {
+	if c.Audit == nil {
+		return 0
+	}
+	reader, ok := db.(interface {
+		GetSession(context.Context, string) (store.Session, error)
+	})
+	if !ok {
+		return 0
+	}
+	session, err := reader.GetSession(ctx, sessionID)
+	if err != nil {
+		return 0
+	}
+	return session.LastOutputAt
+}
+
+// logRecorded appends the output.recorded line for a write just made (R413).
+func (c *OutputClock) logRecorded(sessionID string, old, windowActivity, bucket int64, size, baseline PaneSize, discounted bool) {
+	if c.Audit == nil {
+		return
+	}
+	_ = c.Audit.OutputRecorded(sessionID, audit.OutputRecordedRecord{
+		OldLastOutputAt: old, NewLastOutputAt: windowActivity * 1000, WindowActivity: windowActivity,
+		Bucket: bucket, PaneSize: size.String(), BaselinePaneSize: baseline.String(), DiscountSpan: discounted,
+	})
 }
 
 // sizeFlipped reports whether the size read after a capture differs from the
