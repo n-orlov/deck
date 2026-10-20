@@ -3,7 +3,7 @@
 // tests run the real script with a PATH holding only symlinks to the basic
 // tools it needs plus fake gh/curl, so there is no network and a real gh on
 // the host never leaks in.
-package workflowcheck
+package repocheck
 
 import (
 	"archive/tar"

@@ -79,12 +79,17 @@ func (g *gh) verify(ctx context.Context, file, repo string) (string, error) {
 // "could not check").
 var errAttestationFailed = errors.New("attestation verification failed")
 
+// noAttestations is what `gh attestation verify` says for a release that was
+// never attested, as opposed to one whose attestation does not verify.
+const noAttestations = "no attestations found"
+
 // attest checks the downloaded archive file's build attestation. It returns
-// the outcome, or an error when the update must abort. Only an unauthenticated
-// or absent gh is "cannot verify": a checksum-only outcome, unless
-// DECK_REQUIRE_ATTESTATION=1 turns it into an abort. With an authenticated gh
-// every nonzero verification result aborts (R294), including a release that
-// has no attestation.
+// the outcome, or an error when the update must abort. Two cases are "cannot
+// verify", a checksum-only outcome unless DECK_REQUIRE_ATTESTATION=1 turns it
+// into an abort: an unauthenticated or absent gh, and a release that has no
+// attestation at all (gh's "no attestations found": releases built by
+// Jenkins carry none). Every other nonzero verification result is a real
+// failure and aborts (R294).
 func (o Options) attest(ctx context.Context, g *gh, archive string) (string, error) {
 	cannot := func(why string) (string, error) {
 		if o.RequireAttestation || os.Getenv(EnvRequireAttestation) == "1" {
@@ -98,6 +103,9 @@ func (o Options) attest(ctx context.Context, g *gh, archive string) (string, err
 	out, err := g.verify(ctx, archive, DefaultRepo)
 	if err == nil {
 		return AttestationVerified, nil
+	}
+	if strings.Contains(out, noAttestations) {
+		return cannot("this release has no build attestation")
 	}
 	return "", fmt.Errorf("%w for %s: %w", errAttestationFailed, filepath.Base(archive), serverString(strings.TrimSpace(out)))
 }

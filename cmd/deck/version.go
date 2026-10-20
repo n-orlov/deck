@@ -6,8 +6,8 @@ import (
 	"runtime/debug"
 )
 
-// version is the release tag baked in at build time by the release workflow
-// (.github/workflows/release.yml) via -ldflags "-X main.version=vX.Y.Z". A
+// version is the release tag baked in at build time by the release build
+// (ci/release-build.sh, Jenkinsfile.release) via -ldflags "-X main.version=vX.Y.Z". A
 // plain `go build` leaves it "dev", and printVersion then falls back to the
 // module's own vcs revision when the binary carries one.
 var version = "dev"

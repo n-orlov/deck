@@ -9,6 +9,12 @@ bin/
 # ralphd run-engine scratch (not project content)
 artifacts/
 
-# ci/suite.sh / ci.yml results dir (DECK_CI_OUT=ci-results), uploaded as a workflow artifact
+# ci/suite.sh results dir (DECK_CI_OUT=ci-results) and the Jenkins reports
+# built from it (ci/jenkins-report.sh, ci/release-build.sh)
 /ci-results/
-/badges/
+/allure-report/
+/allure-history/
+/allure-smoke/
+/ci-summary/
+/previous/
+/dist/

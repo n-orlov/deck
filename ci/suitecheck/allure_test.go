@@ -338,8 +338,8 @@ func TestSummaryAllureCheckSeesAFlakyMarkerDisagreement(t *testing.T) {
 // the results: unit and features groups side by side, environment.properties
 // (Go version, tmux version, sha, race or not) and executor.json (the run link).
 func TestSuiteScriptWritesOneAllureResultsDirWithEnvironmentAndExecutor(t *testing.T) {
-	const runURL = "https://github.com/example/repo/actions/runs/4242"
-	run := runCovFixture(t, "DECK_CI_SHA=0123abcd", "DECK_CI_RUN_URL="+runURL)
+	const runURL = "https://jenkins.example.net/job/deck/job/main/4242/"
+	run := runCovFixture(t, "DECK_CI_SHA=0123abcd", "DECK_CI_RUN_URL="+runURL, "DECK_CI_BUILD_NAME=deck/main #4242")
 	dir := filepath.Join(run.outdir, "allure-results")
 
 	groups := map[string]int{}
@@ -377,15 +377,16 @@ func TestSuiteScriptWritesOneAllureResultsDirWithEnvironmentAndExecutor(t *testi
 		t.Fatalf("executor.json: %v", err)
 	}
 	var executor struct {
-		Name     string `json:"name"`
-		Type     string `json:"type"`
-		BuildURL string `json:"buildUrl"`
+		Name      string `json:"name"`
+		Type      string `json:"type"`
+		BuildName string `json:"buildName"`
+		BuildURL  string `json:"buildUrl"`
 	}
 	if err := json.Unmarshal(raw, &executor); err != nil {
 		t.Fatalf("executor.json is not JSON: %v\n%s", err, raw)
 	}
-	if executor.BuildURL != runURL || executor.Type != "github" {
-		t.Errorf("executor = %+v, want the Actions run link", executor)
+	if executor.BuildURL != runURL || executor.Type != "jenkins" || executor.BuildName != "deck/main #4242" {
+		t.Errorf("executor = %+v, want the Jenkins build link and name", executor)
 	}
 }
 

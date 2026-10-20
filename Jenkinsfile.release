@@ -1,0 +1,157 @@
+// deck releases on the homelab Jenkins: pipeline job deck/release, started by
+// hand, running this file from main (see docs/ci.md, "Release").
+//
+// It releases exactly the commit that a green deck/ci main build recorded in
+// ci-results/release-candidate.json (the last fully green one, or CI_BUILD):
+// Candidate -> Checkout -> Version check -> Build -> Publish. The tag is
+// created on GitHub by `gh release create --target`, together with the
+// release; nothing is ever pushed from the agent. DRY_RUN stops before
+// publishing.
+pipeline {
+  agent { label 'linux && amd64 && docker' }
+
+  options {
+    ansiColor('xterm')
+    timestamps()
+    buildDiscarder(logRotator(numToKeepStr: '50'))
+    disableConcurrentBuilds()
+    timeout(time: 60, unit: 'MINUTES')
+    skipDefaultCheckout()                 // the Checkout stage, once the commit is known
+  }
+
+  parameters {
+    string(name: 'VERSION', defaultValue: '', trim: true,
+           description: 'Release version, e.g. v1.4.0 or v1.5.0-rc.1 (required; the tag must not exist yet)')
+    string(name: 'CI_BUILD', defaultValue: '', trim: true,
+           description: 'deck/ci main build number to release; empty = the last successful one')
+    booleanParam(name: 'DRY_RUN', defaultValue: false,
+                 description: 'Build and archive the release, but do not publish it')
+  }
+
+  environment {
+    DECK_CI_OUT = 'ci-results'
+    DECK_CI_CACHE_VOLUME = 'deck-go-cache-jenkins'
+    CANDIDATE = 'candidate/ci-results/release-candidate.json'
+  }
+
+  stages {
+    // Which commit: the release candidate of a green deck/ci main build. A
+    // build that was not green has none, so the copy fails.
+    stage('Candidate') {
+      steps {
+        script {
+          if (!(params.VERSION ==~ /^v\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/)) {
+            error('VERSION "' + params.VERSION + '" is not vMAJOR.MINOR.PATCH[-pre]')
+          }
+          currentBuild.displayName = params.VERSION + (params.DRY_RUN ? ' (dry run)' : '')
+          if (params.CI_BUILD && !(params.CI_BUILD ==~ /^[0-9]+$/)) {
+            error('CI_BUILD "' + params.CI_BUILD + '" is not a build number')
+          }
+        }
+        sh 'rm -rf candidate'
+        script {
+          try {
+            copyArtifacts projectName: '/deck/ci/main', filter: 'ci-results/release-candidate.json',
+                          target: 'candidate', fingerprintArtifacts: true,
+                          selector: params.CI_BUILD ? specific(params.CI_BUILD) : lastSuccessful(stable: true)
+          } catch (err) {
+            error('no release candidate in deck/ci main ' + (params.CI_BUILD ? '#' + params.CI_BUILD : 'last successful build') +
+                  ': only a fully green main build is releasable (' + err.getMessage() + ')')
+          }
+          env.RELEASE_SHA = sh(returnStdout: true, script: '''
+            python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))["commit"])' "$CANDIDATE"
+          ''').trim()
+          env.CI_BUILD_URL = sh(returnStdout: true, script: '''
+            python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))["build_url"])' "$CANDIDATE"
+          ''').trim()
+          if (!(env.RELEASE_SHA ==~ /^[0-9a-f]{40}$/)) {
+            error('release candidate commit "' + env.RELEASE_SHA + '" is not a full sha')
+          }
+          echo 'Releasing ' + env.RELEASE_SHA + ' from ' + env.CI_BUILD_URL
+        }
+      }
+    }
+
+    // The candidate commit is on main (deck/ci/main built it); this checkout
+    // of main has it in its history.
+    stage('Checkout') {
+      steps {
+        checkout scm
+        sh '''
+          git clean -ffdxq
+          git merge-base --is-ancestor "$RELEASE_SHA" HEAD || {
+            echo "$RELEASE_SHA is not on main" >&2; exit 1; }
+          git checkout --quiet --detach "$RELEASE_SHA"
+        '''
+      }
+    }
+
+    // The tag must not exist yet: ls-remote exits 2 when nothing matches, 0
+    // when the tag exists, anything else when GitHub cannot be asked.
+    stage('Version check') {
+      steps {
+        withCredentials([usernamePassword(credentialsId: 'github-n-orlov',
+                                          usernameVariable: 'GH_USER', passwordVariable: 'GH_TOKEN')]) {
+          sh '''
+            export GIT_TERMINAL_PROMPT=0
+            rc=0
+            git ls-remote --exit-code --tags "https://${GH_USER}:${GH_TOKEN}@github.com/n-orlov/deck.git" \
+              "refs/tags/$VERSION" >/dev/null || rc=$?
+            case $rc in
+              2) echo "$VERSION is a new tag" ;;
+              0) echo "tag $VERSION already exists on GitHub; not releasing" >&2; exit 1 ;;
+              *) echo "could not list the tags on GitHub (exit $rc); not releasing" >&2; exit 1 ;;
+            esac
+          '''
+        }
+      }
+    }
+
+    // The four archives and checksums.txt, built in the CI image from the
+    // candidate commit, with the deck --version smoke check.
+    stage('Build') {
+      steps {
+        sh 'ci/jenkins-image.sh'
+        sh 'ci/run.sh ci/release-build.sh "$VERSION"'
+      }
+    }
+
+    stage('Publish') {
+      when { expression { !params.DRY_RUN } }
+      steps {
+        withCredentials([usernamePassword(credentialsId: 'github-n-orlov',
+                                          usernameVariable: 'GH_USER', passwordVariable: 'GH_TOKEN')]) {
+          script {
+            env.RELEASE_URL = sh(returnStdout: true, script: '''
+              export GH_PROMPT_DISABLED=1 GIT_TERMINAL_PROMPT=0
+              gh release create "$VERSION" dist/* --repo n-orlov/deck --target "$RELEASE_SHA" \
+                --title "$VERSION" --generate-notes
+            ''').trim()
+          }
+        }
+      }
+    }
+  }
+
+  post {
+    always {
+      archiveArtifacts artifacts: 'dist/*', allowEmptyArchive: true, fingerprint: true
+      script {
+        if (env.RELEASE_SHA) {
+          def text = params.VERSION + ' from ' + env.RELEASE_SHA +
+                     ' (<a href="' + env.CI_BUILD_URL + '">CI build</a>)'
+          if (env.RELEASE_URL) {
+            text += ': <a href="' + env.RELEASE_URL + '">GitHub release</a>'
+          } else if (params.DRY_RUN) {
+            text += ': dry run, not published'
+          } else {
+            text += ': not published'
+          }
+          addSummary(icon: currentBuild.currentResult == 'SUCCESS' ? 'symbol-checkmark-circle-outline plugin-ionicons-api'
+                                                                   : 'symbol-close-circle-outline plugin-ionicons-api',
+                     text: text)
+        }
+      }
+    }
+  }
+}

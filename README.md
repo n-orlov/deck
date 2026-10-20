@@ -1,14 +1,5 @@
-<!-- badges:start -->
-[![CI](https://github.com/n-orlov/deck/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/n-orlov/deck/actions/workflows/ci.yml?query=branch%3Amain)
-[![lint](https://img.shields.io/endpoint?url=https%3A%2F%2Fn-orlov.github.io%2Fdeck%2Fbadges%2Flint.json)](https://github.com/n-orlov/deck/actions/workflows/ci.yml?query=branch%3Amain)
-[![unit tests](https://img.shields.io/endpoint?url=https%3A%2F%2Fn-orlov.github.io%2Fdeck%2Fbadges%2Funit-tests.json)](https://github.com/n-orlov/deck/actions/workflows/ci.yml?query=branch%3Amain)
-[![features](https://img.shields.io/endpoint?url=https%3A%2F%2Fn-orlov.github.io%2Fdeck%2Fbadges%2Ffeatures.json)](https://github.com/n-orlov/deck/actions/workflows/ci.yml?query=branch%3Amain)
-[![coverage](https://img.shields.io/endpoint?url=https%3A%2F%2Fn-orlov.github.io%2Fdeck%2Fbadges%2Fcoverage.json)](https://n-orlov.github.io/deck/)
-[![vulnerabilities](https://img.shields.io/endpoint?url=https%3A%2F%2Fn-orlov.github.io%2Fdeck%2Fbadges%2Fvulnerabilities.json)](https://github.com/n-orlov/deck/actions/workflows/ci.yml?query=branch%3Amain)
-[![license](https://img.shields.io/badge/license-Apache--2.0-blue)](https://github.com/n-orlov/deck/actions/workflows/ci.yml?query=branch%3Amain)
-[![Go version](https://img.shields.io/badge/go-1.25.0-00ADD8)](https://github.com/n-orlov/deck/actions/workflows/ci.yml?query=branch%3Amain)
-[![report](https://img.shields.io/badge/report-Allure-blue)](https://n-orlov.github.io/deck/)
-<!-- badges:end -->
+[![license](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
+[![Go version](https://img.shields.io/badge/go-1.25.0-00ADD8)](go.mod)
 
 # deck
 
@@ -122,12 +113,11 @@ notify-send --urgency="$urgency" --app-name=deck \
 
 ## Release
 
-```sh
-git tag v0.2.0 && git push origin v0.2.0
-```
-
-GitHub Actions ([release.yml](.github/workflows/release.yml)) builds the four binaries,
-stamps the tag into `deck --version`, attests the tarballs and `checksums.txt`, and publishes the release.
+Releases are cut by hand from the Jenkins job `deck/release` ([Jenkinsfile.release](Jenkinsfile.release)),
+with a `VERSION` such as `v0.2.0`. It releases the commit of the last fully green `main` build of `deck/ci`
+(or a chosen one), checks the tag is new, builds the four binaries with [ci/release-build.sh](ci/release-build.sh)
+(version stamped into `deck --version`, plus `checksums.txt`), and publishes the GitHub release, which creates
+the tag at that commit. Details: [docs/ci.md](docs/ci.md#release).
 
 ## Remix, don't PR
 

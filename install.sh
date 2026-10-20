@@ -12,12 +12,15 @@
 # download, not tampering: whoever can replace the asset can replace
 # checksums.txt as well. All downloads are HTTPS-only (--proto =https).
 #
-# Provenance: releases are attested by release.yml. After the checksum check an
-# authenticated `gh` runs `gh attestation verify --repo n-orlov/deck` on the
-# archive, and a verification FAILURE always aborts with nothing installed.
-# Without a usable `gh`, or for a release published before attestations
-# existed, one note says only the checksum was verified and the install goes
-# on -- unless DECK_REQUIRE_ATTESTATION=1, which aborts instead.
+# Provenance: releases built by GitHub Actions carry a build attestation;
+# releases built since the move to Jenkins have none (GitHub's attestations
+# need an Actions OIDC token). After the checksum check an authenticated
+# `gh` runs `gh attestation verify --repo n-orlov/deck` on the archive, and a
+# verification FAILURE always aborts with nothing installed. Without a
+# usable `gh`, or for a release with no attestation, one note says only the
+# checksum was verified and the install goes on -- unless
+# DECK_REQUIRE_ATTESTATION=1, which aborts instead (so it only works for the
+# older, Actions-built releases).
 #
 # Uses an authenticated `gh` when present, otherwise plain curl. Linux and macOS only; on Windows run it inside WSL.
 set -eu

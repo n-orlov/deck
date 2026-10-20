@@ -6,8 +6,8 @@
 // and with what exit status. It therefore fails the moment a stage stops
 // being invoked, runs out of order, or a failure/drift no longer stops the
 // script -- whatever the script's comments or progress echoes still say.
-// Tier 3 probe audit (task 025) added this alongside the ci.yml fork-guard,
-// ci/suite.sh retry, and ci/releasegate probes.
+// Tier 3 probe audit (task 025) added this alongside the ci/suite.sh retry
+// probe (and the GitHub Actions-era workflow probes, since removed).
 package lintcheck
 
 import (

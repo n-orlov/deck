@@ -169,14 +169,12 @@ func TestAttestation(t *testing.T) {
 }
 
 // TestAttestationFailureWithAuthenticatedGhAlwaysAborts covers R294: with an
-// authenticated gh, any nonzero verification result aborts the update and
-// leaves the old executable and its directory byte-identical, whatever the
-// message says and whether or not DECK_REQUIRE_ATTESTATION is set. A release
-// with no attestation is one such result (it replaces the old pin
-// TestAttestationNotFoundIsCannotVerify, which let it through).
+// authenticated gh, any nonzero verification result other than "no
+// attestations found" aborts the update and leaves the old executable and its
+// directory byte-identical, whatever the message says and whether or not
+// DECK_REQUIRE_ATTESTATION is set.
 func TestAttestationFailureWithAuthenticatedGhAlwaysAborts(t *testing.T) {
 	msgs := map[string]string{
-		"no attestations found":       "Error: failed to fetch attestations: no attestations found for subject",
 		"signature mismatch":          "Error: no attestations were verified (signature mismatch)",
 		"silent nonzero exit":         "",
 		"mentions no attestation yet": "no attestation was verified",
@@ -210,7 +208,48 @@ func TestAttestationFailureWithAuthenticatedGhAlwaysAborts(t *testing.T) {
 	}
 }
 
-// TestAttestationUnauthenticatedGhIsCannotVerify keeps the one permitted
+// TestAttestationMissingIsCannotVerify: a release with no attestation at all
+// (releases built by Jenkins) is "cannot verify", not a failure. It proceeds
+// on the checksum with a note, and aborts under DECK_REQUIRE_ATTESTATION=1
+// with the old binary and its directory untouched.
+func TestAttestationMissingIsCannotVerify(t *testing.T) {
+	for _, require := range []bool{false, true} {
+		t.Run("require="+strconv.FormatBool(require), func(t *testing.T) {
+			rel := newRelease(t)
+			srv := rel.serve(t)
+			g := installFakeGh(t, rel, 0, 1, "Error: failed to fetch attestations: no attestations found for subject")
+			dir, exe := installOld(t)
+			beforeSum, beforeList := fileSum(t, exe), listing(t, dir)
+			res, err := Run(context.Background(), Options{BaseURL: srv.URL, Exe: exe, GOOS: "linux", GOARCH: "amd64", RequireAttestation: require})
+			if n := len(g.callsStarting(t, "attestation verify")); n != 1 {
+				t.Errorf("verify calls = %d, want 1", n)
+			}
+			if require {
+				if err == nil || !strings.Contains(err.Error(), "no build attestation") || !strings.Contains(err.Error(), EnvRequireAttestation+"=1") {
+					t.Fatalf("err = %v, want the missing attestation and %s=1 named", err, EnvRequireAttestation)
+				}
+				if got := fileSum(t, exe); got != beforeSum {
+					t.Errorf("old binary sha256 = %s, want %s unchanged", got, beforeSum)
+				}
+				if got := listing(t, dir); !reflect.DeepEqual(got, beforeList) {
+					t.Errorf("install dir = %v, want %v", got, beforeList)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if res.Attestation != AttestationSkipped {
+				t.Errorf("attestation = %q, want %q", res.Attestation, AttestationSkipped)
+			}
+			if got := fileSum(t, exe); got != sum([]byte(newBody)) {
+				t.Errorf("binary sha256 = %s, want the new binary's", got)
+			}
+		})
+	}
+}
+
+// TestAttestationUnauthenticatedGhIsCannotVerify keeps the other
 // checksum-only fallback: a gh that is not authenticated is never asked to
 // verify, so even a release with no attestation proceeds on the checksum
 // (and aborts under DECK_REQUIRE_ATTESTATION=1).

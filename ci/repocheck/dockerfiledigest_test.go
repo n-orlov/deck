@@ -1,7 +1,7 @@
 // dockerfiledigest_test.go is R214's probe (#71 item 7): every external base
 // image in ci/Dockerfile is pinned by sha256 digest, so a re-pushed tag can
 // never change what the CI image is built from.
-package workflowcheck
+package repocheck
 
 import (
 	"os"

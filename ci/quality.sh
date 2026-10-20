@@ -16,8 +16,8 @@
 # Every gate in ci/quality.json is flipped on only after the product passes
 # it locally; the golangci gate (R188) runs ci/golangci.sh, the same single
 # invocation ci/lint.sh runs. With every gate off this script still runs, prints that
-# nothing is enabled, and exits 0 -- so it is safe to wire into ci.yml
-# (task 086) before any gate is live.
+# nothing is enabled, and exits 0 -- so it was safe to wire into CI
+# (task 086) before any gate was live.
 set -eu
 
 repo_root=$(cd "$(dirname "$0")/.." && pwd)
@@ -66,8 +66,8 @@ fi
 
 # R187: the gate report is also written to "$outdir/quality-report.txt", so
 # it crosses the ci/run.sh sibling boundary on the bind-mounted workspace and
-# the runner-side `Quality gate report` step in ci.yml can append it to
-# GITHUB_STEP_SUMMARY whether the gates pass or fail. stdout (what a local
+# the Jenkinsfile's report (ci/jenkins-report.sh) can put it on the build's
+# "CI summary" page whether the gates pass or fail. stdout (what a local
 # run prints) is the same text; only stdout is captured, so go run's and
 # qualitycheck's stderr (usage/config errors) stays on stderr.
 report_file="$outdir/quality-report.txt"

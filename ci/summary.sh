@@ -1,8 +1,9 @@
 #!/bin/sh
-# ci/summary.sh — renders a GitHub Actions job summary (pass/fail/skip/flaky
-# counts, slowest packages) from one ci/suite.sh output directory.
+# ci/summary.sh — renders a Markdown CI summary (pass/fail/skip/flaky
+# counts, slowest packages) from one ci/suite.sh output directory; the
+# Jenkins build's "CI summary" page shows it (ci/jenkins-report.sh).
 #
-#   ci/summary.sh <ci/suite.sh output dir>  >> "$GITHUB_STEP_SUMMARY"
+#   ci/summary.sh <ci/suite.sh output dir> > summary.md
 #
 # Reads exactly the files ci/suite.sh already writes:
 #   junit-merged/junit-go.xml, junit-merged/junit-features.xml (or, in a
