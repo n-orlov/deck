@@ -172,10 +172,10 @@ func TestDeckCausedOutputNeverEntersRunning(t *testing.T) {
 	r := newMovementRig(t, "pi", 2*time.Hour)
 	r.tick(1000, 1000, "start", "ctx:1%")
 	r.now = time.Unix(1010, 0)
-	r.clock.Discount(r.id, DiscountKey)
+	r.clock.Discount(r.id, DiscountKey, r.clock.at())
 	r.tick(1010, 1010, "start\nechoed", "ctx:1%")
 	r.now = time.Unix(1020, 0)
-	r.clock.Discount(r.id, DiscountResize)
+	r.clock.Discount(r.id, DiscountResize, r.clock.at())
 	r.tick(1020, 1020, "start\nechoed\nredrawn", "ctx:1%")
 	r.wantStatus("idle", "output inside two deck-caused windows")
 	if got := r.row().LastOutputAt; got != 0 {

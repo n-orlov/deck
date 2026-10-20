@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/n-orlov/deck/internal/interactive"
@@ -67,6 +68,7 @@ func (m Model) enterInteractiveBody(force bool) (tea.Model, tea.Cmd) {
 	}
 	session, _ := m.selectedSession()
 	ctx := context.Background()
+	entryIssuedAt := time.Now() // R410: taken before the entry's first resize is issued
 	entry, ref := m.claimInteractiveEntry(ctx, session, force)
 	if ref != nil {
 		m.setEntryRefusal(session.ID, ref.kind, ref.reason)
@@ -80,7 +82,7 @@ func (m Model) enterInteractiveBody(force bool) (tea.Model, tea.Cmd) {
 
 	// R305: the entry fit (and the pin, and later the restore) resized the
 	// window, so the pane redraws.
-	m.discountOutput(session.ID, service.DiscountResize)
+	m.discountOutput(session.ID, service.DiscountResize, entryIssuedAt)
 	m.interactive = true
 	m.interactiveWindowTarget = windowTarget
 	m.interactiveGeometry = claim.geometry
@@ -550,9 +552,10 @@ func (m Model) exitInteractive() (tea.Model, tea.Cmd) {
 		m.revealInteractiveDriftTarget()
 		m.sidebarScrollDrifted = false
 	}
+	exitIssuedAt := time.Now() // R410: taken before the teardown's restore is issued
 	m.teardownInteractive(context.Background())
 	if session, ok := m.interactiveTargetSession(); ok {
-		m.discountOutput(session.ID, service.DiscountResize)
+		m.discountOutput(session.ID, service.DiscountResize, exitIssuedAt)
 	}
 	m.interactive = false
 	m.interactiveWindowTarget = ""
@@ -667,8 +670,9 @@ func (m Model) updateInteractive(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 // discountForwardedKey (R305) tells the output clock that the pane is about
 // to print the echo of a key deck forwards to it.
 func (m Model) discountForwardedKey() {
+	at := time.Now() // R410: taken before the key is sent
 	if session, ok := m.interactiveTargetSession(); ok {
-		m.discountOutput(session.ID, service.DiscountKey)
+		m.discountOutput(session.ID, service.DiscountKey, at)
 	}
 }
 

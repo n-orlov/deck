@@ -1541,7 +1541,16 @@ not, and the agent's own output after that window counts while the client is sti
 tick that reads it, so a tick that lands late still discounts output that happened inside the
 window. Output whose `window_activity` falls after the window ends counts as before. The windows
 are in memory, like the baseline.
-Tests: `TestOutputInsideTheAttachStartWindowDoesNotAdvanceLastOutputAt`,
+
+*A span covers every second it overlaps (R410).* tmux stamps `window_activity` in whole seconds, so a
+second names the interval `[second*1000, second*1000+999]` ms. A window is a span of Unix milliseconds,
+and a `window_activity` second is discounted iff the span overlaps that interval in any way. A span
+starts no later than the instant before deck issued the action it covers: every resize, attach, detach
+and forwarded-key site takes the instant before it issues the tmux call or the write and passes it to
+`Discount`, `AttachStarted` or `AttachEnded`, so a redraw stamped in the second the call began in, but
+returned after, is covered, in a new bucket and in an already-examined one alike. The span ends one
+window after that instant; a second that ended before the span began is not covered.
+Tests: `TestOutputClockDiscountCoversTheSecondItWasCausedIn`, `TestOutputInsideTheAttachStartWindowDoesNotAdvanceLastOutputAt`,
 `TestAutonomousOutputLongAfterAnAttachStartCountsWhileStillAttached`, `TestAttachDiscountNeverOutlastsOneBucket`,
 `TestDetachRepaintIsDiscountedButTheAttachedStretchIsNot`, `TestKeyAfterAnExpiredAttachWindowIsStillDiscounted`,
 `TestAttachDiscountsTheHandOffAndTheDetachRepaint`,

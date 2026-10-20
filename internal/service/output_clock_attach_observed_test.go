@@ -18,7 +18,7 @@ func TestAutonomousOutputReadMidAttachCountsAndSurvivesTheDetachRepaint(t *testi
 		t.Run(bucket.String(), func(t *testing.T) {
 			h := discountHarness(t)
 			h.clock.SetBucket(bucket)
-			h.clock.AttachStarted(h.id)
+			h.clock.AttachStarted(h.id, h.clock.at())
 			// The agent prints well after the hand-off window.
 			h.pane = pane("hello\nagent output", "~/proj  main  ctx:12%")
 			if !h.tick(1030) {
@@ -30,7 +30,7 @@ func TestAutonomousOutputReadMidAttachCountsAndSurvivesTheDetachRepaint(t *testi
 			// Detach: the repaint is discounted and must not move it.
 			now := time.Unix(1060, 0)
 			h.clock.Now = func() time.Time { return now }
-			h.clock.AttachEnded(h.id)
+			h.clock.AttachEnded(h.id, h.clock.at())
 			h.pane = pane("hello\nagent output\nrepaint", "~/proj  main  ctx:12%")
 			if h.tick(1061) {
 				t.Fatalf("the detach repaint advanced last_output_at to %d", h.lastOutputAt())
@@ -46,7 +46,7 @@ func TestAutonomousOutputReadMidAttachCountsAndSurvivesTheDetachRepaint(t *testi
 // while a resize the user causes mid-attach stays discounted.
 func TestMidAttachOutputCountsPerBucketButAResizeInsideItStaysDiscounted(t *testing.T) {
 	h := discountHarness(t)
-	h.clock.AttachStarted(h.id)
+	h.clock.AttachStarted(h.id, h.clock.at())
 	h.pane = pane("hello\none", "~/proj  main  ctx:12%")
 	if !h.tick(1020) {
 		t.Fatal("first autonomous bucket did not count")
@@ -61,7 +61,7 @@ func TestMidAttachOutputCountsPerBucketButAResizeInsideItStaysDiscounted(t *test
 	// A terminal resize mid-attach redraws the pane: discounted.
 	now := time.Unix(1040, 0)
 	h.clock.Now = func() time.Time { return now }
-	h.clock.Discount(h.id, DiscountResize)
+	h.clock.Discount(h.id, DiscountResize, h.clock.at())
 	h.pane = pane("hello\none\ntwo\nredraw", "~/proj  main  ctx:12%")
 	if h.tick(1042) {
 		t.Fatalf("resize-caused redraw advanced last_output_at to %d", h.lastOutputAt())

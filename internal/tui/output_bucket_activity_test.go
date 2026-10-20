@@ -73,10 +73,10 @@ func TestActivitySortTieBreakIsTheIDAndStableAcrossTicks(t *testing.T) {
 
 type bucketClock struct{ bucket time.Duration }
 
-func (c *bucketClock) Discount(string, service.DiscountCause) {}
-func (c *bucketClock) AttachStarted(string)                   {}
-func (c *bucketClock) AttachEnded(string)                     {}
-func (c *bucketClock) SetBucket(b time.Duration)              { c.bucket = b }
+func (c *bucketClock) Discount(string, service.DiscountCause, time.Time) {}
+func (c *bucketClock) AttachStarted(string, time.Time)                   {}
+func (c *bucketClock) AttachEnded(string, time.Time)                     {}
+func (c *bucketClock) SetBucket(b time.Duration)                         { c.bucket = b }
 
 // R306 live apply: a reload of [ui] output_bucket changes the width the
 // running activity sort uses, re-sorts the rows already on screen and hands

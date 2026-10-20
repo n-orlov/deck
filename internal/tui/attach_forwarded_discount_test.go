@@ -44,7 +44,9 @@ func (p *orderedPty) Write(b []byte) (int, error) {
 	return len(b), nil
 }
 
-func (p *orderedPty) discount(cause service.DiscountCause) { p.note("discount:" + string(cause)) }
+func (p *orderedPty) discount(cause service.DiscountCause, _ time.Time) {
+	p.note("discount:" + string(cause))
+}
 
 func (p *orderedPty) entries() []string {
 	p.mu.Lock()
@@ -132,7 +134,7 @@ func TestFullAttachRelayedResizeOpensAResizeDiscountBeforeTheResize(t *testing.T
 	}
 	var sizeAtDiscount [2]int
 	var causes []service.DiscountCause
-	w := &watchedAttach{discount: func(cause service.DiscountCause) {
+	w := &watchedAttach{discount: func(cause service.DiscountCause, _ time.Time) {
 		causes = append(causes, cause)
 		rows, cols, _ := pty.Getsize(ptmx)
 		sizeAtDiscount = [2]int{rows, cols}
@@ -156,8 +158,8 @@ func TestModelHandsTheAttachedSessionToTheAttachDiscount(t *testing.T) {
 	if discount == nil {
 		t.Fatal("no attach discount for a Model with a clock wired")
 	}
-	discount(service.DiscountKey)
-	discount(service.DiscountResize)
+	discount(service.DiscountKey, time.Now())
+	discount(service.DiscountResize, time.Now())
 	wantEvents(t, rec, string(service.DiscountKey)+":attached-1", string(service.DiscountResize)+":attached-1")
 	if (Model{}).attachOutputDiscount(store.Session{ID: "x"}) != nil {
 		t.Fatal("a Model with no clock produced an attach discount")
@@ -206,7 +208,7 @@ func TestFullAttachForwardedKeyOutputIsDiscountedAndLaterAgentOutputCounts(t *te
 			})
 			once.Do(reads.Done)
 		}
-		w.discount = func(cause service.DiscountCause) { clock.Discount(id, cause) }
+		w.discount = func(cause service.DiscountCause, at time.Time) { clock.Discount(id, cause, at) }
 	})
 	reads.Wait()
 	// Let the quiet pane's baseline settle across a bucket boundary.

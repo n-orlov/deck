@@ -28,7 +28,7 @@ func (h *outputHarness) provoke() { h.pane = pane("hello\nredraw", "~/proj  main
 
 func TestOutputAfterADeckCausedResizeDoesNotAdvanceLastOutputAt(t *testing.T) {
 	h := discountHarness(t)
-	h.clock.Discount(h.id, DiscountResize)
+	h.clock.Discount(h.id, DiscountResize, h.clock.at())
 	h.provoke()
 	if h.tick(1003) {
 		t.Fatalf("output %d s after a deck-caused resize advanced last_output_at to %d", 2, h.lastOutputAt())
@@ -41,7 +41,7 @@ func TestOutputAfterADeckCausedResizeDoesNotAdvanceLastOutputAt(t *testing.T) {
 // The attach's own hand-off redraw is deck-caused and discounted.
 func TestOutputInsideTheAttachStartWindowDoesNotAdvanceLastOutputAt(t *testing.T) {
 	h := discountHarness(t)
-	h.clock.AttachStarted(h.id)
+	h.clock.AttachStarted(h.id, h.clock.at())
 	h.provoke()
 	if h.tick(1003) {
 		t.Fatalf("the attach hand-off redraw advanced last_output_at to %d", h.lastOutputAt())
@@ -56,7 +56,7 @@ func TestOutputInsideTheAttachStartWindowDoesNotAdvanceLastOutputAt(t *testing.T
 func TestAutonomousOutputLongAfterAnAttachStartCountsWhileStillAttached(t *testing.T) {
 	for _, at := range []int64{1007, 1021, 1050} {
 		h := discountHarness(t)
-		h.clock.AttachStarted(h.id) // never ended: the client stays attached
+		h.clock.AttachStarted(h.id, h.clock.at()) // never ended: the client stays attached
 		h.provoke()
 		if !h.tick(at) {
 			t.Fatalf("output at %d, past the attach window, was suppressed", at)
@@ -73,8 +73,8 @@ func TestAttachDiscountNeverOutlastsOneBucket(t *testing.T) {
 		c := NewOutputClock(bucket)
 		now := time.Unix(1001, 0)
 		c.Now = func() time.Time { return now }
-		c.AttachStarted("s")
-		c.AttachEnded("s")
+		c.AttachStarted("s", c.at())
+		c.AttachEnded("s", c.at())
 		// window_activity second W is discounted only when W*1000 <= until.
 		limit := now.UnixMilli() + c.DiscountWindow().Milliseconds()
 		if !c.discounted("s", limit/1000) {
@@ -90,10 +90,10 @@ func TestAttachDiscountNeverOutlastsOneBucket(t *testing.T) {
 // start and detach is not discounted.
 func TestDetachRepaintIsDiscountedButTheAttachedStretchIsNot(t *testing.T) {
 	h := discountHarness(t)
-	h.clock.AttachStarted(h.id)
+	h.clock.AttachStarted(h.id, h.clock.at())
 	later := time.Unix(1061, 0)
 	h.clock.Now = func() time.Time { return later }
-	h.clock.AttachEnded(h.id)
+	h.clock.AttachEnded(h.id, h.clock.at())
 	h.provoke()
 	if h.tick(1062) {
 		t.Fatalf("the detach repaint advanced last_output_at to %d", h.lastOutputAt())
@@ -108,10 +108,10 @@ func TestDetachRepaintIsDiscountedButTheAttachedStretchIsNot(t *testing.T) {
 // own window even though the attach start has expired.
 func TestKeyAfterAnExpiredAttachWindowIsStillDiscounted(t *testing.T) {
 	h := discountHarness(t)
-	h.clock.AttachStarted(h.id)
+	h.clock.AttachStarted(h.id, h.clock.at())
 	later := time.Unix(1031, 0)
 	h.clock.Now = func() time.Time { return later }
-	h.clock.Discount(h.id, DiscountKey)
+	h.clock.Discount(h.id, DiscountKey, h.clock.at())
 	h.provoke()
 	if h.tick(1033) {
 		t.Fatalf("key-caused output advanced last_output_at to %d", h.lastOutputAt())
@@ -120,7 +120,7 @@ func TestKeyAfterAnExpiredAttachWindowIsStillDiscounted(t *testing.T) {
 
 func TestOutputAfterAForwardedKeyDoesNotAdvanceLastOutputAt(t *testing.T) {
 	h := discountHarness(t)
-	h.clock.Discount(h.id, DiscountKey)
+	h.clock.Discount(h.id, DiscountKey, h.clock.at())
 	h.provoke()
 	if h.tick(1002) {
 		t.Fatalf("the echo of a forwarded key advanced last_output_at to %d", h.lastOutputAt())
@@ -134,7 +134,7 @@ func TestOutputAfterTheDiscountWindowEndsCounts(t *testing.T) {
 	for _, cause := range []DiscountCause{DiscountResize, DiscountKey} {
 		t.Run(string(cause), func(t *testing.T) {
 			h := discountHarness(t)
-			h.clock.Discount(h.id, cause)
+			h.clock.Discount(h.id, cause, h.clock.at())
 			if win := h.clock.DiscountWindow(); win > h.clock.Bucket {
 				t.Fatalf("window %v is longer than one bucket (%v)", win, h.clock.Bucket)
 			}
@@ -154,7 +154,7 @@ func TestOutputAfterTheDiscountWindowEndsCounts(t *testing.T) {
 // later tick once the window is over.
 func TestDiscountedOutputIsNotCountedLater(t *testing.T) {
 	h := discountHarness(t)
-	h.clock.Discount(h.id, DiscountResize)
+	h.clock.Discount(h.id, DiscountResize, h.clock.at())
 	h.provoke()
 	h.tick(1003)
 	if h.tick(1012) {
@@ -191,9 +191,12 @@ func sameBucketHarness(t *testing.T) *outputHarness {
 // 1012) does not count the deck-caused redraw.
 func TestDiscountedSameBucketOutputIsNotCountedLater(t *testing.T) {
 	causes := map[string]func(h *outputHarness){
-		"resize": func(h *outputHarness) { h.clock.Discount(h.id, DiscountResize) },
-		"key":    func(h *outputHarness) { h.clock.Discount(h.id, DiscountKey) },
-		"attach": func(h *outputHarness) { h.clock.AttachStarted(h.id); h.clock.AttachEnded(h.id) },
+		"resize": func(h *outputHarness) { h.clock.Discount(h.id, DiscountResize, h.clock.at()) },
+		"key":    func(h *outputHarness) { h.clock.Discount(h.id, DiscountKey, h.clock.at()) },
+		"attach": func(h *outputHarness) {
+			h.clock.AttachStarted(h.id, h.clock.at())
+			h.clock.AttachEnded(h.id, h.clock.at())
+		},
 	}
 	for name, start := range causes {
 		t.Run(name, func(t *testing.T) {
@@ -218,7 +221,7 @@ func TestDiscountedSameBucketOutputIsNotCountedLater(t *testing.T) {
 // same-bucket tick outside any window still captures nothing.
 func TestSameBucketDiscountKeepsLaterOutputCounting(t *testing.T) {
 	h := sameBucketHarness(t)
-	h.clock.Discount(h.id, DiscountResize)
+	h.clock.Discount(h.id, DiscountResize, h.clock.at())
 	h.provoke()
 	h.tick(1003)
 	reads := h.reads

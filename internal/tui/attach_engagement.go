@@ -407,7 +407,7 @@ type watchedAttach struct {
 	// before it is written, a relayed SIGWINCH a DiscountResize window just
 	// before the client's pty is resized. Each window is the clock's bounded
 	// one; output after it counts, attached or not.
-	discount func(service.DiscountCause)
+	discount func(service.DiscountCause, time.Time)
 
 	stdin  io.Reader
 	stdout io.Writer
@@ -596,7 +596,7 @@ func resizePty(ptmx *os.File, outFile, inFile fileDescriptor) {
 // resize causes never lands before its discount.
 func (w *watchedAttach) relayedResize(ptmx *os.File, outFile, inFile fileDescriptor) func() {
 	return func() {
-		w.discountOutput(service.DiscountResize)
+		w.discountOutput(service.DiscountResize, time.Now()) // R410: before the pty is resized
 		resizePty(ptmx, outFile, inFile)
 	}
 }
@@ -671,7 +671,7 @@ func (w *watchedAttach) startInputProxy(ptmx io.Writer, proxy *attachKeyProxy) (
 func (w *watchedAttach) forward(ptmx io.Writer, proxy *attachKeyProxy, chunk []byte) {
 	in := proxy.classify(chunk)
 	if in.anyKey {
-		w.discountOutput(service.DiscountKey)
+		w.discountOutput(service.DiscountKey, time.Now()) // R410: before the write below
 	}
 	if _, err := ptmx.Write(chunk); err == nil {
 		proxy.commit(in)
@@ -680,9 +680,9 @@ func (w *watchedAttach) forward(ptmx io.Writer, proxy *attachKeyProxy, chunk []b
 
 // discountOutput opens one output discount for the attached session, when a
 // clock is wired.
-func (w *watchedAttach) discountOutput(cause service.DiscountCause) {
+func (w *watchedAttach) discountOutput(cause service.DiscountCause, at time.Time) {
 	if w.discount != nil {
-		w.discount(cause)
+		w.discount(cause, at)
 	}
 }
 

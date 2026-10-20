@@ -28,11 +28,11 @@ func (r *discountRecorder) add(e string) {
 	defer r.mu.Unlock()
 	r.events = append(r.events, e)
 }
-func (r *discountRecorder) Discount(id string, cause service.DiscountCause) {
+func (r *discountRecorder) Discount(id string, cause service.DiscountCause, _ time.Time) {
 	r.add(string(cause) + ":" + id)
 }
-func (r *discountRecorder) AttachStarted(id string) { r.add("attach-start:" + id) }
-func (r *discountRecorder) AttachEnded(id string)   { r.add("attach-end:" + id) }
+func (r *discountRecorder) AttachStarted(id string, _ time.Time) { r.add("attach-start:" + id) }
+func (r *discountRecorder) AttachEnded(id string, _ time.Time)   { r.add("attach-end:" + id) }
 func (r *discountRecorder) snapshot() []string {
 	r.mu.Lock()
 	defer r.mu.Unlock()

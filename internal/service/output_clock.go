@@ -150,37 +150,52 @@ func (c *OutputClock) nowMillis() int64 {
 	return time.Now().UnixMilli()
 }
 
-// Discount marks the DiscountWindow after now as deck-caused for a session
-// (a deck-caused resize or a forwarded key); any other cause is ignored. Output the pane window_activity
-// places inside it does not advance last_output_at. Safe on a nil clock.
-func (c *OutputClock) Discount(sessionID string, cause DiscountCause) {
+// startMillis is the span start for the instant the caller took before it
+// issued the action; the zero time means the caller did not take one, and the
+// clock's own now stands in.
+func (c *OutputClock) startMillis(at time.Time) int64 {
+	if at.IsZero() {
+		return c.nowMillis()
+	}
+	return at.UnixMilli()
+}
+
+// Discount marks the DiscountWindow after at as deck-caused for a session (a
+// deck-caused resize or a forwarded key); any other cause is ignored. at is the
+// instant the caller took BEFORE it issued the tmux call or write (R410): the
+// span starts there, so the redraw the action causes can never be stamped
+// before the span opens. Output the pane window_activity places inside it does
+// not advance last_output_at. Safe on a nil clock.
+func (c *OutputClock) Discount(sessionID string, cause DiscountCause, at time.Time) {
 	if c == nil || (cause != DiscountResize && cause != DiscountKey) {
 		return
 	}
-	now := c.nowMillis()
-	c.addSpan(sessionID, discountSpan{from: now, until: now + c.DiscountWindow().Milliseconds()})
+	start := c.startMillis(at)
+	c.addSpan(sessionID, discountSpan{from: start, until: start + c.DiscountWindow().Milliseconds()})
 }
 
-// AttachStarted discounts the DiscountWindow after the hand-off: handing the
-// terminal to a tmux client resizes the window and makes the pane redraw. The
-// discount is bounded like every other cause (R305): it never lasts longer
-// than one window, so an agent's own output later in a long attach counts.
-func (c *OutputClock) AttachStarted(sessionID string) {
+// AttachStarted discounts the DiscountWindow after at, the instant taken before
+// the hand-off: handing the terminal to a tmux client resizes the window and
+// makes the pane redraw. The discount is bounded like every other cause
+// (R305): it never lasts longer than one window, so an agent's own output later
+// in a long attach counts.
+func (c *OutputClock) AttachStarted(sessionID string, at time.Time) {
 	if c == nil {
 		return
 	}
-	now := c.nowMillis()
-	c.addSpan(sessionID, discountSpan{from: now, until: now + c.DiscountWindow().Milliseconds()})
+	start := c.startMillis(at)
+	c.addSpan(sessionID, discountSpan{from: start, until: start + c.DiscountWindow().Milliseconds()})
 }
 
-// AttachEnded gives the detach repaint its own DiscountWindow. What was
-// printed between the attach and the detach is not discounted.
-func (c *OutputClock) AttachEnded(sessionID string) {
+// AttachEnded gives the detach repaint its own DiscountWindow, starting at the
+// instant the client was seen to end. What was printed between the attach and
+// the detach is not discounted.
+func (c *OutputClock) AttachEnded(sessionID string, at time.Time) {
 	if c == nil {
 		return
 	}
-	now := c.nowMillis()
-	c.addSpan(sessionID, discountSpan{from: now, until: now + c.DiscountWindow().Milliseconds()})
+	start := c.startMillis(at)
+	c.addSpan(sessionID, discountSpan{from: start, until: start + c.DiscountWindow().Milliseconds()})
 }
 
 func (c *OutputClock) addSpan(sessionID string, span discountSpan) {
@@ -209,9 +224,10 @@ func (c *OutputClock) addSpanLocked(sessionID string, span discountSpan) {
 	c.discount[sessionID] = spans
 }
 
-// discounted reports whether tmux's window_activity second (which may lie
-// anywhere in [at, at+999] ms) falls in a deck-caused span, and drops spans
-// that ended before it: window_activity only moves forward.
+// discounted reports whether tmux's window_activity second covers a
+// deck-caused span, and drops spans that ended before it: window_activity only
+// moves forward. The second names the whole of [second*1000, second*1000+999]
+// ms, and it is covered iff a span overlaps that interval in any way (R410).
 func (c *OutputClock) discounted(sessionID string, windowActivity int64) bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -219,15 +235,16 @@ func (c *OutputClock) discounted(sessionID string, windowActivity int64) bool {
 	if len(spans) == 0 {
 		return false
 	}
-	atMs := windowActivity * 1000
+	secondStart := windowActivity * 1000
+	secondEnd := secondStart + 999
 	kept := spans[:0]
 	hit := false
 	for _, span := range spans {
-		if span.until < atMs {
+		if span.until < secondStart {
 			continue
 		}
 		kept = append(kept, span)
-		if span.from <= atMs+999 {
+		if span.from <= secondEnd {
 			hit = true
 		}
 	}

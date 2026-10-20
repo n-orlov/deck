@@ -312,3 +312,7 @@ func TestOutputClockSubMillisecondBucketNeverWritesTwiceInOneBucket(t *testing.T
 		})
 	}
 }
+
+// at is the instant a test hands the clock as the span start: the clock's own
+// now, the one the harness scripts through Now.
+func (c *OutputClock) at() time.Time { return time.UnixMilli(c.nowMillis()) }

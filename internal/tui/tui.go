@@ -1329,9 +1329,9 @@ type Model struct {
 // deck-caused resizes, attaches and forwarded keys, each of which makes the
 // pane print without the agent having done anything.
 type OutputDiscounter interface {
-	Discount(sessionID string, cause service.DiscountCause)
-	AttachStarted(sessionID string)
-	AttachEnded(sessionID string)
+	Discount(sessionID string, cause service.DiscountCause, at time.Time)
+	AttachStarted(sessionID string, at time.Time)
+	AttachEnded(sessionID string, at time.Time)
 }
 
 // WithAttachOutputObserver wires the read of the output clock the full-attach
@@ -1348,10 +1348,11 @@ func (m Model) WithOutputDiscounter(d OutputDiscounter) Model {
 }
 
 // discountOutput tells the output clock that deck just did something to the
-// session's pane that makes it print (R305).
-func (m Model) discountOutput(sessionID string, cause service.DiscountCause) {
+// session's pane that makes it print (R305). at is the instant taken before
+// deck issued the action (R410): the discount span starts there.
+func (m Model) discountOutput(sessionID string, cause service.DiscountCause, at time.Time) {
 	if m.outputDiscount != nil && sessionID != "" {
-		m.outputDiscount.Discount(sessionID, cause)
+		m.outputDiscount.Discount(sessionID, cause, at)
 	}
 }
 
@@ -1660,6 +1661,9 @@ type attachFinished struct {
 	observed store.Session
 	// writes are the seen writes the watcher issued during the attach.
 	writes []sessionEngaged
+	// at is the instant the exec callback saw the client end: the start of the
+	// detach repaint's discount span (R410). Zero when not taken.
+	at time.Time
 }
 
 // sessionKilled carries the killed session back (not just the error) so a
@@ -2604,11 +2608,12 @@ func fitPreviewPane(client tmux.Client, slug, sessionID string, width, height in
 	// The Unpinned variant is what makes passive fit's "owning and
 	// restoring nothing" true rather than merely intended -- see its
 	// own doc comment, and the paragraph on the crop it removes above.
+	issuedAt := time.Now() // R410: taken before the resize is issued
 	resizes, _ := client.FitWindowToPaneUnpinned(ctx, windowTarget, pane.ID, width, height)
 	if resizes > 0 && discounter != nil {
 		// R305: the resize makes the pane's program redraw (SIGWINCH);
 		// that output is deck's, not the agent's.
-		discounter.Discount(sessionID, service.DiscountResize)
+		discounter.Discount(sessionID, service.DiscountResize, issuedAt)
 	}
 	return previewFitDone{sessionID: sessionID}
 }
@@ -3450,7 +3455,13 @@ func (m Model) onShellCreated(msg shellCreated) (tea.Model, tea.Cmd) {
 
 func (m Model) onAttachFinished(msg attachFinished) (tea.Model, tea.Cmd) {
 	if m.outputDiscount != nil && m.attachingSessionID != "" {
-		m.outputDiscount.AttachEnded(m.attachingSessionID)
+		// R410: the instant the client's exit was seen (msg.at), taken in the
+		// exec callback before the detach repaint can be stamped.
+		endedAt := msg.at
+		if endedAt.IsZero() {
+			endedAt = time.Now()
+		}
+		m.outputDiscount.AttachEnded(m.attachingSessionID, endedAt)
 	}
 	// The trigger engages the episode the watcher observed it on, never the
 	// row as a reload delivered since has it: a newer prompt sharing the
@@ -4396,6 +4407,7 @@ func (m Model) attachSelected() (tea.Model, tea.Cmd) {
 		m.setAttachError("Cannot attach: " + stoppedSessionRefusalTail)
 		return m, nil
 	}
+	attachIssuedAt := time.Now() // R410: taken before deck's first tmux call for the hand-off
 	command, err := m.attach(context.Background(), session.Slug)
 	if err != nil {
 		m.setAttachError("Cannot attach: " + err.Error())
@@ -4413,7 +4425,7 @@ func (m Model) attachSelected() (tea.Model, tea.Cmd) {
 		// R305: the hand-off redraw and (at its detach) the detach repaint
 		// are deck-caused, each for one bounded window; the attached
 		// stretch between them is not discounted.
-		m.outputDiscount.AttachStarted(session.ID)
+		m.outputDiscount.AttachStarted(session.ID, attachIssuedAt)
 	}
 	m.attachingSessionID = session.ID
 	if m.attachSample != nil {
@@ -4428,10 +4440,10 @@ func (m Model) attachSelected() (tea.Model, tea.Cmd) {
 		engage := m.engageRow
 		watched := &watchedAttach{cmd: command, slug: session.Slug, sample: m.attachSample, interval: attachWatchInterval, settle: attachWatchSettle, session: session, read: m.attachRowReader(session.ID), engage: engage, observeOutput: m.attachOutputObserver(session), discount: m.attachOutputDiscount(session)}
 		return m, tea.Exec(watched, func(err error) tea.Msg {
-			return attachFinished{err: err, engaged: watched.Trigger, observed: watched.Observed, writes: watched.Engaged}
+			return attachFinished{err: err, engaged: watched.Trigger, observed: watched.Observed, writes: watched.Engaged, at: time.Now()}
 		})
 	}
-	return m, tea.ExecProcess(command, func(err error) tea.Msg { return attachFinished{err: err} })
+	return m, tea.ExecProcess(command, func(err error) tea.Msg { return attachFinished{err: err, at: time.Now()} })
 }
 
 // attachOutputObserver is the watcher's output-clock read for the attached
@@ -4449,12 +4461,12 @@ func (m Model) attachOutputObserver(session store.Session) func(context.Context)
 // attached session (R305): the keys and resizes deck forwards during a full
 // attach are deck-caused, each for one bounded window. nil when no clock is
 // wired.
-func (m Model) attachOutputDiscount(session store.Session) func(service.DiscountCause) {
+func (m Model) attachOutputDiscount(session store.Session) func(service.DiscountCause, time.Time) {
 	if m.outputDiscount == nil || session.ID == "" {
 		return nil
 	}
 	discounter, id := m.outputDiscount, session.ID
-	return func(cause service.DiscountCause) { discounter.Discount(id, cause) }
+	return func(cause service.DiscountCause, at time.Time) { discounter.Discount(id, cause, at) }
 }
 
 // releaseForeignPreviewPin is `a`'s last act before it hands the terminal
