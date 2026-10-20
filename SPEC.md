@@ -1103,7 +1103,11 @@ Rules:
   event and no `notify_epoch` bump, and the row does not move, in the `attention` order or the `activity`
   order. This holds for every way the keyboard reaches the pane through deck: `a`'s full attach and the
   interactive preview (§11.9), whether entered by `↵`, forced by `F`, reached by a sidebar or preview click,
-  or entered by `[ui] attach_on_new` / `attach_on_resume`. `Y` is the way to mark a row seen without
+  or entered by `[ui] attach_on_new` / `attach_on_resume`. In the `activity` order this holds for a pane
+  that reflows: a click, a preview or an interactive entry resizes the pane, the pane's program redraws,
+  and the size-keyed output clock (§7) reads that as a resize and never as output, so the clicked row's
+  `last_output_at` stays put, it does not move, and footer churn in a later bucket does not move it
+  either. `Y` is the way to mark a row seen without
   engaging, so it applies only where there is something unseen: on
   a row already seen it does nothing at all — no write, no event, no message —
   and §11.3's footer does not offer it there. `Y`'s write runs after the key, so it names the status
@@ -1112,7 +1116,9 @@ Rules:
   same `status_at`, it writes nothing and the newer prompt stays unseen. Being
   *displaced* from the preview by another client records nothing either. Covering tests:
   `TestAttachIsInertOnStatusSeenAndPosition` (eight cases: `waiting`, `error`, `running`, `idle` under the
-  `attention` and `activity` orders), `TestClickIsInertOnStatusSeenAndPosition` and
+  `attention` and `activity` orders), `TestClickIsInertOnStatusSeenAndPosition` (an `attention` case and an
+  `activity` case: an idle row whose pane reflows when the click resizes it, through the real output
+  clock) and
   `TestPassivePreviewIsInertOnStatusSeenAndPosition`.
   **Engagement sets seen (R321).** On an unseen `waiting` or `error` row, in `a`'s full attach, in the
   interactive preview or over the passive preview, the first of these sets `seen_status_at = status_at`
@@ -2950,7 +2956,9 @@ hold them side by side.
     bucket therefore keep a fixed relative order from tick to tick, and a chatty pane moves
     its row at most once per bucket. A session that has not printed since deck began
     recording (`last_output_at` 0) sorts last. A status change does not move a row in this
-    order. The order follows `output_bucket` live.
+    order, and neither does a click, a preview or an interactive entry's resize: the resize
+    reflows the pane, the output clock counts a reflow as no output (§7), so such a row never
+    moves in the `activity` order. The order follows `output_bucket` live.
   - `name` — `name` ascending, case-insensitively, so `Api` and `api` sort together.
 
   **Pinned sessions come first within their group, in every order.** `p` pins or unpins

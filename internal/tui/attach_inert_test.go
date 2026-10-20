@@ -228,32 +228,37 @@ func TestAttachIsInertOnStatusSeenAndPosition(t *testing.T) {
 
 // TestClickIsInertOnStatusSeenAndPosition: a sidebar click (which selects and,
 // with attach_on_click, enters the interactive preview) leaves every row's
-// durable state and position alone.
+// durable state and position alone. The activity case clicks an idle row
+// whose pane reflows when the click resizes it, through the real output
+// clock: its last_output_at and position hold (R412).
 func TestClickIsInertOnStatusSeenAndPosition(t *testing.T) {
-	m, db := inertFixture(t, SortOrderAttention, "row-idle", true)
-	m = inertPane(t, m, db, "row-waiting")
-	before := snapshotAll(t, db)
-	orderBefore := inertOrder(m)
-	index := -1
-	for i, id := range orderBefore {
-		if id == "row-waiting" {
-			index = i
+	t.Run("attention", func(t *testing.T) {
+		m, db := inertFixture(t, SortOrderAttention, "row-idle", true)
+		m = inertPane(t, m, db, "row-waiting")
+		before := snapshotAll(t, db)
+		orderBefore := inertOrder(m)
+		index := -1
+		for i, id := range orderBefore {
+			if id == "row-waiting" {
+				index = i
+			}
 		}
-	}
-	x, y := findRow(t, m, index)
-	updated, _ := m.Update(press(x, y))
-	m = updated.(Model)
-	if m.selected != rowCursor(index) {
-		t.Fatalf("click selected %v, want row %d", m.selected, index)
-	}
-	if !m.interactive {
-		t.Fatalf("click did not enter interactive mode: %q %+v", m.attachError, m.entryRefusal)
-	}
-	assertInert(t, "click", m, db, orderBefore, before)
-	updated, _ = m.Update(release(x, y))
-	m = updated.(Model)
-	m.exitInteractive()
-	assertInert(t, "click release and exit", m, db, orderBefore, before)
+		x, y := findRow(t, m, index)
+		updated, _ := m.Update(press(x, y))
+		m = updated.(Model)
+		if m.selected != rowCursor(index) {
+			t.Fatalf("click selected %v, want row %d", m.selected, index)
+		}
+		if !m.interactive {
+			t.Fatalf("click did not enter interactive mode: %q %+v", m.attachError, m.entryRefusal)
+		}
+		assertInert(t, "click", m, db, orderBefore, before)
+		updated, _ = m.Update(release(x, y))
+		m = updated.(Model)
+		m.exitInteractive()
+		assertInert(t, "click release and exit", m, db, orderBefore, before)
+	})
+	t.Run("activity", clickInertOnActivityOrder)
 }
 
 // TestPassivePreviewIsInertOnStatusSeenAndPosition: ticking and capturing the
