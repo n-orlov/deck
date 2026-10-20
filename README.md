@@ -1,7 +1,7 @@
-![build](https://int21h.mooo.com/jenkins-static/deck/ci/main/build.svg)
-![tests](https://int21h.mooo.com/jenkins-static/deck/ci/main/tests.svg)
-![coverage](https://int21h.mooo.com/jenkins-static/deck/ci/main/coverage.svg)
-![quality](https://int21h.mooo.com/jenkins-static/deck/ci/main/quality.svg)
+[![build](https://int21h.mooo.com/jenkins-static/deck/ci/main/build.svg)](https://jenkins.wisent-owl.ts.net/job/deck/job/ci/job/main/lastBuild/)
+[![tests](https://int21h.mooo.com/jenkins-static/deck/ci/main/tests.svg)](https://jenkins.wisent-owl.ts.net/job/deck/job/ci/job/main/Allure/)
+[![coverage](https://int21h.mooo.com/jenkins-static/deck/ci/main/coverage.svg)](https://jenkins.wisent-owl.ts.net/job/deck/job/ci/job/main/CI_20summary/)
+[![quality](https://int21h.mooo.com/jenkins-static/deck/ci/main/quality.svg)](https://jenkins.wisent-owl.ts.net/job/deck/job/ci/job/main/CI_20summary/)
 [![license](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 [![Go version](https://img.shields.io/badge/go-1.25.0-00ADD8)](go.mod)
 

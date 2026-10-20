@@ -89,7 +89,10 @@ build has them too:
   them in). Jenkins stays on the tailnet; the homelab's public nginx proxies
   `https://int21h.mooo.com/jenkins-static/deck/ci/<branch>/<id>.svg` to the
   badge endpoint, because the `deck` folder grants anonymous `Job/ViewStatus`
-  (badges only, no build pages). The README shows `main`'s and links nowhere.
+  (badges only, no build pages). The README shows `main`'s, each linked to
+  its report on Jenkins (`build` to the last run, `tests` to Allure,
+  `coverage` and `quality` to the CI summary); the links open on the tailnet
+  only.
 - **Artifacts**: the `ci-results/` text, XML and coverage files, the CI summary
   and `allure-history/`.
 

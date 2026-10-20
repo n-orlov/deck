@@ -263,9 +263,12 @@ func TestJenkinsfilePublishesReports(t *testing.T) {
 
 // TestJenkinsfileDeclaresTheReadmeBadges: every badge the README shows from
 // the public badge proxy is the plugin's "build" or declared by the
-// Jenkinsfile, so none of them renders as "not run" forever.
+// Jenkinsfile, so none of them renders as "not run" forever, and each links
+// to the run or report behind it.
 func TestJenkinsfileDeclaresTheReadmeBadges(t *testing.T) {
 	const prefix = "https://int21h.mooo.com/jenkins-static/deck/ci/main/"
+	// Links open the run or report; they work on the tailnet only.
+	const jobURL = "https://jenkins.wisent-owl.ts.net/job/deck/job/ci/job/main/"
 	readme := readRepoFile(t, "README.md")
 	jf := readRepoFile(t, "Jenkinsfile")
 	seen := 0
@@ -280,8 +283,8 @@ func TestJenkinsfileDeclaresTheReadmeBadges(t *testing.T) {
 			continue
 		}
 		seen++
-		if strings.HasPrefix(l, "[") {
-			t.Errorf("README badge %q links somewhere; Jenkins is tailnet-only", id)
+		if !strings.HasPrefix(l, "[") || !strings.Contains(l, "]("+jobURL) {
+			t.Errorf("README badge %q does not link to its report under %s", id, jobURL)
 		}
 		if id == "build" {
 			continue
