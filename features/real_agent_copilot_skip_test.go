@@ -122,12 +122,14 @@ func TestRealCopilotFeatureIsExcludedByTheDefaultTagFilter(t *testing.T) {
 	if first := strings.TrimSpace(strings.SplitN(string(data), "\n", 2)[0]); first != "@real-agents" {
 		t.Fatalf("real_agent_copilot.feature starts with %q, want the @real-agents tag", first)
 	}
-	workflow, err := os.ReadFile(filepath.Join("..", ".github", "workflows", "ci.yml"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if strings.Contains(string(workflow), "DECK_GODOG_TAGS") {
-		t.Fatal("ci.yml sets DECK_GODOG_TAGS, which could opt CI into @real-agents")
+	for _, name := range []string{"Jenkinsfile", "Jenkinsfile.release"} {
+		pipeline, err := os.ReadFile(filepath.Join("..", name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(string(pipeline), "DECK_GODOG_TAGS") {
+			t.Fatalf("%s sets DECK_GODOG_TAGS, which could opt CI into @real-agents", name)
+		}
 	}
 }
 
