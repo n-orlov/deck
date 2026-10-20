@@ -90,6 +90,17 @@ while [ "$i" -le "$runs" ]; do
         pass=$((pass + 1))
     else
         echo "=== RUN $i: FAIL (exit $status) ===" | tee -a "$summary_log"
+        # Name what failed in the console itself: the per-run log stays on the
+        # CI agent, and a verdict line alone cannot be root-caused. Only the
+        # go test verdict lines and the tail of the log are echoed, not the
+        # whole log.
+        {
+            echo "--- RUN $i failure excerpt ---"
+            grep -E -- '^(--- FAIL|FAIL|panic:|WARNING: DATA RACE)|^\s+--- FAIL' "$run_log" | head -n 40
+            echo "--- RUN $i log tail ---"
+            tail -n 40 "$run_log"
+            echo "--- end RUN $i excerpt ---"
+        } | tee -a "$summary_log"
         fail=$((fail + 1))
     fi
 
