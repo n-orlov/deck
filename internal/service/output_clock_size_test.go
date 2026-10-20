@@ -2,8 +2,10 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -136,16 +138,43 @@ func (r *sizeRig) lastOutputAt() int64 {
 	return got.LastOutputAt
 }
 
+// storedReadingSize is the pane size the clock's stored reading for a session
+// is keyed on (R409: the clock stores the pane size with each reading). It
+// reads the reading by reflection so the table compiles against a clock whose
+// reading carries no size, and reports ok=false there.
+func storedReadingSize(c *OutputClock, sessionID string) (width, height int64, ok bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	reading := reflect.ValueOf(c.state).MapIndex(reflect.ValueOf(sessionID))
+	if !reading.IsValid() {
+		return 0, 0, false
+	}
+	size := reading.FieldByName("size")
+	if !size.IsValid() || size.Kind() != reflect.Struct {
+		return 0, 0, false
+	}
+	w, h := size.FieldByName("Width"), size.FieldByName("Height")
+	if !w.IsValid() || !h.IsValid() || w.Kind() != reflect.Int || h.Kind() != reflect.Int {
+		return 0, 0, false
+	}
+	return w.Int(), h.Int(), true
+}
+
 // TestOutputClockSizeKeyedBaseline is R409's cases 1, 2, 3, 6 and 7, each a row
 // that drives the real cut and hash (captureTranscriptReadings) over a
 // claude-style pane. Tick 1 is the baseline at 80x24, activity 2000. Tick 2 is
 // where the row differs. Tick 3 is footer churn in a later bucket (activity
-// 2015) at the settled size. In no row does last_output_at move, and
-// the movement fallback's counted buckets (which only a write makes) stay at
-// zero with it.
+// 2025) at the settled size. In no row does last_output_at move, the movement
+// fallback's counted buckets (which only a write makes) stay at zero with it,
+// and the stored reading ends keyed on the settled size.
+//
+// Row 7 is a resize and back to the original size before tick 2: tick 2's pane
+// facts read 80x24 again, the redraw moved window_activity into a new bucket,
+// and the capture is identical to the baseline.
 func TestOutputClockSizeKeyedBaseline(t *testing.T) {
 	const (
 		wide, narrow = "80|24", "60|24"
+		footer       = "~/proj  main  ctx:12%  opus"
 		churn        = "~/proj  feature  ctx:41%  sonnet"
 	)
 	rows := []struct {
@@ -164,28 +193,35 @@ func TestOutputClockSizeKeyedBaseline(t *testing.T) {
 		{"2 resize with a reflow and window_activity moved in the same bucket", "2003", narrow, 60, "", 2, narrow, 60},
 		{"3 resize with a reflow and window_activity moved into a new bucket", "2012", narrow, 60, "", 2, narrow, 60},
 		{"6 the size changes between the facts read and the capture", "2012", wide, 60, narrow, 2, narrow, 60},
-		{"7 a resize and back before the next tick, identical capture", "2003", narrow, 80, wide, 2, wide, 80},
+		{"7 a resize and back to the original size before the next tick, identical capture", "2012", wide, 80, "", 2, wide, 80},
 	}
 	for _, row := range rows {
 		t.Run(row.name, func(t *testing.T) {
 			r := newSizeRig(t)
-			r.tick("2000", wide, claudePane(80, "~/proj  main  ctx:12%  opus"), "")
+			r.tick("2000", wide, claudePane(80, footer), "")
 			if got := r.captures(); got != 1 {
 				t.Fatalf("baseline tick: %d captures, want 1", got)
 			}
-			r.tick(row.activity, row.size, claudePane(row.drawnAt, "~/proj  main  ctx:12%  opus"), row.sizeAfter)
+			r.tick(row.activity, row.size, claudePane(row.drawnAt, footer), row.sizeAfter)
 			if got := r.lastOutputAt(); got != 0 {
 				t.Fatalf("tick 2 wrote last_output_at = %d; a resize is never output", got)
 			}
 			if got := r.captures(); got != row.wantCaptures {
 				t.Fatalf("tick 2: %d captures, want %d (a size change re-captures on that tick, bucket advanced or not)", got, row.wantCaptures)
 			}
-			r.tick("2015", row.settled, claudePane(row.settledWidth, churn), "")
+			r.tick("2025", row.settled, claudePane(row.settledWidth, churn), "")
 			if got := r.lastOutputAt(); got != 0 {
 				t.Fatalf("footer churn in a later bucket wrote last_output_at = %d", got)
 			}
 			if r.svc.Output.Moving(r.id) {
 				t.Fatal("the movement fallback saw movement on a resize")
+			}
+			w, h, ok := storedReadingSize(r.svc.Output, r.id)
+			if !ok {
+				t.Fatal("the stored reading carries no pane size (R409: the clock stores the size with each reading)")
+			}
+			if got := fmt.Sprintf("%d|%d", w, h); got != row.settled {
+				t.Fatalf("the stored reading is keyed on %s, want the settled size %s", got, row.settled)
 			}
 		})
 	}
