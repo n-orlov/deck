@@ -2598,7 +2598,7 @@ func fitPreviewPane(client tmux.Client, slug, sessionID string, width, height in
 	if err != nil {
 		return previewFitDone{sessionID: sessionID}
 	}
-	if done, standDown := previewFitStandDown(ctx, client, windowTarget, sessionID); standDown {
+	if done, standDown := previewFitStandDown(ctx, client, windowTarget, sessionID, discounter); standDown {
 		return done
 	}
 	// FitWindowToPane already no-ops (0 resize-window calls) when the
@@ -2644,11 +2644,17 @@ func fitPreviewPane(client tmux.Client, slug, sessionID string, width, height in
 // here. clientAttached, exactly like foreignLiveClaim, does NOT latch: the
 // attach is transient and the row must regain its fit the moment the client
 // detaches.
-func previewFitStandDown(ctx context.Context, client tmux.Client, windowTarget, sessionID string) (previewFitDone, bool) {
+func previewFitStandDown(ctx context.Context, client tmux.Client, windowTarget, sessionID string, discounter OutputDiscounter) (previewFitDone, bool) {
 	if state, perr := client.ProbeWindowOwnership(ctx, windowTarget); perr == nil && state == tmux.ClaimForeignLive {
 		return previewFitDone{sessionID: sessionID, foreignLiveClaim: true}, true
 	}
 	if attached, aerr := client.SessionAttachedCount(ctx, windowTarget); aerr == nil && attached > 0 {
+		// R305/R411: releasing a pin resizes the window back under the
+		// attached client, so the pane repaints; the instant is taken before
+		// the unpin is issued.
+		if discounter != nil {
+			discounter.Discount(sessionID, service.DiscountResize, time.Now())
+		}
 		_ = client.UnpinWindowSize(ctx, windowTarget)
 		return previewFitDone{sessionID: sessionID, clientAttached: true}, true
 	}
@@ -4422,7 +4428,7 @@ func (m Model) attachSelected() (tea.Model, tea.Cmd) {
 	// enterInteractiveBody already does this on its own success path via
 	// m.clearEntryRefusal(); this is the same clearing for the full attach.
 	m.clearEntryRefusal()
-	m.releaseForeignPreviewPin(session.Slug)
+	m.releaseForeignPreviewPin(session.ID, session.Slug)
 	if m.outputDiscount != nil {
 		// R305: the hand-off redraw and (at its detach) the detach repaint
 		// are deck-caused, each for one bounded window; the attached
@@ -4510,7 +4516,7 @@ func (m Model) attachOutputDiscount(session store.Session) func(service.Discount
 // is about to suspend the whole TUI, so a round trip is affordable, and no
 // failure of it may refuse an attach the user has already been promised:
 // the crop is cosmetic, and the attach is not.
-func (m Model) releaseForeignPreviewPin(slug string) {
+func (m Model) releaseForeignPreviewPin(sessionID, slug string) {
 	if m.tmuxClient.Socket == "" {
 		return
 	}
@@ -4523,6 +4529,9 @@ func (m Model) releaseForeignPreviewPin(slug string) {
 	if err != nil || state == tmux.ClaimForeignLive {
 		return
 	}
+	// R305/R411: the unpin resizes the window, so the pane repaints; the
+	// instant is taken before the call is issued.
+	m.discountOutput(sessionID, service.DiscountResize, time.Now())
 	_ = m.tmuxClient.UnpinWindowSize(ctx, windowTarget)
 }
 

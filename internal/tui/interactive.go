@@ -405,6 +405,11 @@ func (m *Model) resizeInteractiveToPreview() {
 		return
 	}
 	ctx := context.Background()
+	// R305/R411: the fit resizes the window, so the pane repaints; the instant
+	// is taken before the call is issued.
+	if session, ok := m.interactiveTargetSession(); ok {
+		m.discountOutput(session.ID, service.DiscountResize, time.Now())
+	}
 	if _, err := m.tmuxClient.FitWindowToPane(ctx, m.interactiveWindowTarget, m.interactivePaneID, width, height); err != nil {
 		return
 	}

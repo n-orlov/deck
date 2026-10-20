@@ -1520,8 +1520,11 @@ bucket already examined too: a tick whose `window_activity` moved inside a windo
 re-baselines the hash even though the bucket did not advance (it writes nothing), so a deck-caused
 redraw in the same bucket as the last reading is not counted by the next bucket's read. The window is
 **5 seconds, and never more than one output bucket** (`min(bucket, 5 s)`), and it starts at each of:
-a deck-caused resize (a preview fit that issued a `resize-window`, and interactive entry and exit,
-which resize the window and make the pane redraw on SIGWINCH), a key deck forwards to the pane in
+a deck-caused resize (a preview fit that issued a `resize-window`, interactive entry and exit,
+the interactive preview's own re-fit when the host terminal resizes (`resizeInteractiveToPreview`), the
+unpin the passive fit's stand-down issues while a client is attached, and the unpin `releaseForeignPreviewPin`
+issues before a full attach, each of which resizes the window and makes the pane redraw on SIGWINCH;
+every one takes its instant just before its tmux call, so the window covers the redraw), a key deck forwards to the pane in
 interactive mode (each forwarded key restarts the window; a key deck does not forward does not), and
 an attach. An attach is bounded like the rest: the hand-off from `a` to the tmux client opens one
 window (the client's attach resizes the window and the pane redraws), and the client's detach opens
