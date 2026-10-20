@@ -80,12 +80,26 @@ type outputState struct {
 	// composer frame read with it (pickReading).
 	hash     [sha256.Size]byte
 	composer [sha256.Size]byte
+	// size is the pane size (pane_width x pane_height) the reading was taken
+	// at (R409); the zero PaneSize means the caller did not know it.
+	size PaneSize
 	// countedAt is the window_activity second of the last counted change
 	// (one that wrote last_output_at; 0 = none) and streak the run of
 	// consecutive counted buckets ending at its bucket (R316).
 	countedAt int64
 	streak    int
 }
+
+// PaneSize is a pane's width x height in cells (tmux pane_width, pane_height).
+// The zero value means the size is unknown, and an unknown size never keys a
+// baseline.
+type PaneSize struct{ Width, Height int }
+
+func (p PaneSize) known() bool { return p.Width > 0 && p.Height > 0 }
+
+// PaneCapture reads the pane. It returns the text and the pane size read just
+// after the capture (the zero PaneSize when it did not re-read the size).
+type PaneCapture func(context.Context) (string, PaneSize, error)
 
 // NewOutputClock returns a clock with the given bucket width, or
 // DefaultOutputBucket when bucket is not positive.
@@ -225,12 +239,29 @@ func (c *OutputClock) discounted(sessionID string, windowActivity int64) bool {
 	return hit
 }
 
-// Observe takes one reconcile tick's reading for a session: windowActivity is
-// tmux's window_activity in Unix seconds, and capture reads the pane. It
-// reports whether it wrote last_output_at. capture is called when the bucket
-// advanced, or when window_activity moved inside a discount window (to
-// remember the deck-caused text); any other tick captures and writes nothing.
+// Observe is ObserveSized for a caller that does not know the pane size.
 func (c *OutputClock) Observe(ctx context.Context, store OutputStore, sessionID string, windowActivity int64, capture func(context.Context) (string, error)) (bool, error) {
+	return c.ObserveSized(ctx, store, sessionID, windowActivity, PaneSize{}, func(ctx context.Context) (string, PaneSize, error) {
+		text, err := capture(ctx)
+		return text, PaneSize{}, err
+	})
+}
+
+// ObserveSized takes one reconcile tick's reading for a session: windowActivity
+// is tmux's window_activity in Unix seconds, size the pane size the same pane
+// facts report, and capture reads the pane. It reports whether it wrote
+// last_output_at.
+//
+// A stored reading carries the size it was taken at (R409). A pane whose size
+// differs from its stored reading's is re-captured on that tick whether or not
+// its bucket advanced, and the new reading becomes the baseline: a resize from
+// any source reflows the transcript, which is never output, so nothing is
+// counted. A size that differs between the read before the capture and the one
+// capture returns after it makes the reading a baseline too. At an unchanged
+// size, capture is called when the bucket advanced, or when window_activity
+// moved inside a discount window (to remember the deck-caused text); any other
+// tick captures and writes nothing.
+func (c *OutputClock) ObserveSized(ctx context.Context, store OutputStore, sessionID string, windowActivity int64, size PaneSize, capture PaneCapture) (bool, error) {
 	if c == nil || windowActivity <= 0 {
 		return false, nil
 	}
@@ -241,11 +272,40 @@ func (c *OutputClock) Observe(ctx context.Context, store OutputStore, sessionID 
 	if width <= 0 {
 		return false, errors.New("output clock bucket must be positive")
 	}
+	if seen && size.known() && previous.size != size {
+		return false, c.rebaseline(ctx, sessionID, windowActivity, size, previous, capture)
+	}
 	bucket := secondBucket(windowActivity, width)
 	if seen && bucket <= secondBucket(previous.activity, width) {
-		return false, c.observeExaminedBucket(ctx, sessionID, windowActivity, previous, capture)
+		return false, c.observeExaminedBucket(ctx, sessionID, windowActivity, size, previous, capture)
 	}
-	return c.observeNewBucket(ctx, store, sessionID, windowActivity, width, previous, seen, capture)
+	return c.observeNewBucket(ctx, store, sessionID, windowActivity, width, size, previous, seen, capture)
+}
+
+// rebaseline is the tick of a pane whose size differs from its stored
+// reading's: the pane is captured, the capture becomes the baseline, and
+// nothing is counted. window_activity only advances, so a bucket that moved
+// with the resize is examined here and never counts later. The size kept is
+// the one read before the capture; when the size read after it differs, the
+// capture may be a mix of two layouts, so the stored size is made unequal to
+// the real one and the next tick re-captures at the settled size.
+func (c *OutputClock) rebaseline(ctx context.Context, sessionID string, windowActivity int64, size PaneSize, previous outputState, capture PaneCapture) error {
+	readings, after, err := captureTranscriptReadings(ctx, sessionID, capture)
+	if err != nil {
+		return err
+	}
+	next := previous
+	next.hash, next.composer, next.size = readings[0].region, readings[0].composer, size
+	if windowActivity > next.activity {
+		next.activity = windowActivity
+	}
+	if after.known() && after != size {
+		next.size = PaneSize{}
+	}
+	c.mu.Lock()
+	c.state[sessionID] = next
+	c.mu.Unlock()
+	return nil
 }
 
 // secondBucket is the bucket a Unix second falls in at width, by the one rule
@@ -258,22 +318,26 @@ func secondBucket(unixSeconds int64, width time.Duration) int64 {
 // change it shows counts (writes last_output_at) unless it lies inside a
 // deck-caused window (R305). The new hash is remembered either way, so the
 // same text never counts later. It reports whether it wrote.
-func (c *OutputClock) observeNewBucket(ctx context.Context, store OutputStore, sessionID string, windowActivity int64, width time.Duration, previous outputState, seen bool, capture func(context.Context) (string, error)) (bool, error) {
-	readings, err := captureTranscriptReadings(ctx, sessionID, capture)
+func (c *OutputClock) observeNewBucket(ctx context.Context, store OutputStore, sessionID string, windowActivity int64, width time.Duration, size PaneSize, previous outputState, seen bool, capture PaneCapture) (bool, error) {
+	readings, after, err := captureTranscriptReadings(ctx, sessionID, capture)
 	if err != nil {
 		return false, err
 	}
+	resized := after.known() && size.known() && after != size
 	reading, same := pickReading(readings, previous)
 	discounted := c.discounted(sessionID, windowActivity)
-	changed := seen && !same && !discounted
+	changed := seen && !same && !discounted && !resized
 	if changed {
 		if err := store.RecordOutput(ctx, sessionID, windowActivity*1000); err != nil {
 			return false, fmt.Errorf("record output for session %q: %w", sessionID, err)
 		}
 	}
-	next := outputState{activity: windowActivity, hash: reading.region, composer: reading.composer, countedAt: previous.countedAt, streak: previous.streak}
+	next := outputState{activity: windowActivity, hash: reading.region, composer: reading.composer, size: size, countedAt: previous.countedAt, streak: previous.streak}
 	if changed {
 		next.countBucket(previous, width)
+	}
+	if resized {
+		next.size = PaneSize{}
 	}
 	c.mu.Lock()
 	c.state[sessionID] = next
@@ -299,11 +363,12 @@ type transcriptReading struct {
 }
 
 // captureTranscriptReadings reads the pane and hashes its readings
-// (agent.TranscriptCuts), the chosen boundary first.
-func captureTranscriptReadings(ctx context.Context, sessionID string, capture func(context.Context) (string, error)) ([]transcriptReading, error) {
-	pane, err := capture(ctx)
+// (agent.TranscriptCuts), the chosen boundary first. It also returns the pane
+// size the capture reported after reading.
+func captureTranscriptReadings(ctx context.Context, sessionID string, capture PaneCapture) ([]transcriptReading, PaneSize, error) {
+	pane, after, err := capture(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("capture pane for output clock of session %q: %w", sessionID, err)
+		return nil, PaneSize{}, fmt.Errorf("capture pane for output clock of session %q: %w", sessionID, err)
 	}
 	cuts := agent.TranscriptCuts(pane)
 	readings := make([]transcriptReading, len(cuts))
@@ -314,7 +379,7 @@ func captureTranscriptReadings(ctx context.Context, sessionID string, capture fu
 			framed:   cut.Composer != "",
 		}
 	}
-	return readings, nil
+	return readings, after, nil
 }
 
 // pickReading chooses the reading that becomes the new baseline and reports
@@ -357,17 +422,20 @@ func (next *outputState) countBucket(previous outputState, width time.Duration) 
 // so the deck-caused text becomes the baseline and the next bucket's read does
 // not count it. Only a window_activity that moved and lies in a window costs a
 // capture. It never writes last_output_at.
-func (c *OutputClock) observeExaminedBucket(ctx context.Context, sessionID string, windowActivity int64, previous outputState, capture func(context.Context) (string, error)) error {
+func (c *OutputClock) observeExaminedBucket(ctx context.Context, sessionID string, windowActivity int64, size PaneSize, previous outputState, capture PaneCapture) error {
 	if windowActivity <= previous.activity {
 		return nil
 	}
 	if c.discounted(sessionID, windowActivity) {
-		readings, err := captureTranscriptReadings(ctx, sessionID, capture)
+		readings, after, err := captureTranscriptReadings(ctx, sessionID, capture)
 		if err != nil {
 			return err
 		}
 		reading, _ := pickReading(readings, previous)
 		previous.hash, previous.composer = reading.region, reading.composer
+		if after.known() && size.known() && after != size {
+			previous.size = PaneSize{}
+		}
 	}
 	previous.activity = windowActivity
 	c.mu.Lock()

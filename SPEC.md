@@ -1484,7 +1484,16 @@ the pane, or that is edited in the same bucket as new output, is judged by the b
 inside one bucket write once (the second sees no new bucket), and a tick with no bucket change
 writes nothing. The first reading of a session after deck starts is only a baseline and counts
 nothing, so a restart does not make every row look freshly active; the in-memory baseline is not
-persisted. The write is a plain `UPDATE` of that one column, never an `events` row (the same rule
+persisted. **The baseline is keyed on the pane's size.** Each stored reading carries the pane's width ×
+height (`pane_width` × `pane_height`), taken from the same pane facts the reconcile tick reads. A pane
+whose size differs from its stored reading's is re-captured on that tick, whether or not its bucket
+advanced; the new reading becomes the baseline and nothing is counted: no `last_output_at` write and no
+movement-fallback counted bucket. If the size read just before the capture differs from the size read just
+after it, the reading is a baseline too, never a count, and the next tick at the settled size captures
+again. A transcript change at an unchanged size counts as described above. A resize reflows the transcript
+and is never output, whatever its source: deck's own, another process's, a real tmux client's or a
+terminal's. The size key does not depend on the discount window (the R305 paragraph below), which only
+covers deck's own actions. The write is a plain `UPDATE` of that one column, never an `events` row (the same rule
 as `last_probe_at` above), and it leaves `status`, `status_source` and `status_at` untouched.
 
 **The unseen marker (`sessions.last_seen_at`, R324).** One marker answers "is there something here I have
