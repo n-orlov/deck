@@ -95,9 +95,6 @@ func runUpdateCommand(args []string, stdout, stderr io.Writer) int {
 		return 0
 	}
 	sayf(stdout, "deck updated: %s -> %s (%s)\n", old, res.Tag, res.Path)
-	if res.Attestation == update.AttestationSkipped {
-		sayln(stdout, "note: only the checksum was verified; the build attestation could not be checked")
-	}
 	sayln(stdout, "note: restart any running deck to use the new version; running sessions are not disturbed")
 	return 0
 }

@@ -123,8 +123,8 @@ func (m Model) updateConfirmBody() string {
 Current version: %s
 Target version:  %s
 
-Confirming downloads the release, verifies its checksum and build
-attestation and replaces the deck binary on disk, in the background.
+Confirming downloads the release, verifies its checksum and replaces
+the deck binary on disk, in the background.
 deck keeps running, does not restart and does not touch your sessions:
 restart deck to run the new version.
 

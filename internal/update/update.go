@@ -30,9 +30,6 @@ type Options struct {
 	// from. Empty means DefaultRepo when the base is DefaultBaseURL, and "no gh
 	// download" for any other base (a mirror is fetched over HTTPS).
 	Repo string
-	// RequireAttestation aborts when the attestation cannot be checked, like
-	// DECK_REQUIRE_ATTESTATION=1.
-	RequireAttestation bool
 
 	// root is test-only: the tree the managed prefixes are matched under.
 	root string
@@ -49,11 +46,6 @@ type Result struct {
 	// downloaded and the binary was not touched.
 	Unchanged bool
 	Path      string // the resolved (symlink-resolved) file that was replaced
-
-	// Attestation is AttestationVerified, or AttestationSkipped when only the
-	// checksum was verified (no authenticated gh, or a release with no
-	// attestation).
-	Attestation string
 }
 
 // Run downloads, verifies and installs the release over the executable. On
@@ -77,14 +69,14 @@ func run(ctx context.Context, o Options) (Result, error) {
 		return Result{}, fmt.Errorf("create a scratch directory: %w", err)
 	}
 	defer func() { _ = os.RemoveAll(work) }()
-	bin, att, err := o.fetchBinary(ctx, fetchPlan{releaseURL: pl.base + "/releases/download/" + pl.tag, tag: pl.tag, asset: pl.asset, repo: o.ghRepo(pl.base), work: work})
+	bin, err := o.fetchBinary(ctx, fetchPlan{releaseURL: pl.base + "/releases/download/" + pl.tag, tag: pl.tag, asset: pl.asset, repo: o.ghRepo(pl.base), work: work})
 	if err != nil {
 		return Result{}, err
 	}
 	if err := o.replace(pl.target, bin); err != nil {
 		return Result{}, err
 	}
-	return Result{Tag: pl.tag, Path: pl.target, Attestation: att}, nil
+	return Result{Tag: pl.tag, Path: pl.target}, nil
 }
 
 // runPlan is what Run settles before it downloads anything.
@@ -190,31 +182,21 @@ func (o Options) fetchAsset(ctx context.Context, g *gh, p fetchPlan, name string
 }
 
 // fetchBinary downloads the archive and checksums.txt from one release,
-// verifies the archive's checksum and build attestation, and returns the
-// binary inside it with the attestation outcome.
-func (o Options) fetchBinary(ctx context.Context, p fetchPlan) ([]byte, string, error) {
+// verifies the archive's SHA-256 checksum, and returns the binary inside it.
+func (o Options) fetchBinary(ctx context.Context, p fetchPlan) ([]byte, error) {
 	g := findGh(ctx)
 	archive, err := o.fetchAsset(ctx, g, p, p.asset, maxArchiveBytes)
 	if err != nil {
-		return nil, "", fmt.Errorf("download %s: %w", p.asset, err)
+		return nil, fmt.Errorf("download %s: %w", p.asset, err)
 	}
 	sums, err := o.fetchAsset(ctx, g, p, "checksums.txt", maxChecksumsBytes)
 	if err != nil {
-		return nil, "", fmt.Errorf("download checksums.txt: %w", err)
+		return nil, fmt.Errorf("download checksums.txt: %w", err)
 	}
 	if err := verifyArchive(archive, sums, p.asset); err != nil {
-		return nil, "", err
+		return nil, err
 	}
-	file := filepath.Join(p.work, p.asset)
-	if err := os.WriteFile(file, archive, 0o600); err != nil {
-		return nil, "", fmt.Errorf("stage %s: %w", p.asset, err)
-	}
-	att, err := o.attest(ctx, g, file)
-	if err != nil {
-		return nil, "", err
-	}
-	bin, err := extractBinary(archive)
-	return bin, att, err
+	return extractBinary(archive)
 }
 
 // replace writes bin beside target and renames it over target. The

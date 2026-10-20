@@ -17,13 +17,11 @@ curl -fsSL https://raw.githubusercontent.com/n-orlov/deck/main/install.sh | sh
 ```
 
 - Installs to `~/.local/bin/deck`. Override: `DECK_INSTALL_DIR`, `DECK_VERSION=vX.Y.Z`.
-- Verifies the download against `checksums.txt`, then, when an authenticated `gh` is installed, its
-  build attestation (`gh attestation verify --repo n-orlov/deck`); a failed verification aborts with
-  nothing installed. Without `gh` (or for a release that predates attestations) it prints one note
-  that only the checksum was verified; `DECK_REQUIRE_ATTESTATION=1` makes that case abort instead.
+- Verifies the download against the release's `checksums.txt` (SHA-256); a mismatch aborts with
+  nothing installed.
 - Requires **tmux >= 3.2**. Agents (`claude`, `pi`, `codex`, `copilot`) only appear if they are on `PATH`.
 - Linux and macOS, amd64 and arm64. **No Windows** (needs tmux) -- use WSL.
-- Check: `deck --version`. Update: `deck update` (or rerun the same line). `deck update --check` only reports whether a newer release exists, and `deck update --version vX.Y.Z` pins a release (a downgrade is allowed). It verifies the archive's checksum and, with an authenticated `gh`, its build attestation, and refuses a dev build, a package-managed install (Homebrew, apt, Nix, snap) and an unwritable directory. Restart a running deck afterwards. A profile named `update` is opened with `DECK_PROFILE=update deck`.
+- Check: `deck --version`. Update: `deck update` (or rerun the same line). `deck update --check` only reports whether a newer release exists, and `deck update --version vX.Y.Z` pins a release (a downgrade is allowed). It verifies the archive's SHA-256 checksum and refuses a dev build, a package-managed install (Homebrew, apt, Nix, snap) and an unwritable directory. Restart a running deck afterwards. A profile named `update` is opened with `DECK_PROFILE=update deck`.
 
 ## Run
 

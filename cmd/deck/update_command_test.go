@@ -245,14 +245,6 @@ func updRun(t *testing.T, binary, home, path string, env []string, args ...strin
 	return stdout.String(), stderr.String(), code
 }
 
-const fakeGhVerifyFails = `#!/bin/sh
-case "$1 $2" in
-"auth status") exit 0 ;;
-"attestation verify") echo "verification failed: no matching attestation signature" >&2; exit 1 ;;
-esac
-exit 1
-`
-
 // TestUpdateVerbAgainstFakeServer drives the real binary, built with a release
 // version, against a loopback fake release server.
 func TestUpdateVerbAgainstFakeServer(t *testing.T) {
@@ -284,6 +276,9 @@ func TestUpdateVerbAgainstFakeServer(t *testing.T) {
 				if !strings.Contains(stdout, want) {
 					t.Errorf("stdout %q lacks %q", stdout, want)
 				}
+			}
+			if strings.Contains(stdout, "checksum was verified") {
+				t.Errorf("stdout %q carries a checksum-only note; the checksum is the only check", stdout)
 			}
 			if got, want := updSum(t, exe), func() string { s := sha256.Sum256([]byte(updNewBody)); return hex.EncodeToString(s[:]) }(); got != want {
 				t.Errorf("binary sha256 = %s, want the release binary %s", got, want)
@@ -370,20 +365,6 @@ func TestUpdateVerbAgainstFakeServer(t *testing.T) {
 			before := updSum(t, exe)
 			_, stderr, code := updRun(t, exe, t.TempDir(), emptyPath, []string{"DECK_UPDATE_URL=" + bad.server.URL}, "update")
 			expect(t, stderr, code, "checksum mismatch")
-			if updSum(t, exe) != before || len(updNames(t, dir)) != 1 {
-				t.Errorf("binary or directory changed: %v", updNames(t, dir))
-			}
-		})
-
-		t.Run("attestation verify failure", func(t *testing.T) {
-			ghDir := t.TempDir()
-			if err := os.WriteFile(filepath.Join(ghDir, "gh"), []byte(fakeGhVerifyFails), 0o755); err != nil {
-				t.Fatal(err)
-			}
-			dir, exe := place(v100())
-			before := updSum(t, exe)
-			_, stderr, code := updRun(t, exe, t.TempDir(), ghDir, []string{goodURL}, "update")
-			expect(t, stderr, code, "attestation verification failed")
 			if updSum(t, exe) != before || len(updNames(t, dir)) != 1 {
 				t.Errorf("binary or directory changed: %v", updNames(t, dir))
 			}

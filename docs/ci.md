@@ -585,13 +585,10 @@ Because the job runs `Jenkinsfile.release` from `main` but builds an older
 commit, that commit must already have `ci/release-build.sh` and
 `ci/jenkins-image.sh` (true for anything built by `deck/ci`).
 
-**No build attestation.** Releases built by GitHub Actions carried an
-`actions/attest-build-provenance` attestation (R236); that needs an Actions
-OIDC token, so releases built by Jenkins have none. `install.sh` treats "no
-attestations found" as "could not verify": it prints a checksum-only note and
-installs, unless `DECK_REQUIRE_ATTESTATION=1`. `deck update` follows the same
-rule (SPEC.md, "Update attestation"). A real verification failure -- an
-attestation that exists but does not verify -- still aborts both.
+**Integrity check.** Releases carry no build attestation (GitHub's needs an
+Actions OIDC token). `install.sh` and `deck update` verify the archive's
+SHA-256 checksum against the release's `checksums.txt` and nothing else; a
+mismatch aborts with nothing installed (SPEC.md, "Update download").
 
 **Operator step -- protect the `v*` tags.** A published release's tag must
 never move or disappear. The release job never applies this; the maintainer runs it once with an account
