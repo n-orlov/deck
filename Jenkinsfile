@@ -103,7 +103,11 @@ pipeline {
           }
         }
         catchError(buildResult: 'FAILURE', stageResult: 'FAILURE') {
-          sh 'ci/run.sh ci/quality.sh "$DECK_CI_OUT"'
+          script {
+            env.QUALITY_RESULT = 'failing'
+            sh 'ci/run.sh ci/quality.sh "$DECK_CI_OUT"'
+            env.QUALITY_RESULT = 'passing'
+          }
         }
       }
     }
@@ -139,6 +143,17 @@ pipeline {
       publishHTML([reportName: 'CI summary', reportDir: 'ci-summary', reportFiles: 'index.html',
                    keepAll: true, alwaysLinkToLastBuild: true, allowMissing: true])
       script {
+        // README badges (public via https://int21h.mooo.com/jenkins-static/
+        // deck/ci/<branch>/<id>.svg; "build" is the plugin's own). Declared on
+        // every build, so a build without counts shows "not run", not the
+        // previous build's numbers.
+        def testsBadge = addEmbeddableBadgeConfiguration(id: 'tests', subject: 'tests', status: 'not run', color: 'lightgrey')
+        def coverageBadge = addEmbeddableBadgeConfiguration(id: 'coverage', subject: 'coverage', status: 'not run', color: 'lightgrey')
+        def qualityBadge = addEmbeddableBadgeConfiguration(id: 'quality', subject: 'quality', status: 'not run', color: 'lightgrey')
+        if (env.QUALITY_RESULT) {
+          qualityBadge.setStatus(env.QUALITY_RESULT)
+          qualityBadge.setColor(env.QUALITY_RESULT == 'passing' ? 'brightgreen' : 'red')
+        }
         if (fileExists('ci-summary/counts.txt')) {
           def c = [:]
           readFile('ci-summary/counts.txt').split('\n').each { line ->
@@ -153,6 +168,13 @@ pipeline {
               text += '; unit coverage ' + c.coverage
             }
             def ok = c.fail == '0'
+            testsBadge.setStatus(ok ? c.pass + ' passed' : c.fail + ' failed')
+            testsBadge.setColor(ok ? 'brightgreen' : 'red')
+            if (c.coverage) {
+              def pct = Double.parseDouble(c.coverage.replace('%', ''))
+              coverageBadge.setStatus(c.coverage)
+              coverageBadge.setColor(pct >= 80 ? 'brightgreen' : pct >= 60 ? 'yellow' : 'red')
+            }
             addSummary(icon: ok ? 'symbol-checkmark-circle-outline plugin-ionicons-api'
                                 : 'symbol-close-circle-outline plugin-ionicons-api',
                        text: text + ' (<a href="' + env.BUILD_URL + 'Allure/">Allure</a>, ' +

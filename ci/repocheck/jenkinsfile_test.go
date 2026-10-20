@@ -239,3 +239,37 @@ func TestJenkinsfilePublishesReports(t *testing.T) {
 		}
 	}
 }
+
+// TestJenkinsfileDeclaresTheReadmeBadges: every badge the README shows from
+// the public badge proxy is the plugin's "build" or declared by the
+// Jenkinsfile, so none of them renders as "not run" forever.
+func TestJenkinsfileDeclaresTheReadmeBadges(t *testing.T) {
+	const prefix = "https://int21h.mooo.com/jenkins-static/deck/ci/main/"
+	readme := readRepoFile(t, "README.md")
+	jf := readRepoFile(t, "Jenkinsfile")
+	seen := 0
+	for _, l := range strings.Split(readme, "\n") {
+		_, rest, ok := strings.Cut(l, "("+prefix)
+		if !ok {
+			continue
+		}
+		id, _, ok := strings.Cut(rest, ".svg)")
+		if !ok {
+			t.Errorf("README badge line %q is not <prefix><id>.svg", l)
+			continue
+		}
+		seen++
+		if strings.HasPrefix(l, "[") {
+			t.Errorf("README badge %q links somewhere; Jenkins is tailnet-only", id)
+		}
+		if id == "build" {
+			continue
+		}
+		if !strings.Contains(jf, "addEmbeddableBadgeConfiguration(id: '"+id+"'") {
+			t.Errorf("README shows badge %q but the Jenkinsfile never declares it", id)
+		}
+	}
+	if seen == 0 {
+		t.Errorf("README shows no badges from %s", prefix)
+	}
+}

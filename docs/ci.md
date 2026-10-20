@@ -4,7 +4,7 @@ deck's CI is the [`Jenkinsfile`](../Jenkinsfile), run by the multibranch job
 `deck/ci` on the operator's homelab Jenkins
 (`https://jenkins.wisent-owl.ts.net/`, tailnet only); releases are
 [`Jenkinsfile.release`](../Jenkinsfile.release), the job `deck/release`. It replaced GitHub Actions in October 2026: there are no workflows, no
-GitHub Pages site and no README status badges any more. For the design and
+GitHub Pages site. For the design and
 rationale read GH #35 (CI/CD); for the acceptance criteria,
 `prds/phase4d-backlog-sweep-and-ci.md`'s "Tier 3 -- CI" section (written for
 the Actions version; the rules carried over, the mechanics did not). This page
@@ -76,6 +76,13 @@ build has them too:
   coverage table, the nightly stability verdicts and the quality gate report.
 - **Build page summary line** (badge plugin `addSummary`): pass/fail/skip/flaky
   counts and unit coverage, linking to both reports.
+- **README badges** (`embeddable-build-status`): `build` (the plugin's own),
+  and `tests`, `coverage`, `quality`, which `post { always }` declares on every
+  build with `addEmbeddableBadgeConfiguration` ("not run" until the build fills
+  them in). Jenkins stays on the tailnet; the homelab's public nginx proxies
+  `https://int21h.mooo.com/jenkins-static/deck/ci/<branch>/<id>.svg` to the
+  badge endpoint, because the `deck` folder grants anonymous `Job/ViewStatus`
+  (badges only, no build pages). The README shows `main`'s and links nowhere.
 - **Artifacts**: the `ci-results/` text, XML and coverage files, the CI summary
   and `allure-history/`.
 
