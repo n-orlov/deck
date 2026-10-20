@@ -268,7 +268,8 @@ func TestJenkinsfilePublishesReports(t *testing.T) {
 func TestJenkinsfileDeclaresTheReadmeBadges(t *testing.T) {
 	const prefix = "https://int21h.mooo.com/jenkins-static/deck/ci/main/"
 	// Links open the run or report; they work on the tailnet only.
-	const jobURL = "https://jenkins.wisent-owl.ts.net/job/deck/job/ci/job/main/"
+	// Per build: with keepAll, the job-level report URL has no files and errors.
+	const jobURL = "https://jenkins.wisent-owl.ts.net/job/deck/job/ci/job/main/lastCompletedBuild/"
 	readme := readRepoFile(t, "README.md")
 	jf := readRepoFile(t, "Jenkinsfile")
 	seen := 0

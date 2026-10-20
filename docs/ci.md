@@ -90,9 +90,10 @@ build has them too:
   `https://int21h.mooo.com/jenkins-static/deck/ci/<branch>/<id>.svg` to the
   badge endpoint, because the `deck` folder grants anonymous `Job/ViewStatus`
   (badges only, no build pages). The README shows `main`'s, each linked to
-  its report on Jenkins (`build` to the last run, `tests` to Allure,
-  `coverage` and `quality` to the CI summary); the links open on the tailnet
-  only.
+  its report in the last completed build (`build` to the run, `tests` to
+  Allure, `coverage` and `quality` to the CI summary); the links open on the
+  tailnet only. Link per build (`lastCompletedBuild/<report>/`): with
+  `keepAll` the job-level report URL has no files and errors.
 - **Artifacts**: the `ci-results/` text, XML and coverage files, the CI summary
   and `allure-history/`.
 
