@@ -119,6 +119,7 @@ func TestDetachDiscountStartsWhenTheClientEndsNotWhenItsCallbackRuns(t *testing.
 		run.SetStdin(eofReader{})
 		run.SetStdout(term)
 		run.SetStderr(io.Discard)
+		started := time.Now()
 		err := run.Run()
 		time.Sleep(callbackLag)
 		finished, ok := fn(err).(attachFinished)
@@ -138,8 +139,11 @@ func TestDetachDiscountStartsWhenTheClientEndsNotWhenItsCallbackRuns(t *testing.
 			t.Fatalf("AttachEnded was called %d times, want 1", len(ended))
 		}
 		at := ended[0]
-		if at.IsZero() || at.Before(redrawAt) {
-			t.Fatalf("detach span start %v is before the client's own output at %v: the client had not ended", at, redrawAt)
+		// The copier may hand the client's output to the terminal after Wait
+		// has returned, so the start is bounded below by the run, not by the
+		// first write.
+		if at.IsZero() || at.Before(started) {
+			t.Fatalf("detach span start %v is before the client was run at %v", at, started)
 		}
 		if !at.Before(drained) {
 			t.Fatalf("detach span start %v is not before the output drain finished at %v: it was taken after the drain (R410)", at, drained)
