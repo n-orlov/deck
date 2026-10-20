@@ -2,9 +2,9 @@
 # ci/allure-report.sh — builds an Allure report (R146) from one
 # ci/suite.sh output directory. Not run through ci/run.sh: the Allure
 # commandline distribution needs a JRE, which ci/Dockerfile (protected from
-# ralphd jobs) does not carry, so this runs directly on the CI runner host
-# (workflow steps: actions/setup-java first, then this script), exactly
-# like ci/stability.sh does for the same reason. Local, ad-hoc use works
+# ralphd jobs) does not carry, so this runs directly on the Jenkins agent
+# (ci/jenkins-report.sh, using the agent's own JRE), exactly like
+# ci/stability.sh runs there for the same reason. Local, ad-hoc use works
 # too, given a JRE on PATH.
 #
 #   ci/allure-report.sh <ci/suite.sh output dir> <report output dir> [<history dir>]

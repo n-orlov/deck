@@ -44,10 +44,6 @@ type updateIndicator struct {
 	state  updateIndicatorState
 	tag    string // the release the state talks about
 	reason string // the refusal reason (updateRefused) or the cause (updateFailed)
-	// attestation is Result.Attestation of an installed update
-	// (updateInstalled only): upd.AttestationSkipped means only the checksum
-	// was verified (R331).
-	attestation string
 	// immutable is Result.Immutable of an installed update (updateInstalled
 	// only): anything but upd.ImmutableVerified means the release was not
 	// verified immutable (#104).
@@ -76,7 +72,7 @@ type updateChecked struct {
 
 // updateInstalledMsg and updateFailedMsg report an update attempt's end. The
 // ctrl+u flow and the auto-install send them.
-type updateInstalledMsg struct{ tag, attestation, immutable string }
+type updateInstalledMsg struct{ tag, immutable string }
 type updateFailedMsg struct {
 	cause        string
 	notImmutable bool // the failure is an upd.RefusedNotImmutable refusal
@@ -203,7 +199,7 @@ func (m Model) onUpdateChecked(msg updateChecked) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) onUpdateInstalled(msg updateInstalledMsg) (tea.Model, tea.Cmd) {
-	m.updateInd = updateIndicator{state: updateInstalled, tag: msg.tag, attestation: msg.attestation, immutable: msg.immutable}
+	m.updateInd = updateIndicator{state: updateInstalled, tag: msg.tag, immutable: msg.immutable}
 	m.footerNoteSets[noteUpdate]++
 	return m, nil
 }
@@ -310,14 +306,11 @@ func (m Model) updateStateText(ind updateIndicator) string {
 	return ""
 }
 
-// updateInstalledText is the Installed note; a checksum-only install and a
-// release not verified immutable say so. An empty immutability (an install
+// updateInstalledText is the Installed note; a release not verified
+// immutable says so. An empty immutability (an install
 // that did not report one) adds nothing.
 func updateInstalledText(ind updateIndicator) string {
 	var caveats []string
-	if ind.attestation == upd.AttestationSkipped {
-		caveats = append(caveats, "checksum-only, attestation not verified")
-	}
 	if ind.immutable == upd.ImmutableNot || ind.immutable == upd.ImmutableUnknown {
 		caveats = append(caveats, "not verified immutable")
 	}

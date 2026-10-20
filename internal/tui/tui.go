@@ -350,10 +350,6 @@ type Model struct {
 	// (update_install.go).
 	updateInstall    updateInstaller
 	updateConfirming bool
-	// updateAttPlan is what the open ctrl+u confirmation told the user about
-	// the attestation (upd.AttestationVerified / Skipped / Refused), set when
-	// the dialog opened (R331).
-	updateAttPlan string
 	// updateImmPlan is what the open ctrl+u confirmation told the user about
 	// the release's immutability (upd.ImmutableReported / Required /
 	// Refused), set when the dialog opened (#104).

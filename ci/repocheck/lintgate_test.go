@@ -1,17 +1,15 @@
 // lintgate_test.go is task 028's probe (R188): golangci-lint is a gate,
-// not an advisory. It fails the moment the lint job stops running the
+// not an advisory. It fails the moment the Lint stage stops running the
 // linter before the suite, the two entry points (ci/lint.sh and
 // ci/quality.sh) stop sharing one invocation, the quality gate is
 // switched off, or gofmt/go vet/go mod tidy turn up in a second place.
-package workflowcheck
+package repocheck
 
 import (
 	"encoding/json"
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"gopkg.in/yaml.v3"
 )
 
 // shellLines returns the executable lines of a shell script: comments and
@@ -35,53 +33,28 @@ func anyLineContains(lines []string, sub string) bool {
 	return false
 }
 
-// TestLintJobRunsGolangciLintBeforeTheSuite: the `lint` job runs
-// ci/lint.sh, ci/lint.sh runs the shared golangci-lint invocation, and the
-// `suite` job needs `lint` so the linter runs first.
+// TestLintJobRunsGolangciLintBeforeTheSuite: the Jenkinsfile's Lint stage
+// runs ci/lint.sh, ci/lint.sh runs the shared golangci-lint invocation, and
+// the Lint stage comes before the Suite stage, so the linter runs first.
 func TestLintJobRunsGolangciLintBeforeTheSuite(t *testing.T) {
-	wf := loadCIWorkflow(t)
-	lint, ok := wf.Jobs["lint"]
+	jf := readRepoFile(t, "Jenkinsfile")
+	lint, ok := jenkinsStage(jf, "Lint")
 	if !ok {
-		t.Fatal("ci.yml has no lint job")
+		t.Fatal("the Jenkinsfile has no Lint stage")
 	}
-	runsLintSh := false
-	for _, s := range lint.Steps {
-		if strings.Contains(s.Run, "ci/lint.sh") {
-			runsLintSh = true
-		}
+	if !strings.Contains(lint, "ci/run.sh ci/lint.sh") {
+		t.Error("the Lint stage does not run ci/run.sh ci/lint.sh")
 	}
-	if !runsLintSh {
-		t.Error("the lint job has no step running ci/lint.sh")
+	if !stageBefore(jf, "Lint", "Suite") {
+		t.Error("the Lint stage does not come before the Suite stage, so the linter would not run first")
 	}
 
 	lintSh := shellLines(readRepoFile(t, "ci", "lint.sh"))
 	if !anyLineContains(lintSh, "ci/golangci.sh") {
-		t.Error("ci/lint.sh does not run ci/golangci.sh, so golangci-lint never gates the lint job")
+		t.Error("ci/lint.sh does not run ci/golangci.sh, so golangci-lint never gates the Lint stage")
 	}
 	if !strings.Contains(strings.Join(shellLines(readRepoFile(t, "ci", "golangci.sh")), "\n"), "golangci-lint run ./...") {
 		t.Error("ci/golangci.sh does not run `golangci-lint run ./...` over the whole tree")
-	}
-
-	var raw struct {
-		Jobs map[string]struct {
-			Needs any `yaml:"needs"`
-		} `yaml:"jobs"`
-	}
-	if err := yaml.Unmarshal([]byte(readRepoFile(t, ".github", "workflows", "ci.yml")), &raw); err != nil {
-		t.Fatalf("parse ci.yml: %v", err)
-	}
-	needs := raw.Jobs["suite"].Needs
-	if s, isStr := needs.(string); !isStr || s != "lint" {
-		list, _ := needs.([]any)
-		found := false
-		for _, n := range list {
-			if n == "lint" {
-				found = true
-			}
-		}
-		if !found {
-			t.Errorf("the suite job does not need lint (needs: %v), so the linter would not run before it", needs)
-		}
 	}
 }
 
@@ -121,12 +94,10 @@ func TestFormattingVetAndTidyChecksLiveOnlyInLintSh(t *testing.T) {
 			}
 		}
 	}
-	for name, job := range loadCIWorkflow(t).Jobs {
-		for _, step := range job.Steps {
-			for _, banned := range []string{"gofmt", "go vet", "go mod tidy"} {
-				if strings.Contains(step.Run, banned) {
-					t.Errorf("ci.yml job %q runs %q directly, a second place besides ci/lint.sh", name, banned)
-				}
+	for _, l := range jenkinsfileLines(readRepoFile(t, "Jenkinsfile")) {
+		for _, banned := range []string{"gofmt", "go vet", "go mod tidy"} {
+			if strings.Contains(l, banned) {
+				t.Errorf("the Jenkinsfile runs %q directly (%q), a second place besides ci/lint.sh", banned, l)
 			}
 		}
 	}

@@ -2,8 +2,8 @@
 // structural check over the script's own text that fails the moment its
 // retry-once/flaky-recording behaviour, for either the ordinary Go package
 // matrix or features/'s per-scenario rerun, goes missing. Tier 3 probe
-// audit (task 025) added this alongside the ci/lint.sh, ci.yml fork-guard
-// and ci/releasegate probes.
+// audit (task 025) added this alongside the ci/lint.sh probe (and the
+// GitHub Actions-era workflow probes, since removed).
 package suitecheck
 
 import (

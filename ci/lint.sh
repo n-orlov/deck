@@ -8,8 +8,8 @@
 # formatters are not enabled, so nothing is checked twice.
 #
 # Assumes `go` (and its bundled `gofmt`) are already on PATH -- true both in
-# a GitHub Actions runner (task C.5, .github/workflows/ci.yml) and inside the
-# ci/run.sh sibling container used from this sandbox. Invoke it:
+# the ci/run.sh sibling container (the Jenkinsfile's Lint stage, and local
+# runs from a sandbox). Invoke it:
 #
 #   ci/lint.sh              # on a host/runner with Go installed directly
 #   ci/run.sh ci/lint.sh     # from a sandbox without a local Go toolchain

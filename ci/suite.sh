@@ -120,11 +120,13 @@ go_extra_flags=${DECK_CI_GO_EXTRA_FLAGS:-}
 # ci_sha / ci_run_url (task 005, R195): what the Allure results' own
 # environment.properties and executor.json (step 3b) name. ci/run.sh forwards
 # only DECK_* variables into its container, so the workflow hands them in as
-# DECK_CI_SHA and DECK_CI_RUN_URL (the Actions run link); both are captured
-# here, before the DECK_* scrub below, and both are optional -- a local run
-# just records an unknown sha and no run link.
+# DECK_CI_SHA, DECK_CI_RUN_URL (the Jenkins build link, BUILD_URL) and
+# DECK_CI_BUILD_NAME (e.g. "deck/main #42"); all are captured here, before
+# the DECK_* scrub below, and all are optional -- a local run just records an
+# unknown sha and no run link.
 ci_sha=${DECK_CI_SHA:-}
 ci_run_url=${DECK_CI_RUN_URL:-}
+ci_build_name=${DECK_CI_BUILD_NAME:-deck CI}
 covermode=set
 case " $go_extra_flags " in
     *' -race '*) covermode=atomic ;;
@@ -191,7 +193,7 @@ go_flaky="$outdir/flaky-go.txt"
 # outright and zeroing every block the retried package's OTHER, passing
 # tests had covered on the first attempt (cure-01-05, reviewer probe
 # coverage-retention-probe.log: StableCovered count 0, RetryCovered count
-# 1, ci/releasegate's whole profile gone).
+# 1, the then ci/releasegate package's whole profile gone).
 #
 # The fix is to stop asking `go test` to write the legacy format directly at
 # all, and instead use the same retry-safe, per-process-counter-file
@@ -538,9 +540,9 @@ esac
     printf 'race=%s\n' "$race_mode"
 } > "$allure_dir/environment.properties"
 
-# executor.json: the Allure "Executor" widget, linking back to the Actions run.
+# executor.json: the Allure "Executor" widget, linking back to the Jenkins build.
 if [ -n "$ci_run_url" ]; then
-    printf '{"name":"GitHub Actions","type":"github","buildName":"deck CI","buildUrl":"%s","reportName":"deck CI"}\n' "$ci_run_url" > "$allure_dir/executor.json"
+    printf '{"name":"Jenkins","type":"jenkins","buildName":"%s","buildUrl":"%s","reportName":"deck CI"}\n' "$ci_build_name" "$ci_run_url" > "$allure_dir/executor.json"
 else
     printf '{"name":"local run","type":"local","buildName":"local suite run","reportName":"deck CI"}\n' > "$allure_dir/executor.json"
 fi

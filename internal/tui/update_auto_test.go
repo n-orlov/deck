@@ -70,7 +70,6 @@ func autoRun(t *testing.T, srv *autoServer, exe, current string, autoUpdate bool
 func autoRunCache(t *testing.T, srv *autoServer, exe, current string, autoUpdate bool, cache string) Model {
 	t.Helper()
 	t.Setenv("DECK_UPDATE_URL", srv.URL)
-	verifyingGhPath(t) // a mirror requires the attestation (#102)
 	settings := config.Settings{AutoUpdate: autoUpdate, UpdateCheck: true}
 	opts := upd.Options{Exe: exe, Current: current}
 	checker := &upd.Checker{

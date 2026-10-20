@@ -1,14 +1,9 @@
-<!-- badges:start -->
-[![CI](https://github.com/n-orlov/deck/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/n-orlov/deck/actions/workflows/ci.yml?query=branch%3Amain)
-[![lint](https://img.shields.io/endpoint?url=https%3A%2F%2Fn-orlov.github.io%2Fdeck%2Fbadges%2Flint.json)](https://github.com/n-orlov/deck/actions/workflows/ci.yml?query=branch%3Amain)
-[![unit tests](https://img.shields.io/endpoint?url=https%3A%2F%2Fn-orlov.github.io%2Fdeck%2Fbadges%2Funit-tests.json)](https://github.com/n-orlov/deck/actions/workflows/ci.yml?query=branch%3Amain)
-[![features](https://img.shields.io/endpoint?url=https%3A%2F%2Fn-orlov.github.io%2Fdeck%2Fbadges%2Ffeatures.json)](https://github.com/n-orlov/deck/actions/workflows/ci.yml?query=branch%3Amain)
-[![coverage](https://img.shields.io/endpoint?url=https%3A%2F%2Fn-orlov.github.io%2Fdeck%2Fbadges%2Fcoverage.json)](https://n-orlov.github.io/deck/)
-[![vulnerabilities](https://img.shields.io/endpoint?url=https%3A%2F%2Fn-orlov.github.io%2Fdeck%2Fbadges%2Fvulnerabilities.json)](https://github.com/n-orlov/deck/actions/workflows/ci.yml?query=branch%3Amain)
-[![license](https://img.shields.io/badge/license-Apache--2.0-blue)](https://github.com/n-orlov/deck/actions/workflows/ci.yml?query=branch%3Amain)
-[![Go version](https://img.shields.io/badge/go-1.25.0-00ADD8)](https://github.com/n-orlov/deck/actions/workflows/ci.yml?query=branch%3Amain)
-[![report](https://img.shields.io/badge/report-Allure-blue)](https://n-orlov.github.io/deck/)
-<!-- badges:end -->
+![build](https://int21h.mooo.com/jenkins-static/deck/ci/main/build.svg)
+![tests](https://int21h.mooo.com/jenkins-static/deck/ci/main/tests.svg)
+![coverage](https://int21h.mooo.com/jenkins-static/deck/ci/main/coverage.svg)
+![quality](https://int21h.mooo.com/jenkins-static/deck/ci/main/quality.svg)
+[![license](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
+[![Go version](https://img.shields.io/badge/go-1.25.0-00ADD8)](go.mod)
 
 # deck
 
@@ -22,13 +17,11 @@ curl -fsSL https://raw.githubusercontent.com/n-orlov/deck/main/install.sh | sh
 ```
 
 - Installs to `~/.local/bin/deck`. Override: `DECK_INSTALL_DIR`, `DECK_VERSION=vX.Y.Z`.
-- Verifies the download against `checksums.txt`, then, when an authenticated `gh` is installed, its
-  build attestation (`gh attestation verify --repo n-orlov/deck`); a failed verification aborts with
-  nothing installed. Without `gh` (or for a release that predates attestations) it prints one note
-  that only the checksum was verified; `DECK_REQUIRE_ATTESTATION=1` makes that case abort instead.
+- Verifies the download against the release's `checksums.txt` (SHA-256); a mismatch aborts with
+  nothing installed.
 - Requires **tmux >= 3.2**. Agents (`claude`, `pi`, `codex`, `copilot`) only appear if they are on `PATH`.
 - Linux and macOS, amd64 and arm64. **No Windows** (needs tmux) -- use WSL.
-- Check: `deck --version`. Update: `deck update` (or rerun the same line). `deck update --check` only reports whether a newer release exists, and `deck update --version vX.Y.Z` pins a release (a downgrade is allowed). It verifies the archive's checksum and, with an authenticated `gh`, its build attestation; without one only the checksum is checked (it catches corruption, not a tampered release), and `DECK_REQUIRE_ATTESTATION=1` makes that case abort. A `DECK_UPDATE_URL` mirror always requires the attestation (it serves the checksums too), so installing from one needs an authenticated `gh` as well as `DECK_REQUIRE_IMMUTABLE=0`. The `ctrl+u` confirmation in deck says which of the two will happen before it runs, and the footer's `update installed` note says `checksum-only` when only the checksum was verified. Before downloading, it also asks the GitHub release API whether the release is an immutable release, and by default refuses one that is not confirmed immutable, with nothing installed: every release up to v0.2.18 (so `deck update --version v0.2.18` is refused), any release from a `DECK_UPDATE_URL` mirror (it has no release API), and any release the API could not confirm (offline, rate-limited). `DECK_REQUIRE_IMMUTABLE=0` opts out: such a release then installs with a note. Only the exact value `0` opts out; anything else keeps it required. It refuses a dev build, a package-managed install (Homebrew, apt, Nix, snap) and an unwritable directory. Restart a running deck afterwards. A profile named `update` is opened with `DECK_PROFILE=update deck`.
+- Check: `deck --version`. Update: `deck update` (or rerun the same line). `deck update --check` only reports whether a newer release exists, and `deck update --version vX.Y.Z` pins a release (a downgrade is allowed). It verifies the archive's SHA-256 checksum against the release's `checksums.txt` (releases carry no build attestation, so the checksum is the integrity check). Before downloading, it also asks the GitHub release API whether the release is an immutable release, and by default refuses one that is not confirmed immutable, with nothing installed: every release up to v0.2.18 (so `deck update --version v0.2.18` is refused), any release from a `DECK_UPDATE_URL` mirror (it has no release API), and any release the API could not confirm (offline, rate-limited). `DECK_REQUIRE_IMMUTABLE=0` opts out: such a release then installs with a note, on the checksum alone. Only the exact value `0` opts out; anything else keeps it required. The `ctrl+u` confirmation in deck says which will happen before it runs. It refuses a dev build, a package-managed install (Homebrew, apt, Nix, snap) and an unwritable directory, and a staged binary whose embedded version is not the release tag. Restart a running deck afterwards. A profile named `update` is opened with `DECK_PROFILE=update deck`.
 
 ## Run
 
@@ -122,12 +115,12 @@ notify-send --urgency="$urgency" --app-name=deck \
 
 ## Release
 
-```sh
-git tag v0.2.0 && git push origin v0.2.0
-```
-
-GitHub Actions ([release.yml](.github/workflows/release.yml)) builds the four binaries,
-stamps the tag into `deck --version`, attests the tarballs and `checksums.txt`, and publishes the release.
+Releases are cut by hand from the Jenkins job `deck/release` ([Jenkinsfile.release](Jenkinsfile.release)),
+with a `VERSION` such as `v0.2.0`. It releases the commit of the last fully green `main` build of `deck/ci`
+(or a chosen one), checks the tag is new, builds the four binaries with [ci/release-build.sh](ci/release-build.sh)
+(version stamped into `deck --version` and the build info `deck update` checks, plus `checksums.txt`), creates
+a draft GitHub release with every asset (which creates the tag at that commit) and only then publishes it, so the
+repository's immutable-releases setting freezes a complete release. Details: [docs/ci.md](docs/ci.md#release).
 
 ## Remix, don't PR
 

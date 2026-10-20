@@ -11,8 +11,8 @@
 #
 # Generation goes through ci/allure-report.sh, so it is the same pinned and
 # checksum-verified Allure the real report uses (an `allure` on PATH is used
-# as it is). Needs python3 for the report check. Runs on the runner host, in
-# the `report` job after Java is set up, like ci/allure-report.sh.
+# as it is). Needs python3 for the report check. Runs on the Jenkins agent
+# (the Jenkinsfile's Allure smoke stage), like ci/allure-report.sh.
 set -eu
 
 fixture_dir=${1:?"usage: ci/allure-smoke.sh <dir holding allure-results/> <report output dir>"}

@@ -1,9 +1,10 @@
-// installattest_test.go: R236. install.sh verifies the downloaded archive with
-// `gh attestation verify --repo n-orlov/deck` after the checksum check. The
+// installcheck_test.go: install.sh verifies the downloaded archive against
+// checksums.txt and nothing else: releases are built by Jenkins and carry no
+// GitHub build attestation, so the script never asks gh to verify one. The
 // tests run the real script with a PATH holding only symlinks to the basic
 // tools it needs plus fake gh/curl, so there is no network and a real gh on
 // the host never leaks in.
-package workflowcheck
+package repocheck
 
 import (
 	"archive/tar"
@@ -29,12 +30,6 @@ case "$1 $2" in
       shift
     done
     cp "$FAKE_RELEASE/$name" "$dest/$name"; exit $? ;;
-  "attestation verify")
-    case "${FAKE_ATTEST:-pass}" in
-      pass) echo "Loaded digest sha256:abc"; echo "Verification succeeded!"; exit 0 ;;
-      none) echo "Error: failed to fetch attestations: no attestations found for subject" >&2; exit 1 ;;
-      *) echo "Error: verifying with issuer sigstore.dev: no attestations were verified (signature mismatch)" >&2; exit 1 ;;
-    esac ;;
 esac
 exit 2
 `
@@ -51,10 +46,9 @@ cp "$FAKE_RELEASE/${url##*/}" "$out"
 type installRun struct {
 	out    string
 	err    error
-	dir    string // DECK_INSTALL_DIR
-	gh     []string
+	dir    string   // DECK_INSTALL_DIR
+	gh     []string // gh calls other than `auth status` and `release download`
 	log    string
-	notes  int
 	binary bool
 }
 
@@ -79,9 +73,10 @@ func tarball(t *testing.T) []byte {
 	return buf.Bytes()
 }
 
-// runInstall runs install.sh. withGH puts the fake gh on PATH; env adds
-// FAKE_*/DECK_* variables.
-func runInstall(t *testing.T, withGH bool, env ...string) installRun {
+// runInstall runs install.sh. withGH puts the fake gh on PATH; badSum publishes
+// a checksums.txt that does not match the archive; env adds FAKE_*/DECK_*
+// variables.
+func runInstall(t *testing.T, withGH, badSum bool, env ...string) installRun {
 	t.Helper()
 	if runtime.GOOS != "linux" && runtime.GOOS != "darwin" || runtime.GOARCH != "amd64" && runtime.GOARCH != "arm64" {
 		t.Skipf("install.sh does not support %s/%s", runtime.GOOS, runtime.GOARCH)
@@ -100,6 +95,9 @@ func runInstall(t *testing.T, withGH bool, env ...string) installRun {
 	asset := fmt.Sprintf("deck_%s_%s.tar.gz", runtime.GOOS, runtime.GOARCH)
 	archive := tarball(t)
 	sum := sha256.Sum256(archive)
+	if badSum {
+		sum = sha256.Sum256([]byte("not the archive"))
+	}
 	for name, data := range map[string][]byte{asset: archive, "checksums.txt": []byte(fmt.Sprintf("%x  %s\n", sum, asset))} {
 		if err := os.WriteFile(filepath.Join(release, name), data, 0o644); err != nil {
 			t.Fatal(err)
@@ -135,78 +133,63 @@ func runInstall(t *testing.T, withGH bool, env ...string) installRun {
 	_, statErr := os.Stat(filepath.Join(dir, "deck"))
 	res.binary = statErr == nil
 	for _, line := range strings.Split(res.log, "\n") {
-		if strings.HasPrefix(line, "gh attestation verify") {
+		if strings.HasPrefix(line, "gh ") && !strings.HasPrefix(line, "gh auth status") && !strings.HasPrefix(line, "gh release download") {
 			res.gh = append(res.gh, line)
 		}
 	}
-	res.notes = strings.Count(res.out, "only the checksum was verified")
 	return res
 }
 
-func TestInstallScriptAttestation(t *testing.T) {
-	t.Run("verification pass installs", func(t *testing.T) {
-		r := runInstall(t, true)
+func TestInstallScriptChecksumOnly(t *testing.T) {
+	t.Run("an authenticated gh downloads and nothing else", func(t *testing.T) {
+		r := runInstall(t, true, false)
 		if r.err != nil || !r.binary {
 			t.Fatalf("want a successful install, err=%v binary=%v\n%s", r.err, r.binary, r.out)
 		}
-		if len(r.gh) != 1 || !strings.Contains(r.gh[0], "--repo n-orlov/deck") || !strings.Contains(r.gh[0], ".tar.gz") {
-			t.Errorf("want one `gh attestation verify <archive> --repo n-orlov/deck`, got %q", r.gh)
+		if !strings.Contains(r.log, "gh release download") || strings.Contains(r.log, "curl ") {
+			t.Errorf("with an authenticated gh the downloads go through gh:\n%s", r.log)
 		}
-		if r.notes != 0 || !strings.Contains(r.out, "attestation verified") {
-			t.Errorf("a verified install says so and prints no checksum-only note:\n%s", r.out)
-		}
-	})
-	t.Run("verification failure exits non-zero and installs nothing", func(t *testing.T) {
-		for _, require := range []string{"", "DECK_REQUIRE_ATTESTATION=1"} {
-			r := runInstall(t, true, "FAKE_ATTEST=fail", require)
-			if r.err == nil || r.binary {
-				t.Fatalf("require=%q: want a non-zero exit and no deck installed, err=%v binary=%v\n%s", require, r.err, r.binary, r.out)
-			}
-			if _, err := os.Stat(r.dir); err == nil {
-				t.Errorf("require=%q: install dir %s was created", require, r.dir)
-			}
-			if !strings.Contains(r.out, "FAILED") || r.notes != 0 {
-				t.Errorf("require=%q: want the failure reported, not the checksum-only note:\n%s", require, r.out)
-			}
+		if len(r.gh) != 0 {
+			t.Errorf("want no gh call beyond auth status and release download, got %q", r.gh)
 		}
 	})
-	t.Run("no gh prints the one checksum-only note and installs", func(t *testing.T) {
-		r := runInstall(t, false)
+	t.Run("no gh downloads through curl", func(t *testing.T) {
+		r := runInstall(t, false, false)
 		if r.err != nil || !r.binary {
 			t.Fatalf("want a successful install, err=%v binary=%v\n%s", r.err, r.binary, r.out)
-		}
-		if r.notes != 1 || len(r.gh) != 0 {
-			t.Errorf("want exactly one checksum-only note and no gh call, notes=%d gh=%q\n%s", r.notes, r.gh, r.out)
 		}
 		if !strings.Contains(r.log, "curl ") {
 			t.Errorf("without gh the downloads go through curl:\n%s", r.log)
 		}
 	})
 	t.Run("an unauthenticated gh counts as no gh", func(t *testing.T) {
-		r := runInstall(t, true, "FAKE_GH_AUTH=0")
-		if r.err != nil || !r.binary || r.notes != 1 || len(r.gh) != 0 {
-			t.Fatalf("want a note-and-install without a verify call, err=%v binary=%v notes=%d gh=%q\n%s", r.err, r.binary, r.notes, r.gh, r.out)
+		r := runInstall(t, true, false, "FAKE_GH_AUTH=0")
+		if r.err != nil || !r.binary || len(r.gh) != 0 || !strings.Contains(r.log, "curl ") {
+			t.Fatalf("want a curl install and no other gh call, err=%v binary=%v gh=%q\n%s", r.err, r.binary, r.gh, r.log)
 		}
 	})
-	t.Run("no gh with DECK_REQUIRE_ATTESTATION=1 aborts", func(t *testing.T) {
-		r := runInstall(t, false, "DECK_REQUIRE_ATTESTATION=1")
-		if r.err == nil || r.binary || !strings.Contains(r.out, "DECK_REQUIRE_ATTESTATION=1") {
-			t.Fatalf("want an abort naming DECK_REQUIRE_ATTESTATION with nothing installed, err=%v binary=%v\n%s", r.err, r.binary, r.out)
+	t.Run("a checksum mismatch exits non-zero and installs nothing", func(t *testing.T) {
+		for _, withGH := range []bool{true, false} {
+			r := runInstall(t, withGH, true)
+			if r.err == nil || r.binary {
+				t.Fatalf("gh=%v: want a non-zero exit and no deck installed, err=%v binary=%v\n%s", withGH, r.err, r.binary, r.out)
+			}
+			if _, err := os.Stat(r.dir); err == nil {
+				t.Errorf("gh=%v: install dir %s was created", withGH, r.dir)
+			}
 		}
 	})
-	t.Run("a release with no attestation continues with the note", func(t *testing.T) {
-		r := runInstall(t, true, "FAKE_ATTEST=none")
-		if r.err != nil || !r.binary {
-			t.Fatalf("want a successful install, err=%v binary=%v\n%s", r.err, r.binary, r.out)
+	t.Run("the script has no attestation step", func(t *testing.T) {
+		root, err := repositoryRoot()
+		if err != nil {
+			t.Fatal(err)
 		}
-		if r.notes != 1 || len(r.gh) != 1 || !strings.Contains(r.out, "no attestation") {
-			t.Errorf("want one note naming the missing attestation after one verify call, notes=%d gh=%q\n%s", r.notes, r.gh, r.out)
+		body, err := os.ReadFile(filepath.Join(root, "install.sh"))
+		if err != nil {
+			t.Fatal(err)
 		}
-	})
-	t.Run("a release with no attestation aborts under DECK_REQUIRE_ATTESTATION=1", func(t *testing.T) {
-		r := runInstall(t, true, "FAKE_ATTEST=none", "DECK_REQUIRE_ATTESTATION=1")
-		if r.err == nil || r.binary {
-			t.Fatalf("want an abort with nothing installed, err=%v binary=%v\n%s", r.err, r.binary, r.out)
+		if strings.Contains(strings.ToLower(string(body)), "attest") {
+			t.Error("install.sh mentions attestation; releases carry none and the checksum is the only check")
 		}
 	})
 }

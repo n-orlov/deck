@@ -42,7 +42,6 @@ func TestCtrlUConfirmationStatesImmutablePlan(t *testing.T) {
 		{"required on a mirror", "1", upd.ImmutableRefused, "Enter tries anyway and is refused · Esc cancels"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			t.Setenv(upd.EnvRequireAttestation, "")
 			setRequireImmutable(t, c.require)
 			m, _, _, runs := ctrlUInstallModel(t, false)
 			m, _ = ctrlUPress(t, m, ctrlUKey)
@@ -90,23 +89,20 @@ func TestCtrlUImmutablePlanInjected(t *testing.T) {
 
 // TestInstalledIndicatorNamesImmutability: Result.Immutable reaches the
 // indicator; a release not verified immutable (not-immutable or unknown) is
-// named as such, an immutable one is not, and a checksum-only install names
-// both caveats.
+// named as such, an immutable one is not.
 func TestInstalledIndicatorNamesImmutability(t *testing.T) {
 	for _, c := range []struct {
-		att, imm string
-		want     string
+		imm  string
+		want string
 	}{
-		{upd.AttestationVerified, upd.ImmutableVerified, "update installed: v1.2.3 — restart deck to apply"},
-		{upd.AttestationVerified, upd.ImmutableNot, "update installed: v1.2.3 (not verified immutable) — restart deck to apply"},
-		{upd.AttestationVerified, upd.ImmutableUnknown, "update installed: v1.2.3 (not verified immutable) — restart deck to apply"},
-		{upd.AttestationSkipped, upd.ImmutableUnknown, "update installed: v1.2.3 (checksum-only, attestation not verified; not verified immutable) — restart deck to apply"},
-		{upd.AttestationSkipped, upd.ImmutableVerified, "update installed: v1.2.3 (checksum-only, attestation not verified) — restart deck to apply"},
+		{upd.ImmutableVerified, "update installed: v1.2.3 — restart deck to apply"},
+		{upd.ImmutableNot, "update installed: v1.2.3 (not verified immutable) — restart deck to apply"},
+		{upd.ImmutableUnknown, "update installed: v1.2.3 (not verified immutable) — restart deck to apply"},
 	} {
-		t.Run(c.att+"/"+c.imm, func(t *testing.T) {
+		t.Run(c.imm, func(t *testing.T) {
 			m := footerNoteFrameModel(240, 24, false)
 			m = m.WithUpdateInstaller(ctrlUCurrent, func(context.Context) (upd.Result, error) {
-				return upd.Result{Tag: indicatorTag, Attestation: c.att, Immutable: c.imm}, nil
+				return upd.Result{Tag: indicatorTag, Immutable: c.imm}, nil
 			})
 			m = checkedModel(t, m, true, upd.Status{Latest: indicatorTag, Newer: true}, nil)
 			next, _ := m.Update(m.startUpdate()())
@@ -130,7 +126,6 @@ func TestInstalledIndicatorNamesImmutability(t *testing.T) {
 func TestRealInstallFromMirrorIsNotVerifiedImmutable(t *testing.T) {
 	for _, require := range []string{"0", immutableUnset, "1"} {
 		t.Run(require, func(t *testing.T) {
-			t.Setenv(upd.EnvRequireAttestation, "")
 			setRequireImmutable(t, require)
 			m, exe, oldSum, _ := ctrlUInstallModel(t, false)
 			m, _ = ctrlUPress(t, m, ctrlUKey)

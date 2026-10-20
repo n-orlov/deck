@@ -29,13 +29,10 @@ import (
 // PATH, and points it at a loopback fake release server. That server is a
 // mirror with no GitHub release API, so the default immutability requirement
 // refuses its release; a scenario that installs passes DECK_REQUIRE_IMMUTABLE=0
-// through "the operator runs ... with ...". A mirror also requires the build
-// attestation (#102), so a scenario that installs puts a fake authenticated gh
-// whose attestation check passes alone on PATH.
+// through "the operator runs ... with ...".
 func registerSelfUpdateSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^a deck binary at version "([^"]+)" installed in a scratch directory$`, selfUpdateInstallBinary)
 	sc.Step(`^a fake release server whose latest release is "([^"]+)"$`, selfUpdateStartServer)
-	sc.Step(`^an authenticated gh that verifies the attestation$`, selfUpdateVerifyingGh)
 	sc.Step(`^the operator runs "([^"]+)"$`, selfUpdateRun)
 	sc.Step(`^the operator runs "([^"]+)" with "([A-Z_]+=[^"]*)"$`, selfUpdateRunEnv)
 	sc.Step(`^the command exits 0$`, selfUpdateExitsZero)
@@ -63,7 +60,6 @@ type selfUpdateScenario struct {
 	release        []byte // the "deck" binary the fake release serves
 	server         *httptest.Server
 	url            string
-	path           string // PATH for the verb: empty unless a fake gh was installed
 	output         string
 	code           int
 }
@@ -185,20 +181,6 @@ func selfUpdateStartServer(latest string) error {
 	return nil
 }
 
-// selfUpdateVerifyingGh puts a fake authenticated gh, whose `attestation
-// verify` passes, alone on the verb's PATH.
-func selfUpdateVerifyingGh() error {
-	s, err := selfUpdateCurrent()
-	if err != nil {
-		return err
-	}
-	s.path = filepath.Join(s.dir, "gh-path")
-	if err := os.MkdirAll(s.path, 0o755); err != nil {
-		return err
-	}
-	return os.WriteFile(filepath.Join(s.path, "gh"), []byte("#!/bin/sh\nexit 0\n"), 0o755)
-}
-
 func selfUpdateRun(command string) error { return selfUpdateRunEnv(command, "") }
 
 // selfUpdateRunEnv runs the deck command with the hermetic environment plus
@@ -212,10 +194,7 @@ func selfUpdateRunEnv(command, env string) error {
 	if len(fields) == 0 || fields[0] != "deck" {
 		return fmt.Errorf("unsupported command %q", command)
 	}
-	path := s.path
-	if path == "" {
-		path = filepath.Join(s.dir, "empty-path")
-	}
+	path := filepath.Join(s.dir, "empty-path")
 	if err := os.MkdirAll(path, 0o755); err != nil {
 		return err
 	}

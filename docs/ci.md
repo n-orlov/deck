@@ -1,35 +1,106 @@
 # CI: how it works, and what a maintainer needs to touch
 
-This is the maintainer-facing walkthrough of `.github/workflows/ci.yml` and
-`.github/workflows/release.yml`. For the underlying design and rationale, read
-GH #35 (CI/CD) and GH #37/#40 as applicable; for the acceptance criteria, read
-`prds/phase4d-backlog-sweep-and-ci.md`'s "Tier 3 -- CI" section. This page
-never cites a commit sha or a specific run's pass/fail counts -- for those,
-look at the Actions run itself, found by its head sha.
+deck's CI is the [`Jenkinsfile`](../Jenkinsfile), run by the multibranch job
+`deck/ci` on the operator's homelab Jenkins
+(`https://jenkins.wisent-owl.ts.net/`, tailnet only); releases are
+[`Jenkinsfile.release`](../Jenkinsfile.release), the job `deck/release`. It replaced GitHub Actions in October 2026: there are no workflows, no
+GitHub Pages site. For the design and
+rationale read GH #35 (CI/CD); for the acceptance criteria,
+`prds/phase4d-backlog-sweep-and-ci.md`'s "Tier 3 -- CI" section (written for
+the Actions version; the rules carried over, the mechanics did not). This page
+never cites a commit sha or a build's pass/fail counts -- look at the Jenkins
+build itself.
 
-## Lanes (jobs in `ci.yml`)
+## The jobs
 
-| job | runs on | purpose |
-|---|---|---|
-| `lint` | self-hosted `[self-hosted, linux, x64, deck]` | `gofmt -l`, `go vet ./...`, `go mod tidy` drift check, then golangci-lint (R188), in that order, via `ci/lint.sh`. Fails fast, before the suite. |
-| `suite` | self-hosted `[self-hosted, linux, x64, deck]`, `needs: lint` | Builds/refreshes the `deck-ci:local` image, runs `ci/run.sh ci/suite.sh` (the whole `go test -p=1 -count=1 ./...` matrix), then, on `schedule`/`workflow_dispatch` only, drops the cached trivy and govulncheck databases (R190's nightly rescan: both scanners then run through `ci/quality.sh` on fresh data, and a newly disclosed vulnerability fails the job, which `notify` reports), then `ci/run.sh ci/quality.sh` (R187's quality gates; every gate in `ci/quality.json` -- coverage, crap, trivy, govulncheck and golangci -- is on), and on `schedule`/`workflow_dispatch` also runs `ci/stability.sh 3` (three clean-state repetitions) with `-race` enabled. The job fails if the suite, the quality gates, or (nightly) stability failed. Writes the job summary and uploads raw results as a workflow artifact. |
-| `report (Allure)` | self-hosted, `needs: [lint, suite]` | Turns the JUnit `suite` produced into an Allure report, merges it into the persisted `gh-pages` site tree, uploads the rendered report as a workflow artifact, and stages the merged tree as a Pages artifact (one upload attempt; its failure fails the job). Holds no `pages:`/`id-token:` permission -- it stages, it never deploys. |
-| `publish (Pages)` | `ubuntu-latest`, `needs: report` | Deploys the root-triggered (`push`/`schedule`/`workflow_dispatch`) Pages artifact. Holds `pages: write`/`id-token: write`. Gated to `push`/`schedule`/`workflow_dispatch` only -- never `pull_request` (a PR-branch deploy is rejected server-side by the repo's `github-pages` environment's branch policy regardless; see "Publishing a PR's own report" below for how a PR's own report still gets published). |
-| `pr-comment` | `ubuntu-latest`, `needs: report` | Runs `go run ./ci/prcomment`, which pages through every existing PR comment and creates or updates the one comment (keyed on an HTML marker) carrying the PR's own `/pr/<n>/` Allure link and its head sha. Only for `pull_request` events whose head repo is this repository. |
-| `notify` | self-hosted, `needs: [lint, suite]` | Posts exactly one message to the Telegram notifier when `lint` or `suite` failed (or, on `schedule`/`workflow_dispatch`, was cancelled), and only for `push` to `main`, `schedule`, or `workflow_dispatch` (never for a PR). A `push` run cancelled by a newer push sends nothing. |
+Both live in the Jenkins folder `deck/`:
 
-`ci/allure-report.sh` verifies the Allure CLI archive it downloads against a
-pinned SHA-256 and aborts on a mismatch (changing `ALLURE_VERSION` needs a new
-`ALLURE_SHA256`). The download is one `curl` attempt (no retry flags or wrapper
-loop; a failed connection fails the step). With `ALLURE_CACHE_DIR` set (the
-`report` job sets it to a runner-local directory) a verified archive is kept
-there, so a runner fetches the release once rather than once per script call;
-a cached archive is re-verified against the same SHA-256 before use, and a bad
-one is discarded, downloaded afresh (one attempt) and, once that download has
-verified, replaced in the cache by the verified archive, so the next call
-needs no download. `install.sh` downloads over `--proto =https` only; its
-`checksums.txt` comes from the same release as the binary, so the check catches
-a corrupt download, not tampering.
+- **`deck/ci`**: multibranch, GitHub branch source `n-orlov/deck`, credential
+  `github-n-orlov` (a GitHub token kept in OpenBao, read by Jenkins at use
+  time). A push reaches Jenkins through a GitHub webhook and builds that
+  branch at once; an hourly branch scan catches anything a missed webhook
+  dropped. Tags are not built, and there are no pull requests to build, the
+  project takes none.
+- **`deck/release`**: a parameterized pipeline job running
+  `Jenkinsfile.release` from `main`, started by hand. See "Release" below.
+- **Agent:** label `linux && amd64 && docker`, a host where the agent user can
+  run Docker. That makes the agent root-equivalent on its host, which is fine
+  only because every job on it is trusted code.
+- Every build starts from a clean checkout (`git clean -ffdx`); builds of one
+  branch never overlap (`disableConcurrentBuilds`).
+
+## Stages
+
+| stage | what it does |
+|---|---|
+| CI image | `ci/jenkins-image.sh`: `docker build -t deck-ci:local -f ci/Dockerfile ci`, then makes sure the Go cache volume `deck-go-cache-jenkins` belongs to the agent's uid (the image owns `/go-cache` as 1000:1000; the volume is chowned once). Decides whether this is an extended build. |
+| Lint | `ci/run.sh ci/lint.sh`: `gofmt -l`, `go vet ./...`, `go mod tidy` drift, then golangci-lint (R188). A red lint stops the build before the suite. |
+| Suite | `ci/run.sh ci/suite.sh` -- the whole `go test -p=1 -count=1 ./...` matrix plus `features/`, retry-once (below), JUnit, Allure results and coverage into `ci-results/`. 45 minutes, 180 on an extended build. A failure marks the build red but the later stages still run. |
+| Allure smoke | Runs the Godog Allure formatter fixture in the CI image and `ci/allure-smoke.sh` over it (R196): the pinned Allure CLI must still render its steps and `@gh-61` link. |
+| Quality | Extended only: drops the cached trivy and govulncheck databases first (R190). Then `ci/run.sh ci/quality.sh ci-results` (R187; every gate in `ci/quality.json` is on). |
+| Stability | Extended only: `ci/stability.sh 3`, three clean-state repetitions (R145), on the agent itself because the script starts its own `ci/run.sh` siblings. |
+
+**Extended lane (nightly):** `main` is built every day at 03:17 (`cron`, on
+`main` only) in the extended lane, and any build started with the `EXTENDED`
+parameter (off by default) is too: it sets `DECK_CI_GO_EXTRA_FLAGS=-race`,
+drops the vulnerability databases and runs the Stability stage. Its build
+description says "extended".
+
+**Release candidate:** a `main` build that ends `SUCCESS` (not unstable, not
+failed) writes and archives `ci-results/release-candidate.json` --
+`{"commit": …, "build_url": …, "build_number": …}` -- in `post { success }`,
+which runs after the reports, so nothing can turn the build unstable after
+the file is written. Only `deck/release` reads it (`copyArtifactPermission`
+allows `/deck/release`, and `/deck/ci/*` for the Allure history).
+
+**Telegram:** every build posts one message to the homelab notifier
+(`http://100.71.162.65:8090/notify`) through `notifyTelegram` from the homelab
+shared library (`@Library('homelab')`, github.com/n-orlov/jenkins-library), in
+`post { cleanup }` so it carries the final result. The message has the
+result (FIXED after a red build), branch, build link, failed stage, commit,
+test counts and duration. Only a red (failed, unstable or aborted) build of
+`main`, or a red nightly, makes a sound; other branches and green builds
+arrive silently. `deck/release` posts every result, with sound.
+
+## Reports
+
+Everything is on the Jenkins build page, built in `post { always }` so a red
+build has them too:
+
+- **Test Result**: the merged JUnit (`ci-results/junit-merged/*.xml`), with
+  per-test history. It never marks a build unstable on its own: the Suite stage
+  decides.
+- **Allure**: `ci/jenkins-report.sh` runs `ci/allure-report.sh` on the agent
+  (Allure needs a JRE, which the agent has and `ci/Dockerfile` does not). The
+  report's `history/` is archived as `allure-history/` and copied into the next
+  build of the same branch (`copyArtifacts`, last completed build), so trends
+  carry over per branch. `ci/allure-report.sh` verifies the Allure CLI archive
+  against a pinned SHA-256 (changing `ALLURE_VERSION` needs a new
+  `ALLURE_SHA256`), downloads with one `curl` attempt, and caches the verified
+  archive in `~/.cache/deck-allure` on the agent (`ALLURE_CACHE_DIR`), re-verified
+  before every use.
+- **CI summary**: `ci/summary.sh`'s counts, flaky tests, slowest packages and
+  coverage table, the nightly stability verdicts and the quality gate report.
+- **Build page summary line** (badge plugin `addSummary`): pass/fail/skip/flaky
+  counts and unit coverage, linking to both reports.
+- **README badges** (`embeddable-build-status`): `build` (the plugin's own),
+  and `tests`, `coverage`, `quality`, which `post { always }` declares on every
+  build with `addEmbeddableBadgeConfiguration` ("not run" until the build fills
+  them in). Jenkins stays on the tailnet; the homelab's public nginx proxies
+  `https://int21h.mooo.com/jenkins-static/deck/ci/<branch>/<id>.svg` to the
+  badge endpoint, because the `deck` folder grants anonymous `Job/ViewStatus`
+  (badges only, no build pages). The README shows `main`'s and links nowhere.
+- **Artifacts**: the `ci-results/` text, XML and coverage files, the CI summary
+  and `allure-history/`.
+
+The HTML reports need Jenkins' default Content-Security-Policy relaxed (Allure
+runs JavaScript); the controller is configured that way.
+
+`install.sh` downloads over `--proto =https` only; its `checksums.txt` comes
+from the same release as the binary, so the check catches a corrupt download,
+not tampering.
+
+## Lint
 
 `.golangci.yml` (golangci-lint v2, the version pinned in `ci/Dockerfile`) is the
 lint configuration (R188): the `standard` linters plus gosec, revive, gocritic,
@@ -43,172 +114,27 @@ file; production code has none, and golangci's default skip of files with a
 error (also under a generated-file header), a `//nolint` without a linter name or
 a reason, and an empty package list each fail. It is a required gate at zero
 findings: `ci/golangci.sh` is the one invocation (`golangci-lint run ./...`
-from the repository root, tests included), run by `ci/lint.sh` (the `lint` job,
+from the repository root, tests included), run by `ci/lint.sh` (the Lint stage,
 before the suite) and by `ci/quality.sh`'s `golangci` gate, so the two cannot
 disagree. `gofmt`, `go vet` and `go mod tidy` stay only in `ci/lint.sh`
-(golangci's formatters are off). `ci/workflowcheck/lintgate_test.go` fails if
-the lint job stops reaching the linter, the quality gate is off, or those three
-checks appear in a second place.
+(golangci's formatters are off). `ci/repocheck/lintgate_test.go` fails if
+the Lint stage stops reaching the linter, the quality gate is off, or those three
+checks appear in a second place; `ci/repocheck/jenkinsfile_test.go` pins the
+stage order, the extended lane, the quality gates, the reports, the release
+candidate and `Jenkinsfile.release`'s rules.
 
-`go.mod` carries a `toolchain go1.N.P` line (matching the `deck-ci` image's
-Go, `ci/Dockerfile`). `actions/setup-go` with `go-version-file: go.mod`
-prefers that line over the `go 1.25.0` language floor (the toolchain may run a newer line than the floor, never an older one), so the `setup-go` steps
-in `ci.yml` and `release.yml` install the patched toolchain instead of the .0 floor
-(unless `GOTOOLCHAIN=local` is set in the step). `ci/workflowcheck` fails if
-the line is removed or a `ci.yml` `setup-go` step could resolve to the .0 floor;
-bump the line together with the image's Go.
-
-Workflow hardening (R197, GH #61): every `uses:` line in `ci.yml` and
-`pages-pr-publish.yml` is pinned by a 40-hex commit SHA with the tag in a
-trailing comment (bump both together), `ci.yml`'s notify step reads
-`github.ref_name` through `env:` rather than interpolating it into the script,
-and the `report` job drops the `GITHUB_TOKEN` extraheader from
-`site/.git/config` (an `if: always()` step) once the gh-pages push is done.
-`ci/workflowcheck/hardening_test.go` fails if any of the three regresses.
-
-`release.yml` adds one more gate, described under "The release gate" below.
-`pages-pr-publish.yml`, a separate `workflow_run`-triggered workflow, is
-described under "Publishing a PR's own report" below.
-
-## Working practice
-
-Work lands on a branch and goes through a pull request, not straight to
-`main`:
-
-1. Open the PR as a **draft** while it is in progress. A draft starts no
-   `ci.yml` run (the `draft == false` guard on `lint`, `suite`, `report`,
-   `pr-comment` and `notify`), so it spends no self-hosted slot.
-2. Mark it **ready for review** when the work is complete. That starts one
-   run (`ready_for_review`); each later push to the branch (`synchronize`)
-   supersedes the previous run of that PR (one concurrency group per ref).
-3. Merge when `lint` and `suite` are green. A push to `main` always runs,
-   whatever it touched: there is no docs-only filter.
-4. Moving a PR back to draft stops new runs, it does not cancel the one in
-   flight.
-
-Applying GitHub branch protection that requires these checks is an operator
-step (see "The required-check rule on `main`"), never done by a job.
-
-## Triggers
-
-`ci.yml` itself runs for four events (`on:` in the workflow file); a fifth
-run -- `pages-pr-publish.yml` -- is a *second, separate* workflow reacting to
-a `ci` run's own completion, described in full under "Publishing a PR's own
-report" below.
-
-- `pull_request` -- (opened, synchronize, reopened and ready_for_review only;
-  a draft PR starts no run, see "Working practice") every `ci.yml` job above still runs, but every
-  self-hosted job carries the fork guard (next section); `publish (Pages)`
-  still never runs (gated to `push`/`schedule`/`workflow_dispatch` only).
-  On completion of this run, `pages-pr-publish.yml` fires (its
-  `on.workflow_run.branches-ignore: [main]` matches, because a
-  `pull_request` run's head branch is the PR's own branch, never `main`) and
-  does the PR's own deploy.
-- `push` to `main` -- lint, suite, Allure report, and a Pages publish. A red
-  run notifies. On completion of this run, `pages-pr-publish.yml`'s
-  `workflow_run` trigger does *not* fire a publish run: its
-  `branches-ignore: [main]` filter matches on the *triggering* `ci` run's own
-  head branch, and a `push`-to-`main` run's head branch is `main` -- so a
-  `main` run leaves no `pages-pr-publish` run behind at all (not even a
-  skipped one; the workflow simply never starts), which is exactly what lets
-  `main`'s own Actions history stay a run-for-run record of `ci.yml` alone
-  (SPEC.md §13.2, "Main's Actions history is a truthful signal").
-- `schedule` (cron `"17 3 * * *"`, an arbitrary off-hour UTC slot chosen to
-  avoid GitHub's own top-of-hour cron congestion) -- the nightly lane: the
-  same suite, plus `-race` and `ci/stability.sh`, plus a Pages publish. A red
-  run notifies. Its head branch is also `main`, so it likewise starts no
-  `pages-pr-publish` run.
-- `workflow_dispatch` -- manually triggerable, and takes the same nightly
-  path (`-race` + stability) as `schedule`. Also runs with `main` as its head
-  branch, so it too starts no `pages-pr-publish` run.
-
-### Concurrency groups and what actually gets cancelled
-
-`ci.yml`'s workflow-level `concurrency:` block:
-
-```
-group: ci-${{ github.workflow }}-${{ github.event_name }}-${{ (github.event_name == 'push' || github.event_name == 'pull_request') && github.ref || github.run_id }}
-cancel-in-progress: ${{ github.event_name == 'push' || github.event_name == 'pull_request' }}
-```
-
-folds in `github.event_name`, then a per-event tiebreaker: `github.ref` for
-`push` and `pull_request`, and `github.run_id` -- unique to every single
-workflow run -- for everything else (`schedule` and `workflow_dispatch`):
-
-- Every `push` run to `main` shares one group per ref (`ci-ci-push-refs/heads/main`),
-  so a newer push cancels the superseded push run, whether it is queued or
-  running. Two self-hosted runners serve every push, so a superseded run
-  would otherwise queue for the runners and finish red on a stale commit.
-- Every `schedule` run's group, and every `workflow_dispatch` run's group,
-  is unique to that one run (`ci-ci-schedule-<run_id>`,
-  `ci-ci-workflow_dispatch-<run_id>`) -- not shared with any other
-  `schedule` or `workflow_dispatch` run (including a second dispatch on the
-  same sha), and never with `push`'s group. GitHub keeps only one pending
-  run per group, so a shared group would let one queued run supersede
-  another. A dispatch or nightly run therefore always runs to completion; a
-  push never cancels it.
-- Every `pull_request` run's group is unique to its own PR (`github.ref` is
-  that PR's merge ref), so a newer run on the same PR cancels the older one.
-
-`cancel-in-progress` is `true` for `push` and `pull_request`, and `false`
-for `schedule` and `workflow_dispatch`. A run of the last two can still
-fail outright (a red `suite`, or the job's own `timeout-minutes`), which is
-a different outcome from `cancelled`.
-
-A superseded push run is not a red main. When `lint` or `suite` ends
-`cancelled` on a `push`, `report` and `notify` skip: no self-hosted slot is
-spent on the stale run and no notification is sent. `notify` still fires for
-a `failure` on a `push` to `main`, and for a `failure` or `cancelled`
-result on `schedule` and `workflow_dispatch`. A push to `main` always starts
-a run: the `push` trigger carries no `paths-ignore`. A draft pull request
-starts no run: `pull_request` has `types: [opened, synchronize, reopened,
-ready_for_review]` and `lint`, `suite`, `report`, `pr-comment` and `notify`
-carry `github.event.pull_request.draft == false` beside the fork guard, so
-marking a PR ready starts its run. `ci/workflowcheck/concurrencygroups_test.go`
-and `ci/workflowcheck/cihygiene_test.go` pin all of this by parsing
-`ci.yml`.
-
-## The fork guard
-
-deck is a public repository, so a self-hosted runner (`int21h-ws`, slots
-`deck-ws-1`/`deck-ws-2`, labelled `[self-hosted, linux, x64, deck]`) would
-otherwise execute arbitrary code from any fork's pull request. Every
-self-hosted job in `ci.yml` repeats the same job-level `if:`:
-
-```
-github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-```
-
-For any event that is not `pull_request`, `github.event.pull_request` is
-null and the right-hand side would evaluate false, so the `!=` short-circuit
-is required to avoid wrongly refusing `push`/`schedule`/`workflow_dispatch`
-runs. For a `pull_request` event, the check passes only when the PR's head
-repository is `n-orlov/deck` itself -- a fork PR's head repo never matches,
-so it gets no self-hosted job at all, only the two `ubuntu-latest` jobs
-(`publish` never runs for `pull_request` regardless; `pr-comment` carries the
-same repo-identity check a second time).
-
-This guard is deliberately a job-level `if:`, not a workflow-level `on:`
-filter, because job-level `if:` cannot read the workflow's own top-level
-`env:` -- hence it is inlined on every self-hosted job rather than defined
-once. `pull_request_target` (which would check out and evaluate workflow YAML
-from the base ref while still running against the PR head) is never used
-here; the ordinary `pull_request` trigger checks out and evaluates the PR's
-own head YAML, which is exactly what keeps a fork's code off the self-hosted
-runners in the first place.
-
-As defence in depth, the repository also requires approval for all outside
-contributors before their workflow runs at all (Settings -> Actions -> Fork
-pull request workflows -> "Require approval for all outside collaborators").
-Nothing in the workflow YAML can substitute for that repository setting, and
-this job never re-applies it -- it only checks the setting still holds
-through the API and stops and notifies if it does not.
+`go.mod` carries a `toolchain go1.N.P` line matching the `deck-ci` image's Go
+(`ci/Dockerfile`), so `go install` and local builds use the patched release
+rather than the `go 1.25.0` floor. CI and release builds use the image's Go.
+`ci/repocheck` fails if the line is removed or names a floor release; bump it
+together with the image's Go. Both `FROM` lines of `ci/Dockerfile` are pinned
+by `@sha256` digest (`ci/repocheck/dockerfiledigest_test.go`).
 
 ## Retry-once / flaky rule
 
 A test (or, for `features/`, a scenario) that fails once and then passes on
 an immediate retry is recorded as **flaky**, not failed: the check stays
-green, but the flaky result surfaces in the job summary and in Allure. A
+green, but the flaky result surfaces in the CI summary and in Allure. A
 test that fails twice in a row fails the check.
 
 - The ordinary Go package matrix (`ci/suite.sh`, pass 1) uses gotestsum's own
@@ -229,178 +155,9 @@ test that fails twice in a row fails the check.
 - Two known flake classes are advisory, not blocking, and are never cured by
   loosening a test's own assertion or deadline: a transient-`starting`
   timing assertion, and a `SIGWINCH` exact-count assertion. `features/`
-  asserts sub-second tmux/SQLite deadlines, so CPU contention on the runner
+  asserts sub-second tmux/SQLite deadlines, so CPU contention on the agent
   host can also turn into a retry-recovered flake; that contention is
   measured, not eliminated.
-
-## Allure report and Pages layout
-
-- Both passes produce JUnit: the ordinary Go matrix through gotestsum
-  (`--junitfile`), `features/` through Godog's own JUnit formatter
-  (`pretty,junit:<path>`), so each scenario is its own Allure test case
-  rather than one opaque `TestFeatures`.
-- `features/` can also write native Allure 2 results: with
-  `DECK_GODOG_ALLURE=<dir>` set, `godogFormat()` adds the in-repo `allure`
-  formatter (`features/allure_formatter_test.go`, standard library plus Godog
-  only) beside pretty and JUnit, writing `*-result.json`, one
-  `*-container.json` per feature file and attachment files into `<dir>`. The
-  feature is the Allure `feature`, the scenario the test and each Gherkin step
-  an Allure step (verbatim text, own status and duration). `@gh-NN` becomes an
-  issue link to `https://github.com/n-orlov/deck/issues/NN`, `@multiclient`/
-  `@slow`/`@nightly` become `tag` labels and `@claude`/`@pi`/`@codex` the
-  `suite` (the feature name moving to `subSuite`); every result carries
-  `parentSuite` `features`. A failing step carries only what the harness already writes
-  into its error text (last normalized pty frame, tmux captures, deck-log
-  slice, store dump), cut out by its section headers; nothing is collected
-  anew. The `historyId` is a digest of feature file, scenario name (and, for an
-  outline, its substituted steps), so the one-retry rerun of a failed
-  scenario (`DECK_GODOG_PATHS=<file>:<line>`) into the same directory is a
-  retry of the same test, not a second one.
-- `ci/suite.sh` sets `DECK_GODOG_ALLURE` on the `TestFeatures` run and on
-  every solo scenario rerun, all into one `<outdir>/allure-results/`: a
-  rerun carries the failed attempt's `historyId`, so it is a retry of that
-  test, never a second one. The same directory gets the Go unit tests
-  converted from the merged JUnit by `ci/junit2allure` (`parentSuite` `unit`,
-  the `historyId` Allure's JUnit plugin used, so unit trends carry over; an
-  earlier failed attempt is a hidden retry and the test is marked flaky),
-  `environment.properties` (Go version, tmux version, sha, `race=yes|no`) and
-  `executor.json` (the Actions run link; the workflow passes `DECK_CI_SHA` and
-  `DECK_CI_RUN_URL` because `ci/run.sh` forwards only `DECK_*`). If no native
-  features results exist (the process died before the formatter flushed), the
-  merged features JUnit is converted instead, so a failed pass is never
-  missing; the synthetic "aborted" marker is converted either way.
-  `ci/allure-report.sh` builds the one report from that directory (a results
-  dir without it falls back to the merged JUnit). `ci/summary.sh` still reads
-  the merged JUnit, but counts it the way the report does: one test per
-  (testsuite, classname, name) with its last attempt's outcome, so a test
-  that failed on every attempt is one failure and a skipped test is a skip
-  (its own row), never a pass. `ci/suitecheck` proves its pass/fail/skip/
-  flaky rows equal the Allure results' on a fixture, and fails when they
-  differ.
-- Allure smoke check (R196): before the real report is built, the `report`
-  job runs the formatter's own fixture
-  (`TestAllureFormatterWritesResultsForAFixtureRun`, kept with
-  `DECK_ALLURE_FIXTURE_OUT`) in the CI image, then `ci/allure-smoke.sh`
-  runs the pinned Allure's `allure generate` over it (through
-  `ci/allure-report.sh`, same checksum-verified download) and fails if
-  generation fails or the generated report lacks the fixture's steps or the
-  `@gh-61` issue link. These are steps of the existing `report` job, not a
-  job of their own (`ci/workflowcheck` guards that); a bumped Allure version
-  or a formatter change that Allure cannot render turns this red before
-  anything is published.
-- The features results changed `historyId` (the JUnit-derived id to the
-  formatter's digest), so the features trend restarted once when this landed;
-  unit trends continue. The root-publish history dir still carries over.
-- `main`/`schedule`/`workflow_dispatch` runs publish to the Pages **site
-  root**, with Allure's own history/trend carried forward across runs. A
-  `pull_request` run instead publishes under `/pr/<number>/`, with no shared
-  history, and gets one PR comment (created once, then updated in place)
-  carrying that link.
-- The PR comment itself is created/updated by `go run ./ci/prcomment`
-  (`ci/prcomment/main.go`), not an inline `actions/github-script` step: it
-  pages through *every* existing issue comment on the PR (`per_page=100`,
-  following the `Link: rel="next"` header, the same pattern
-  `ci/releasegate` uses for check-runs/actions-runs) before deciding
-  whether to update the first comment whose body carries the
-  `<!-- deck-allure-report -->` marker or create a fresh one when no page
-  holds it. A single-page lookup (GitHub's own default `per_page` is 30)
-  would stop seeing an existing marker comment once a PR accumulated
-  enough other comments, and would then append a duplicate on every
-  subsequent run instead of updating the one it already posted.
-- History and the accumulated multi-report tree live on a `gh-pages` branch,
-  which the `report` job reads back (for history) and writes forward (the
-  merged tree) on every run. This is a plain data branch this workflow reads
-  and writes -- it is never the Pages *source*, which stays "GitHub Actions"
-  (`build_type=workflow`) throughout.
-  `actions/deploy-pages` always replaces the *whole* Pages site with
-  whatever artifact it is handed, so a main-triggered deploy would erase a
-  live PR preview (and vice versa) unless every deploy's own artifact
-  already contains the full merged tree -- which is exactly what the
-  `report` job assembles before `publish` ever runs.
-- `report` never pushes to `gh-pages` with a plain, unretried `git push`:
-  the merge-and-push step (`ci.yml`'s "Merge this run's report into the
-  persisted site tree and push it to gh-pages") delegates to
-  `ci/pages-persist.sh <site> <report dir> root|pr <n> [max attempts]`
-  (added for R165, GH #50 -- see that script's own header comment). Two
-  reports can legitimately race the same `gh-pages` tip (a push to `main`
-  and an open PR's own preview, or two PRs), so a non-fast-forward push
-  rejection is an expected occasional outcome, not a defect: the script
-  re-fetches `gh-pages`, re-merges this run's own report on top of the
-  newer tree (via `ci/allure-site.sh`, re-staging the report fresh on every
-  attempt), and retries, up to a bounded number of attempts (default 5),
-  before giving up and failing the step.
-- `report` never holds `pages: write`/`id-token: write`; only `publish`
-  does, and `publish` runs on `ubuntu-latest` (no self-hosted slot needed to
-  make one API call), gated to non-PR events.
-- Every run writes a job summary (pass/fail/skip/flaky counts, the slowest
-  packages, coverage totals, the report link) and uploads both the raw
-  results and the rendered report as workflow artifacts, independent of
-  whether the report ever reaches Pages.
-- Failure attachments (pty traces, tmux captures already written by
-  scenario teardown) are attached to their Allure case where practical.
-
-### Publishing a PR's own report (R146, GH #35 §5)
-
-- `report`'s `pull_request` run merges `/pr/<n>/` into `gh-pages` and pushes
-  it, but `ci.yml`'s `publish` job never runs for `pull_request` at all --
-  the repository's `github-pages` deployment environment restricts
-  deployment to `main` (a pre-existing setting neither workflow is ever
-  allowed to change), so a deploy attempted from inside a `pull_request`
-  run's own `github.ref` (the PR's head ref) would be rejected server-side
-  regardless of anything this job declares.
-- `.github/workflows/pages-pr-publish.yml` is a separate workflow, triggered
-  by `workflow_run` on `ci`'s own completion, that does the deploy instead.
-  `workflow_run` always executes using the default branch's copy of the
-  triggered workflow file, with `github.ref` set to that default branch
-  regardless of what triggered the run it reacts to -- so it satisfies the
-  same "main only" branch policy for free, and it fires automatically the
-  moment the PR's own `ci` run completes: caused by, not unrelated to, that
-  run, and requiring no later main push, nightly run or manual dispatch.
-- `pages-pr-publish.yml`'s own `on.workflow_run.branches-ignore: [main]`
-  (R163, GH #50) excludes a `main`-headed `ci` run from ever triggering this
-  workflow at all -- a `push`/`schedule`/`workflow_dispatch` run already
-  published synchronously via `ci.yml`'s own `publish` job in that same run,
-  so a second, redundant `pages-pr-publish` run would otherwise start (and
-  immediately no-op past its own `gate` job's `event == 'pull_request'`
-  check) on every single `main` run; filtering it at the trigger means no
-  such run appears in the Actions history at all, not even a fast
-  skipped/no-op one.
-- Its `gate` job calls the Jobs API for the completed run and only proceeds
-  when that run's own `report (Allure)` job succeeded (not the run's overall
-  conclusion, which can be `failure` on a red `suite` even though `report`
-  still ran) and the run's head repository is this one (a second, belt-and-
-  suspenders fork guard on top of `report`'s own, which already never runs
-  -- so never succeeds -- for a fork PR). Its `publish` job then checks out
-  `gh-pages` (already carrying the merged tree `report` pushed), re-stages
-  it as a fresh Pages artifact, and deploys it -- never touching the PR's
-  own head ref/commit, so it carries none of the fork-PR code-execution risk
-  the self-hosted fork guard above exists to keep off a fork's head.
-- Both this job's own `actions/deploy-pages` call and `ci.yml`'s own
-  `publish` job's call retry the same way (R166, widened for R165, GH #50):
-  up to **four** attempts, with back-off sleeps of 30s/60s/120s (210s of
-  total back-off) between them. Every attempt but the last carries
-  `continue-on-error: true`, so a failed attempt's own `outcome` (unlike
-  `conclusion`, never overridden by `continue-on-error`) stays readable by
-  the next attempt's `if:`; the final attempt omits it, so a persistent
-  failure still fails the job. `environment.url` falls back through
-  whichever attempt actually produced a `page_url` output
-  (`deployment4 || deployment3 || deployment2 || deployment1`). Every
-  attempt sets `actions/deploy-pages`' own `timeout` input to `120000`
-  (2 min; a healthy deploy takes seconds) instead of the action's
-  10-minute default, and both jobs' `timeout-minutes` is 15: the worst
-  case (four 2-minute attempts plus 210s of back-off, 11.5 min) fits
-  inside the job cap. With the default, one stalled Pages deployment ran
-  the job's whole cap out while attempt 1 was still polling, so no retry
-  ever ran and the run ended `cancelled`. `ci/workflowcheck`'s
-  `deploypagestimeout_test.go` pins this arithmetic. The back-off
-  was widened from three attempts/45s to cover GitHub's Pages API "one
-  concurrent build per repository" limit specifically: since `ci.yml`'s own
-  concurrency groups now let push/schedule/dispatch run side by side (see
-  "Concurrency groups" above), and this workflow's own deploy runs in an
-  entirely separate workflow from `ci.yml`'s (so `ci.yml`'s concurrency
-  group never serializes against it), two `publish`-style jobs calling
-  `actions/deploy-pages` against the same `github-pages` environment at the
-  same moment is an expected occasional case, not a rare fluke.
 
 ## Race builds and wall-clock budgets
 
@@ -408,9 +165,9 @@ SPEC.md §3.1 gives `_hook` a wall-clock budget (store write < 20 ms,
 uncontended) that is asserted "for a normal build ... not [on] a `-race`
 build", and §13.2 repeats it as one of the things that keeps a red `main`
 run a true positive: "a wall-clock budget ... is asserted on normal builds
-only, never on the `-race` build". The nightly/`workflow_dispatch` path
-above is the only path that ever runs with `-race` (`DECK_CI_GO_EXTRA_FLAGS`
-is set to `-race` only for `schedule`/`workflow_dispatch`; `ci/suite.sh`
+only, never on the `-race` build". The extended (nightly or `EXTENDED`) build
+is the only one that ever runs with `-race` (`DECK_CI_GO_EXTRA_FLAGS`
+is set to `-race` only for those; `ci/suite.sh`
 switches its `-covermode` to `atomic` automatically whenever that variable
 mentions `-race`, and hands the same mode to the features pass as `DECK_FEATURES_COVERMODE` so the black-box deck binary is built with a matching `-covermode`; mixed `set`/`atomic` covdata cannot be merged into `coverage-merged.out`) -- so any test asserting a wall-clock budget has to know,
 from inside the test binary itself, whether it is presently running under
@@ -425,7 +182,7 @@ skips the wall-clock comparison whenever it is `true`, rather than loosening
 the budget's own numeric threshold -- so the nightly `-race` run, several
 times slower by design, never turns a real budget into a flaky or
 permanently-red assertion, and the assertion still runs at full strength on
-every `push`/`pull_request` run, which never sets `-race`. A *deadline* (a
+every other build, which never sets `-race`. A *deadline* (a
 test waiting on an external, polled event, e.g. a pty frame or a process
 exit) is a different kind of assertion from a *budget* (a bound on this
 binary's own uncontended work) and is never exempted the budget's way --
@@ -479,10 +236,11 @@ comparison vs. widen the bound), not in whether they consult it at all.
   passed per invocation.
 - `ci/suite.sh` prints a per-package coverage table (`unit` column vs
   `features/ (black-box)` column) plus a `TOTAL` row. That table is
-  surfaced in exactly two places: the job summary (`ci/summary.sh` cats it
-  under a `#### coverage` heading) and the uploaded raw results artifact
-  (`ci-results-<run>`, which carries the whole results directory --
-  `coverage-summary.txt`, both per-pass legacy-format profiles and `coverage-merged.out` included). The
+  surfaced in two places: the build's "CI summary" page (`ci/summary.sh`
+  cats it under a `#### coverage` heading; its unit `TOTAL` is also on the
+  build page's summary line) and the build's archived artifacts
+  (`coverage-summary.txt`, both per-pass legacy-format profiles and
+  `coverage-merged.out`). The
   Allure report does not display it. The coverage gate (`ci/covgate`, R189,
   below) is what gates on it.
 
@@ -559,8 +317,8 @@ every quality gate (`ci/run.sh ci/quality.sh`, defaulting `<suite-outdir>` to
 `coverage-merged.out` into -- and `<config-path>` to the checked-in
 `ci/quality.json`). Like `ci/suite.sh`, it scrubs every `DECK_*` variable
 from its own environment before running anything, so a variable leaked from
-the caller's shell can never reach a gate subprocess. It is wired into
-`ci.yml` as a step in the existing `lint`/`suite` jobs, not a new lane.
+the caller's shell can never reach a gate subprocess. It is the
+Jenkinsfile's Quality stage.
 
 `ci/quality.json` is the single thresholds file -- every gate reads its
 threshold from here and nowhere else:
@@ -705,17 +463,13 @@ Where the report appears: `ci/quality.sh` prints the report on stdout (so a
 local run shows exactly the text CI shows) and also writes the same text to
 `<suite-outdir>/quality-report.txt` (`ci-results/quality-report.txt`). That file
 is what crosses the `ci/run.sh` sibling boundary: the sibling bind-mounts the
-checkout, so the runner-side `Quality gate report (job summary)` step in the
-`suite` job (`if: always()`) reads it back and appends it, in a code block under
-`### Quality gates (ci/quality.sh)`, to `GITHUB_STEP_SUMMARY` on every run,
-whether the gates passed or failed. The quality step is `continue-on-error` only
-so that report step and the upload still run; the closing "Fail the job" step
-fails the job on its outcome, so the gate exit status still fails the job. A
-run that died before printing any section leaves a one-line report saying so.
-The file is also in the `ci-results-<run id>` artifact.
-`ci/workflowcheck`'s `TestQualityReportReachesJobSummary*` and
-`ci/qualitycheck`'s `TestQualityShWritesReport*` fail if any link of that chain
-is cut.
+checkout, so `ci/jenkins-report.sh` (in the Jenkinsfile's `post { always }`)
+reads it back and puts it on the build's "CI summary" page, whether the gates
+passed or failed. The Quality stage wraps the gates in `catchError`, so a red
+gate fails the build without stopping the later stages or the reports. A run
+that died before printing any section leaves a one-line report saying so. The
+file is also archived with the build. `ci/qualitycheck`'s
+`TestQualityShWritesReport*` fail if the script stops writing it.
 
 | Gate | Threshold (`ci/quality.json`) | A failure names | Run it alone |
 | --- | --- | --- | --- |
@@ -739,7 +493,7 @@ fixture ceiling is 10 as well). `TestDocsCiMdStatesTheCheckedInCrapCeiling`
 **Adopting or tightening a ratchet.**
 
 - Tightening: measure first (run the gate alone at the lower number over the
-  merged profile of a green push run, or the `tighten:` prompt for a coverage
+  merged profile of a green build, or the `tighten:` prompt for a coverage
   floor), cure every named offender at its root (lift a helper, add a behaviour
   test), and only then lower the number in `ci/quality.json`, in the same
   commit that updates this file and renames the ceiling test. If the next stage
@@ -771,89 +525,8 @@ per Gherkin step, with status, duration and attachments); `ci/suite.sh` sets it
 for the `TestFeatures` run and every solo rerun into one
 `<outdir>/allure-results/`, the unit tests are converted into the same
 directory by `ci/junit2allure`, and `ci/allure-report.sh` builds the single
-report with its history carried forward. The Allure smoke check and the layout
-are described under "Allure report and Pages layout" above.
-
-## Status badges (`ci/badgegen`, R289)
-
-`go run ./ci/badgegen -in ci-results -out badges` turns the result files
-`ci/suite.sh` and `ci/quality.sh` leave in `ci-results/` into shields.io
-endpoint JSON, one `badges/<name>.json` per gate, each with exactly the keys
-`schemaVersion`, `label`, `message` and `color`:
-
-| file | reads | green when |
-| --- | --- | --- |
-| `lint.json` | `quality-report.txt`, the golangci section | the gate passed |
-| `unit-tests.json` | `junit-merged/junit-go.xml` | no failure or error |
-| `features.json` | `junit-merged/junit-features.xml` | no failure or error |
-| `coverage.json` | `coverage-merged.out` (`cmd/fake-*` excluded) | at least 85%; yellow from 70% |
-| `vulnerabilities.json` | `quality-report.txt`, the govulncheck and trivy sections | both passed |
-
-A failed gate renders red. A result file that is missing or cannot be parsed
-renders a grey `unknown`, never green. `-lint-result <success|failure|...>`
-passes the `lint` job's own result to the lint badge: when lint fails, `suite`
-is skipped and no `quality-report.txt` exists, yet the lint badge renders red
-(a failed job is red whatever the report says, a passed one is green unless the
-report says golangci failed, any other value reads the report alone). Every
-other gate with no result file is the grey `unknown`. The generator's tests
-(`ci/badgegen`: `TestBadgeGenTable`, `TestBadgeNeverGreenOnBadInput`,
-`TestBadgeValuesFollowInput`) cover each of those cases.
-
-### Publishing the badges (R290)
-
-The `report` job of `ci.yml` has two badge steps, "Generate the status badges"
-(`ci/run.sh go run ./ci/badgegen -in ci-results -out badges`) and "Publish the
-status badges to gh-pages" (`ci/pages-persist.sh site badges badges`, the
-`badges` mode of the same fetch/commit/push-with-retry script the report uses).
-The result is `badges/*.json` on the `gh-pages` branch, and in the Pages site,
-where a shields.io `endpoint` badge reads
-`https://n-orlov.github.io/deck/badges/<name>.json`.
-
-Both steps carry `if: ${{ !cancelled() && (github.event_name == 'push' ||
-github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main' }}`,
-so a pull_request run (the job also runs for those) and the nightly schedule
-write no badge, while every non-cancelled push or dispatch on main refreshes
-them, from the results that exist, even when a gate failed. The `report` job's
-own `if:` lets it run when lint failed and `suite` was skipped (a push or
-dispatch on main only); the download of the results artifact is then allowed to
-fail and the Allure steps and results summary, which need it, are skipped, so
-the badges still publish and the Pages artifact carries them.
-`TestReportJobRunsForBadgesWhenLintFailedAndSuiteSkipped`,
-`TestBadgeStepsSurviveAFailedGate` and `TestReportJobStepsNeedingResultsAreGated`
-(`ci/workflowcheck`) and `TestBadgeFailedLintSkippedSuite`,
-`TestBadgeLintJobResult` and `TestBadgeSuiteFailedKeepsRealResults`
-(`ci/badgegen`) cover it. The root report merge (`ci/allure-site.sh`) leaves `badges/`
-alone, as it does `pr/`. `TestBadgeStepsMainOnly` and
-`TestNoPullRequestJobWritesBadges` (`ci/workflowcheck`) evaluate those
-conditions over concrete triggers; `TestPagesPersistPublishesBadgesAndRootKeepsThem`
-(`ci/pagespersist`) covers the publish path.
-
-### The README badge block (`ci/readmebadges`, R291)
-
-The first lines of `README.md`, between `<!-- badges:start -->` and
-`<!-- badges:end -->`, are written by `go run ./ci/readmebadges` and by nothing
-else; edit the generator, never the block. Its only input is the `go` directive
-of `go.mod`. The block holds the `ci.yml` status badge for `main`, five
-shields.io `endpoint` badges and three static ones:
-
-| badge | comes from | links to |
-| --- | --- | --- |
-| CI | `actions/workflows/ci.yml/badge.svg?branch=main` | the `ci.yml` runs on `main` |
-| lint, unit tests, features, vulnerabilities | `https://n-orlov.github.io/deck/badges/<name>.json`, the `gh-pages` path `badges/<name>.json` that `ci/badgegen` writes (see above) | the `ci.yml` runs on `main` |
-| coverage | `badges/coverage.json`, same path | the published report |
-| license | static | the `ci.yml` runs on `main` |
-| Go version | static, the `go` directive of `go.mod` | the `ci.yml` runs on `main` (which build and test with that version) |
-| report | static | the published Allure report, `https://n-orlov.github.io/deck/` |
-
-The endpoint badges are not written by this generator: `ci/badgegen` writes
-the JSON from the gate results and the `report` job publishes it, on `push` and
-`workflow_dispatch` runs of `main` only. A `pull_request` run (and the nightly
-schedule) never regenerates or publishes a badge, so a PR cannot change what
-the README shows. The committed block changes only when someone reruns
-`go run ./ci/readmebadges` (after a `go.mod` bump, say) and commits the result.
-`TestReadmeBadgeBlockMatchesGenerator` fails on any difference, one character
-included, and `TestReadmeGoVersionBadgeMatchesGoMod` fails when the Go-version
-badge stops matching `go.mod` (`ci/readmebadges`).
+report with its history carried forward. The Allure smoke check and where the
+report lives are described under "Reports" above.
 
 ## The pre-release security review (R194)
 
@@ -864,8 +537,8 @@ repository beyond this section.
   security review of everything since the last reviewed tag.
 - **How:** separate review agents cover the hook input (`deck _hook` stdin),
   tmux command construction and quoting, the filesystem and permissions under
-  `DECK_HOME`, env and secret handling, the workflows and the self-hosted
-  runner trust boundary, and dependencies. Each finding is adversarially
+  `DECK_HOME`, env and secret handling, the Jenkinsfile and the build
+  agent's trust boundary, and dependencies. Each finding is adversarially
   verified before it is reported.
 - **Output:** each confirmed finding becomes a GitHub issue, a short summary
   goes to Telegram, and the release's tag message or notes carry "security
@@ -877,139 +550,70 @@ repository beyond this section.
   periodic ralphd security job (costlier than asking when a release is near);
   and a session cron (it fires only while a session is alive).
 
-## The release gate (`release.yml`, R147)
+## Release
 
-Before `release.yml` builds or publishes anything for a pushed `vX.Y.Z` tag,
-its "Gate on green CI" step runs `go run ./ci/releasegate -repo
-"$GITHUB_REPOSITORY" -sha "$GITHUB_SHA"`. That program queries `GET
-/repos/{owner}/{repo}/commits/{sha}/check-runs` for the check run named
-`suite` (the default; overridable with `-check`), and `GET
-/repos/{owner}/{repo}/actions/runs?head_sha={sha}` to learn, for each of
-those check runs, which workflow run -- and hence which triggering event
-(`push`, `pull_request`, `schedule`, `workflow_dispatch`, ...) -- produced
-it. Per SPEC §13.2/R147, only a `suite` run whose triggering event is
-`push` or `pull_request` ever gates a release: a nightly `schedule` run and
-a manual `workflow_dispatch` run may alert on red, but neither ever blocks
-a release for a sha whose own push (or PR) run went green, and a green
-schedule/workflow_dispatch run never substitutes for a missing push/PR one
-either way. Among the gating (push/pull_request) `suite` runs, the most
-recently started one decides, and the gate refuses -- non-zero exit, a
-message naming the sha and exactly what it found -- unless that run's
-`status` is `completed` and its `conclusion` is `success`. No gating run at
-all (whether because there is no `suite` run yet, or because every `suite`
-run on the sha belongs to a non-gating event), a gating run still
-queued/in-progress, or a completed gating run that concluded anything other
-than `success`, all refuse. This is what makes a tag's own release build
-depend on the *tagged commit's own* push/PR CI history, not on `main`'s
-current HEAD, and not on any nightly/dispatch run against that same commit
--- tagging a commit that predates the gate itself runs that old commit's
-`release.yml`, which has no gate at all, so the gate protects only tags on
-commits at or after the commit that introduced it.
+Run `deck/release` with **Build with Parameters**:
 
-## The required-check rule on `main` (an operator step, never applied by this job)
+| parameter | meaning |
+|---|---|
+| `VERSION` | required, `vMAJOR.MINOR.PATCH` with an optional `-pre` suffix (`^v\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$`); the tag must not exist yet |
+| `CI_BUILD` | the `deck/ci` `main` build to release; empty means the last successful one |
+| `DRY_RUN` | build and archive everything, but do not publish |
 
-CI (`ci.yml`'s `suite` check) is meant to gate merges into `main`, but this
-job **never applies branch protection or a ruleset itself** -- changing
-repository settings is out of scope for every task in this phase, and is
-the operator's own step to take after this phase lands. This section states
-the exact setting and command so the operator does not have to reverse
-engineer it, without ever running it in this job's own name.
+Stages (`Jenkinsfile.release`):
 
-**The one constraint that shapes the setting:** ralphd pushes directly to
-`main` (not through a pull request) using the operator's own personal
-access token, and that must keep working. GitHub only enforces "required
-status checks must pass" against **merges** (the PR merge button, or the
-merge API) when "Require a pull request before merging" is itself enabled;
-a required-status-checks rule with no pull-request requirement, and with
-"Include administrators" left **off**, never blocks a plain `git push`
-by an actor with admin/bypass permission on the repository (the operator's
-own account, which is what ralphd's token authenticates as) -- it only
-blocks the PR merge path a non-admin contributor would otherwise use to
-land a red commit. So the rule below intentionally sets `enforce_admins:
-false` and leaves `required_pull_request_reviews`/`restrictions` unset:
-turning either of those *on* instead would make an ordinary contributor's
-PR wait for a green `suite` check before it can merge, while still leaving
-ralphd's own direct push to `main` unaffected.
+1. **Candidate** -- copies `ci-results/release-candidate.json` from
+   `deck/ci/main` (build `CI_BUILD`, or the last stable one). A build without
+   that file was not fully green, and the release stops there.
+2. **Checkout** -- checks out `main`, makes sure the candidate commit is in its
+   history, and detaches at that commit. Everything after this runs that
+   commit's own scripts and `ci/Dockerfile`.
+3. **Version check** -- `git ls-remote --exit-code --tags` on GitHub (with the
+   `github-n-orlov` token, never echoed): the tag must not exist, and a lookup
+   that fails stops the release rather than passing it. The repository's
+   immutable-releases setting must be on (`gh api
+   repos/n-orlov/deck/immutable-releases` answers `"enabled": true`); off, or
+   no answer, stops the release, because `deck update` refuses a release that
+   is not immutable by default.
+4. **Build** -- `ci/run.sh ci/release-build.sh "$VERSION"` in the CI image
+   builds the four archives (`deck_{linux,darwin}_{amd64,arm64}.tar.gz`,
+   `CGO_ENABLED=0`, `-trimpath`, the version stamped into `main.version`) and
+   `checksums.txt`, and smoke-checks that `deck --version` prints `deck
+   <version> linux/amd64`. It tags the commit `VERSION` in the local
+   checkout only (never pushed; removed again on exit) so that Go stamps
+   `VERSION` into each binary's build info as its module version, and checks
+   every binary with `go version -m`: `deck update` refuses a staged binary
+   whose embedded version is not the release tag (SPEC.md, "Update staged
+   version"), and without the tag Go would stamp a pseudo-version.
+5. **Publish** (skipped on `DRY_RUN`) -- `gh release create "$VERSION" dist/*
+   --repo n-orlov/deck --target <commit> --title "$VERSION" --generate-notes
+   --draft` (plus `--prerelease` for a `-pre` version) creates the tag at that
+   commit and a draft release with every asset uploaded; no tag is pushed from
+   the agent. Only then is the draft published by its id (`PATCH
+   releases/<id>` with `draft=false`, `make_latest` true for a stable version,
+   false for a pre-release). Immutable releases freeze a release when it is
+   published, so publishing a half-uploaded release would freeze it
+   incomplete. The stage then reads the release back and fails unless it is
+   published, `immutable` and carries exactly the files in `dist/`.
 
-**Check name, exactly as the Checks API reports it:** `suite` -- `ci.yml`'s
-`suite` job carries no separate `name:` override beyond its own job id, so
-GitHub reports its check run under that literal string. This is the same
-name `ci/releasegate`'s own `-check` flag defaults to, so the release gate
-(R147, above) and the required-check rule name the identical check.
+The build is named after the version, archives `dist/*`, and its summary
+names the version, the commit, the `deck/ci` build and the release link.
+Because the job runs `Jenkinsfile.release` from `main` but builds an older
+commit, that commit must already have `ci/release-build.sh` and
+`ci/jenkins-image.sh` (true for anything built by `deck/ci`).
 
-**Settings to apply** (classic branch protection, `PUT
-/repos/{owner}/{repo}/branches/{branch}/protection`):
+**Integrity check.** Releases carry no build attestation (GitHub's needs an
+Actions OIDC token). `install.sh` and `deck update` verify the archive's
+SHA-256 checksum against the release's `checksums.txt` and nothing else; a
+mismatch aborts with nothing installed (SPEC.md, "Update download"). A
+`DECK_UPDATE_URL` mirror serves both files, so its checksum catches corruption
+only; a mirror has no release API, so `deck update` refuses it unless
+`DECK_REQUIRE_IMMUTABLE=0` is set.
 
-- `required_status_checks.checks`: `[{"context": "suite"}]` -- only the
-  `suite` check is required; `lint` failing already prevents `suite` from
-  ever reaching `success` (a job-level `needs:` skips it), so requiring
-  `suite` alone is sufficient without separately naming `lint`.
-- `required_status_checks.strict`: `false` -- a PR branch does not have to
-  be rebased onto the latest `main` before its own `suite` run counts;
-  this only affects PR merges, never direct pushes either way.
-- `enforce_admins`: `false` -- see the constraint above: this is what keeps
-  ralphd's (and the operator's) own direct pushes to `main` unaffected.
-- `required_pull_request_reviews`: `null` -- no review requirement is added
-  by this rule; adding one would also gate the merge path, but never a
-  direct push.
-- `restrictions`: `null` -- no push-restriction allow-list; leaving this
-  unset is what keeps a direct push from any current admin/write actor
-  working exactly as it does today.
-
-Applied with the GitHub CLI:
-
-```sh
-gh api \
-  --method PUT \
-  -H "Accept: application/vnd.github+json" \
-  -H "X-GitHub-Api-Version: 2022-11-28" \
-  repos/n-orlov/deck/branches/main/protection \
-  --input - <<'JSON'
-{
-  "required_status_checks": {
-    "strict": false,
-    "checks": [
-      { "context": "suite" }
-    ]
-  },
-  "enforce_admins": false,
-  "required_pull_request_reviews": null,
-  "restrictions": null
-}
-JSON
-```
-
-This job never runs the command above against the live repository -- it is
-documentation for the operator's own step. `GET
-/repos/{owner}/{repo}/branches/main/protection` and `GET
-/repos/{owner}/{repo}/rulesets` both show no protection and no ruleset on
-`main` as of this writing; applying the command turns the first of those
-from a 404 ("Branch not protected") into the settings above, and never
-touches the second.
-
-## Release attestation and the `v*` tag ruleset (R236, an operator step)
-
-`release.yml` attests the release tarballs and `checksums.txt` with
-`actions/attest-build-provenance` (pinned by 40-hex commit SHA, the tag in a
-trailing comment), between the Smoke and Publish steps. The release job holds
-exactly the three permissions it had before plus `id-token: write` and
-`attestations: write`; `ci/workflowcheck` fails if the step is unpinned or the
-permissions widen. `install.sh` runs `gh attestation verify --repo n-orlov/deck`
-on the downloaded archive after the checksum check when an authenticated `gh`
-is present: a failure aborts with nothing installed, while no `gh`, or a release
-published before attestations, prints one checksum-only note and continues
-(`DECK_REQUIRE_ATTESTATION=1` aborts instead). The first real attested release
-is the maintainer's next tag; this phase proves the script only with fake `gh`
-and download tools.
-
-**Operator step -- protect the `v*` tags.** Attestation says a tarball came from
-this repository's workflow, so the tags that trigger that workflow should not be
-creatable, movable or deletable casually. This job never runs the command below
-(changing repository rulesets is out of scope for it); the maintainer applies it
-once, with an account that administers the repository. It creates a tag ruleset
-that blocks deleting or force-moving any `v*` tag and blocks updating one once
-created, with the repository admin role allowed to bypass so the maintainer can
-still cut a release:
+**Operator step -- protect the `v*` tags.** A published release's tag must
+never move or disappear. The release job never applies this; the maintainer runs it once with an account
+that administers the repository. It blocks deleting, force-moving or updating
+any `v*` tag, with the repository admin role allowed to bypass:
 
 ```sh
 gh api \

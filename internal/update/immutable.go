@@ -12,9 +12,7 @@ import (
 // EnvRequireImmutable controls whether a release that is not verified
 // immutable may be installed. Requiring it is the default (fail closed): only
 // the exact value "0" opts out, turning the refusal into a note. Any other
-// value, an empty one included, keeps it required. This is the mirror image of
-// DECK_REQUIRE_ATTESTATION, whose default is the note and whose exact value
-// "1" makes it an abort.
+// value, an empty one included, keeps it required.
 const EnvRequireImmutable = "DECK_REQUIRE_IMMUTABLE"
 
 // immutableOptOut is the one EnvRequireImmutable value that opts out.
@@ -92,7 +90,7 @@ func PlanImmutable(o Options) string {
 }
 
 // releaseImmutability asks the GitHub release API whether tag is an
-// immutable release of DefaultRepo (pinned, like the attestation check). It
+// immutable release of DefaultRepo (the repository is pinned). It
 // never fails: anything short of a well-formed answer is ImmutableUnknown,
 // and the cause is returned beside it for a refusal to quote.
 func (o Options) releaseImmutability(ctx context.Context, base, tag string) (string, error) {

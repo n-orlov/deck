@@ -332,19 +332,6 @@ func updExec(t *testing.T, binary, home, path string, env []string, args ...stri
 	return stdout.String(), stderr.String(), code
 }
 
-// fakeGhVerifies is an authenticated gh whose attestation check passes: a
-// DECK_UPDATE_URL mirror refuses a checksum-only install (#102), so a test
-// that installs from the loopback mirror puts it alone on PATH.
-const fakeGhVerifies = "#!/bin/sh\nexit 0\n"
-
-const fakeGhVerifyFails = `#!/bin/sh
-case "$1 $2" in
-"auth status") exit 0 ;;
-"attestation verify") echo "verification failed: no matching attestation signature" >&2; exit 1 ;;
-esac
-exit 1
-`
-
 // TestUpdateVerbAgainstFakeServer drives the real binary, built with a release
 // version, against a loopback fake release server.
 func TestUpdateVerbAgainstFakeServer(t *testing.T) {
@@ -352,10 +339,6 @@ func TestUpdateVerbAgainstFakeServer(t *testing.T) {
 	v100 := func() string { return bins.build(t, "v1.0.0", "-X main.version=v1.0.0") }
 	v120 := func() string { return bins.build(t, "v1.2.0", "-X main.version="+updLatest) }
 	emptyPath := t.TempDir()
-	verifyingPath := t.TempDir()
-	if err := os.WriteFile(filepath.Join(verifyingPath, "gh"), []byte(fakeGhVerifies), 0o755); err != nil {
-		t.Fatal(err)
-	}
 
 	// place copies the binary into a fresh install directory.
 	place := func(src string) (dir, exe string) {
@@ -372,12 +355,9 @@ func TestUpdateVerbAgainstFakeServer(t *testing.T) {
 		t.Run("install", func(t *testing.T) {
 			dir, exe := place(v100())
 			home := t.TempDir()
-			stdout, stderr, code := updRun(t, exe, home, verifyingPath, []string{url}, "update")
+			stdout, stderr, code := updRun(t, exe, home, emptyPath, []string{url}, "update")
 			if code != 0 {
 				t.Fatalf("exit %d, stderr %q", code, stderr)
-			}
-			if strings.Contains(stdout, "only the checksum was verified") {
-				t.Errorf("stdout %q says checksum-only although gh verified the attestation", stdout)
 			}
 			// A mirror has no release API: the install says so (#104).
 			for _, want := range []string{"v1.0.0", updLatest, "restart", "note: the release is not verified immutable: its immutability could not be checked"} {
@@ -385,26 +365,14 @@ func TestUpdateVerbAgainstFakeServer(t *testing.T) {
 					t.Errorf("stdout %q lacks %q", stdout, want)
 				}
 			}
+			if strings.Contains(stdout, "checksum was verified") {
+				t.Errorf("stdout %q carries a checksum-only note; the checksum is the only check", stdout)
+			}
 			if got, want := updSum(t, exe), func() string { s := sha256.Sum256([]byte(updNewBody(t))); return hex.EncodeToString(s[:]) }(); got != want {
 				t.Errorf("binary sha256 = %s, want the release binary %s", got, want)
 			}
 			if names := updNames(t, dir); len(names) != 1 {
 				t.Errorf("install directory holds %v, want only deck", names)
-			}
-		})
-
-		// #102: a mirror serves both the archive and checksums.txt, so with
-		// no authenticated gh to check the attestation it is refused, as if
-		// DECK_REQUIRE_ATTESTATION=1 were set; nothing is installed.
-		t.Run("mirror without gh is refused", func(t *testing.T) {
-			dir, exe := place(v100())
-			before := updSum(t, exe)
-			_, stderr, code := updRun(t, exe, t.TempDir(), emptyPath, []string{url}, "update")
-			if code != 1 || !strings.Contains(stderr, "the attestation was not checked (no authenticated gh) and the release source is a mirror (DECK_UPDATE_URL), which requires it; nothing was installed") {
-				t.Fatalf("exit %d, stderr %q, want the mirror refusal", code, stderr)
-			}
-			if updSum(t, exe) != before || len(updNames(t, dir)) != 1 {
-				t.Errorf("a refused install changed the install directory: %v", updNames(t, dir))
 			}
 		})
 
@@ -437,7 +405,7 @@ func TestUpdateVerbAgainstFakeServer(t *testing.T) {
 		t.Run("version downgrade", func(t *testing.T) {
 			_, exe := place(v120())
 			home := t.TempDir()
-			stdout, stderr, code := updRun(t, exe, home, verifyingPath, []string{url}, "update", "--version", "v1.0.0")
+			stdout, stderr, code := updRun(t, exe, home, emptyPath, []string{url}, "update", "--version", "v1.0.0")
 			if code != 0 {
 				t.Fatalf("exit %d, stderr %q", code, stderr)
 			}
@@ -488,20 +456,6 @@ func TestUpdateVerbAgainstFakeServer(t *testing.T) {
 			before := updSum(t, exe)
 			_, stderr, code := updRun(t, exe, t.TempDir(), emptyPath, []string{"DECK_UPDATE_URL=" + bad.server.URL}, "update")
 			expect(t, stderr, code, "checksum mismatch")
-			if updSum(t, exe) != before || len(updNames(t, dir)) != 1 {
-				t.Errorf("binary or directory changed: %v", updNames(t, dir))
-			}
-		})
-
-		t.Run("attestation verify failure", func(t *testing.T) {
-			ghDir := t.TempDir()
-			if err := os.WriteFile(filepath.Join(ghDir, "gh"), []byte(fakeGhVerifyFails), 0o755); err != nil {
-				t.Fatal(err)
-			}
-			dir, exe := place(v100())
-			before := updSum(t, exe)
-			_, stderr, code := updRun(t, exe, t.TempDir(), ghDir, []string{goodURL}, "update")
-			expect(t, stderr, code, "attestation verification failed")
 			if updSum(t, exe) != before || len(updNames(t, dir)) != 1 {
 				t.Errorf("binary or directory changed: %v", updNames(t, dir))
 			}
@@ -773,9 +727,9 @@ func TestUpdateVerbStderrStripsControlCharacters(t *testing.T) {
 	}
 }
 
-// TestUpdateNotes: the notes after an install name a checksum-only
-// attestation and each immutability state in deck's own words, and always end
-// with the restart reminder (#104).
+// TestUpdateNotes: the notes after an install name each immutability state in
+// deck's own words, and always end with the restart reminder (#104). None
+// mentions an attestation: releases carry none.
 func TestUpdateNotes(t *testing.T) {
 	const restart = "restart any running deck to use the new version; running sessions are not disturbed"
 	for _, c := range []struct {
@@ -783,12 +737,12 @@ func TestUpdateNotes(t *testing.T) {
 		res  update.Result
 		want []string
 	}{
-		{"attested immutable", update.Result{Attestation: update.AttestationVerified, Immutable: update.ImmutableVerified},
+		{"immutable", update.Result{Immutable: update.ImmutableVerified},
 			[]string{"the release is a GitHub immutable release", restart}},
-		{"attested not immutable", update.Result{Attestation: update.AttestationVerified, Immutable: update.ImmutableNot},
+		{"not immutable", update.Result{Immutable: update.ImmutableNot},
 			[]string{"the release is not verified immutable: GitHub reports it is not an immutable release (installed because DECK_REQUIRE_IMMUTABLE=0 is set)", restart}},
-		{"checksum-only unknown", update.Result{Attestation: update.AttestationSkipped, Immutable: update.ImmutableUnknown},
-			[]string{"only the checksum was verified; the build attestation could not be checked", "the release is not verified immutable: its immutability could not be checked (installed because DECK_REQUIRE_IMMUTABLE=0 is set)", restart}},
+		{"unknown", update.Result{Immutable: update.ImmutableUnknown},
+			[]string{"the release is not verified immutable: its immutability could not be checked (installed because DECK_REQUIRE_IMMUTABLE=0 is set)", restart}},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			if got := updateNotes(c.res); !reflect.DeepEqual(got, c.want) {
@@ -807,7 +761,7 @@ func TestReportUpdateInstall(t *testing.T) {
 		t.Errorf("unchanged output = %q, want %q", unchanged.String(), want)
 	}
 	var installed bytes.Buffer
-	reportUpdateInstall(update.Result{Tag: "v1.2.0", Path: "/bin/deck", Attestation: update.AttestationVerified, Immutable: update.ImmutableVerified}, "v1.0.0", &installed)
+	reportUpdateInstall(update.Result{Tag: "v1.2.0", Path: "/bin/deck", Immutable: update.ImmutableVerified}, "v1.0.0", &installed)
 	want := "deck updated: v1.0.0 -> v1.2.0 (/bin/deck)\nnote: the release is a GitHub immutable release\nnote: restart any running deck to use the new version; running sessions are not disturbed\n"
 	if installed.String() != want {
 		t.Errorf("installed output = %q, want %q", installed.String(), want)

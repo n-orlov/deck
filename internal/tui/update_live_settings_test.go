@@ -30,7 +30,6 @@ func newLiveUpdateRig(t *testing.T, config string) *liveUpdateRig {
 	srv := newAutoServer(t, false)
 	exe, _ := autoBinary(t)
 	t.Setenv("DECK_UPDATE_URL", srv.URL)
-	verifyingGhPath(t) // a mirror requires the attestation (#102)
 	t.Setenv("DECK_UPDATE_CHECK", "")
 	t.Setenv("DECK_AUTO_UPDATE", "")
 	_ = os.Unsetenv("DECK_UPDATE_CHECK")

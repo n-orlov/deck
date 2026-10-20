@@ -107,14 +107,11 @@ func reportUpdateInstall(res update.Result, old string, stdout io.Writer) {
 	}
 }
 
-// updateNotes are the notes printed after an install: what was not verified,
-// then the restart reminder. Each is deck's own wording, chosen from a
+// updateNotes are the notes printed after an install: the release's
+// immutability, then the restart reminder. Each is deck's own wording, chosen from a
 // Result state; no server text reaches them.
 func updateNotes(res update.Result) []string {
 	var notes []string
-	if res.Attestation == update.AttestationSkipped {
-		notes = append(notes, "only the checksum was verified; the build attestation could not be checked")
-	}
 	switch res.Immutable {
 	case update.ImmutableVerified:
 		notes = append(notes, "the release is a GitHub immutable release")
