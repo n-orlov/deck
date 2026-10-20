@@ -340,7 +340,7 @@ func (c *OutputClock) observeNewBucket(ctx context.Context, store OutputStore, s
 	if err != nil {
 		return false, err
 	}
-	resized := after.known() && size.known() && after != size
+	resized := sizeFlipped(size, after)
 	reading, same := pickReading(readings, previous)
 	discounted := c.discounted(sessionID, windowActivity)
 	changed := seen && !same && !discounted && !resized
@@ -349,6 +349,23 @@ func (c *OutputClock) observeNewBucket(ctx context.Context, store OutputStore, s
 			return false, fmt.Errorf("record output for session %q: %w", sessionID, err)
 		}
 	}
+	next := newBucketState(previous, reading, windowActivity, width, size, changed, resized)
+	c.mu.Lock()
+	c.state[sessionID] = next
+	c.mu.Unlock()
+	return changed, nil
+}
+
+// sizeFlipped reports whether the size read after a capture differs from the
+// one read before it, both known: the capture may mix two layouts.
+func sizeFlipped(before, after PaneSize) bool {
+	return after.known() && before.known() && after != before
+}
+
+// newBucketState is the reading observeNewBucket keeps: the new hash at the
+// new activity, a counted change marked (countBucket), and a size that
+// flipped mid-capture stored as unknown so the next tick re-captures.
+func newBucketState(previous outputState, reading transcriptReading, windowActivity int64, width time.Duration, size PaneSize, changed, resized bool) outputState {
 	next := outputState{activity: windowActivity, hash: reading.region, composer: reading.composer, size: size, countedAt: previous.countedAt, streak: previous.streak}
 	if changed {
 		next.countBucket(previous, width)
@@ -356,10 +373,7 @@ func (c *OutputClock) observeNewBucket(ctx context.Context, store OutputStore, s
 	if resized {
 		next.size = PaneSize{}
 	}
-	c.mu.Lock()
-	c.state[sessionID] = next
-	c.mu.Unlock()
-	return changed, nil
+	return next
 }
 
 // bucketOf is the bucket window_activity (Unix seconds) falls in at the
