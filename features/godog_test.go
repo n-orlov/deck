@@ -161,6 +161,7 @@ func initializeScenario(sc *godog.ScenarioContext) {
 	registerCrashStatusSteps(sc)
 	registerAttentionSortSteps(sc)
 	registerSortOrderSteps(sc)
+	registerActivityResizeInertSteps(sc)
 	registerNewSessionSelectionSteps(sc)
 	registerStatusRecoverySteps(sc)
 	registerTerminalRepairFieldRouteSteps(sc)
