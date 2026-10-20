@@ -1081,8 +1081,8 @@ Rules:
   `starting`, `waiting`, `idle`, `error` or `stopped` row.
 - **Movement fallback (R316).** An `idle` row whose transcript region (§4, the `last_output_at` clock) changed in
   **two consecutive output buckets** becomes `running` (source `movement`, reason `output movement`); a
-  counted bucket is one the clock wrote `last_output_at` for, so footer-only churn and deck-caused output
-  (R305) never count, and one counted bucket alone, or two with a quiet bucket between them, enters nothing.
+  counted bucket is one the clock wrote `last_output_at` for, so footer-only churn, deck-caused output
+  (R305) and a size-change reflow (R409: a resize from any source re-baselines the reading) never count, and one counted bucket alone, or two with a quiet bucket between them, enters nothing.
   It leaves with **one quiet bucket**: once the bucket after the newest counted one has passed without a
   counted write, a `running` row the fallback itself set returns to `idle`. It never ends a `running` row
   any other source set, and only moves `idle` to `running` and back. Pi has no hook verdict to defer to and

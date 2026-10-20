@@ -53,6 +53,15 @@ type sizeRig struct {
 
 func newSizeRig(t *testing.T) *sizeRig {
 	t.Helper()
+	return newSizeRigAt(t, 0)
+}
+
+// newSizeRigAt is newSizeRig whose session row's status was set statusAge
+// before the fixed clock's now. A hook verdict older than the probe window
+// (one hour here) is no longer fresh hook evidence, so the movement fallback
+// may write `running`.
+func newSizeRigAt(t *testing.T, statusAge time.Duration) *sizeRig {
+	t.Helper()
 	home := t.TempDir()
 	clock, err := config.NewClock("2025-01-02T03:04:05Z", "")
 	if err != nil {
@@ -68,9 +77,10 @@ func newSizeRig(t *testing.T) *sizeRig {
 	if err != nil {
 		t.Fatal(err)
 	}
+	statusAt := clock.Now().Add(-statusAge).UnixMilli()
 	session, err := db.CreateSession(context.Background(), store.CreateSessionInput{
 		ID: "00000000-0000-4000-8000-0000000000d1", Name: "sized", CWD: t.TempDir(), Agent: "claude",
-		CapturedPath: "/bin", Status: "idle", StatusSource: "hook", StatusAt: clock.Now().UnixMilli(), CreatedAt: 1,
+		CapturedPath: "/bin", Status: "idle", StatusSource: "hook", StatusAt: statusAt, CreatedAt: 1,
 	})
 	if err != nil {
 		t.Fatal(err)
