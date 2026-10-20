@@ -267,29 +267,18 @@ func (s Service) observeOutput(ctx context.Context, session store.Session, obser
 func (s Service) observePaneOutput(ctx context.Context, session store.Session, pane tmux.Pane) error {
 	size := PaneSize{Width: pane.Width, Height: pane.Height}
 	_, err := s.Output.ObserveSized(ctx, s.Store, session.ID, pane.WindowActivity, size, func(ctx context.Context) (string, PaneSize, error) {
-		captured, err := s.TMux.CapturePane(ctx, pane.ID, tmux.CaptureOptions{StartLine: "-200", EndLine: "-"})
+		// The size after the capture rides in the capture's own tmux process
+		// (R409), so the read costs no extra spawn (R185).
+		captured, width, height, err := s.TMux.CapturePaneSized(ctx, pane.ID, tmux.CaptureOptions{StartLine: "-200", EndLine: "-"})
 		if err != nil {
 			return "", PaneSize{}, err
 		}
-		return string(captured), s.paneSizeNow(ctx, session), nil
+		return string(captured), PaneSize{Width: width, Height: height}, nil
 	})
 	if err != nil && tmux.IsTargetAbsent(err) {
 		return nil
 	}
 	return err
-}
-
-// paneSizeNow re-reads the session's pane size just after a capture (R409);
-// the zero PaneSize when the pane cannot be read, which makes no claim.
-func (s Service) paneSizeNow(ctx context.Context, session store.Session) PaneSize {
-	if session.Slug == "" {
-		return PaneSize{}
-	}
-	pane, ok, err := s.TMux.PreviewPane(ctx, session.Slug)
-	if err != nil || !ok {
-		return PaneSize{}
-	}
-	return PaneSize{Width: pane.Width, Height: pane.Height}
 }
 
 // ObserveAttachedOutput feeds the output clock for one session outside a

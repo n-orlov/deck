@@ -1489,7 +1489,8 @@ height (`pane_width` × `pane_height`), taken from the same pane facts the recon
 whose size differs from its stored reading's is re-captured on that tick, whether or not its bucket
 advanced; the new reading becomes the baseline and nothing is counted: no `last_output_at` write and no
 movement-fallback counted bucket. If the size read just before the capture differs from the size read just
-after it, the reading is a baseline too, never a count, and the next tick at the settled size captures
+after it (a `display-message` chained into the capture's own tmux process, so the read spawns nothing
+extra), the reading is a baseline too, never a count, and the next tick at the settled size captures
 again. A transcript change at an unchanged size counts as described above. A resize reflows the transcript
 and is never output, whatever its source: deck's own, another process's, a real tmux client's or a
 terminal's. The size key does not depend on the discount window (the R305 paragraph below), which only

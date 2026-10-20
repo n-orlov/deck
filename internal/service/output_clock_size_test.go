@@ -42,7 +42,9 @@ func claudePane(width int, footer string) string {
 // sizeRig drives ReconcileWithProbes against a scripted tmux whose
 // list-panes reports the size in ./size and the activity in ./activity, whose
 // capture-pane prints ./pane and, when ./size_after exists, then moves it over
-// ./size: a resize landing between the facts read and the capture.
+// ./size: a resize landing between the facts read and the capture. Like real
+// tmux answering CapturePaneSized's chained display-message, the capture's
+// output ends with the size the pane has after it.
 type sizeRig struct {
 	t    *testing.T
 	home string
@@ -92,6 +94,7 @@ for arg in "$@"; do
 	list-panes) printf 'deck_@SLUG@|%%1|4242|0|||%s|%s\n' "$(cat '@DIR@/size')" "$(cat '@DIR@/activity')"; exit 0 ;;
 	capture-pane) echo x >> '@DIR@/captures'; cat '@DIR@/pane'
 		if [ -f '@DIR@/size_after' ]; then mv '@DIR@/size_after' '@DIR@/size'; fi
+		printf 'deck-pane-size:%s\n' "$(tr '|' 'x' < '@DIR@/size')"
 		exit 0 ;;
 	esac
 done

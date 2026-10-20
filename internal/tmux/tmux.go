@@ -511,6 +511,19 @@ func SeedCaptureOptionsWithHistory(historyLines int) CaptureOptions {
 // explicit and allows the same primitive to serve bounded crash tails and
 // escape-preserving replay.
 func (c Client) CapturePane(ctx context.Context, paneID string, options CaptureOptions) ([]byte, error) {
+	args, err := c.capturePaneArgs(paneID, options)
+	if err != nil {
+		return nil, err
+	}
+	output, err := c.run(ctx, args...)
+	if err != nil {
+		return nil, fmt.Errorf("capture pane %q: %w", paneID, err)
+	}
+	return output, nil
+}
+
+// capturePaneArgs validates a capture and returns its capture-pane argv.
+func (c Client) capturePaneArgs(paneID string, options CaptureOptions) ([]string, error) {
 	if c.Socket == "" {
 		return nil, errors.New("tmux socket name is required")
 	}
@@ -530,12 +543,51 @@ func (c Client) CapturePane(ctx context.Context, paneID string, options CaptureO
 	if options.PreserveTrailingBlankLines {
 		args = append(args, "-N")
 	}
-	args = append(args, "-S", options.StartLine, "-E", options.EndLine, "-t", paneID)
+	return append(args, "-S", options.StartLine, "-E", options.EndLine, "-t", paneID), nil
+}
+
+// paneSizeLinePrefix marks the size line CapturePaneSized chains after the
+// capture's body.
+const paneSizeLinePrefix = "deck-pane-size:"
+
+// CapturePaneSized is CapturePane plus the pane's size as tmux reports it
+// just after the capture, read by a display-message chained into the SAME
+// tmux process: the output clock (R409) learns whether the pane was resized
+// while it was read without spawning a second tmux (R185's per-tick spawn
+// budget). The body is byte-identical to CapturePane's. Width and height are
+// 0 when no size line came back, which claims nothing about the size.
+func (c Client) CapturePaneSized(ctx context.Context, paneID string, options CaptureOptions) (body []byte, width, height int, err error) {
+	args, err := c.capturePaneArgs(paneID, options)
+	if err != nil {
+		return nil, 0, 0, err
+	}
+	args = append(args, ";", "display-message", "-p", "-t", paneID, paneSizeLinePrefix+"#{pane_width}x#{pane_height}")
 	output, err := c.run(ctx, args...)
 	if err != nil {
-		return nil, fmt.Errorf("capture pane %q: %w", paneID, err)
+		return nil, 0, 0, fmt.Errorf("capture pane %q: %w", paneID, err)
 	}
-	return output, nil
+	body, width, height = splitPaneSizeLine(output)
+	return body, width, height, nil
+}
+
+// splitPaneSizeLine splits CapturePaneSized's output into the capture's body
+// and the size its last line reports. Output whose last line is not a size
+// line is all body, with no size.
+func splitPaneSizeLine(output []byte) (body []byte, width, height int) {
+	trimmed := bytes.TrimSuffix(output, []byte("\n"))
+	cut := bytes.LastIndexByte(trimmed, '\n')
+	last := string(trimmed[cut+1:])
+	size, ok := strings.CutPrefix(last, paneSizeLinePrefix)
+	if !ok {
+		return output, 0, 0
+	}
+	w, h, ok := strings.Cut(size, "x")
+	width, wErr := strconv.Atoi(w)
+	height, hErr := strconv.Atoi(h)
+	if !ok || wErr != nil || hErr != nil || width <= 0 || height <= 0 {
+		return output, 0, 0
+	}
+	return output[:cut+1], width, height
 }
 
 // PreviewCapture is one point-in-time, read-only snapshot of a session's
