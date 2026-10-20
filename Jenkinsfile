@@ -171,7 +171,7 @@ pipeline {
             testsBadge.setStatus(ok ? c.pass + ' passed' : c.fail + ' failed')
             testsBadge.setColor(ok ? 'brightgreen' : 'red')
             if (c.coverage) {
-              def pct = Double.parseDouble(c.coverage.replace('%', ''))
+              def pct = c.coverage.replace('%', '').toDouble()
               coverageBadge.setStatus(c.coverage)
               coverageBadge.setColor(pct >= 80 ? 'brightgreen' : pct >= 60 ? 'yellow' : 'red')
             }
