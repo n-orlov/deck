@@ -7,6 +7,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
+	"math/big"
 	"os"
 	"path/filepath"
 	"slices"
@@ -36,6 +38,13 @@ const (
 	// DefaultNoteTimeout is how long a transient footer note stays up when
 	// neither config.toml's [ui] note_timeout nor DECK_NOTE_TIMEOUT sets it.
 	DefaultNoteTimeout = 10 * time.Second
+
+	// DefaultOutputBucket is the width of one output-clock bucket when neither
+	// config.toml's [ui] output_bucket nor DECK_OUTPUT_BUCKET sets it (R306).
+	DefaultOutputBucket = 10 * time.Second
+
+	// MinOutputBucket is the smallest [ui] output_bucket (R306).
+	MinOutputBucket = time.Second
 	// DefaultProfile is the flat, unnamed layout and socket "deck" (SPEC
 	// §3.4): the profile `deck`/`deck default`/an unset DECK_PROFILE all
 	// resolve to, byte-for-byte, with no migration and profiles/default/
@@ -188,6 +197,11 @@ type Settings struct {
 	// \u00a711): how long a transient footer note stays up before it clears
 	// on its own. DECK_NOTE_TIMEOUT (whole seconds) overrides the file.
 	NoteTimeout time.Duration
+	// OutputBucket mirrors config.toml's [ui] output_bucket key (R306, SPEC
+	// §6, §11): the width of one last_output_at bucket, which the output clock
+	// writes at and the activity sort orders by. DECK_OUTPUT_BUCKET (whole
+	// seconds) overrides the file.
+	OutputBucket time.Duration
 	// EventHookEvents mirrors event_hook_events (SPEC §10.2): the offered
 	// kinds the hook fires for by default. Defaults to waiting, error, ended.
 	EventHookEvents []string
@@ -460,6 +474,7 @@ func applyFileConfig(settings *Settings, fileCfg FileConfig) {
 	settings.UpdateCheck = fileCfg.UpdateCheck
 	settings.AutoUpdate = fileCfg.AutoUpdate
 	settings.NoteTimeout = fileCfg.NoteTimeout
+	settings.OutputBucket = fileCfg.OutputBucket
 	settings.EventHookEvents = slices.Clone(fileCfg.EventHookEvents)
 	settings.EventHookTimeout = fileCfg.EventHookTimeout
 	settings.SortOrder = fileCfg.SortOrder
@@ -546,6 +561,7 @@ var envOverrideSteps = []envOverrideStep{
 	interactiveIntervalOverride,
 	interactiveTransportOverride,
 	noteTimeoutOverride,
+	outputBucketOverride,
 }
 
 func noteTimeoutOverride(getenv func(string) string, settings *Settings, overrides map[string]string) error {
@@ -559,6 +575,20 @@ func noteTimeoutOverride(getenv func(string) string, settings *Settings, overrid
 	}
 	settings.NoteTimeout = time.Duration(value) * time.Second
 	overrides["ui.note_timeout"] = "DECK_NOTE_TIMEOUT"
+	return nil
+}
+
+func outputBucketOverride(getenv func(string) string, settings *Settings, overrides map[string]string) error {
+	raw := getenv("DECK_OUTPUT_BUCKET")
+	if raw == "" {
+		return nil
+	}
+	value, err := strconv.Atoi(raw)
+	if err != nil || value <= 0 {
+		return fmt.Errorf("DECK_OUTPUT_BUCKET must be a positive integer in seconds")
+	}
+	settings.OutputBucket = time.Duration(value) * time.Second
+	overrides["ui.output_bucket"] = "DECK_OUTPUT_BUCKET"
 	return nil
 }
 
@@ -632,6 +662,14 @@ func HistoryFile(home, sessionID string) string {
 
 // UpdateCacheName is the file name of the shared update-check cache.
 const UpdateCacheName = "update-check.json"
+
+// UpdateCachePath is the shared update-check cache file for the environment,
+// the same for every profile. It does not read the config file, so a broken
+// config cannot hide where the update cache lives.
+func UpdateCachePath(getenv func(string) string, userHome func() (string, error)) (string, error) {
+	paths, err := resolvePaths(getenv, userHome, DefaultProfile)
+	return paths.UpdateCache, err
+}
 
 // resolvePaths resolves Paths for the given (already-resolved) profile
 // name: the default profile is the flat layout unchanged, byte-for-byte;
@@ -1083,3 +1121,34 @@ func (g *IDGenerator) UUID() (string, error) {
 // update_check is on, or auto_update is on (auto_update implies the check,
 // SPEC §6.5). It is the one place that rule lives.
 func (s Settings) UpdateCheckEnabled() bool { return s.UpdateCheck || s.AutoUpdate }
+
+// OutputBucketIndex is the output-clock bucket a Unix-millisecond instant
+// falls in for a bucket of the given width (R304, R306). The output clock
+// (which receives tmux's whole-second window_activity), the activity sort
+// (which reads last_output_at, written as that second in milliseconds) and
+// every other reader share it, so they agree on every bucket boundary for a
+// whole-second or a fractional width alike. The division is floor(instant /
+// width) in exact nanoseconds, so a width with a sub-millisecond fraction
+// (2.000000001s) keeps every boundary where the configured duration puts it;
+// past the int64 nanosecond range it falls back to big.Int, so it never
+// overflows. A width under MinOutputBucket means the minimum, never a
+// division by zero.
+func OutputBucketIndex(unixMillis int64, width time.Duration) int64 {
+	if width < MinOutputBucket {
+		width = MinOutputBucket
+	}
+	nanosPerMilli := int64(time.Millisecond)
+	divisor := int64(width)
+	if limit := int64(math.MaxInt64) / nanosPerMilli; unixMillis >= -limit && unixMillis <= limit {
+		nanos := unixMillis * nanosPerMilli
+		index := nanos / divisor
+		if nanos%divisor != 0 && nanos < 0 {
+			index--
+		}
+		return index
+	}
+	// Past the year 2262 the nanosecond instant leaves int64; big.Int's
+	// Euclidean division equals floor division for a positive divisor.
+	nanos := new(big.Int).Mul(big.NewInt(unixMillis), big.NewInt(nanosPerMilli))
+	return new(big.Int).Div(nanos, big.NewInt(divisor)).Int64()
+}

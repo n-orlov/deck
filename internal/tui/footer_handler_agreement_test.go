@@ -104,7 +104,7 @@ func buildFooterAgreementModel(selected store.Session, extra []store.Session, ma
 		rec.unarchiveCalled = true
 		return store.Session{}, nil
 	}
-	m.acknowledge = func(context.Context, string) error {
+	m.acknowledge = func(context.Context, string, store.StatusEpisode) error {
 		rec.acknowledgeCalled = true
 		return nil
 	}
@@ -161,7 +161,7 @@ func footerAgreementRowClasses() []footerAgreementRowClass {
 			name: "attention-pending",
 			build: func() (Model, *footerAgreementRecorder) {
 				return buildFooterAgreementModel(
-					store.Session{ID: "s1", Name: "alpha", Slug: "alpha", Agent: "claude", Status: "waiting", Acknowledged: false}, nil, nil)
+					store.Session{ID: "s1", Name: "alpha", Slug: "alpha", Agent: "claude", Status: "waiting", StatusAt: 100}, nil, nil)
 			},
 		},
 		{

@@ -53,6 +53,7 @@ type FileConfig struct {
 	EventHookEvents      []string
 	EventHookTimeout     time.Duration
 	NoteTimeout          time.Duration
+	OutputBucket         time.Duration
 	Env                  map[string]string
 }
 
@@ -179,6 +180,10 @@ func seedDefault(cfg *FileConfig, field Field) {
 		value, _ := field.Default.(int)
 		set(cfg, value)
 	}
+	if set := durationSetters[key]; set != nil {
+		value, _ := field.Default.(int)
+		set(cfg, time.Duration(value)*time.Second)
+	}
 	if set := stringSetters[key]; set != nil {
 		value, _ := field.Default.(string)
 		set(cfg, value)
@@ -221,6 +226,14 @@ var integerSetters = map[string]func(*FileConfig, int){
 	"ui.note_timeout":      func(c *FileConfig, v int) { c.NoteTimeout = time.Duration(v) * time.Second },
 	"event_retention_days": func(c *FileConfig, v int) { c.EventRetentionDays = v },
 	"event_hook_timeout":   func(c *FileConfig, v int) { c.EventHookTimeout = time.Duration(v) * time.Second },
+}
+
+// durationSetters are the integer fields whose value keeps its exact
+// duration instead of truncating to whole seconds: a quoted "1500ms" or
+// "1.5s" stays 1.5 s (R306). seedDefault and the reader go through here for
+// them before the whole-second integerSetters.
+var durationSetters = map[string]func(*FileConfig, time.Duration){
+	"ui.output_bucket": func(c *FileConfig, v time.Duration) { c.OutputBucket = v },
 }
 
 var stringSetters = map[string]func(*FileConfig, string){
@@ -273,6 +286,14 @@ func setToggleField(cfg *FileConfig, field Field, raw, path string, line int) er
 // setIntegerField parses raw against the field's bounds and writes it
 // through the integer setter table.
 func setIntegerField(cfg *FileConfig, field Field, raw, path string, line int) error {
+	if set := durationSetters[field.FullKey()]; set != nil {
+		duration, err := parseDurationValue(field, raw)
+		if err != nil {
+			return fmt.Errorf("%s:%d: %w", path, line, err)
+		}
+		set(cfg, duration)
+		return nil
+	}
 	value, err := parseIntegerValue(field, raw)
 	if err != nil {
 		return fmt.Errorf("%s:%d: %w", path, line, err)
@@ -395,6 +416,46 @@ func parseIntegerValue(field Field, raw string) (int, error) {
 		return 0, fmt.Errorf("%s must be at most %d, got %d", field.FullKey(), *field.IntBounds.Max, value)
 	}
 	return value, nil
+}
+
+// parseDurationValue reads raw like parseIntegerValue (a bare whole number of
+// seconds, or a quoted Go duration) but keeps the exact duration: a fractional
+// second is neither truncated nor rounded. The bounds are the field's
+// IntBounds in seconds, and a duration below the minimum is an error, never
+// coerced up to it.
+func parseDurationValue(field Field, raw string) (time.Duration, error) {
+	var duration time.Duration
+	if strings.HasPrefix(raw, "\"") {
+		text, err := unquoteString(raw)
+		if err != nil {
+			return 0, fmt.Errorf("%s must be seconds or a duration, got %q", field.FullKey(), raw)
+		}
+		if duration, err = time.ParseDuration(text); err != nil {
+			return 0, fmt.Errorf("%s must be seconds or a duration, got %q", field.FullKey(), raw)
+		}
+	} else {
+		seconds, err := strconv.Atoi(raw)
+		if err != nil {
+			return 0, fmt.Errorf("%s must be seconds or a duration, got %q", field.FullKey(), raw)
+		}
+		duration = time.Duration(seconds) * time.Second
+	}
+	if duration < time.Duration(field.IntBounds.Min)*time.Second {
+		return 0, fmt.Errorf("%s must be at least %d, got %s", field.FullKey(), field.IntBounds.Min, durationText(duration))
+	}
+	if field.IntBounds.Max != nil && duration > time.Duration(*field.IntBounds.Max)*time.Second {
+		return 0, fmt.Errorf("%s must be at most %d, got %s", field.FullKey(), *field.IntBounds.Max, durationText(duration))
+	}
+	return duration, nil
+}
+
+// durationText renders a whole number of seconds bare and anything else as a
+// Go duration.
+func durationText(d time.Duration) string {
+	if d%time.Second == 0 {
+		return strconv.FormatInt(int64(d/time.Second), 10)
+	}
+	return d.String()
 }
 
 // parseIntegerLiteral reads raw as a bare integer or, for a seconds field,

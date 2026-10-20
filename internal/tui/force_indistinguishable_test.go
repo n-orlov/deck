@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"strconv"
 	"strings"
@@ -143,8 +144,7 @@ func paneSizeForTest(t *testing.T, socket, paneID string) (width, height int) {
 // ladder produces -- the fitted window size, the claim option's own
 // `<tag>:<pid>` shape, the resize-window count the entry's own
 // Client.FitWindowToPane reported (counted off the wire, since
-// enterInteractiveBody discards the return value), and exactly one
-// prepareAttach call each (SPEC §7). Both entries go through the real
+// enterInteractiveBody discards the return value). Both entries go through the real
 // bare-key switch in tui.go -- `key("enter")` and `key("F")` -- so the
 // binding itself is part of what is proved, and both counts come from
 // the fit the real entry performed: delete the fit from
@@ -197,11 +197,6 @@ func TestForceOnUncontendedWindowMatchesReturnKey(t *testing.T) {
 	m.tmuxClient = enterClient
 	m.sessions = []store.Session{{ID: "sess-indist-enter", Name: "indistkey", Slug: "indistkey", Status: "waiting"}}
 	m.selected = rowCursor(0)
-	var enterRecorded []string
-	m.prepareAttach = func(_ context.Context, id string) error {
-		enterRecorded = append(enterRecorded, id)
-		return nil
-	}
 	truncateWireLog(t, enterLog)
 	enterGot := pressWithoutRunningCmd(m, "enter")
 	enterResizes := countWireCommands(t, enterLog, "resize-window")
@@ -210,9 +205,6 @@ func TestForceOnUncontendedWindowMatchesReturnKey(t *testing.T) {
 	}
 	if !enterGot.interactive {
 		t.Fatalf("↵ entry did not enter interactive mode")
-	}
-	if len(enterRecorded) != 1 || enterRecorded[0] != "sess-indist-enter" {
-		t.Fatalf("↵ entry's prepareAttach calls = %v, want exactly one with the durable row's ID %q", enterRecorded, "sess-indist-enter")
 	}
 	enterOption, ok := readWindowOwnershipOptionForTest(t, enterSocket, enterTarget)
 	if !ok {
@@ -232,11 +224,6 @@ func TestForceOnUncontendedWindowMatchesReturnKey(t *testing.T) {
 	m2.tmuxClient = forceClient
 	m2.sessions = []store.Session{{ID: "sess-indist-force", Name: "indistforce", Slug: "indistforce", Status: "waiting"}}
 	m2.selected = rowCursor(0)
-	var forceRecorded []string
-	m2.prepareAttach = func(_ context.Context, id string) error {
-		forceRecorded = append(forceRecorded, id)
-		return nil
-	}
 	truncateWireLog(t, forceLog)
 	forceGot := pressWithoutRunningCmd(m2, "F")
 	forceResizes := countWireCommands(t, forceLog, "resize-window")
@@ -245,9 +232,6 @@ func TestForceOnUncontendedWindowMatchesReturnKey(t *testing.T) {
 	}
 	if !forceGot.interactive {
 		t.Fatalf("F entry did not enter interactive mode")
-	}
-	if len(forceRecorded) != 1 || forceRecorded[0] != "sess-indist-force" {
-		t.Fatalf("F entry's prepareAttach calls = %v, want exactly one with the durable row's ID %q", forceRecorded, "sess-indist-force")
 	}
 	forceOption, ok := readWindowOwnershipOptionForTest(t, forceSocket, forceTarget)
 	if !ok {
@@ -287,7 +271,7 @@ func TestForceOnUncontendedWindowMatchesReturnKey(t *testing.T) {
 	}
 }
 
-// TestRefusedForceRecordsNoPrepareAttach proves the other half of task
+// TestRefusedForceWritesNothing proves the other half of task
 // 108, and it too presses the real `F` key rather than calling
 // enterInteractiveBody directly.
 //
@@ -307,7 +291,7 @@ func TestForceOnUncontendedWindowMatchesReturnKey(t *testing.T) {
 // TestForceClaimWindowOwnershipConfirmReadLosesToACompetingWriter, and
 // fails only if no round out of a generous budget ever produces that
 // interleaving.
-func TestRefusedForceRecordsNoPrepareAttach(t *testing.T) {
+func TestRefusedForceWritesNothing(t *testing.T) {
 	socket := selectionTestSocket("indistrefuse")
 	newQuietSelectionPane(t, socket, "deck_indistrefuse", 80, 24)
 	client := tmux.Client{Socket: socket}
@@ -316,18 +300,17 @@ func TestRefusedForceRecordsNoPrepareAttach(t *testing.T) {
 		t.Fatalf("SessionName: %v", err)
 	}
 
+	db := openInertStore(t)
+	seedInertRow(t, db, "sess-indist-refuse", "waiting", 1)
+	before := snapshotDurable(t, db, "sess-indist-refuse")
+
 	const maxRounds = 100
 	for round := 0; round < maxRounds; round++ {
-		m := New(nil, config.Settings{Color: true}, "")
+		m := New(db, config.Settings{Color: true}, "")
 		m.width, m.height = 100, 30
 		m.tmuxClient = client
 		m.sessions = []store.Session{{ID: "sess-indist-refuse", Name: "indistrefuse", Slug: "indistrefuse", Status: "waiting"}}
 		m.selected = rowCursor(0)
-		var recorded []string
-		m.prepareAttach = func(_ context.Context, id string) error {
-			recorded = append(recorded, id)
-			return nil
-		}
 
 		stop := make(chan struct{})
 		done := make(chan struct{})
@@ -361,8 +344,8 @@ func TestRefusedForceRecordsNoPrepareAttach(t *testing.T) {
 			// try another round.
 			continue
 		}
-		if len(recorded) != 0 {
-			t.Fatalf("round %d: refused force recorded %d prepareAttach call(s), want 0: %v", round, len(recorded), recorded)
+		if after := snapshotDurable(t, db, "sess-indist-refuse"); !reflect.DeepEqual(after, before) {
+			t.Fatalf("round %d: refused force wrote durable state: before=%+v after=%+v", round, before, after)
 		}
 		return
 	}

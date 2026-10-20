@@ -55,7 +55,7 @@ func TestReceiveCodexFiveEvents(t *testing.T) {
 		wantStatus string
 		wantReason string
 	}{
-		{name: "SessionStart", payload: codexSessionStartPayload, wantStatus: "running", wantReason: "startup"},
+		{name: "SessionStart", payload: codexSessionStartPayload, wantStatus: "idle", wantReason: "startup"},
 		{name: "UserPromptSubmit", payload: codexUserPromptSubmitPayload, wantStatus: "running", wantReason: ""},
 		{name: "PermissionRequest Bash", payload: codexPermissionRequestBashPayload, wantStatus: "waiting", wantReason: "Bash"},
 		{name: "PermissionRequest apply_patch", payload: codexPermissionRequestApplyPatchPayload, wantStatus: "waiting", wantReason: "apply_patch"},
@@ -172,8 +172,8 @@ func TestReceiveCodexSessionStartAdoptsTheRowsConversationID(t *testing.T) {
 	if row.ConversationID != codexConversationID {
 		t.Fatalf("conversation_id = %q, want %q", row.ConversationID, codexConversationID)
 	}
-	if row.Status != "running" || row.StatusSource != "hook" {
-		t.Fatalf("row = %#v, want running/hook", row)
+	if row.Status != "idle" || row.StatusSource != "hook" {
+		t.Fatalf("row = %#v, want idle/hook (R307)", row)
 	}
 }
 

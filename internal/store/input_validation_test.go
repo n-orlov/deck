@@ -29,9 +29,7 @@ func TestMutatorsRejectMissingIdentityOrTimestamp(t *testing.T) {
 		call func(s *Store) error
 		want string
 	}{
-		{"attachment without id", func(s *Store) error { return s.RecordAttachment(ctx, "", at) }, "session id is required"},
-		{"attachment without timestamp", func(s *Store) error { return s.RecordAttachment(ctx, id, 0) }, "attachment timestamp is required"},
-		{"acknowledge without id", func(s *Store) error { return s.AcknowledgeSession(ctx, "") }, "session id is required"},
+		{"acknowledge without id", func(s *Store) error { return s.AcknowledgeSession(ctx, "", StatusEpisode{}) }, "session id is required"},
 		{"note without id", func(s *Store) error { return s.RecordSessionNote(ctx, "", "r", at) }, "session id is required"},
 		{"note without timestamp", func(s *Store) error { return s.RecordSessionNote(ctx, id, "r", 0) }, "event timestamp is required"},
 		{"transcript without id", func(s *Store) error { return s.RecordTranscript(ctx, "", "/t", at) }, "session id and transcript path are required"},

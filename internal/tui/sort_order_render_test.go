@@ -97,12 +97,19 @@ func TestSessionsLoadedRendersConfiguredOrder(t *testing.T) {
 		want  []string
 	}{
 		{SortOrderCreated, []string{"b", "c", "a"}},  // CreatedAt desc: 300,200,100
-		{SortOrderActivity, []string{"b", "c", "a"}}, // StatusAt desc: 300,200,100
+		{SortOrderActivity, []string{"b", "c", "a"}}, // last_output_at desc: 300,200,100
 		{SortOrderName, []string{"b", "c", "a"}},     // case-insensitive asc: alpha,Bravo,Charlie
+	}
+	// R306: the activity order reads last_output_at, so give the rows output
+	// in the same a<c<b sequence their CreatedAt/StatusAt already have.
+	withOutput := make([]store.Session, len(sessions))
+	copy(withOutput, sessions)
+	for i := range withOutput {
+		withOutput[i].LastOutputAt = withOutput[i].StatusAt * 1000
 	}
 	for _, c := range cases {
 		model := New(nil, config.Settings{SortOrder: c.order}, "")
-		updated, _ := model.Update(sessionsLoaded{sessions: sessions})
+		updated, _ := model.Update(sessionsLoaded{sessions: withOutput})
 		got := updated.(Model)
 		if gotIDs := idsOf(got.sessions); !equalStrings(gotIDs, c.want) {
 			t.Errorf("order %q: rendered ids = %v, want %v", c.order, gotIDs, c.want)

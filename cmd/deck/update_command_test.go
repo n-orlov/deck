@@ -5,51 +5,122 @@ import (
 	"bytes"
 	"compress/gzip"
 	"crypto/sha256"
+	"debug/buildinfo"
 	"encoding/hex"
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"strings"
+	"sync"
 	"testing"
+	"unicode/utf8"
 
+	"github.com/n-orlov/deck/internal/testrelbin"
 	"github.com/n-orlov/deck/internal/update"
 )
 
 const (
-	updNewBody = "the new deck binary\n"
-	updLatest  = "v1.2.0"
+	updLatest = "v1.2.0"
 )
 
-// fakeRelease is a loopback release server: any tag's downloads answer with
-// the same archive, `/releases/latest` redirects to updLatest.
+// fakeRelease is a loopback release server: `/releases/latest` redirects to
+// updLatest, and a tag's downloads answer with an archive whose "deck" is a
+// real Go executable stamped with that tag, plus its checksums.txt.
 type fakeRelease struct {
-	archive   []byte
-	checksums string
-	server    *httptest.Server
+	asset        string
+	goodChecksum bool
+	server       *httptest.Server
+
+	mu   sync.Mutex
+	tags map[string]fakeTag
 }
 
+// fakeTag is one tag's served archive and checksums.txt.
+type fakeTag struct {
+	archive   []byte
+	checksums string
+}
+
+// forTag builds (once) the archive and checksums.txt the server serves for
+// tag. It runs on the server's goroutine, so it reports errors instead of
+// failing the test.
+func (r *fakeRelease) forTag(tag string) (fakeTag, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if ft, ok := r.tags[tag]; ok {
+		return ft, nil
+	}
+	body, err := testrelbin.Build(tag)
+	if err != nil {
+		return fakeTag{}, err
+	}
+	archive, err := updTarGzBytes(string(body))
+	if err != nil {
+		return fakeTag{}, err
+	}
+	sum := sha256.Sum256(archive)
+	hexSum := hex.EncodeToString(sum[:])
+	if !r.goodChecksum {
+		hexSum = strings.Repeat("0", 64)
+	}
+	ft := fakeTag{archive: archive, checksums: hexSum + "  " + r.asset + "\n"}
+	r.tags[tag] = ft
+	return ft, nil
+}
+
+// updNewBody is the release's "deck" binary: a real Go executable whose build
+// info reports the tag the fixture serves (updLatest).
+func updNewBody(t testing.TB) string { return string(testrelbin.Bytes(t, updLatest)) }
+
+var (
+	updTarGzMu    sync.Mutex
+	updTarGzCache = map[string][]byte{}
+)
+
+// updTarGz builds a .tar.gz holding body as "deck", memoized per body because
+// the release binary is megabytes; each caller gets a copy.
 func updTarGz(t *testing.T, body string) []byte {
 	t.Helper()
+	updTarGzMu.Lock()
+	defer updTarGzMu.Unlock()
+	if b, ok := updTarGzCache[body]; ok {
+		return append([]byte(nil), b...)
+	}
+	b := buildUpdTarGz(t, body)
+	updTarGzCache[body] = b
+	return append([]byte(nil), b...)
+}
+
+func buildUpdTarGz(t *testing.T, body string) []byte {
+	t.Helper()
+	b, err := updTarGzBytes(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return b
+}
+
+// updTarGzBytes is the .tar.gz holding body as "deck".
+func updTarGzBytes(body string) ([]byte, error) {
 	var buf bytes.Buffer
 	zw := gzip.NewWriter(&buf)
 	tw := tar.NewWriter(zw)
 	if err := tw.WriteHeader(&tar.Header{Name: "deck", Mode: 0o755, Size: int64(len(body)), Typeflag: tar.TypeReg}); err != nil {
-		t.Fatal(err)
+		return nil, err
 	}
 	if _, err := tw.Write([]byte(body)); err != nil {
-		t.Fatal(err)
+		return nil, err
 	}
-	if err := tw.Close(); err != nil {
-		t.Fatal(err)
+	if err := errors.Join(tw.Close(), zw.Close()); err != nil {
+		return nil, err
 	}
-	if err := zw.Close(); err != nil {
-		t.Fatal(err)
-	}
-	return buf.Bytes()
+	return buf.Bytes(), nil
 }
 
 func newFakeRelease(t *testing.T, goodChecksum bool) *fakeRelease {
@@ -58,25 +129,29 @@ func newFakeRelease(t *testing.T, goodChecksum bool) *fakeRelease {
 	if err != nil {
 		t.Skip(err)
 	}
-	r := &fakeRelease{archive: updTarGz(t, updNewBody)}
-	sum := sha256.Sum256(r.archive)
-	hexSum := hex.EncodeToString(sum[:])
-	if !goodChecksum {
-		hexSum = strings.Repeat("0", 64)
+	r := &fakeRelease{asset: asset, goodChecksum: goodChecksum, tags: map[string]fakeTag{}}
+	if _, err := r.forTag(updLatest); err != nil {
+		t.Fatal(err)
 	}
-	r.checksums = hexSum + "  " + asset + "\n"
 	mux := http.NewServeMux()
 	mux.HandleFunc("/releases/latest", func(w http.ResponseWriter, req *http.Request) {
 		http.Redirect(w, req, "/releases/tag/"+updLatest, http.StatusFound)
 	})
 	mux.HandleFunc("/releases/download/", func(w http.ResponseWriter, req *http.Request) {
-		switch {
-		case strings.HasSuffix(req.URL.Path, "/"+asset):
-			_, _ = w.Write(r.archive)
-		case strings.HasSuffix(req.URL.Path, "/checksums.txt"):
-			_, _ = w.Write([]byte(r.checksums))
-		default:
+		tag, file, ok := strings.Cut(strings.TrimPrefix(req.URL.Path, "/releases/download/"), "/")
+		if !ok || tag == "" || (file != asset && file != "checksums.txt") {
 			http.NotFound(w, req)
+			return
+		}
+		ft, err := r.forTag(tag)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		if file == asset {
+			_, _ = w.Write(ft.archive)
+		} else {
+			_, _ = w.Write([]byte(ft.checksums))
 		}
 	})
 	r.server = httptest.NewServer(mux)
@@ -229,6 +304,18 @@ func copyFile(t *testing.T, src, dst string) {
 // stderr and the exit code.
 func updRun(t *testing.T, binary, home, path string, env []string, args ...string) (string, string, int) {
 	t.Helper()
+	return updExec(t, binary, home, path, append([]string{updImmutableOptOut}, env...), args...)
+}
+
+// updImmutableOptOut is updRun's baseline: the fake release servers are
+// mirrors with no GitHub release API, which the default immutability
+// requirement refuses, so the tests of the other steps opt out. A later env
+// entry overrides it; updExec runs without it (the default).
+const updImmutableOptOut = "DECK_REQUIRE_IMMUTABLE=0"
+
+// updExec is updRun without the immutability opt-out baseline.
+func updExec(t *testing.T, binary, home, path string, env []string, args ...string) (string, string, int) {
+	t.Helper()
 	cmd := exec.Command(binary, args...)
 	cmd.Env = append([]string{"PATH=" + path, "HOME=" + home, "DECK_HOME=" + filepath.Join(home, "deck-home"), "XDG_CONFIG_HOME=" + filepath.Join(home, "cfg"), "XDG_DATA_HOME=" + filepath.Join(home, "data"), "XDG_CACHE_HOME=" + filepath.Join(home, "cache")}, env...)
 	var stdout, stderr bytes.Buffer
@@ -272,7 +359,8 @@ func TestUpdateVerbAgainstFakeServer(t *testing.T) {
 			if code != 0 {
 				t.Fatalf("exit %d, stderr %q", code, stderr)
 			}
-			for _, want := range []string{"v1.0.0", updLatest, "restart"} {
+			// A mirror has no release API: the install says so (#104).
+			for _, want := range []string{"v1.0.0", updLatest, "restart", "note: the release is not verified immutable: its immutability could not be checked"} {
 				if !strings.Contains(stdout, want) {
 					t.Errorf("stdout %q lacks %q", stdout, want)
 				}
@@ -280,7 +368,7 @@ func TestUpdateVerbAgainstFakeServer(t *testing.T) {
 			if strings.Contains(stdout, "checksum was verified") {
 				t.Errorf("stdout %q carries a checksum-only note; the checksum is the only check", stdout)
 			}
-			if got, want := updSum(t, exe), func() string { s := sha256.Sum256([]byte(updNewBody)); return hex.EncodeToString(s[:]) }(); got != want {
+			if got, want := updSum(t, exe), func() string { s := sha256.Sum256([]byte(updNewBody(t))); return hex.EncodeToString(s[:]) }(); got != want {
 				t.Errorf("binary sha256 = %s, want the release binary %s", got, want)
 			}
 			if names := updNames(t, dir); len(names) != 1 {
@@ -329,6 +417,9 @@ func TestUpdateVerbAgainstFakeServer(t *testing.T) {
 			if updSum(t, exe) == updSum(t, v120()) {
 				t.Error("the pinned downgrade left the binary unchanged")
 			}
+			if info, err := buildinfo.ReadFile(exe); err != nil || info.Main.Version != "v1.0.0" {
+				t.Errorf("installed binary's build info = %v, %v; want Main.Version v1.0.0, the pinned tag", info, err)
+			}
 		})
 
 		t.Run("offline check", func(t *testing.T) {
@@ -369,6 +460,28 @@ func TestUpdateVerbAgainstFakeServer(t *testing.T) {
 				t.Errorf("binary or directory changed: %v", updNames(t, dir))
 			}
 		})
+
+		// A mirror has no release API, so its release cannot be confirmed
+		// immutable: refused by default (no DECK_REQUIRE_IMMUTABLE at all),
+		// with it empty, and with =1, naming the mirror and the =0 opt-out.
+		for _, require := range []string{"", "DECK_REQUIRE_IMMUTABLE=", "DECK_REQUIRE_IMMUTABLE=1"} {
+			t.Run("immutability required on a mirror "+require, func(t *testing.T) {
+				dir, exe := place(v100())
+				before := updSum(t, exe)
+				env := []string{goodURL}
+				if require != "" {
+					env = append(env, require)
+				}
+				_, stderr, code := updExec(t, exe, t.TempDir(), emptyPath, env, "update", "--version", updLatest)
+				expect(t, stderr, code, "could not be confirmed immutable: the release source is a mirror with no GitHub release API")
+				if !strings.Contains(stderr, "nothing was installed (set DECK_REQUIRE_IMMUTABLE=0 to install it anyway)") {
+					t.Errorf("stderr %q does not name the opt-out", stderr)
+				}
+				if updSum(t, exe) != before || len(updNames(t, dir)) != 1 {
+					t.Errorf("binary or directory changed: %v", updNames(t, dir))
+				}
+			})
+		}
 
 		t.Run("dev build", func(t *testing.T) {
 			dir, exe := place(bins.build(t, "dev", ""))
@@ -455,7 +568,7 @@ func TestUpdateVerbRedactsMirrorCredentials(t *testing.T) {
 		}), "unexpected EOF", []string{"update"}},
 		{"size limit", mirror(func(w http.ResponseWriter, r *http.Request) {
 			if strings.HasSuffix(r.URL.Path, "/"+asset) {
-				_, _ = w.Write(updTarGz(t, updNewBody))
+				_, _ = w.Write(updTarGz(t, updNewBody(t)))
 				return
 			}
 			_, _ = w.Write(bytes.Repeat([]byte("a"), 2<<20))
@@ -550,5 +663,107 @@ func TestUpdateVerbRedactsMirrorCredentials(t *testing.T) {
 				t.Errorf("binary or directory changed: %v", updNames(t, dir))
 			}
 		})
+	}
+}
+
+// stderrHasControl reports a C0, DEL or C1 rune, or a raw byte 0x80-0x9F
+// outside a valid UTF-8 sequence (a C1 control to an 8-bit terminal), in s.
+func stderrHasControl(s string) bool {
+	for i := 0; i < len(s); {
+		r, size := utf8.DecodeRuneInString(s[i:])
+		if r == utf8.RuneError && size == 1 {
+			if s[i] >= 0x80 && s[i] <= 0x9f {
+				return true
+			}
+		} else if r <= 0x1f || r >= 0x7f && r <= 0x9f {
+			return true
+		}
+		i += size
+	}
+	return false
+}
+
+// TestUpdateVerbStderrStripsControlCharacters: a release server whose redirect
+// path holds an ESC, a BEL, a C1 CSI byte (raw 0x9B, sent as %9B, and UTF-8
+// encoded), an OSC title sequence or a newline (percent-encoded in the
+// Location header) gets none of them onto `deck update`'s stderr; printable
+// and multi-byte text stays.
+func TestUpdateVerbStderrStripsControlCharacters(t *testing.T) {
+	withVersion(t, "v1.0.0")
+	for _, c := range []struct{ name, raw, want string }{
+		{"ESC", "ok\x1b[31mred", "ok[31mred"},
+		{"BEL", "a\x07b", "ab"},
+		{"C1 CSI byte", "a\x9b31mb", "a31mb"},
+		{"C1 CSI UTF-8 encoded", "a\u009b31mb", "a31mb"},
+		{"OSC title sequence", "x\x1b]0;pwned\x07y", "x]0;pwnedy"},
+		{"newline", "line1\nline2", "line1line2"},
+		{"normal string", "not-a-tag", "not-a-tag"},
+		{"multi-byte string", "ошибка-配信-é-ě", "ошибка-配信-é-ě"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Location", "/releases/tag/"+url.PathEscape(c.raw))
+				w.WriteHeader(http.StatusFound)
+			}))
+			t.Cleanup(srv.Close)
+			home := t.TempDir()
+			t.Setenv("HOME", home)
+			t.Setenv("DECK_HOME", filepath.Join(home, "deck"))
+			t.Setenv("DECK_UPDATE_URL", srv.URL)
+			for _, args := range [][]string{{"deck", "update", "--check"}, {"deck", "update"}} {
+				var stdout, stderr bytes.Buffer
+				if code := run(args, strings.NewReader(""), &stdout, &stderr); code != 1 {
+					t.Fatalf("%v: exit %d, want 1; stderr %q", args, code, stderr.String())
+				}
+				got := stderr.String()
+				if !strings.Contains(got, "/releases/tag/"+c.want+" does not name") {
+					t.Errorf("%v: stderr %q lacks the stripped text %q", args, got, c.want)
+				}
+				if stderrHasControl(strings.TrimSuffix(got, "\n")) {
+					t.Errorf("%v: stderr %q holds a control character", args, got)
+				}
+			}
+		})
+	}
+}
+
+// TestUpdateNotes: the notes after an install name each immutability state in
+// deck's own words, and always end with the restart reminder (#104). None
+// mentions an attestation: releases carry none.
+func TestUpdateNotes(t *testing.T) {
+	const restart = "restart any running deck to use the new version; running sessions are not disturbed"
+	for _, c := range []struct {
+		name string
+		res  update.Result
+		want []string
+	}{
+		{"immutable", update.Result{Immutable: update.ImmutableVerified},
+			[]string{"the release is a GitHub immutable release", restart}},
+		{"not immutable", update.Result{Immutable: update.ImmutableNot},
+			[]string{"the release is not verified immutable: GitHub reports it is not an immutable release (installed because DECK_REQUIRE_IMMUTABLE=0 is set)", restart}},
+		{"unknown", update.Result{Immutable: update.ImmutableUnknown},
+			[]string{"the release is not verified immutable: its immutability could not be checked (installed because DECK_REQUIRE_IMMUTABLE=0 is set)", restart}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			if got := updateNotes(c.res); !reflect.DeepEqual(got, c.want) {
+				t.Errorf("notes = %q, want %q", got, c.want)
+			}
+		})
+	}
+}
+
+// TestReportUpdateInstall: an unchanged result says nothing changed, and an
+// install names the version move, the path and the notes.
+func TestReportUpdateInstall(t *testing.T) {
+	var unchanged bytes.Buffer
+	reportUpdateInstall(update.Result{Tag: "v1.2.0", Unchanged: true}, "v1.0.0", &unchanged)
+	if want := "deck v1.0.0 is already the latest release (v1.2.0); nothing changed\n"; unchanged.String() != want {
+		t.Errorf("unchanged output = %q, want %q", unchanged.String(), want)
+	}
+	var installed bytes.Buffer
+	reportUpdateInstall(update.Result{Tag: "v1.2.0", Path: "/bin/deck", Immutable: update.ImmutableVerified}, "v1.0.0", &installed)
+	want := "deck updated: v1.0.0 -> v1.2.0 (/bin/deck)\nnote: the release is a GitHub immutable release\nnote: restart any running deck to use the new version; running sessions are not disturbed\n"
+	if installed.String() != want {
+		t.Errorf("installed output = %q, want %q", installed.String(), want)
 	}
 }

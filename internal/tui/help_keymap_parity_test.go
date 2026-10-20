@@ -121,6 +121,9 @@ var helpKeyTokenToBoundKeys = map[string][]string{
 	"Ctrl+C":    {"ctrl+c"},
 	"PgUp/PgDn": {"pgup", "pgdown"},
 	"or":        nil,
+
+	"alt+u":       {"alt+u"},
+	"alt+Shift+U": {"alt+U"},
 }
 
 // helpKeysSectionEntries returns the "Keys" section's own lines from

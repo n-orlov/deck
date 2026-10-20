@@ -17,8 +17,10 @@ Both live in the Jenkins folder `deck/`:
 
 - **`deck/ci`**: multibranch, GitHub branch source `n-orlov/deck`, credential
   `github-n-orlov` (a GitHub token kept in OpenBao, read by Jenkins at use
-  time). Every branch is discovered by polling (no webhook); tags are not
-  built, and there are no pull requests to build, the project takes none.
+  time). A push reaches Jenkins through a GitHub webhook and builds that
+  branch at once; an hourly branch scan catches anything a missed webhook
+  dropped. Tags are not built, and there are no pull requests to build, the
+  project takes none.
 - **`deck/release`**: a parameterized pipeline job running
   `Jenkinsfile.release` from `main`, started by hand. See "Release" below.
 - **Agent:** label `linux && amd64 && docker`, a host where the agent user can
@@ -568,16 +570,31 @@ Stages (`Jenkinsfile.release`):
    commit's own scripts and `ci/Dockerfile`.
 3. **Version check** -- `git ls-remote --exit-code --tags` on GitHub (with the
    `github-n-orlov` token, never echoed): the tag must not exist, and a lookup
-   that fails stops the release rather than passing it.
+   that fails stops the release rather than passing it. The repository's
+   immutable-releases setting must be on (`gh api
+   repos/n-orlov/deck/immutable-releases` answers `"enabled": true`); off, or
+   no answer, stops the release, because `deck update` refuses a release that
+   is not immutable by default.
 4. **Build** -- `ci/run.sh ci/release-build.sh "$VERSION"` in the CI image
    builds the four archives (`deck_{linux,darwin}_{amd64,arm64}.tar.gz`,
    `CGO_ENABLED=0`, `-trimpath`, the version stamped into `main.version`) and
    `checksums.txt`, and smoke-checks that `deck --version` prints `deck
-   <version> linux/amd64`.
+   <version> linux/amd64`. It tags the commit `VERSION` in the local
+   checkout only (never pushed; removed again on exit) so that Go stamps
+   `VERSION` into each binary's build info as its module version, and checks
+   every binary with `go version -m`: `deck update` refuses a staged binary
+   whose embedded version is not the release tag (SPEC.md, "Update staged
+   version"), and without the tag Go would stamp a pseudo-version.
 5. **Publish** (skipped on `DRY_RUN`) -- `gh release create "$VERSION" dist/*
-   --repo n-orlov/deck --target <commit> --title "$VERSION" --generate-notes`.
-   GitHub creates the tag at that commit together with the release; no tag is
-   pushed from the agent.
+   --repo n-orlov/deck --target <commit> --title "$VERSION" --generate-notes
+   --draft` (plus `--prerelease` for a `-pre` version) creates the tag at that
+   commit and a draft release with every asset uploaded; no tag is pushed from
+   the agent. Only then is the draft published by its id (`PATCH
+   releases/<id>` with `draft=false`, `make_latest` true for a stable version,
+   false for a pre-release). Immutable releases freeze a release when it is
+   published, so publishing a half-uploaded release would freeze it
+   incomplete. The stage then reads the release back and fails unless it is
+   published, `immutable` and carries exactly the files in `dist/`.
 
 The build is named after the version, archives `dist/*`, and its summary
 names the version, the commit, the `deck/ci` build and the release link.
@@ -588,7 +605,10 @@ commit, that commit must already have `ci/release-build.sh` and
 **Integrity check.** Releases carry no build attestation (GitHub's needs an
 Actions OIDC token). `install.sh` and `deck update` verify the archive's
 SHA-256 checksum against the release's `checksums.txt` and nothing else; a
-mismatch aborts with nothing installed (SPEC.md, "Update download").
+mismatch aborts with nothing installed (SPEC.md, "Update download"). A
+`DECK_UPDATE_URL` mirror serves both files, so its checksum catches corruption
+only; a mirror has no release API, so `deck update` refuses it unless
+`DECK_REQUIRE_IMMUTABLE=0` is set.
 
 **Operator step -- protect the `v*` tags.** A published release's tag must
 never move or disappear. The release job never applies this; the maintainer runs it once with an account

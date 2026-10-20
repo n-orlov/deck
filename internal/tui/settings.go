@@ -594,8 +594,18 @@ func (m *Model) settingsApplyLiveScalars(edited, previous config.FileConfig) {
 		m.settings.PreviewFit = edited.PreviewFit
 	}
 	m.settingsApplyLiveAttach(overrides, edited, previous)
+	m.settingsApplyLiveTimingAndUpdates(overrides, edited, previous)
+}
+
+// settingsApplyLiveTimingAndUpdates copies the note timeout, output bucket,
+// bookmarks, update and preview-paint scalars whose saved value changed.
+func (m *Model) settingsApplyLiveTimingAndUpdates(overrides map[string]string, edited, previous config.FileConfig) {
 	if settingsLiveChanged(overrides, "ui.note_timeout", edited.NoteTimeout, previous.NoteTimeout) {
 		m.settings.NoteTimeout = edited.NoteTimeout
+	}
+	if settingsLiveChanged(overrides, "ui.output_bucket", edited.OutputBucket, previous.OutputBucket) {
+		m.settings.OutputBucket = edited.OutputBucket
+		m.applyOutputBucketLive()
 	}
 	if settingsLiveChanged(overrides, "bookmarks", edited.Bookmarks, previous.Bookmarks) {
 		m.settings.Bookmarks = edited.Bookmarks
@@ -646,6 +656,18 @@ func (m *Model) settingsApplyLiveTheme(edited, previous config.FileConfig) {
 	resolved, reason := theme.Resolve(userThemes, userErrs, edited.Theme)
 	m.settings.Theme = resolved
 	m.settings.ThemeReason = reason
+}
+
+// applyOutputBucketLive follows a changed [ui] output_bucket (R306): the
+// output clock writes at the new width from its next read, and an activity
+// order re-sorts the rows already on screen, which bucket them by it.
+func (m *Model) applyOutputBucketLive() {
+	if clock, ok := m.outputDiscount.(interface{ SetBucket(time.Duration) }); ok {
+		clock.SetBucket(m.settings.OutputBucket)
+	}
+	if order, _ := m.effectiveSortOrder(); order == SortOrderActivity {
+		m.resortSessionsLive()
+	}
 }
 
 // settingsApplyLiveSortOrder applies a changed sort_order and re-sorts the
@@ -1677,6 +1699,7 @@ func settingsEditsFromSettings(s config.Settings) config.FileConfig {
 		EventHookEvents:      slices.Clone(s.File.EventHookEvents),
 		EventHookTimeout:     s.File.EventHookTimeout,
 		NoteTimeout:          s.File.NoteTimeout,
+		OutputBucket:         s.File.OutputBucket,
 		Env:                  settingsCloneEnv(s.File.Env),
 	}
 }
@@ -1810,6 +1833,8 @@ func settingsIntegerValue(f config.Field, cfg config.FileConfig) int {
 		return int(cfg.EventHookTimeout.Seconds())
 	case "ui.note_timeout":
 		return int(cfg.NoteTimeout.Seconds())
+	case "ui.output_bucket":
+		return int(cfg.OutputBucket.Seconds())
 	default:
 		v, _ := f.Default.(int)
 		return v
@@ -1837,6 +1862,8 @@ func settingsSetInteger(cfg *config.FileConfig, f config.Field, v int) {
 		cfg.EventHookTimeout = time.Duration(v) * time.Second
 	case "ui.note_timeout":
 		cfg.NoteTimeout = time.Duration(v) * time.Second
+	case "ui.output_bucket":
+		cfg.OutputBucket = time.Duration(v) * time.Second
 	}
 }
 
@@ -2025,6 +2052,10 @@ func settingsToggleValueDisplay(f config.Field, cfg config.FileConfig) string {
 func settingsIntegerValueDisplay(f config.Field, cfg config.FileConfig) string {
 	v := settingsIntegerValue(f, cfg)
 	text := strconv.Itoa(v)
+	if f.FullKey() == "ui.output_bucket" && cfg.OutputBucket%time.Second != 0 {
+		// a fractional bucket is shown exactly, never as its truncation (R306).
+		text = cfg.OutputBucket.String()
+	}
 	if f.Unit != "" {
 		text += " " + f.Unit
 	}

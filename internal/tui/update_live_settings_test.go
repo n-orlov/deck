@@ -30,7 +30,6 @@ func newLiveUpdateRig(t *testing.T, config string) *liveUpdateRig {
 	srv := newAutoServer(t, false)
 	exe, _ := autoBinary(t)
 	t.Setenv("DECK_UPDATE_URL", srv.URL)
-	t.Setenv("PATH", t.TempDir()) // no gh: checksum-verified only
 	t.Setenv("DECK_UPDATE_CHECK", "")
 	t.Setenv("DECK_AUTO_UPDATE", "")
 	_ = os.Unsetenv("DECK_UPDATE_CHECK")
@@ -151,10 +150,10 @@ func TestLiveSaveEnablingAutoUpdateInstallsWithoutRestart(t *testing.T) {
 	r.startup()
 	r.assertRequests(0)
 	r.saveToggle("auto_update")
-	if got := r.h.m.footerNote(); got != "update installed: v1.2.3 — restart deck to apply" {
+	if got := r.h.m.footerNote(); got != "update installed: v1.2.3 (not verified immutable) — restart deck to apply" {
 		t.Fatalf("after enabling auto_update: note = %q", got)
 	}
-	if r.binary() != ctrlUNewBody || r.srv.archives.Load() != 1 {
+	if r.binary() != ctrlUNewBody(r.t) || r.srv.archives.Load() != 1 {
 		t.Fatalf("auto_update saved live did not install (archives %d)", r.srv.archives.Load())
 	}
 }
@@ -166,7 +165,7 @@ func TestLiveSaveAutoUpdateOnAnOfferInstallsIt(t *testing.T) {
 	r.startup()
 	r.assertRequests(1)
 	r.saveToggle("auto_update")
-	if r.binary() != ctrlUNewBody {
+	if r.binary() != ctrlUNewBody(r.t) {
 		t.Fatal("enabling auto_update left the offered release uninstalled")
 	}
 }
@@ -210,7 +209,7 @@ func TestLiveReloadEnablingAutoUpdateInstalls(t *testing.T) {
 	r := newLiveUpdateRig(t, "update_check = false\n")
 	r.startup()
 	r.reloadFile("update_check = false\nauto_update = true\n")
-	if r.binary() != ctrlUNewBody || r.srv.archives.Load() != 1 {
+	if r.binary() != ctrlUNewBody(r.t) || r.srv.archives.Load() != 1 {
 		t.Fatalf("the reload enabling auto_update did not install (archives %d)", r.srv.archives.Load())
 	}
 }

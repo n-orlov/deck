@@ -17,7 +17,13 @@ var probeGoldens = []struct {
 	{"claude", "starting.txt", "starting", "startup"},
 	{"claude", "running.txt", "running", "working indicator"},
 	{"claude", "waiting.txt", "waiting", "permission prompt"},
-	{"claude", "idle.txt", "idle", "idle prompt"},
+	{"claude", "waiting-edit.txt", "waiting", "file edit confirmation"},
+	{"claude", "waiting-create.txt", "waiting", "file create confirmation"},
+	{"claude", "waiting-trust.txt", "waiting", "folder trust"},
+	{"claude", "idle-scrolled.txt", "idle", "idle footer"},
+	{"claude", "idle-draft.txt", "idle", "idle footer"},
+	{"claude", "idle-altscreen.txt", "idle", "idle footer"},
+	{"claude", "running-footer.txt", "running", "working indicator"},
 	{"claude", "error.txt", "error", "api error"},
 	// pi's "starting" and "waiting" have no rule and no fixture — see
 	// testdata/probes/pi-PROVENANCE.md (SPEC requirement 38).
@@ -152,7 +158,9 @@ func TestPiIdleRuleDoesNotChangeExistingVerdicts(t *testing.T) {
 func TestProbeRuleTableHasOneRulePerGolden(t *testing.T) {
 	got := make(map[string]bool)
 	for _, rule := range probeRules {
-		key := rule.kind + "/" + rule.status
+		// R312: Claude has several waiting shapes, each with its own reason, so a
+		// rule is unique by kind, status and reason.
+		key := rule.kind + "/" + rule.status + "/" + rule.reason
 		if got[key] {
 			t.Fatalf("duplicate probe rule for %s", key)
 		}
@@ -162,9 +170,22 @@ func TestProbeRuleTableHasOneRulePerGolden(t *testing.T) {
 		}
 	}
 	for _, golden := range probeGoldens {
-		key := golden.kind + "/" + golden.status
+		key := golden.kind + "/" + golden.status + "/" + golden.reason
 		if !got[key] {
 			t.Errorf("golden %s has no table rule", key)
 		}
+	}
+}
+
+// TestClaudeBannerAloneIsNotIdle: the old `Claude Code` + `❯` rule is gone
+// (R310). A banner and an empty composer with no footer yields no verdict, and
+// the footer alone makes idle whatever the composer holds.
+func TestClaudeBannerAloneIsNotIdle(t *testing.T) {
+	claude := NewClaude()
+	if status, reason := claude.Probe("╭─ Claude Code ─╮\n❯ \n"); status != "" || reason != "" {
+		t.Fatalf("banner without footer = (%q, %q), want no verdict", status, reason)
+	}
+	if status, _ := claude.Probe("some output\n  ⏵⏵ bypass permissions on (shift+tab to cycle)\n"); status != "idle" {
+		t.Fatalf("footer without banner = %q, want idle", status)
 	}
 }

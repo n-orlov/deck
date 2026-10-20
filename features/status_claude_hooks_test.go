@@ -28,8 +28,8 @@ func registerClaudeHookStatusSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^fake Claude session "([^"]+)" fires "([^"]+)" for session "([^"]+)" using conversation identity:$`, fakeClaudeFiresForSession)
 	sc.Step(`^fake Claude session "([^"]+)" exits its pane cleanly$`, fakeClaudeExitsPaneCleanly)
 	sc.Step(`^the released deck _hook receives "([^"]+)" for session "([^"]+)" using (injected|conversation) identity:$`, releasedHookFiresForSession)
-	sc.Step(`^the state database session "([^"]+)" has hook status "([^"]+)", reason "([^"]*)", message "([^"]*)", acknowledged ([01]), and notify_epoch ([0-9]+)$`, databaseSessionHasHookStatus)
-	sc.Step(`^the state database session "([^"]+)" is repaired to "([^"]+)" from "([^"]+)" with reason "([^"]*)", message "([^"]*)", acknowledged ([01]), and notify_epoch ([0-9]+)$`, databaseSessionIsRepairedTo)
+	sc.Step(`^the state database session "([^"]+)" has hook status "([^"]+)", reason "([^"]*)", message "([^"]*)", (seen|unseen), and notify_epoch ([0-9]+)$`, databaseSessionHasHookStatusSeen)
+	sc.Step(`^the state database session "([^"]+)" is repaired to "([^"]+)" from "([^"]+)" with reason "([^"]*)", message "([^"]*)", (seen|unseen), and notify_epoch ([0-9]+)$`, databaseSessionIsRepairedTo)
 	sc.Step(`^session "([^"]+)" has one "([^"]+)" event with payload field "([^"]+)" equal to "([^"]*)"$`, sessionHasOneEventPayloadField)
 	sc.Step(`^session "([^"]+)" has an audited "([^"]+)" event with payload field "([^"]+)" equal to "([^"]*)"$`, sessionHasAuditedEventPayloadField)
 	sc.Step(`^deck client "([^"]+)" kills session "([^"]+)"$`, clientKillsNamedSession)
@@ -276,6 +276,16 @@ func releasedHookFiresForSession(ctx context.Context, event, target, identity st
 	return nil
 }
 
+// databaseSessionHasHookStatusSeen is the seen-vocabulary form of
+// databaseSessionHasHookStatus: "seen" means seen_status_at = status_at.
+func databaseSessionHasHookStatusSeen(ctx context.Context, name, wantStatus, wantReason, wantMessage, seen, epochText string) error {
+	flag := "0"
+	if seen == "seen" {
+		flag = "1"
+	}
+	return databaseSessionHasHookStatus(ctx, name, wantStatus, wantReason, wantMessage, flag, epochText)
+}
+
 func databaseSessionHasHookStatus(ctx context.Context, name, wantStatus, wantReason, wantMessage, acknowledgedText, epochText string) error {
 	h, err := assertionHarness(ctx)
 	if err != nil {
@@ -292,7 +302,7 @@ func databaseSessionHasHookStatus(ctx context.Context, name, wantStatus, wantRea
 	for {
 		var status, source, reason, message string
 		var acknowledged, epoch int
-		err := db.QueryRowContext(ctx, `SELECT status, status_source, COALESCE(status_reason, ''), COALESCE(last_message, ''), acknowledged, notify_epoch FROM sessions WHERE name = ?`, name).Scan(&status, &source, &reason, &message, &acknowledged, &epoch)
+		err := db.QueryRowContext(ctx, `SELECT status, status_source, COALESCE(status_reason, ''), COALESCE(last_message, ''), (seen_status_at = status_at), notify_epoch FROM sessions WHERE name = ?`, name).Scan(&status, &source, &reason, &message, &acknowledged, &epoch)
 		if err != nil {
 			return fmt.Errorf("observe hook status for session %q: %w", name, err)
 		}
@@ -320,12 +330,15 @@ func databaseSessionHasHookStatus(ctx context.Context, name, wantStatus, wantRea
 // Unlike databaseSessionHasHookStatus,
 // this does not require status_source "hook": the repair is tmux-sourced by
 // definition, and asserting that source is the whole point of this step.
-func databaseSessionIsRepairedTo(ctx context.Context, name, wantStatus, wantSource, wantReason, wantMessage string, acknowledgedText, epochText string) error {
+func databaseSessionIsRepairedTo(ctx context.Context, name, wantStatus, wantSource, wantReason, wantMessage string, seenText, epochText string) error {
 	h, err := assertionHarness(ctx)
 	if err != nil {
 		return err
 	}
-	wantAcknowledged, _ := strconv.Atoi(acknowledgedText)
+	wantSeen := 0
+	if seenText == "seen" {
+		wantSeen = 1
+	}
 	wantEpoch, _ := strconv.Atoi(epochText)
 	db, err := openObservedDatabase(h)
 	if err != nil {
@@ -335,16 +348,16 @@ func databaseSessionIsRepairedTo(ctx context.Context, name, wantStatus, wantSour
 	deadline := time.Now().Add(3 * time.Second)
 	for {
 		var status, source, reason, message string
-		var acknowledged, epoch int
-		err := db.QueryRowContext(ctx, `SELECT status, status_source, COALESCE(status_reason, ''), COALESCE(last_message, ''), acknowledged, notify_epoch FROM sessions WHERE name = ?`, name).Scan(&status, &source, &reason, &message, &acknowledged, &epoch)
+		var seen, epoch int
+		err := db.QueryRowContext(ctx, `SELECT status, status_source, COALESCE(status_reason, ''), COALESCE(last_message, ''), (seen_status_at = status_at), notify_epoch FROM sessions WHERE name = ?`, name).Scan(&status, &source, &reason, &message, &seen, &epoch)
 		if err != nil {
 			return fmt.Errorf("observe repaired status for session %q: %w", name, err)
 		}
-		if status == wantStatus && source == wantSource && reason == wantReason && message == wantMessage && acknowledged == wantAcknowledged && epoch == wantEpoch {
+		if status == wantStatus && source == wantSource && reason == wantReason && message == wantMessage && seen == wantSeen && epoch == wantEpoch {
 			return nil
 		}
 		if time.Now().After(deadline) {
-			return fmt.Errorf("session %q = status %q source %q reason %q message %q acknowledged=%d epoch=%d; want %q from %q %q %q %d %d", name, status, source, reason, message, acknowledged, epoch, wantStatus, wantSource, wantReason, wantMessage, wantAcknowledged, wantEpoch)
+			return fmt.Errorf("session %q = status %q source %q reason %q message %q seen=%d epoch=%d; want %q from %q %q %q %d %d", name, status, source, reason, message, seen, epoch, wantStatus, wantSource, wantReason, wantMessage, wantSeen, wantEpoch)
 		}
 		time.Sleep(20 * time.Millisecond)
 	}

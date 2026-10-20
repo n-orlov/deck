@@ -11,7 +11,9 @@ import (
 // disappearance as a tmux-sourced "stopped" must still be applied -- SPEC §7
 // precedence is hook > tmux, and the write resurrects nothing (the status is
 // "stopped" either way). The hook's verdict and reason replace the bare
-// liveness fact, and a later stale tmux "stopped" does not replace it back.
+// liveness fact (status_at keeps the moment of the stop: the write is a
+// repeat and inert, R303; TestHookRepeatingSameStatusWithDifferentReasonUpdatesOnlyTheReason
+// covers that half), and a later stale tmux "stopped" does not replace it back.
 // A hook "running" onto the same row stays refused (no return edge from
 // stopped), and so does any hook onto a user-sourced stop.
 func TestHookStopRefinesTmuxSourcedStop(t *testing.T) {
@@ -62,8 +64,8 @@ func TestHookStopRefinesTmuxSourcedStop(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Status != "stopped" || got.StatusSource != "hook" || got.StatusReason != "logout" || got.StatusAt != 30 {
-		t.Fatalf("SessionEnd hook after a tmux-sourced stop: status=%q source=%q reason=%q at=%d, want stopped/hook/logout/30", got.Status, got.StatusSource, got.StatusReason, got.StatusAt)
+	if got.Status != "stopped" || got.StatusSource != "hook" || got.StatusReason != "logout" || got.StatusAt != 20 {
+		t.Fatalf("SessionEnd hook after a tmux-sourced stop: status=%q source=%q reason=%q at=%d, want stopped/hook/logout/20 (a repeat write keeps status_at, R303)", got.Status, got.StatusSource, got.StatusReason, got.StatusAt)
 	}
 
 	// The reverse order: a reconcile pass with a stale read writes tmux
@@ -78,7 +80,7 @@ func TestHookStopRefinesTmuxSourcedStop(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.StatusSource != "hook" || got.StatusReason != "logout" || got.StatusAt != 30 {
+	if got.StatusSource != "hook" || got.StatusReason != "logout" || got.StatusAt != 20 {
 		t.Fatalf("a late tmux stop replaced the hook's stop verdict: source=%q reason=%q at=%d", got.StatusSource, got.StatusReason, got.StatusAt)
 	}
 

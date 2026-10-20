@@ -26,7 +26,7 @@ import (
 // creation and reconcile never revisits it.
 func registerSortOrderSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^the state database session "([^"]+)" has created_at ([0-9]+) seconds ago$`, setSessionCreatedAtSecondsAgo)
-	sc.Step(`^the state database session "([^"]+)" has status_at ([0-9]+) seconds ago$`, setSessionStatusAtSecondsAgo)
+	sc.Step(`^the state database session "([^"]+)" has last_output_at ([0-9]+) seconds ago$`, setSessionLastOutputAtSecondsAgo)
 }
 
 func setSessionCreatedAtSecondsAgo(ctx context.Context, name string, secondsAgo int) error {
@@ -50,25 +50,11 @@ func setSessionCreatedAtSecondsAgo(ctx context.Context, name string, secondsAgo 
 	return nil
 }
 
-// setSessionStatusAtSecondsAgo poses sort_order = activity's own comparator
-// key (StatusAt) at an exact age without touching status or status_source,
-// the way setSessionStatusSecondsAgo (features/attention_sort_test.go) does
-// for both together. task 804's sort_order.feature error rows reach "error"
-// via a genuine nonzero pane exit (features/crash_test.go's
-// shellSessionExitsWithNonzeroStatus) instead of a raw status write, so the
-// row carries an actual pane-exit verdict and a genuine tmux.pane_dead
-// crash-collection event -- the fixture's error tier needs a real dead pane
-// either way, since a raw "error" write only risks internal/service.
-// reconcile's repairTerminalRowWithLivePane if it also carries a pane-exit
-// or tmux/user-sourced verdict (a bare hook/probe-sourced error is left
-// alone, finding F40, task 901), and a raw write here has neither.
-// That genuine route settles status_at at whatever real wall-clock moment
-// reconcile's crash collection actually runs, which the activity scenario's
-// engineered relative ages cannot tolerate; by the time this step is ever
-// used the row's pane is already dead and collected (crash collection kills
-// it as part of recording the crash), so this raw, status-preserving write
-// can never race that crash collection the way a raw status write would.
-func setSessionStatusAtSecondsAgo(ctx context.Context, name string, secondsAgo int) error {
+// setSessionLastOutputAtSecondsAgo poses sort_order = activity's own
+// comparator key (last_output_at, R306) at an exact age without touching
+// status or status_at. A test that wants distinct buckets keeps its ages at
+// least one [ui] output_bucket (10 s by default) apart.
+func setSessionLastOutputAtSecondsAgo(ctx context.Context, name string, secondsAgo int) error {
 	h, err := assertionHarness(ctx)
 	if err != nil {
 		return err
@@ -79,11 +65,11 @@ func setSessionStatusAtSecondsAgo(ctx context.Context, name string, secondsAgo i
 	}
 	defer db.Close()
 	at := time.Now().Add(-time.Duration(secondsAgo) * time.Second).UnixMilli()
-	result, err := db.ExecContext(ctx, `UPDATE sessions SET status_at = ? WHERE name = ?`, at, name)
+	result, err := db.ExecContext(ctx, `UPDATE sessions SET last_output_at = ? WHERE name = ?`, at, name)
 	if err != nil {
-		return fmt.Errorf("set session %q status_at %ds ago: %w", name, secondsAgo, err)
+		return fmt.Errorf("set session %q last_output_at %ds ago: %w", name, secondsAgo, err)
 	}
-	if err := requireOneRowAffected(result, "set session %q status_at %ds ago", name, secondsAgo); err != nil {
+	if err := requireOneRowAffected(result, "set session %q last_output_at %ds ago", name, secondsAgo); err != nil {
 		return err
 	}
 	return nil

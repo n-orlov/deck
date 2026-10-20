@@ -31,6 +31,7 @@ const (
 	attentionRankRunning
 	attentionRankStarting
 	attentionRankIdle
+	attentionRankSeenError
 	attentionRankStopped
 	attentionRankOther
 )
@@ -58,6 +59,19 @@ func attentionRank(status string) int {
 	}
 }
 
+// sessionAttentionRank is the seen-aware tier (R319): attentionRank, except
+// that an error row whose status the user has seen (seen_status_at ==
+// status_at, Session.StatusSeen) drops out of the urgent tier and sorts just
+// above stopped. A waiting row stays in the top tier seen or not (it is still
+// blocked on the user). NeedsAttention, the sort, the collapsed strip's count
+// and `space` all derive from this one function.
+func sessionAttentionRank(session store.Session) int {
+	if session.Status == "error" && session.StatusSeen() {
+		return attentionRankSeenError
+	}
+	return attentionRank(session.Status)
+}
+
 // sortSessionsByAttention returns a new slice holding sessions ordered by
 // the requirement-28/29 rule documented above. The input slice is never
 // mutated, so callers holding onto the original order (e.g. to preserve a
@@ -77,7 +91,7 @@ func sortSessionsByAttention(sessions []store.Session) []store.Session {
 // grouping code (task 024) can reuse the exact same tie-break without
 // re-deriving it.
 func lessByAttention(a, b store.Session) bool {
-	ra, rb := attentionRank(a.Status), attentionRank(b.Status)
+	ra, rb := sessionAttentionRank(a), sessionAttentionRank(b)
 	if ra != rb {
 		return ra < rb
 	}
@@ -134,7 +148,26 @@ func lessByAttention(a, b store.Session) bool {
 // invoke sortSessionsByAttentionStable directly for the attention order
 // -- get the exact same pinned-first behaviour without re-deriving it.
 func sortSessionsByAttentionStable(previous, incoming []store.Session) []store.Session {
-	return sortSessionsStable(previous, incoming, pinnedFirst(attentionLessStable(previous)))
+	return sortSessionsByAttentionStableHeld(previous, incoming, nil)
+}
+
+// sortSessionsByAttentionStableHeld is sortSessionsByAttentionStable with
+// R321's engagement hold: a row in held (id -> status episode) whose episode
+// still matches keeps the tier it had before engagement set it seen, so
+// engagement moves no row. Model's two attention sort sites pass
+// Model.engagementHold.
+func sortSessionsByAttentionStableHeld(previous, incoming []store.Session, held map[string]store.StatusEpisode) []store.Session {
+	return sortSessionsStable(previous, incoming, pinnedFirst(attentionLessStableHeld(previous, held)))
+}
+
+// attentionSortRank is the sort's tier: sessionAttentionRank, except that a
+// row engagement set seen (held at its current status episode) keeps the unseen
+// tier it had before (R321: engagement moves no row).
+func attentionSortRank(session store.Session, held map[string]store.StatusEpisode) int {
+	if episode, ok := held[session.ID]; ok && episode == session.Episode() && session.StatusSeen() {
+		return attentionRank(session.Status)
+	}
+	return sessionAttentionRank(session)
 }
 
 // attentionLessStable is sortSessionsByAttentionStable's own less function,
@@ -145,9 +178,15 @@ func sortSessionsByAttentionStable(previous, incoming []store.Session) []store.S
 // position, then ID) precisely to avoid the 3-cycle hazard this function's
 // own doc comment above warns about.
 func attentionLessStable(previous []store.Session) func(a, b store.Session) bool {
+	return attentionLessStableHeld(previous, nil)
+}
+
+// attentionLessStableHeld is attentionLessStable reading the tier through
+// attentionSortRank's engagement hold.
+func attentionLessStableHeld(previous []store.Session, held map[string]store.StatusEpisode) func(a, b store.Session) bool {
 	posKey := previousPositionKey(previous)
 	return func(a, b store.Session) bool {
-		ra, rb := attentionRank(a.Status), attentionRank(b.Status)
+		ra, rb := attentionSortRank(a, held), attentionSortRank(b, held)
 		if ra != rb {
 			return ra < rb
 		}
@@ -183,13 +222,15 @@ func indexOfSessionID(sessions []store.Session, id string) int {
 // NeedsAttention is the one shared "needs me" answer requirements 31 and 32
 // call for: true for a session in a status the sort itself treats as more
 // urgent than "running" (currently waiting or error, matching
-// internal/store's own isAttentionStatus). The sort
+// internal/store's own isAttentionStatus), except that an error whose status
+// the user has seen (R319) no longer needs them: needs-attention is
+// waiting || (error && unseen). The sort
 // (sortSessionsByAttention/lessByAttention above), the collapsed strip's
 // count (Model.attentionCount) and `space` (Model.nextAttentionSelection,
 // internal/tui/tui.go) all call this instead of re-deriving the status set,
 // so the three can never silently disagree about what counts.
 func NeedsAttention(session store.Session) bool {
-	return attentionRank(session.Status) < attentionRankRunning
+	return sessionAttentionRank(session) < attentionRankRunning
 }
 
 // replaceSessionByID swaps the in-memory copy of session (matched by id) in

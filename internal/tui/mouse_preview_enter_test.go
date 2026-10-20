@@ -1,7 +1,6 @@
 package tui
 
 import (
-	"context"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -24,16 +23,13 @@ func previewPressXY(t *testing.T, m Model) (x, y int) {
 	return x, y
 }
 
-// TestPreviewPressEntersInteractiveOnCurrentSelectionAndRecordsAttachment
+// TestPreviewPressEntersInteractiveOnCurrentSelection
 // is R144/GH #37's core list-mode claim: a left press over the passive
 // preview runs enterInteractive on the CURRENT selection -- never moving
-// it -- and records the same durable attachment `\u21b5` records
-// (store.RecordAttachment answering a waiting row, proxied here through
-// m.prepareAttach exactly like TestEnterInteractiveRecordsAttachment
-// proves for the key itself). Proven against a real tmux server on a
+// it. Proven against a real tmux server on a
 // private socket because enterInteractive's success path cannot be
 // reached any other way.
-func TestPreviewPressEntersInteractiveOnCurrentSelectionAndRecordsAttachment(t *testing.T) {
+func TestPreviewPressEntersInteractiveOnCurrentSelection(t *testing.T) {
 	m := mouseTestModel([]store.Session{
 		{ID: "sess-prev-1", Name: "preventer", Slug: "preventer", Status: "waiting"},
 		{ID: "sess-prev-2", Name: "other", Slug: "preventerother", Status: "waiting"},
@@ -47,11 +43,6 @@ func TestPreviewPressEntersInteractiveOnCurrentSelectionAndRecordsAttachment(t *
 	newQuietSelectionPane(t, socket, "deck_preventer", 80, 24)
 	m.tmuxClient = tmux.Client{Socket: socket}
 	m.selected = rowCursor(0)
-	var recorded []string
-	m.prepareAttach = func(_ context.Context, id string) error {
-		recorded = append(recorded, id)
-		return nil
-	}
 
 	x, y := previewPressXY(t, m)
 	updated, cmd := m.Update(press(x, y))
@@ -64,9 +55,6 @@ func TestPreviewPressEntersInteractiveOnCurrentSelectionAndRecordsAttachment(t *
 	}
 	if got.selected != rowCursor(0) {
 		t.Fatalf("a preview press changed the selection to %v, want it to stay on the current selection rowCursor(0)", got.selected)
-	}
-	if len(recorded) != 1 || recorded[0] != "sess-prev-1" {
-		t.Fatalf("prepareAttach calls = %v, want exactly one with the current selection's ID %q -- a preview press must record the same attachment \u21b5 records", recorded, "sess-prev-1")
 	}
 	got.exitInteractive()
 }

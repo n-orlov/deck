@@ -13,9 +13,8 @@ import (
 )
 
 // attachedEventCountForTest counts durable 'attached' events for one
-// session -- the exact wire-side observable RecordAttachment's own INSERT
-// produces (store.go's RecordAttachment), read directly off the events
-// table rather than from any in-memory list frame.
+// session, read directly off the events table rather than from any
+// in-memory list frame. Since R320 nothing writes one: entry is inert.
 func attachedEventCountForTest(t *testing.T, db *store.Store, sessionID string) int {
 	t.Helper()
 	var n int
@@ -41,17 +40,15 @@ func readDurableAttentionForTest(t *testing.T, db *store.Store, sessionID string
 		t.Fatalf("GetSession(%s): %v", sessionID, err)
 	}
 	return durableAttentionForTest{
-		Acknowledged:  row.Acknowledged,
+		Acknowledged:  row.StatusSeen(),
 		NotifyEpoch:   row.NotifyEpoch,
 		AttachedCount: attachedEventCountForTest(t, db, sessionID),
 	}
 }
 
 // newFalloutStoreModel wires a model to a REAL store (store.OpenPath, not a
-// stub) holding one waiting session, so enterInteractiveBody's own
-// store.RecordAttachment (SPEC §7's deck-mediated attachment) has a waiting
-// row to answer: that answered row is the baseline every assertion below is
-// made against. The returned model is otherwise exactly the interactive
+// stub) holding one unseen waiting session: that row, which entry leaves
+// untouched (R320), is the baseline every assertion below is made against. The returned model is otherwise exactly the interactive
 // entry fixture the other displacement tests use (real tmux socket, a
 // preview above the 7-row floor).
 func newFalloutStoreModel(t *testing.T, client tmux.Client, slug, sessionID string) (Model, *store.Store) {
@@ -70,10 +67,8 @@ func newFalloutStoreModel(t *testing.T, client tmux.Client, slug, sessionID stri
 	}); err != nil {
 		t.Fatal(err)
 	}
-	// The waiting attention state before entry: this is what
-	// enterInteractiveBody's own RecordAttachment answers (acknowledged=1,
-	// notify_epoch+1, one 'attached' event), i.e. the durable movement the
-	// fall-out below must neither repeat nor undo.
+	// The waiting attention state before entry: unseen, epoch 0, no
+	// 'attached' event. Entry and the fall-out below must leave it alone.
 	if err := db.UpdateSessionStatus(ctx, store.StatusUpdateInput{
 		SessionID: sessionID, Status: "waiting", Reason: "permission_prompt", Source: "hook", At: 10,
 	}); err != nil {
@@ -96,27 +91,11 @@ func newFalloutStoreModel(t *testing.T, client tmux.Client, slug, sessionID stri
 	return m, db
 }
 
-// enterAndBaselineFallout enters interactive mode for real, then leaves the
-// durable row in the one state that makes the assertions below SENSITIVE,
-// and returns the interactive model plus that baseline.
-//
-// Two things happen here, both load-bearing:
-//
-//   - Entry itself must have moved the row (acknowledged=1, notify_epoch 1,
-//     one 'attached' event): that is SPEC §7's own deck-mediated
-//     attachment, and asserting it means the comparison below is made
-//     against a row that actually moved, not one that sat at its zero
-//     value throughout.
-//   - A fresh hook then puts the row back into `waiting` (the agent asks
-//     another question while the preview is up). This is what gives the
-//     assertion teeth: store.RecordAttachment is a NO-OP on a running row
-//     (its own `default:` branch), so a wrongful second attachment during
-//     the fall-out would be invisible against a just-answered row. On a
-//     waiting row it is not -- it would flip acknowledged to 1, bump
-//     notify_epoch to 2 and append a second 'attached' event -- and a
-//     wrongful AcknowledgeSession would flip acknowledged on its own. So
-//     the baseline handed back is deliberately acknowledged=false,
-//     notify_epoch=1, attached-events=1.
+// enterAndBaselineFallout enters interactive mode for real and returns the
+// interactive model plus the durable baseline. The row is an unseen waiting
+// one, so a wrongful AcknowledgeSession or any attention write during entry
+// or the fall-out would change it and fail the comparison: entry itself must
+// leave it exactly as it was (R320), which is asserted here.
 func enterAndBaselineFallout(t *testing.T, m Model, db *store.Store, sessionID string) (Model, durableAttentionForTest) {
 	t.Helper()
 	next, _ := m.enterInteractiveBody(false)
@@ -125,22 +104,11 @@ func enterAndBaselineFallout(t *testing.T, m Model, db *store.Store, sessionID s
 		t.Fatalf("entry did not enter interactive mode: attachError=%q", got.attachError)
 	}
 	entered := readDurableAttentionForTest(t, db, sessionID)
-	wantEntered := durableAttentionForTest{Acknowledged: true, NotifyEpoch: 1, AttachedCount: 1}
+	wantEntered := durableAttentionForTest{Acknowledged: false, NotifyEpoch: 0, AttachedCount: 0}
 	if entered != wantEntered {
-		t.Fatalf("test assumption violated: durable state after entry = %+v, want %+v (entry's own RecordAttachment must have answered the waiting row)", entered, wantEntered)
+		t.Fatalf("durable state after entry = %+v, want the untouched unseen waiting row %+v (R320: entry is inert)", entered, wantEntered)
 	}
-
-	if err := db.UpdateSessionStatus(context.Background(), store.StatusUpdateInput{
-		SessionID: sessionID, Status: "waiting", Reason: "permission_prompt", Source: "hook", At: 20,
-	}); err != nil {
-		t.Fatal(err)
-	}
-	before := readDurableAttentionForTest(t, db, sessionID)
-	wantBefore := durableAttentionForTest{Acknowledged: false, NotifyEpoch: 1, AttachedCount: 1}
-	if before != wantBefore {
-		t.Fatalf("test assumption violated: durable baseline before the displacement = %+v, want %+v (an unanswered waiting row, so a wrongful store write during the fall-out cannot hide in a no-op)", before, wantBefore)
-	}
-	return got, before
+	return got, entered
 }
 
 // TestPreviewTickStolenFalloutRecordsNothingDurable proves task 120 for the
@@ -151,18 +119,16 @@ func enterAndBaselineFallout(t *testing.T, m Model, db *store.Store, sessionID s
 //
 // The claim is made on the DURABLE STORE ROW, not the frame: the displaced
 // client's whole fall-out must leave attached-event count, acknowledged and
-// notify_epoch exactly as entry left them. Entry itself is the one
-// deck-mediated attachment SPEC §7 assigns a durable transaction
-// (store.RecordAttachment via m.prepareAttach, the same call attachSelected's
-// `a` path makes); leaving the preview because someone else took the window
-// is NOT a second attachment, and must not acknowledge, re-notify or log an
-// event of its own. A regression that added such a call on the way out
-// (a second RecordAttachment, an AcknowledgeSession in the teardown, an
-// event append in the dialog) fails here on the row itself.
+// notify_epoch exactly as entry left them. Entry itself is inert
+// (R320: it writes nothing); leaving the preview
+// because someone else took the window must not acknowledge, re-notify or log
+// an event of its own. A regression that added such a write on the way out
+// (an AcknowledgeSession in the teardown, an event append in the dialog)
+// fails here on the row itself.
 //
 // The stealing model is deliberately wired to its OWN separate store (a
-// second store.OpenPath under its own temp dir, and in fact New(nil, ...)'s
-// nil prepareAttach here), so the winner's own legitimate entry can never
+// second store.OpenPath under its own temp dir, and in fact New(nil, ...)),
+// so the winner's own legitimate entry can never
 // write to the displaced client's row and mask or fake this assertion.
 func TestPreviewTickStolenFalloutRecordsNothingDurable(t *testing.T) {
 	socket := selectionTestSocket("falloutstolen")
@@ -184,9 +150,6 @@ func TestPreviewTickStolenFalloutRecordsNothingDurable(t *testing.T) {
 	winner.tmuxClient = client
 	winner.sessions = []store.Session{{ID: "sess-falloutstolen-2", Name: "falloutstolen", Slug: "falloutstolen", Status: "waiting"}}
 	winner.selected = rowCursor(0)
-	if winner.prepareAttach != nil {
-		t.Fatal("test assumption violated: the stealing model has a prepareAttach, so its own entry could write durable state")
-	}
 	next2, _ := winner.enterInteractiveBody(true)
 	got2 := next2.(Model)
 	if got2.attachError != "" {

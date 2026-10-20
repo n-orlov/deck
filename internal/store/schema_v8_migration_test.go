@@ -35,10 +35,12 @@ var sessionColumnsPreV8 = []string{
 // that carries a populated database up to the current SchemaVersion compares
 // this set before and after; the dropped pair is covered by
 // TestSchemaV10MigratesPopulatedV9Database, which asserts they are gone.
+// It also omits acknowledged, which schemaV18 (R318) drops and replaces with
+// seen_status_at; TestSeenStatusAtMigrationBackfillsFromAcknowledged covers it.
 var sessionColumnsKeptByV10 = func() []string {
 	var kept []string
 	for _, column := range sessionColumnsPreV8 {
-		if column != "notify_rules" && column != "snoozed_until" {
+		if column != "notify_rules" && column != "snoozed_until" && column != "acknowledged" {
 			kept = append(kept, column)
 		}
 	}

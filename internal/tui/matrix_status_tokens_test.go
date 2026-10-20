@@ -67,7 +67,7 @@ func TestMatrixStatusTokensRenderAsSevenDistinctColours(t *testing.T) {
 	// exactly the false-negative this test caught on its first run.
 	statuses := []string{"starting", "running", "waiting", "idle", "error", "stopped"}
 	for i, status := range statuses {
-		session := store.Session{ID: status, Name: fmt.Sprintf("pane%d", i), Status: status, Acknowledged: true}
+		session := store.Session{ID: status, Name: fmt.Sprintf("pane%d", i), Status: status}
 		got[status] = matrixSidebarStatusFg(t, m, session, status)
 	}
 
@@ -75,7 +75,7 @@ func TestMatrixStatusTokensRenderAsSevenDistinctColours(t *testing.T) {
 	// ("running") to prove the badge's OWN token is what is read, not the
 	// status word's -- ArchivedAt != 0 is what triggers the ▣ badge.
 	archivedGlyph := m.glyph("\u25a3", "[archived]")
-	archivedSession := store.Session{ID: "archived", Name: "pane99", Status: "running", Acknowledged: true, ArchivedAt: 1000}
+	archivedSession := store.Session{ID: "archived", Name: "pane99", Status: "running", ArchivedAt: 1000}
 	got["archived"] = matrixSidebarStatusFg(t, m, archivedSession, archivedGlyph)
 
 	if len(got) != len(theme.StatusTokens) {

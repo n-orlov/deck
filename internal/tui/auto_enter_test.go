@@ -31,23 +31,19 @@ var aeSession = store.Session{ID: "ae-born", Name: "born", Slug: "born", Status:
 const aeTmuxSession = "deck_born"
 
 // aeModel builds a client wired to socket the way cmd/deck wires one,
-// with prepareAttach counting the attachment transactions entry records.
-func aeModel(t *testing.T, socket string, attachOnNew bool, height int, attachments *[]string) Model {
+// (entry records nothing durable since R320).
+func aeModel(t *testing.T, socket string, attachOnNew bool, height int) Model {
 	t.Helper()
-	return aeModelWith(t, socket, config.Settings{Color: true, AttachOnNew: attachOnNew}, 100, height, attachments)
+	return aeModelWith(t, socket, config.Settings{Color: true, AttachOnNew: attachOnNew}, 100, height)
 }
 
-func aeModelWith(t *testing.T, socket string, settings config.Settings, width, height int, attachments *[]string) Model {
+func aeModelWith(t *testing.T, socket string, settings config.Settings, width, height int) Model {
 	t.Helper()
 	m := New(nil, settings, "")
 	m.width, m.height = width, height
 	client := tmux.Client{Socket: socket}
 	m.tmuxClient = client
 	m.previewCapture = client.CapturePreview
-	m.prepareAttach = func(_ context.Context, id string) error {
-		*attachments = append(*attachments, id)
-		return nil
-	}
 	return m
 }
 
@@ -100,8 +96,7 @@ func aeAssertInteractiveOnBorn(t *testing.T, m Model) {
 // the pane live, recording the attachment exactly once, and never again.
 func TestAttachOnNewEntersOnceThePaneIsLive(t *testing.T) {
 	socket := selectionTestSocket("aelive")
-	var attachments []string
-	m := aeModel(t, socket, true, 30, &attachments)
+	m := aeModel(t, socket, true, 30)
 	m = aeCreate(t, m)
 	if m.interactive {
 		t.Fatalf("entered interactive mode on the create's own reload, before any capture reported the pane live")
@@ -123,9 +118,6 @@ func TestAttachOnNewEntersOnceThePaneIsLive(t *testing.T) {
 	if m.pendingAutoEnterSessionID != "" {
 		t.Fatalf("pendingAutoEnterSessionID = %q after entry, want it consumed", m.pendingAutoEnterSessionID)
 	}
-	if len(attachments) != 1 || attachments[0] != aeSession.ID {
-		t.Fatalf("attachments = %v, want exactly one for %q -- entry must run the same transaction as ↵", attachments, aeSession.ID)
-	}
 
 	next, _ := m.exitInteractive()
 	m = next.(Model)
@@ -137,9 +129,6 @@ func TestAttachOnNewEntersOnceThePaneIsLive(t *testing.T) {
 	}
 	if session, ok := m.selectedSession(); !ok || session.ID != aeSession.ID {
 		t.Fatalf("selection after exit = (%+v, %v), want the created session still selected", session, ok)
-	}
-	if len(attachments) != 1 {
-		t.Fatalf("attachments = %v after exit and more ticks, want still exactly one", attachments)
 	}
 }
 
@@ -159,8 +148,7 @@ func TestAttachOnNewCancelledByKeyBeforePaneIsLive(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			socket := selectionTestSocket("aecancel" + tc.name)
-			var attachments []string
-			m := aeModel(t, socket, true, 30, &attachments)
+			m := aeModel(t, socket, true, 30)
 			m = aeCreate(t, m)
 			m = aeTick(m)
 			if m.interactive {
@@ -182,9 +170,6 @@ func TestAttachOnNewCancelledByKeyBeforePaneIsLive(t *testing.T) {
 			if session, ok := m.selectedSession(); !ok || session.ID != aeSession.ID {
 				t.Fatalf("selection = (%+v, %v), want the created session still selected", session, ok)
 			}
-			if len(attachments) != 0 {
-				t.Fatalf("attachments = %v, want none", attachments)
-			}
 		})
 	}
 }
@@ -196,8 +181,7 @@ func TestAttachOnNewCancelledByKeyBeforePaneIsLive(t *testing.T) {
 func TestAttachOnNewRefusesATooSmallPreviewLikeEnter(t *testing.T) {
 	socket := selectionTestSocket("aefloor")
 	newQuietSelectionPane(t, socket, aeTmuxSession, 80, 24)
-	var attachments []string
-	m := aeModel(t, socket, true, 8, &attachments)
+	m := aeModel(t, socket, true, 8)
 	if _, height := m.previewContentSize(); height >= interactiveMinInnerRows {
 		t.Fatalf("test assumption violated: preview content height %d is not below the %d-row floor", height, interactiveMinInnerRows)
 	}
@@ -227,9 +211,6 @@ func TestAttachOnNewRefusesATooSmallPreviewLikeEnter(t *testing.T) {
 	if m.interactive {
 		t.Fatalf("retried entry once the preview grew past the floor -- a refused auto-entry must not retry")
 	}
-	if len(attachments) != 0 {
-		t.Fatalf("attachments = %v, want none -- a refused entry claims nothing", attachments)
-	}
 }
 
 // TestAttachOnNewOffSelectsOnly: with [ui] attach_on_new off the
@@ -237,8 +218,7 @@ func TestAttachOnNewRefusesATooSmallPreviewLikeEnter(t *testing.T) {
 func TestAttachOnNewOffSelectsOnly(t *testing.T) {
 	socket := selectionTestSocket("aeoff")
 	newQuietSelectionPane(t, socket, aeTmuxSession, 80, 24)
-	var attachments []string
-	m := aeModel(t, socket, false, 30, &attachments)
+	m := aeModel(t, socket, false, 30)
 	m = aeCreate(t, m)
 	if m.pendingAutoEnterSessionID != "" {
 		t.Fatalf("pendingAutoEnterSessionID = %q with attach_on_new off, want it never armed", m.pendingAutoEnterSessionID)
@@ -255,9 +235,6 @@ func TestAttachOnNewOffSelectsOnly(t *testing.T) {
 	if session, ok := m.selectedSession(); !ok || session.ID != aeSession.ID {
 		t.Fatalf("selection = (%+v, %v), want the created session selected", session, ok)
 	}
-	if len(attachments) != 0 {
-		t.Fatalf("attachments = %v, want none", attachments)
-	}
 }
 
 // TestAttachOnNewNeverFiresInASecondClient: a second client on the same
@@ -268,9 +245,8 @@ func TestAttachOnNewOffSelectsOnly(t *testing.T) {
 func TestAttachOnNewNeverFiresInASecondClient(t *testing.T) {
 	socket := selectionTestSocket("aesecond")
 	newQuietSelectionPane(t, socket, aeTmuxSession, 80, 24)
-	var attachmentsA, attachmentsB []string
-	a := aeModel(t, socket, true, 30, &attachmentsA)
-	b := aeModel(t, socket, true, 30, &attachmentsB)
+	a := aeModel(t, socket, true, 30)
+	b := aeModel(t, socket, true, 30)
 
 	a = aeCreate(t, a)
 	b = aeUpdate(b, sessionsLoaded{sessions: []store.Session{aeSession}})
@@ -291,8 +267,8 @@ func TestAttachOnNewNeverFiresInASecondClient(t *testing.T) {
 	for i := 0; i < 3; i++ {
 		b = aeTick(b)
 	}
-	if b.interactive || b.entryRefusal.active || len(attachmentsB) != 0 {
-		t.Fatalf("second client attempted entry after the first entered (interactive=%v, entryRefusal=%+v, attachments=%v)", b.interactive, b.entryRefusal, attachmentsB)
+	if b.interactive || b.entryRefusal.active {
+		t.Fatalf("second client attempted entry after the first entered (interactive=%v, entryRefusal=%+v)", b.interactive, b.entryRefusal)
 	}
 }
 
@@ -301,8 +277,7 @@ func TestAttachOnNewNeverFiresInASecondClient(t *testing.T) {
 // gone, so a pane that turns up later is not entered.
 func TestAttachOnNewDropsAfterItsTickBudget(t *testing.T) {
 	socket := selectionTestSocket("aebudget")
-	var attachments []string
-	m := aeModel(t, socket, true, 30, &attachments)
+	m := aeModel(t, socket, true, 30)
 	m = aeCreate(t, m)
 	for i := 0; i <= autoEnterTickBudget; i++ {
 		m = aeTick(m)
@@ -330,9 +305,9 @@ func TestAttachOnNewDropsAfterItsTickBudget(t *testing.T) {
 // status, selected, with m.resume/m.restart standing in for the service:
 // each (re)starts the row's real tmux session on socket, as the service
 // does before it returns, and reports service.ResumeStarted.
-func aeResumeModel(t *testing.T, socket string, attachOnResume bool, status string, attachments *[]string) Model {
+func aeResumeModel(t *testing.T, socket string, attachOnResume bool, status string) Model {
 	t.Helper()
-	m := aeModelWith(t, socket, config.Settings{Color: true, AttachOnNew: true, AttachOnResume: attachOnResume}, 100, 30, attachments)
+	m := aeModelWith(t, socket, config.Settings{Color: true, AttachOnNew: true, AttachOnResume: attachOnResume}, 100, 30)
 	row := aeSession
 	row.Status, row.Agent = status, "claude"
 	m.sessions = []store.Session{row}
@@ -374,8 +349,7 @@ func aePressAndRun(t *testing.T, m Model, key string) Model {
 // against the stale `stopped` row -- that would be `↵`'s stopped refusal.
 func TestAttachOnResumeEntersAfterR(t *testing.T) {
 	socket := selectionTestSocket("aeresume")
-	var attachments []string
-	m := aeResumeModel(t, socket, true, "stopped", &attachments)
+	m := aeResumeModel(t, socket, true, "stopped")
 	m = aePressAndRun(t, m, "r")
 	if m.pendingAutoEnterSessionID != aeSession.ID {
 		t.Fatalf("pendingAutoEnterSessionID = %q after r, want %q", m.pendingAutoEnterSessionID, aeSession.ID)
@@ -390,9 +364,6 @@ func TestAttachOnResumeEntersAfterR(t *testing.T) {
 	m = aeTick(m)
 	aeAssertInteractiveOnBorn(t, m)
 	defer m.exitInteractive()
-	if len(attachments) != 1 {
-		t.Fatalf("attachments = %v, want exactly one", attachments)
-	}
 }
 
 // TestAttachOnResumeOffByDefault: the default leaves `r` and `R` exactly
@@ -414,8 +385,7 @@ func TestAttachOnResumeOffByDefault(t *testing.T) {
 	for _, tc := range []struct{ key, status string }{{"r", "stopped"}, {"R", "running"}} {
 		t.Run(tc.key, func(t *testing.T) {
 			socket := selectionTestSocket("aeresumeoff" + tc.status)
-			var attachments []string
-			m := aeResumeModel(t, socket, settings.AttachOnResume, tc.status, &attachments)
+			m := aeResumeModel(t, socket, settings.AttachOnResume, tc.status)
 			m = aePressAndRun(t, m, tc.key)
 			if m.pendingAutoEnterSessionID != "" {
 				t.Fatalf("pendingAutoEnterSessionID = %q after %s with attach_on_resume off, want never armed", m.pendingAutoEnterSessionID, tc.key)
@@ -424,8 +394,8 @@ func TestAttachOnResumeOffByDefault(t *testing.T) {
 			for i := 0; i < 3; i++ {
 				m = aeTick(m)
 			}
-			if m.interactive || m.entryRefusal.active || len(attachments) != 0 {
-				t.Fatalf("%s with attach_on_resume off attempted entry (interactive=%v, entryRefusal=%+v, attachments=%v)", tc.key, m.interactive, m.entryRefusal, attachments)
+			if m.interactive || m.entryRefusal.active {
+				t.Fatalf("%s with attach_on_resume off attempted entry (interactive=%v, entryRefusal=%+v)", tc.key, m.interactive, m.entryRefusal)
 			}
 		})
 	}
@@ -435,8 +405,7 @@ func TestAttachOnResumeOffByDefault(t *testing.T) {
 func TestAttachOnResumeEntersAfterRestart(t *testing.T) {
 	socket := selectionTestSocket("aerestart")
 	newQuietSelectionPane(t, socket, aeTmuxSession, 80, 24)
-	var attachments []string
-	m := aeResumeModel(t, socket, true, "running", &attachments)
+	m := aeResumeModel(t, socket, true, "running")
 	m = aePressAndRun(t, m, "R")
 	if m.pendingAutoEnterSessionID != aeSession.ID {
 		t.Fatalf("pendingAutoEnterSessionID = %q after R, want %q", m.pendingAutoEnterSessionID, aeSession.ID)
@@ -444,9 +413,6 @@ func TestAttachOnResumeEntersAfterRestart(t *testing.T) {
 	m = aeTick(m)
 	aeAssertInteractiveOnBorn(t, m)
 	defer m.exitInteractive()
-	if len(attachments) != 1 {
-		t.Fatalf("attachments = %v, want exactly one", attachments)
-	}
 }
 
 // TestAttachOnResumeNotArmedByUndo: `u` undoing an `x` resumes exactly
@@ -454,8 +420,7 @@ func TestAttachOnResumeEntersAfterRestart(t *testing.T) {
 // never arms the intent, even with attach_on_resume on.
 func TestAttachOnResumeNotArmedByUndo(t *testing.T) {
 	socket := selectionTestSocket("aeundo")
-	var attachments []string
-	m := aeResumeModel(t, socket, true, "stopped", &attachments)
+	m := aeResumeModel(t, socket, true, "stopped")
 	m.undoSessionID, m.undoSessionName = aeSession.ID, aeSession.Name
 	m = aePressAndRun(t, m, "u")
 	if m.pendingAutoEnterSessionID != "" {

@@ -22,18 +22,21 @@ var ManagedPrefixes = []string{
 }
 
 // Refusal is returned, with nothing changed, when the update must not go
-// ahead: a dev build, a package-managed binary or an unwritable install
-// directory. deck never escalates privileges to get past one.
+// ahead: a dev build, a package-managed binary, an unwritable install
+// directory or a release not verified immutable while that is required. deck
+// never escalates privileges to get past one.
 type Refusal struct {
-	Reason  string // RefusedDev, RefusedManaged or RefusedUnwritable
+	Reason  string // RefusedDev, RefusedManaged, RefusedUnwritable or RefusedNotImmutable
 	Message string
 }
 
-// The three refusal reasons.
+// The refusal reasons. Preflight returns only the first three;
+// RefusedNotImmutable comes from Run, after the release API was asked.
 const (
-	RefusedDev        = "dev-build"
-	RefusedManaged    = "managed-prefix"
-	RefusedUnwritable = "unwritable-dir"
+	RefusedDev          = "dev-build"
+	RefusedManaged      = "managed-prefix"
+	RefusedUnwritable   = "unwritable-dir"
+	RefusedNotImmutable = "not-immutable"
 )
 
 func (r *Refusal) Error() string { return r.Message }

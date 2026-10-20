@@ -433,9 +433,11 @@ Feature: The `,` settings takeover (requirement 48)
     # default_group_first, making it TEN. GH #62 then added
     # `[ui] attach_on_click` beside them, making it ELEVEN. GH #67 then
     # added `[ui] select_on_drag` after it, making it TWELVE. Task 014 (R283)
-    # then added `[ui] note_timeout` after it, making it THIRTEEN. Grep this
+    # then added `[ui] note_timeout` after it, making it THIRTEEN. Task 004 (R306) then added `[ui] output_bucket`
+    # after it, making it FOURTEEN. Grep this
     # feature file before adding any future ui.* schema field or
     # settings-only entry.
+    And deck client "A" sends "j"
     And deck client "A" sends "j"
     And deck client "A" sends "j"
     And deck client "A" sends "j"

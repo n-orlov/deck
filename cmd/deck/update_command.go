@@ -8,6 +8,7 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/n-orlov/deck/internal/config"
 	"github.com/n-orlov/deck/internal/update"
 )
 
@@ -80,30 +81,53 @@ func runUpdateCommand(args []string, stdout, stderr io.Writer) int {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	uo := update.Options{Current: version, Version: opts.version, OnlyIfNewer: true}
+	uo := updateCommandOptions(opts.version)
 	if opts.check {
 		return reportUpdateCheck(ctx, uo, stdout, stderr)
 	}
 	res, err := update.Run(ctx, uo)
 	if err != nil {
-		sayln(stderr, "deck update:", err)
+		sayln(stderr, "deck update:", update.RedactText(update.StripControl(err.Error())))
 		return 1
 	}
-	old := buildVersion()
+	reportUpdateInstall(res, buildVersion(), stdout)
+	return 0
+}
+
+// reportUpdateInstall prints what `deck update` did: nothing changed, or the
+// version moved and the notes that go with the install.
+func reportUpdateInstall(res update.Result, old string, stdout io.Writer) {
 	if res.Unchanged {
 		sayf(stdout, "deck %s is already the latest release (%s); nothing changed\n", old, res.Tag)
-		return 0
+		return
 	}
 	sayf(stdout, "deck updated: %s -> %s (%s)\n", old, res.Tag, res.Path)
-	sayln(stdout, "note: restart any running deck to use the new version; running sessions are not disturbed")
-	return 0
+	for _, n := range updateNotes(res) {
+		sayln(stdout, "note: "+n)
+	}
+}
+
+// updateNotes are the notes printed after an install: the release's
+// immutability, then the restart reminder. Each is deck's own wording, chosen from a
+// Result state; no server text reaches them.
+func updateNotes(res update.Result) []string {
+	var notes []string
+	switch res.Immutable {
+	case update.ImmutableVerified:
+		notes = append(notes, "the release is a GitHub immutable release")
+	case update.ImmutableNot:
+		notes = append(notes, "the release is not verified immutable: GitHub reports it is not an immutable release (installed because "+update.EnvRequireImmutable+"=0 is set)")
+	case update.ImmutableUnknown:
+		notes = append(notes, "the release is not verified immutable: its immutability could not be checked (installed because "+update.EnvRequireImmutable+"=0 is set)")
+	}
+	return append(notes, "restart any running deck to use the new version; running sessions are not disturbed")
 }
 
 // reportUpdateCheck is `deck update --check`: one request, nothing written.
 func reportUpdateCheck(ctx context.Context, uo update.Options, stdout, stderr io.Writer) int {
 	res, err := update.Check(ctx, uo)
 	if err != nil {
-		sayln(stderr, "deck update:", err)
+		sayln(stderr, "deck update:", update.RedactText(update.StripControl(err.Error())))
 		return 1
 	}
 	cur := buildVersion()
@@ -116,4 +140,20 @@ func reportUpdateCheck(ctx context.Context, uo update.Options, stdout, stderr io
 		sayf(stdout, "deck %s is up to date (latest release: %s)\n", cur, res.Latest)
 	}
 	return 0
+}
+
+// commandInstallLockPath is the install lock `deck update` takes: beside the
+// shared update cache, which does not depend on the config file. No resolvable
+// cache means no lock, like an uncreatable lock file.
+func commandInstallLockPath() string {
+	cache, err := config.UpdateCachePath(os.Getenv, os.UserHomeDir)
+	if err != nil {
+		return ""
+	}
+	return update.InstallLockPath(cache)
+}
+
+// updateCommandOptions is what `deck update` hands update.Run and update.Check.
+func updateCommandOptions(pinned string) update.Options {
+	return update.Options{Current: version, Version: pinned, OnlyIfNewer: true, InstallLock: commandInstallLockPath()}
 }

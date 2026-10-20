@@ -18,7 +18,12 @@ import (
 //
 //	RestoreWindowGeometry's step 2  set-option -w -u -t <target> window-size
 //	ClearIsizeGeometry              set-option -w -u -t <target> @deck_isize_geometry
-//	WindowOwnership.Release         set-option -w -u -t <target> @deck_isize_owner
+//	WindowOwnership.Release         if-shell -F -t <target> <claim-matches> set-option -w -u -t '<target>' @deck_isize_owner ; show-options -wv -t <target> @deck_isize_owner
+//
+// Release is one atomic compare-and-set (tmux/ownership.go's
+// compareAndSetWindowOwnership): the unset runs inside the if-shell only
+// when the option still holds this claim, so on the wire it is an if-shell
+// invocation carrying `-u` whose last token is the option name.
 //
 // countWireCommands (force_indistinguishable_test.go) only looks at the
 // first token after the shim's `-L <socket>` prefix, so it cannot
@@ -27,8 +32,8 @@ import (
 // token (the entry path chooses its own window target form).
 //
 // It is the observable that answers the one question the resulting tmux
-// STATE cannot: `Release` self-gates (it re-reads the option and returns
-// nil when the value is not its own claim), so "the option still holds the
+// STATE cannot: `Release` self-gates (its compare-and-set leaves a value
+// that is not its own claim alone), so "the option still holds the
 // winner's claim" is equally consistent with Release having been called and
 // with Release never being reached. "Zero ownership-option unsets on this
 // client's wire" is not: it fails the moment the release step actually
@@ -43,7 +48,7 @@ func countWireOptionUnsets(t *testing.T, logPath, option string) int {
 	for _, line := range strings.Split(string(data), "\n") {
 		fields := strings.Fields(line)
 		// Every invocation the shim sees is `-L <socket> <command> ...`.
-		if len(fields) < 4 || fields[0] != "-L" || fields[2] != "set-option" {
+		if len(fields) < 4 || fields[0] != "-L" || (fields[2] != "set-option" && fields[2] != "if-shell") {
 			continue
 		}
 		if fields[len(fields)-1] != option {
@@ -60,16 +65,15 @@ func countWireOptionUnsets(t *testing.T, logPath, option string) int {
 }
 
 // countWireOptionReads counts the logged tmux invocations that READ one
-// specific window-scoped option (`show-options -wv -t <target> <option>`),
-// as opposed to countWireOptionUnsets above which counts the option's
-// UNSET. Every read of OwnershipOption on the wire -- whether from
-// claimStillMine's own probe or from WindowOwnership.Release's internal
-// self-gating re-read (Release always re-reads before deciding whether to
-// unset, tmux/ownership.go's own Release) -- takes this exact shape, so
-// counting reads is what makes "Release was never reached" and "Release
-// ran and self-gated into a no-op" distinguishable on the wire: both
-// leave the unset count at zero, but only the first leaves the read count
-// at exactly one (the still-mine probe alone) rather than two.
+// specific window-scoped option, as opposed to countWireOptionUnsets above
+// which counts the option's UNSET. A read of OwnershipOption on the wire is
+// either a plain `show-options -wv -t <target> <option>` (claimStillMine's
+// own probe) or a compare-and-set (`if-shell ... ; show-options -wv -t
+// <target> <option>`, whose trailing show-options is its confirm-read --
+// WindowOwnership.Release is one). Counting both means a Release that ran
+// and self-gated into a no-op still raises the count above the still-mine
+// probe's one, so "Release was never reached" stays distinguishable on the
+// wire from "Release ran and declined".
 func countWireOptionReads(t *testing.T, logPath, option string) int {
 	t.Helper()
 	data, err := os.ReadFile(logPath)
@@ -80,7 +84,7 @@ func countWireOptionReads(t *testing.T, logPath, option string) int {
 	for _, line := range strings.Split(string(data), "\n") {
 		fields := strings.Fields(line)
 		// Every invocation the shim sees is `-L <socket> <command> ...`.
-		if len(fields) < 4 || fields[0] != "-L" || fields[2] != "show-options" {
+		if len(fields) < 4 || fields[0] != "-L" || (fields[2] != "show-options" && fields[2] != "if-shell") {
 			continue
 		}
 		if fields[len(fields)-1] == option {
@@ -199,29 +203,26 @@ func TestRaiseLostAttachOnStolenClaimTouchesNothing(t *testing.T) {
 		t.Fatalf("the stolen-from teardown issued %d resize-window commands, want 0 (the still-mine gate must skip RestoreWindowGeometry entirely)", resizes)
 	}
 	// Releases nothing, counted on the wire: WindowOwnership.Release
-	// self-gates, so only the absence of its own unset from this client's
-	// wire distinguishes "never called" from "called and declined".
+	// self-gates, so only the absence of its own compare-and-set unset from
+	// this client's wire (whose log line carries `-u` whether or not it
+	// takes effect) distinguishes "never called" from "called and declined".
 	if unsets := countWireOptionUnsets(t, loserLog, tmux.OwnershipOption); unsets != 0 {
 		t.Fatalf("the stolen-from teardown issued %d %s unsets, want 0 (Release must never be reached)", unsets, tmux.OwnershipOption)
 	}
 	// Task 136: count READS of the ownership option too, not only its
-	// unset. WindowOwnership.Release self-gates by re-reading the option
-	// before deciding whether to unset it, so a spurious Release call
-	// that lands here and correctly declines to unset would still cost a
-	// SECOND show-options read of OwnershipOption -- one that an
-	// unset-only count is blind to but a read count catches. Exactly one
-	// read is claimStillMine's own probe (the still-mine gate above);
-	// zero unsets confirms it declined; a second read would mean Release
-	// ran anyway.
+	// unset. WindowOwnership.Release self-gates inside one compare-and-set
+	// whose trailing show-options re-reads the option, so a spurious
+	// Release call that lands here and correctly declines to unset still
+	// costs a SECOND read of OwnershipOption on the wire. Exactly one read
+	// is claimStillMine's own probe (the still-mine gate above); a second
+	// would mean Release ran anyway.
 	//
-	// Verified load-bearing by hand for this task: temporarily adding
+	// Verified load-bearing by hand: temporarily adding
 	// `_ = ownership.Release(ctx)` to teardownInteractiveClaim's
 	// `if !stillMine { ... }` branch (internal/tui/interactive.go, right
-	// before its `return`) raises this count to 2 and fails this
-	// assertion, while leaving every unset-count assertion above at 0
-	// (Release's own self-gate declines to unset, exactly as documented).
-	// The extra call was reverted immediately after; it must never be
-	// left in the tree.
+	// before its `return`) raises this count to 2 (and the unset count
+	// above to 1) and fails this assertion. The extra call was reverted immediately after; it must
+	// never be left in the tree.
 	if reads := countWireOptionReads(t, loserLog, tmux.OwnershipOption); reads != 1 {
 		t.Fatalf("the stolen-from teardown issued %d %s show-options reads, want exactly 1 (claimStillMine's own probe; a second read would mean Release ran and merely self-gated into a no-op)", reads, tmux.OwnershipOption)
 	}
@@ -235,6 +236,9 @@ func TestRaiseLostAttachOnStolenClaimTouchesNothing(t *testing.T) {
 	// body is skipped, not merely its three named steps.
 	if sets := countWireCommands(t, loserLog, "set-option"); sets != 0 {
 		t.Fatalf("the stolen-from teardown issued %d set-option commands, want 0 (nothing may be written after the still-mine probe fails)", sets)
+	}
+	if cas := countWireCommands(t, loserLog, "if-shell"); cas != 0 {
+		t.Fatalf("the stolen-from teardown issued %d if-shell compare-and-set commands, want 0 (nothing may be written after the still-mine probe fails)", cas)
 	}
 
 	// The resulting state agrees: the window geometry is byte-identical to

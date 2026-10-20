@@ -225,11 +225,21 @@ type Model struct {
 	create                  func(context.Context, service.ShellCreateInput) (store.Session, error)
 	createAgentSession      func(context.Context, service.AgentCreateInput) (store.Session, error)
 	attach                  func(context.Context, string) (*exec.Cmd, error)
-	prepareAttach           func(context.Context, string) error
 	kill                    func(context.Context, store.Session) error
-	acknowledge             func(context.Context, string) error
-	reconcile               func(context.Context) error
-	resume                  func(context.Context, string) (store.Session, service.ResumeOutcome, error)
+	acknowledge             func(context.Context, string, store.StatusEpisode) error
+	// markSeen is engagement's write (R321, engagement.go); engagement is its shared cell.
+	markSeen func(context.Context, string, store.StatusEpisode) (bool, error)
+	// markViewed is the R325 viewing write (viewed.go).
+	markViewed func(context.Context, string) (bool, error)
+	// attachSample is the full-attach engagement watcher's read (R321,
+	// attach_engagement.go); WithTmuxClient wires it. Nil runs `a` unwatched.
+	attachSample attachSampler
+	// attachOutput feeds the output clock during a full attach
+	// (WithAttachOutputObserver).
+	attachOutput func(context.Context, store.Session) error
+	engagement   *engagementState
+	reconcile    func(context.Context) error
+	resume       func(context.Context, string) (store.Session, service.ResumeOutcome, error)
 	// restart is task 022's `R` (SPEC §6.2/§6.3): kills the selected
 	// session's live pane if one exists and relaunches it with the
 	// adapter's resume argv (same conversation id, never a fresh one),
@@ -332,11 +342,18 @@ type Model struct {
 	// (update_indicator.go, R298).
 	updateSrc updateSource
 	updateInd updateIndicator
+	// updateRecheckAfter replaces the recheck tick's delay
+	// (updateRecheckDelay) in a test; nil in production.
+	updateRecheckAfter func() time.Duration
 	// updateInstall and updateConfirming are R299's ctrl+u flow: the verified
 	// update to run, and the confirmation dialog that gates it
 	// (update_install.go).
 	updateInstall    updateInstaller
 	updateConfirming bool
+	// updateImmPlan is what the open ctrl+u confirmation told the user about
+	// the release's immutability (upd.ImmutableReported / Required /
+	// Refused), set when the dialog opened (#104).
+	updateImmPlan string
 	// pendingDelete is true for exactly one keypress after a lone `d`
 	// (SPEC's dd chord): a second `d` opens deleteConfirming; ANY other
 	// key (including Esc) clears pendingDelete without performing any
@@ -1155,6 +1172,12 @@ type Model struct {
 	// clearing of previewFitSessionID must not license a second concurrent
 	// fit for a session whose first attempt is still outstanding.
 	previewFitInFlight string
+	// outputDiscount (R305) is told about every deck-caused resize, attach
+	// and forwarded key so the output clock does not count the output they
+	// provoke. Nil (a Model built without it) discounts nothing.
+	// attachingSessionID is the session a full attach is currently holding.
+	outputDiscount     OutputDiscounter
+	attachingSessionID string
 	// sidebarScroll is the wheel-scroll offset into the sidebar's own
 	// content lines (SPEC §11.8, task 028): it moves which lines the
 	// panel shows without ever touching m.selected, and is clamped at
@@ -1302,6 +1325,36 @@ type Model struct {
 	eventHookLive *service.LiveEventHook
 }
 
+// OutputDiscounter is the slice of service.OutputClock the TUI drives (R305):
+// deck-caused resizes, attaches and forwarded keys, each of which makes the
+// pane print without the agent having done anything.
+type OutputDiscounter interface {
+	Discount(sessionID string, cause service.DiscountCause)
+	AttachStarted(sessionID string)
+	AttachEnded(sessionID string)
+}
+
+// WithAttachOutputObserver wires the read of the output clock the full-attach
+// watcher runs while the client is attached (R305), for the session it holds.
+func (m Model) WithAttachOutputObserver(observe func(context.Context, store.Session) error) Model {
+	m.attachOutput = observe
+	return m
+}
+
+// WithOutputDiscounter wires the output clock's discount (R305).
+func (m Model) WithOutputDiscounter(d OutputDiscounter) Model {
+	m.outputDiscount = d
+	return m
+}
+
+// discountOutput tells the output clock that deck just did something to the
+// session's pane that makes it print (R305).
+func (m Model) discountOutput(sessionID string, cause service.DiscountCause) {
+	if m.outputDiscount != nil && sessionID != "" {
+		m.outputDiscount.Discount(sessionID, cause)
+	}
+}
+
 // WithTmuxClient attaches the tmux.Client §11.9 interactive mode (task
 // 061 onward) uses directly. A Model built without it (every constructor
 // above this method, and every pre-task-061 unit test) has the zero
@@ -1309,6 +1362,7 @@ type Model struct {
 // tmuxClient's own doc comment.
 func (m Model) WithTmuxClient(client tmux.Client) Model {
 	m.tmuxClient = client
+	m.attachSample = client.AttachSample
 	return m
 }
 
@@ -1596,7 +1650,17 @@ type shellCreated struct {
 	err     error
 }
 
-type attachFinished struct{ err error }
+// attachFinished ends a full attach; engaged is the engagement trigger the
+// attach watcher attributed to one status episode (R321,
+// attach_engagement.go), "" when none, and observed is the row at that
+// episode: the only episode the trigger may set seen (R319, R322).
+type attachFinished struct {
+	err      error
+	engaged  engagementTrigger
+	observed store.Session
+	// writes are the seen writes the watcher issued during the attach.
+	writes []sessionEngaged
+}
 
 // sessionKilled carries the killed session back (not just the error) so a
 // successful x can start requirement 22's undo toast/window without a
@@ -1994,18 +2058,14 @@ type sessionGroupMoved struct {
 // New creates a list model. tmux failures are intentionally retained as a
 // rendered health state: users must be able to read and quit it.
 func New(db *store.Store, settings config.Settings, tmuxNote string) Model {
-	m := Model{store: db, settings: settings, startupNote: tmuxNote, createCWDRecentIndex: -1, interactiveScroll: &interactiveScrollState{}, deckExecutable: runningExecutable(), configReloader: newConfigReloader(settings)}
+	m := Model{store: db, settings: settings, startupNote: tmuxNote, createCWDRecentIndex: -1, interactiveScroll: &interactiveScrollState{}, engagement: &engagementState{issued: map[string]store.StatusEpisode{}}, deckExecutable: runningExecutable(), configReloader: newConfigReloader(settings)}
 	if wd, err := os.Getwd(); err == nil {
 		m.startCWD = wd
 	}
 	if db != nil {
 		m.acknowledge = db.AcknowledgeSession
-		m.prepareAttach = func(ctx context.Context, sessionID string) error {
-			if settings.Clock == nil {
-				return fmt.Errorf("attach status clock is unavailable")
-			}
-			return db.RecordAttachment(ctx, sessionID, settings.Clock.Now().UnixMilli())
-		}
+		m.markSeen = db.MarkStatusSeen
+		m.markViewed = db.MarkViewed
 		m.loadPersistedUIState(db)
 	}
 	return m
@@ -2287,6 +2347,9 @@ func (m Model) Init() tea.Cmd {
 	if cmd := m.updateCheckCmd(); cmd != nil {
 		commands = append(commands, cmd)
 	}
+	if cmd := m.updateRecheckCmd(); cmd != nil {
+		commands = append(commands, cmd)
+	}
 	if m.configReloader != nil {
 		commands = append(commands, m.configPollTickCmd())
 	}
@@ -2490,6 +2553,7 @@ func (m *Model) previewFit() tea.Cmd {
 	client := m.tmuxClient
 	slug := session.Slug
 	sessionID := session.ID
+	discounter := m.outputDiscount
 	// Marked here, at SCHEDULING time, so a tick that fires while this
 	// command is still running finds the guard closed. EVERY early return
 	// inside the closure below therefore OWES a previewFitDone for this
@@ -2498,75 +2562,90 @@ func (m *Model) previewFit() tea.Cmd {
 	// fit for the rest of the session's lifetime.
 	m.previewFitInFlight = sessionID
 	return func() tea.Msg {
-		ctx := context.Background()
-		pane, ok, err := client.PreviewPane(ctx, slug)
-		if err != nil || !ok {
-			// No live pane (stopped/starting/archived/reaped) or a read
-			// error: nothing to fit, and nothing to retry until the
-			// selection changes again -- the same best-effort treatment
-			// capturePreview's own previewCaptured{err} gives a transport
-			// failure (it does not spam attachError every tick either).
-			//
-			// noLivePane: true (task 035) -- nothing was resized here, so
-			// this return must NOT latch previewFitSessionID the way a
-			// real fit attempt does. Without this, a session that has no
-			// live pane right now permanently loses eligibility for every
-			// future fit for the rest of the model's lifetime, even after
-			// its pane later becomes live again while the row stays (or is
-			// re-)selected -- see docs/reports/phase3g-034-previewfit-derivation.
-			return previewFitDone{sessionID: sessionID, noLivePane: true}
-		}
-		windowTarget, err := tmux.SessionName(slug)
-		if err != nil {
-			return previewFitDone{sessionID: sessionID}
-		}
-		// Task 103/124: a foreign LIVE claim on this window (someone else's
-		// `F` steal, or a plain attach) means passive fit must stand down --
-		// resizing a window another live process now holds races whatever
-		// that process is doing with it. foreignLiveClaim: true (not
-		// noLivePane) so this does NOT latch previewFitSessionID: the claim
-		// is read fresh on every attempt, exactly like task 035's no-live-
-		// pane return, so the session regains eligibility the moment the
-		// claim clears without waiting for the selection to change.
-		if state, perr := client.ProbeWindowOwnership(ctx, windowTarget); perr == nil && state == tmux.ClaimForeignLive {
-			return previewFitDone{sessionID: sessionID, foreignLiveClaim: true}
-		}
-		// A real tmux client is attached to this session (a full `a`
-		// attach, someone's plain `tmux attach`): under `window-size
-		// latest` that client owns the window's size, so a fit here picks
-		// a size it cannot hold -- the unpin below hands it straight back
-		// -- and the two resizes it costs are a visible reflow of a
-		// terminal somebody is looking at. So skip the resize and issue
-		// only the unpin, which is the part that matters while a client is
-		// attached: it releases any pin an EARLIER preview fit left on the
-		// window (another deck build's, or one this process wrote before
-		// the client attached), so the attach cannot stay cropped to a
-		// preview-sized box. That is SPEC §3.3's promise that deck's own
-		// preview never crops a full attach, kept from the preview side
-		// too, not only from `a`'s.
+		return fitPreviewPane(client, slug, sessionID, width, height, discounter)
+	}
+}
+
+// fitPreviewPane is the command previewFit schedules: it fits the session's
+// window to the panel, or stands down. EVERY return owes a previewFitDone for
+// sessionID, the only thing that clears previewFitInFlight.
+func fitPreviewPane(client tmux.Client, slug, sessionID string, width, height int, discounter OutputDiscounter) tea.Msg {
+	ctx := context.Background()
+	pane, ok, err := client.PreviewPane(ctx, slug)
+	if err != nil || !ok {
+		// No live pane (stopped/starting/archived/reaped) or a read
+		// error: nothing to fit, and nothing to retry until the
+		// selection changes again -- the same best-effort treatment
+		// capturePreview's own previewCaptured{err} gives a transport
+		// failure (it does not spam attachError every tick either).
 		//
-		// A foreign live claim is already handled above, so an interactive
-		// holder's deliberate pin is never the one released here.
-		//
-		// clientAttached, exactly like foreignLiveClaim, does NOT latch:
-		// the attach is transient and the row must regain its fit the
-		// moment the client detaches.
-		if attached, aerr := client.SessionAttachedCount(ctx, windowTarget); aerr == nil && attached > 0 {
-			_ = client.UnpinWindowSize(ctx, windowTarget)
-			return previewFitDone{sessionID: sessionID, clientAttached: true}
-		}
-		// FitWindowToPane already no-ops (0 resize-window calls) when the
-		// pane already matches width/height, so a settled selection whose
-		// window some other action (an attaching client, a prior fit) has
-		// already brought to the panel's own size costs nothing beyond the
-		// one display-message read that discovers that.
-		//
-		// The Unpinned variant is what makes passive fit's "owning and
-		// restoring nothing" true rather than merely intended -- see its
-		// own doc comment, and the paragraph on the crop it removes above.
-		_, _ = client.FitWindowToPaneUnpinned(ctx, windowTarget, pane.ID, width, height)
+		// noLivePane: true (task 035) -- nothing was resized here, so
+		// this return must NOT latch previewFitSessionID the way a
+		// real fit attempt does. Without this, a session that has no
+		// live pane right now permanently loses eligibility for every
+		// future fit for the rest of the model's lifetime, even after
+		// its pane later becomes live again while the row stays (or is
+		// re-)selected -- see docs/reports/phase3g-034-previewfit-derivation.
+		return previewFitDone{sessionID: sessionID, noLivePane: true}
+	}
+	windowTarget, err := tmux.SessionName(slug)
+	if err != nil {
 		return previewFitDone{sessionID: sessionID}
 	}
+	if done, standDown := previewFitStandDown(ctx, client, windowTarget, sessionID); standDown {
+		return done
+	}
+	// FitWindowToPane already no-ops (0 resize-window calls) when the
+	// pane already matches width/height, so a settled selection whose
+	// window some other action (an attaching client, a prior fit) has
+	// already brought to the panel's own size costs nothing beyond the
+	// one display-message read that discovers that.
+	//
+	// The Unpinned variant is what makes passive fit's "owning and
+	// restoring nothing" true rather than merely intended -- see its
+	// own doc comment, and the paragraph on the crop it removes above.
+	resizes, _ := client.FitWindowToPaneUnpinned(ctx, windowTarget, pane.ID, width, height)
+	if resizes > 0 && discounter != nil {
+		// R305: the resize makes the pane's program redraw (SIGWINCH);
+		// that output is deck's, not the agent's.
+		discounter.Discount(sessionID, service.DiscountResize)
+	}
+	return previewFitDone{sessionID: sessionID}
+}
+
+// previewFitStandDown reports the two reasons passive fit must not resize.
+//
+// Task 103/124: a foreign LIVE claim on this window (someone else's `F`
+// steal, or a plain attach) means passive fit must stand down -- resizing a
+// window another live process now holds races whatever that process is doing
+// with it. foreignLiveClaim: true (not noLivePane) so this does NOT latch
+// previewFitSessionID: the claim is read fresh on every attempt, exactly like
+// task 035's no-live-pane return, so the session regains eligibility the
+// moment the claim clears without waiting for the selection to change.
+//
+// A real tmux client is attached to this session (a full `a` attach,
+// someone's plain `tmux attach`): under `window-size latest` that client owns
+// the window's size, so a fit here picks a size it cannot hold -- the unpin
+// below hands it straight back -- and the two resizes it costs are a visible
+// reflow of a terminal somebody is looking at. So skip the resize and issue
+// only the unpin, which is the part that matters while a client is attached:
+// it releases any pin an EARLIER preview fit left on the window, so the
+// attach cannot stay cropped to a preview-sized box. That is SPEC §3.3's
+// promise that deck's own preview never crops a full attach, kept from the
+// preview side too, not only from `a`'s. A foreign live claim is handled
+// first, so an interactive holder's deliberate pin is never the one released
+// here. clientAttached, exactly like foreignLiveClaim, does NOT latch: the
+// attach is transient and the row must regain its fit the moment the client
+// detaches.
+func previewFitStandDown(ctx context.Context, client tmux.Client, windowTarget, sessionID string) (previewFitDone, bool) {
+	if state, perr := client.ProbeWindowOwnership(ctx, windowTarget); perr == nil && state == tmux.ClaimForeignLive {
+		return previewFitDone{sessionID: sessionID, foreignLiveClaim: true}, true
+	}
+	if attached, aerr := client.SessionAttachedCount(ctx, windowTarget); aerr == nil && attached > 0 {
+		_ = client.UnpinWindowSize(ctx, windowTarget)
+		return previewFitDone{sessionID: sessionID, clientAttached: true}, true
+	}
+	return previewFitDone{}, false
 }
 
 // Task 012: one eligibility predicate per action, each taking the
@@ -2584,7 +2663,7 @@ func (m *Model) previewFit() tea.Cmd {
 // handler consult this one predicate, so Y is never offered or acted on for
 // a row that has nothing left to acknowledge.
 func canAcknowledge(session store.Session) bool {
-	return !session.Acknowledged
+	return !session.StatusSeen()
 }
 
 // canKill reports whether x may act on session: any row that is not
@@ -2729,6 +2808,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	next, cmd := m.dispatchMessage(message)
 	next, cmd = m.releaseHeldReload(next, cmd)
 	next, cmd = releaseHeldRefit(next, cmd)
+	next = observeDwellAfterUpdate(next)
 	return stampFooterNotes(prev, next, cmd)
 }
 
@@ -2782,10 +2862,13 @@ func init() {
 		reflect.TypeFor[undoExpired]():                    handlerFor(Model.onUndoExpired),
 		reflect.TypeFor[sessionsPinned]():                 handlerFor(Model.onSessionsPinned),
 		reflect.TypeFor[sessionAcknowledged]():            handlerFor(Model.onSessionAcknowledged),
+		reflect.TypeFor[sessionEngaged]():                 handlerFor(Model.onSessionEngaged),
+		reflect.TypeFor[sessionViewed]():                  handlerFor(Model.onSessionViewed),
 		reflect.TypeFor[sessionArchived]():                handlerFor(Model.onSessionArchived),
 		reflect.TypeFor[archiveUndoExpired]():             handlerFor(Model.onArchiveUndoExpired),
 		reflect.TypeFor[footerNoteExpired]():              handlerFor(Model.onFooterNoteExpired),
 		reflect.TypeFor[updateChecked]():                  handlerFor(Model.onUpdateChecked),
+		reflect.TypeFor[updateRecheckTick]():              handlerFor(Model.onUpdateRecheckTick),
 		reflect.TypeFor[updateInstalledMsg]():             handlerFor(Model.onUpdateInstalled),
 		reflect.TypeFor[updateFailedMsg]():                handlerFor(Model.onUpdateFailed),
 		reflect.TypeFor[teardownHookNoteExpired]():        handlerFor(Model.onTeardownHookNoteExpired),
@@ -2820,6 +2903,8 @@ func init() {
 		reflect.TypeFor[entryRefusalHolderRecheckDone]():  handlerFor(Model.onEntryRefusalHolderRecheckDone),
 		reflect.TypeFor[previewCaptured]():                handlerFor(Model.onPreviewCaptured),
 		reflect.TypeFor[animationTick]():                  handlerFor(Model.onAnimationTick),
+		reflect.TypeFor[tea.FocusMsg]():                   handlerFor(Model.onWindowFocus),
+		reflect.TypeFor[tea.BlurMsg]():                    handlerFor(Model.onWindowBlur),
 		reflect.TypeFor[tea.KeyMsg]():                     handlerFor(Model.onKeyMsg),
 		reflect.TypeFor[tea.MouseMsg]():                   handlerFor(Model.onMouseMsg),
 	}
@@ -3169,9 +3254,9 @@ func (m *Model) sortReloaded(loaded []store.Session) []store.Session {
 	order, _ := m.effectiveSortOrder()
 	switch order {
 	case SortOrderAttention:
-		return sortSessionsByAttentionStable(m.baseSessions, loaded)
+		return sortSessionsByAttentionStableHeld(m.baseSessions, loaded, m.engagementHold())
 	default:
-		return sortSessionsByOrder(m.baseSessions, loaded, order)
+		return sortSessionsByOrder(m.baseSessions, loaded, order, m.settings.OutputBucket)
 	}
 }
 
@@ -3364,6 +3449,18 @@ func (m Model) onShellCreated(msg shellCreated) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) onAttachFinished(msg attachFinished) (tea.Model, tea.Cmd) {
+	if m.outputDiscount != nil && m.attachingSessionID != "" {
+		m.outputDiscount.AttachEnded(m.attachingSessionID)
+	}
+	// The trigger engages the episode the watcher observed it on, never the
+	// row as a reload delivered since has it: a newer prompt sharing the
+	// stamp, or one dated by a stepped-back clock, stays unseen.
+	var engaged tea.Cmd
+	if msg.engaged != "" && m.attachingSessionID != "" && msg.observed.ID == m.attachingSessionID {
+		engaged = m.engageRow(msg.engaged, msg.observed)
+	}
+	m.attachingSessionID = ""
+	m.reportEngagementWrites(msg.writes)
 	if msg.err != nil {
 		m.setAttachError("Cannot attach: " + msg.err.Error())
 	}
@@ -3390,9 +3487,20 @@ func (m Model) onAttachFinished(msg attachFinished) (tea.Model, tea.Cmd) {
 	// asked for mouse off ([ui] mouse=false / DECK_MOUSE=0) does not get it
 	// silently switched back on by one attach/detach cycle.
 	if m.settings.Mouse {
-		return m, tea.Batch(m.loadSessions, tea.EnableMouseCellMotion)
+		return m, tea.Batch(m.loadSessions, tea.EnableMouseCellMotion, engaged)
 	}
-	return m, m.loadSessions
+	return m, tea.Batch(m.loadSessions, engaged)
+}
+
+// reportEngagementWrites surfaces the first failed seen write a full attach's
+// watcher issued while it ran.
+func (m *Model) reportEngagementWrites(writes []sessionEngaged) {
+	for _, write := range writes {
+		if write.err != nil {
+			m.setAttachError("Cannot mark seen: " + write.err.Error())
+			return
+		}
+	}
 }
 
 func (m Model) onSessionKilled(msg sessionKilled) (tea.Model, tea.Cmd) {
@@ -4142,14 +4250,32 @@ func (m Model) onPreviewTick(_ previewTick) (tea.Model, tea.Cmd) {
 	// no tea.Cmd at all -- it is a pure read of the transport's own
 	// Status(), so a hit is handled inline, in this very Update call,
 	// rather than round-tripping through another message.
-	if m.interactive {
-		var cmd tea.Cmd
-		m, cmd = m.tickInteractiveDisplacement()
+	var engage []tea.Cmd
+	m, engage = m.tickEngagement()
+	cmds = append(cmds, engage...)
+	return m, tea.Batch(cmds...)
+}
+
+// tickEngagement is onPreviewTick's tail: while interactive the
+// displacement check and the screen-change trigger, then the dwell trigger
+// (R322, passive and interactive alike) and the viewing trigger (R325) on
+// the same tick. It returns the non-nil commands in that order.
+func (m Model) tickEngagement() (Model, []tea.Cmd) {
+	var cmds []tea.Cmd
+	add := func(cmd tea.Cmd) {
 		if cmd != nil {
 			cmds = append(cmds, cmd)
 		}
 	}
-	return m, tea.Batch(cmds...)
+	if m.interactive {
+		var cmd tea.Cmd
+		m, cmd = m.tickInteractiveDisplacement()
+		add(cmd)
+		add(m.engageOnScreenChange())
+	}
+	add(m.engageOnDwell())
+	add(m.engageOnView())
+	return m, cmds
 }
 
 // tickInteractiveDisplacement is onPreviewTick's displacement check while
@@ -4275,15 +4401,7 @@ func (m Model) attachSelected() (tea.Model, tea.Cmd) {
 		m.setAttachError("Cannot attach: " + err.Error())
 		return m, nil
 	}
-	// Consult the durable row on every attachment. The list frame may lag a
-	// hook that just made it waiting or error; the store transaction applies
-	// only that row's current status and leaves raced resolutions untouched.
-	if m.prepareAttach != nil {
-		if err := m.prepareAttach(context.Background(), session.ID); err != nil {
-			m.setAttachError("Cannot attach: " + err.Error())
-			return m, nil
-		}
-	}
+	// R320: attaching is inert on status and seen state; nothing is written.
 	m.setAttachError("")
 	// SPEC §11.9 (task 008/R143, GH #38): `a` is one of the three entry
 	// paths (↵, F, a) whose SUCCESS clears an active refusal banner --
@@ -4291,7 +4409,52 @@ func (m Model) attachSelected() (tea.Model, tea.Cmd) {
 	// m.clearEntryRefusal(); this is the same clearing for the full attach.
 	m.clearEntryRefusal()
 	m.releaseForeignPreviewPin(session.Slug)
+	if m.outputDiscount != nil {
+		// R305: the hand-off redraw and (at its detach) the detach repaint
+		// are deck-caused, each for one bounded window; the attached
+		// stretch between them is not discounted.
+		m.outputDiscount.AttachStarted(session.ID)
+	}
+	m.attachingSessionID = session.ID
+	if m.attachSample != nil {
+		// R321: the watcher beside the client reports the attach's first
+		// engagement trigger; onAttachFinished hands it to engageRow.
+		// The trigger is bound to the status episode the watcher read
+		// across its evidence (episodeBracket), from the store when deck
+		// has one.
+		// The cell is created now so the watcher's seen writes and the
+		// Model that comes back from the attach share one record.
+		m.engagementCell()
+		engage := m.engageRow
+		watched := &watchedAttach{cmd: command, slug: session.Slug, sample: m.attachSample, interval: attachWatchInterval, settle: attachWatchSettle, session: session, read: m.attachRowReader(session.ID), engage: engage, observeOutput: m.attachOutputObserver(session), discount: m.attachOutputDiscount(session)}
+		return m, tea.Exec(watched, func(err error) tea.Msg {
+			return attachFinished{err: err, engaged: watched.Trigger, observed: watched.Observed, writes: watched.Engaged}
+		})
+	}
 	return m, tea.ExecProcess(command, func(err error) tea.Msg { return attachFinished{err: err} })
+}
+
+// attachOutputObserver is the watcher's output-clock read for the attached
+// session, nil when none is wired. A failed read is dropped: the next tick
+// reads again, and the reconcile after the detach reports real faults.
+func (m Model) attachOutputObserver(session store.Session) func(context.Context) {
+	if m.attachOutput == nil {
+		return nil
+	}
+	observe := m.attachOutput
+	return func(ctx context.Context) { _ = observe(ctx, session) }
+}
+
+// attachOutputDiscount is the watcher's output-clock discount for the
+// attached session (R305): the keys and resizes deck forwards during a full
+// attach are deck-caused, each for one bounded window. nil when no clock is
+// wired.
+func (m Model) attachOutputDiscount(session store.Session) func(service.DiscountCause) {
+	if m.outputDiscount == nil || session.ID == "" {
+		return nil
+	}
+	discounter, id := m.outputDiscount, session.ID
+	return func(cause service.DiscountCause) { discounter.Discount(id, cause) }
 }
 
 // releaseForeignPreviewPin is `a`'s last act before it hands the terminal
@@ -5021,6 +5184,9 @@ func (m Model) interactiveFooterLineWithin(width int) string {
 	wheelPlain := interactiveSidebarWheelKey + " " + interactiveSidebarWheelHint
 	wheelNote := m.colorToken(theme.Key, interactiveSidebarWheelKey) + " " + m.colorToken(theme.Hint, interactiveSidebarWheelHint)
 
+	unseenPlain := interactiveUnseenKey + " " + interactiveUnseenHint
+	unseenNote := m.colorToken(theme.Key, interactiveUnseenKey) + " " + m.colorToken(theme.Hint, interactiveUnseenHint)
+
 	cue := m.interactiveScrollCue()
 	if cue == "" {
 		if stringWidth("keystrokes forward to the live pane")+sepWidth+quitWidth > width {
@@ -5032,11 +5198,14 @@ func (m Model) interactiveFooterLineWithin(width int) string {
 			}
 			return quit
 		}
-		line := forwardNote + sep + quit
-		if m.settings.Mouse && stringWidth("keystrokes forward to the live pane")+sepWidth+stringWidth(wheelPlain)+sepWidth+quitWidth <= width {
-			line = forwardNote + sep + wheelNote + sep + quit
+		// R327: the unseen jumps trail the optional segments and drop
+		// first, so a narrow footer keeps every older entry whole.
+		optional := []footerSegment{}
+		if m.settings.Mouse {
+			optional = append(optional, footerSegment{wheelNote, stringWidth(wheelPlain)})
 		}
-		return line
+		optional = append(optional, footerSegment{unseenNote, stringWidth(unseenPlain)})
+		return liveFooterLine(width, footerSegment{forwardNote, stringWidth("keystrokes forward to the live pane")}, optional, sep, quit, quitWidth)
 	}
 
 	scrollKey := m.colorToken(theme.Key, "Shift+PgUp/PgDn")
@@ -5051,6 +5220,7 @@ func (m Model) interactiveFooterLineWithin(width int) string {
 	if m.settings.Mouse {
 		segments = append(segments, footerSegment{wheelNote, stringWidth(wheelPlain)})
 	}
+	segments = append(segments, footerSegment{unseenNote, stringWidth(unseenPlain)})
 
 	budget := width - quitWidth
 	if budget < 0 {
@@ -5069,10 +5239,28 @@ func (m Model) interactiveFooterLineWithin(width int) string {
 	return strings.Join(parts, sep) + sep + quit
 }
 
+// liveFooterLine joins the forward note, as many of the optional segments as
+// fit in order (stopping at the first that does not), and the Ctrl+Q hint.
+func liveFooterLine(width int, forward footerSegment, optional []footerSegment, sep, quit string, quitWidth int) string {
+	line, used := forward.styled, forward.width
+	for _, seg := range optional {
+		if used+stringWidth(sep)+seg.width+stringWidth(sep)+quitWidth > width {
+			break
+		}
+		line += sep + seg.styled
+		used += stringWidth(sep) + seg.width
+	}
+	return line + sep + quit
+}
+
 // interactiveSidebarWheelKey/Hint are the interactive footer's R157
 // segment naming the wheel over the sidebar (SPEC §11.8/§11.9): it scrolls
 // the list, as it does in list mode, while interactive mode stays active.
 const (
+	// R327: the unseen jumps are intercepted while interactive too.
+	interactiveUnseenKey  = "Alt+U/Alt+Shift+U"
+	interactiveUnseenHint = "unseen"
+
 	interactiveSidebarWheelKey  = "sidebar wheel"
 	interactiveSidebarWheelHint = "scrolls the list"
 )
@@ -5480,12 +5668,24 @@ func (m Model) attentionCount() int {
 // selection (and everything else) untouched — this function never
 // mutates m.sessions or any session's status, only answers where to move.
 func (m Model) nextAttentionSelection(from sidebarCursor) (sidebarCursor, bool) {
+	return m.stepSelection(from, 1, NeedsAttention)
+}
+
+// stepSelection walks the painted list from from's visual position, one
+// visible session row at a time in direction dir (+1 forward, -1 backward),
+// wrapping through the whole list back to from itself, and returns the first
+// row match accepts. ok is false when no visible session matches. It only
+// answers where to move: it never mutates anything.
+func (m Model) stepSelection(from sidebarCursor, dir int, match func(store.Session) bool) (sidebarCursor, bool) {
 	order := m.visualOrder()
 	n := len(order)
 	if n == 0 {
 		return from, false
 	}
 	pos := -1
+	if dir < 0 {
+		pos = n
+	}
 	for i, c := range order {
 		if c == from {
 			pos = i
@@ -5493,13 +5693,9 @@ func (m Model) nextAttentionSelection(from sidebarCursor) (sidebarCursor, bool) 
 		}
 	}
 	for step := 1; step <= n; step++ {
-		i := (pos + step) % n
-		c := order[i]
+		c := order[((pos+dir*step)%n+n)%n]
 		idx, ok := c.SessionIndex()
-		if !ok {
-			continue
-		}
-		if m.isSessionVisible(idx) && NeedsAttention(m.sessions[idx]) {
+		if ok && m.isSessionVisible(idx) && match(m.sessions[idx]) {
 			return c, true
 		}
 	}
@@ -5560,7 +5756,30 @@ func (m Model) renderStackedFrame(layout LayoutResult) ([]string, int) {
 // used by the stacked layout's fullBoxTop, which has no special-cased
 // "deck" colour run the way sidebarTitleLine does.
 func (m Model) sidebarTitleText() string {
-	return "deck" + m.glyph(" — ", " - ") + "sessions"
+	title := "deck" + m.glyph(" — ", " - ") + "sessions"
+	if n := m.unseenCount(); n > 0 {
+		title += m.glyph(" · ", " - ") + strconv.Itoa(n) + " unseen"
+	}
+	return title
+}
+
+// unseenMarker is the one unseen marker (R324): `◆`, one column, distinct
+// from the `●` waiting status glyph; `!` under DECK_ASCII / [ui] ascii.
+func (m Model) unseenMarker() string {
+	return m.glyph("◆", "!")
+}
+
+// unseenCount is the header's "N unseen" figure: the rows that carry the
+// unseen marker (store.Session.Unseen), counted over every session in the
+// list. It reads the row; it never writes one and never orders anything.
+func (m Model) unseenCount() int {
+	n := 0
+	for _, s := range m.sessions {
+		if s.Unseen() {
+			n++
+		}
+	}
+	return n
 }
 
 // sidebarEntryContentWidth is the ONE answer to "how many columns of text
@@ -5788,9 +6007,9 @@ func (m *Model) resortSessionsLive() {
 	// order -- see sessionsLoaded's own identical simplification above.
 	switch order {
 	case SortOrderAttention:
-		m.baseSessions = sortSessionsByAttentionStable(m.baseSessions, m.baseSessions)
+		m.baseSessions = sortSessionsByAttentionStableHeld(m.baseSessions, m.baseSessions, m.engagementHold())
 	default:
-		m.baseSessions = sortSessionsByOrder(m.baseSessions, m.baseSessions, order)
+		m.baseSessions = sortSessionsByOrder(m.baseSessions, m.baseSessions, order, m.settings.OutputBucket)
 	}
 	m.sessions = m.filteredSessions()
 	// A header cursor (task 012/D.1) is untouched here -- its own identity
@@ -6182,9 +6401,8 @@ func statusTokenOrText(status string) theme.Token {
 // the status-source quality, the status word and the archived flag.
 func (m Model) sidebarBadgeParts(session store.Session, statusTok theme.Token) []settingsRowSegment {
 	var parts []settingsRowSegment
-	if !session.Acknowledged && (session.Status == "waiting" || session.Status == "error") {
-		unseen := m.glyph("●", "!")
-		parts = append(parts, settingsRowSegment{Text: unseen, Tok: statusTok})
+	if session.Unseen() {
+		parts = append(parts, settingsRowSegment{Text: m.unseenMarker(), Tok: statusTok})
 	}
 	if quality := statusSourceQuality(session.StatusSource); quality != "" {
 		parts = append(parts, settingsRowSegment{Text: quality, Tok: theme.Dimmed})
@@ -6294,7 +6512,7 @@ func (m Model) sidebarRowLines(index int, session store.Session, stripe bool) ([
 	// it and the name.
 	statusTok := statusTokenOrText(session.Status)
 	segs := make([]settingsRowSegment, 0, 4)
-	segs = append(segs, settingsRowSegment{Text: m.sidebarStatusGlyph(session.Status) + " ", Tok: statusTok})
+	segs = append(segs, settingsRowSegment{Text: m.sidebarRowGlyph(session) + " ", Tok: statusTok})
 	if session.PinnedAt != 0 {
 		segs = append(segs, settingsRowSegment{Text: m.glyph("\u2726", "*") + " ", Tok: theme.Accent})
 	}
@@ -6371,6 +6589,23 @@ func (m Model) sidebarRowLine2Segments(session store.Session) []settingsRowSegme
 		line2Segs = append(line2Segs, settingsRowSegment{Text: " ", Tok: theme.Text}, settingsRowSegment{Text: text, Tok: tok})
 	}
 	return line2Segs
+}
+
+// sidebarRowGlyph is a row's line-1 status glyph: sidebarStatusGlyph, except
+// that a `running` row the store marks unverified (R315: no event for
+// 3 x stale_after and three consecutive probe misses) carries the decorated
+// `◔` (ASCII `-`) in the running glyph's one column. The decoration is the
+// only change: the status word, its token, the sort position and the stored
+// status are those of an ordinary running row.
+func (m Model) sidebarRowGlyph(session store.Session) string {
+	now := time.Now()
+	if m.settings.Clock != nil {
+		now = m.settings.Clock.Now()
+	}
+	if session.Unverified(now, m.settings.StaleAfter) {
+		return m.glyph("\u25d4", "-")
+	}
+	return m.sidebarStatusGlyph(session.Status)
 }
 
 // sidebarStatusGlyph is SPEC §11's one-column status glyph for a row's
@@ -6720,7 +6955,7 @@ func statusSourceQuality(source string) string {
 	switch source {
 	case "hook":
 		return "live"
-	case "probe":
+	case "probe", "movement":
 		return "sampled"
 	default:
 		return ""
@@ -7947,7 +8182,7 @@ func (m Model) writeDetailStatus(b *strings.Builder, session store.Session) {
 	// only surfaced here, distinct from "never sampled": a miss strictly newer
 	// than the row's current verdict is the freshest evidence deck has, and is
 	// superseded (stops rendering) the instant any later verdict lands.
-	if session.LastProbeAt > session.StatusAt {
+	if session.LastProbeAt > session.StatusAt && session.ProbeMissStreak > 0 {
 		fmt.Fprintf(b, "%s\n", m.detailField("Probe:              ", fmt.Sprintf("sampled, no rule matched (%s)", m.relativeAge(session.LastProbeAt))))
 	}
 }
@@ -9737,7 +9972,8 @@ Keys
     below), exactly as it does outside interactive mode;
     a full-screen app (editor, pager, agent TUI) sits on the
     alternate screen, which keeps no history, so its preview starts
-    with none; typing snaps the view back to the live bottom
+    with none; typing snaps the view back to the live bottom;
+    alt+u / alt+Shift+U here switch to the next / previous unseen one
   F force-enter interactive mode on the selected session, stealing it from
     any client already attached to it and claiming ownership over a
     live holder of the window's claim instead of standing down for one --
@@ -9840,6 +10076,9 @@ Keys
   space move to the next session needing attention (waiting or error),
     wrapping around; does nothing when nothing needs attention and never
     changes any session's status
+  alt+u / alt+Shift+U move to the next / previous unseen session (the ◆
+    marker), wrapping around; landing views the row but moves no row and
+    acknowledges nothing; a one-line message when nothing is unseen
   c / ←/→ toggle (c), fold (←) or unfold (→) the group whose header is
     under the cursor -- from a session row, that row's own group
   g / G jump to the first / last visible row

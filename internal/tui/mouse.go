@@ -44,6 +44,9 @@ type hitResult struct {
 	target       hitTarget
 	sessionIndex int
 	groupID      int64
+	// gutter (R328) is true only for a hitTargetRow hit whose x lies in the
+	// row's cursor gutter -- the cells that hold the `>` marker.
+	gutter bool
 }
 
 // hitTest resolves one absolute terminal cell (as bubbletea's tea.MouseMsg
@@ -89,13 +92,13 @@ func (m Model) hitTestSideBySide(layout LayoutResult, x, y int) hitResult {
 	if collapsed {
 		return hitResult{panel: hitPanelSidebar, target: hitTargetCollapsedStrip}
 	}
-	return m.sidebarBoxHit(layout, y, height)
+	return m.sidebarBoxHit(layout, x, y, height)
 }
 
 // sidebarBoxHit resolves a row y inside the sidebar box (height rows tall,
 // the point already known to be within its width) to the border, an entry or
 // the empty space below the entries.
-func (m Model) sidebarBoxHit(layout LayoutResult, y, height int) hitResult {
+func (m Model) sidebarBoxHit(layout LayoutResult, x, y, height int) hitResult {
 	if y == 0 || y == height-1 {
 		// Top/bottom border row: within the sidebar panel, but on no
 		// particular row or header.
@@ -107,7 +110,20 @@ func (m Model) sidebarBoxHit(layout LayoutResult, y, height int) hitResult {
 	if contentRow < 0 || contentRow >= len(visible) {
 		return hitResult{panel: hitPanelSidebar}
 	}
-	return sidebarEntryHit(visible[contentRow])
+	hit := sidebarEntryHit(visible[contentRow])
+	hit.gutter = hit.target == hitTargetRow && inGutter(x, visible[contentRow].gutter)
+	return hit
+}
+
+// sidebarGutterX is the first column of a row's cursor gutter: the left
+// border takes column 0 and one pad column column 1 (sidebarContentLine and
+// fullBoxContentLine lay a row out the same way in every layout).
+const sidebarGutterX = 2
+
+// inGutter reports whether column x lies in the cells the given gutter text
+// (`> ` and its blank twin, always two cells wide) occupies on a row.
+func inGutter(x int, gutter string) bool {
+	return x >= sidebarGutterX && x < sidebarGutterX+stringWidth(gutter)
 }
 
 // hitTestStacked covers the below-80-column fallback (renderStackedFrame):
@@ -123,7 +139,7 @@ func (m Model) hitTestStacked(layout LayoutResult, x, y int) hitResult {
 			if !inSpan(x, lw) {
 				return hitResult{}
 			}
-			return m.sidebarBoxHit(layout, y, lh)
+			return m.sidebarBoxHit(layout, x, y, lh)
 		}
 		y -= lh
 	}
@@ -170,6 +186,11 @@ func (m Model) handleMouse(e tea.MouseMsg) (tea.Model, tea.Cmd) {
 		delta := 1
 		if e.Button == tea.MouseButtonWheelUp {
 			delta = -1
+		}
+		// R321: a notch over the passive preview scrolls nothing (SPEC
+		// §11.8) but is the first scroll of an unseen waiting/error row.
+		if m.hitTest(e.X, e.Y).panel == hitPanelPreview {
+			return m, m.engage(engagePassiveScroll)
 		}
 		return m.scrollSidebar(e, delta), nil
 	}
@@ -238,9 +259,8 @@ func (m Model) handleMousePress(e tea.MouseMsg) (tea.Model, tea.Cmd) {
 		// row is selected from the click's own coordinates (the click
 		// landed in the preview, not on a row). enterInteractive already
 		// carries every refusal (R143's banner), the header-cursor no-op
-		// (hasSelectedSession is false while m.selected is a header) and
-		// the same durable attachment record (m.prepareAttach) ↵ itself
-		// gets, so this is a plain call-through, not a second copy of any
+		// (hasSelectedSession is false while m.selected is a header), so
+		// this is a plain call-through, not a second copy of any
 		// of that ladder. This still must not fall through to the sidebar,
 		// and it still starts no drag-to-copy selection (that gesture is
 		// scoped to interactive mode only -- Update's own tea.MouseMsg case
@@ -250,6 +270,9 @@ func (m Model) handleMousePress(e tea.MouseMsg) (tea.Model, tea.Cmd) {
 		return m.enterInteractive()
 	case hitPanelSidebar:
 		updated, cmd, _ := m.resolveSidebarPress(hit, func(mm Model, h hitResult) (tea.Model, tea.Cmd) {
+			if h.gutter {
+				return mm.gutterSelectRow(h.sessionIndex)
+			}
 			return mm.clickSidebarRow(h.sessionIndex, e)
 		})
 		return updated, cmd
@@ -322,6 +345,29 @@ func (m Model) clickSidebarRow(index int, _ tea.MouseMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	return m.enterInteractive()
+}
+
+// gutterSelectRow is R328's list-mode gutter click: it selects the row and
+// nothing else, whatever [ui] attach_on_click says. Like any click it writes
+// no status and no seen state (R320), and moves no row.
+func (m Model) gutterSelectRow(index int) (tea.Model, tea.Cmd) {
+	m.selected = rowCursor(index)
+	return m, nil
+}
+
+// gutterNavigateInteractive is R328's gutter click while interactive: on the
+// attached row it leaves interactive mode (Ctrl+Q's own teardown, selection
+// left where it is); on any other row it leaves interactive mode and selects
+// that row without entering it.
+func (m Model) gutterNavigateInteractive(index int) (tea.Model, tea.Cmd) {
+	attached, ok := m.interactiveTargetIndex()
+	left, cmd := m.exitInteractive()
+	if !ok || attached == index {
+		return left, cmd
+	}
+	next := left.(Model)
+	next.selected = rowCursor(index)
+	return next, cmd
 }
 
 // retargetInteractiveSidebarClick is task 313's (R54) job: while interactive

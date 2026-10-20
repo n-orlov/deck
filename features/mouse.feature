@@ -282,11 +282,11 @@ Feature: §11.8 mouse bindings and the [ui] mouse / DECK_MOUSE opt-out (requirem
     When deck client "A" exits cleanly
 
   @requirement-37-preview-click-enters-and-empty-sidebar-click-leaves
-  Scenario: clicking the preview enters interactive mode and records the same attachment enter does, and clicking below the last row leaves
+  Scenario: clicking the preview enters interactive mode and records no attachment, and clicking below the last row leaves
     # Task 011 (B.5, R144, GH #37): the preview click's own entry (task
-    # 010) records the exact durable attachment `↵`/RecordAttachment
-    # records -- an `attached` event, once the session's status is one
-    # RecordAttachment actually answers (`waiting`, here) -- and a left
+    # 010) is inert exactly like `↵` (R320): no `attached` event and no
+    # status or seen change on a `waiting` row (covering test:
+    # TestClickIsInertOnStatusSeenAndPosition) -- and a left
     # press over the sidebar's empty padding, where there is no row to
     # re-target and so nothing left to fall through to except Ctrl+Q's
     # own exitInteractive, is the second, equally deliberate way back to
@@ -299,7 +299,7 @@ Feature: §11.8 mouse bindings and the [ui] mouse / DECK_MOUSE opt-out (requirem
     And deck client "A" clicks at column 70 row 15
     Then deck client "A" screen contains "interactive"
     And deck client "A" screen contains "Ctrl+Q"
-    And the state database session "mouse-attach-rt" has 1 attached event
+    And the state database session "mouse-attach-rt" has 0 attached events
     When deck client "A" clicks at column 10 row 15
     Then deck client "A" screen contains "deck - sessions"
     When deck client "A" exits cleanly
@@ -364,4 +364,33 @@ Feature: §11.8 mouse bindings and the [ui] mouse / DECK_MOUSE opt-out (requirem
     # drifted (proven by internal/tui/r142_wheel_drift_test.go's unit
     # tests) -- its own "> " marker is never expected on screen here,
     # since that row not being rendered is the drift itself.
+    When deck client "A" exits cleanly
+
+  @requirement-328-gutter-click-navigates-without-attaching
+  Scenario: at the 80x24 minimum a gutter click detaches or selects without attaching, and a main-area click still enters
+    # R328/R329: the gutter is the two cells that hold the "> " marker
+    # (columns 3-4 on the wire, after the border and one pad column). The
+    # harness pins DECK_ASCII=1, so this runs with the ascii glyphs too.
+    Given deck client "A" is started with terminal size 80x24
+    When deck client "A" creates shell session "gutter-alpha"
+    And deck client "A" creates shell session "gutter-bravo"
+    And within one configured reconcile interval deck client "A" row "gutter-alpha" contains "running"
+    And within one configured reconcile interval deck client "A" row "gutter-bravo" contains "running"
+    And deck client "A" clicks on the row containing "gutter-bravo"
+    Then deck client "A" has session "gutter-bravo" selected
+    And deck client "A" screen contains "Ctrl+Q"
+    # The attached row's gutter leaves interactive mode, selection kept.
+    When deck client "A" clicks on the gutter of the row containing "gutter-bravo"
+    Then deck client "A" screen stops containing "Ctrl+Q"
+    And deck client "A" has session "gutter-bravo" selected
+    # Another row's gutter, while not interactive, only selects it.
+    When deck client "A" clicks on the gutter of the row containing "gutter-alpha"
+    Then deck client "A" screen stops containing "Ctrl+Q"
+    And deck client "A" has session "gutter-alpha" selected
+    # While interactive, another row's gutter selects it without entering.
+    When deck client "A" clicks on the row containing "gutter-bravo"
+    Then deck client "A" screen contains "Ctrl+Q"
+    When deck client "A" clicks on the gutter of the row containing "gutter-alpha"
+    Then deck client "A" screen stops containing "Ctrl+Q"
+    And deck client "A" has session "gutter-alpha" selected
     When deck client "A" exits cleanly

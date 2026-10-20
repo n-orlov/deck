@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // WriteConfigFile serialises cfg's schema-declared fields back into path,
@@ -286,6 +287,7 @@ var fieldRenderers = map[string]func(FileConfig) string{
 	"ui.preview_paint":       func(c FileConfig) string { return strconv.Quote(c.PreviewPaint) },
 	"ui.recent_cwd_limit":    func(c FileConfig) string { return strconv.Itoa(c.RecentCwdLimit) },
 	"ui.note_timeout":        func(c FileConfig) string { return strconv.Itoa(int(c.NoteTimeout.Seconds())) },
+	"ui.output_bucket":       func(c FileConfig) string { return renderSecondsDuration(c.OutputBucket) },
 	"event_retention_days":   func(c FileConfig) string { return strconv.Itoa(c.EventRetentionDays) },
 	"ui.theme":               func(c FileConfig) string { return strconv.Quote(c.Theme) },
 	"pre_launch":             func(c FileConfig) string { return strconv.Quote(c.PreLaunch) },
@@ -365,4 +367,14 @@ func writeTempFile(tmp *os.File, data []byte) error {
 		return fmt.Errorf("chmod %s: %w", tmpPath, err)
 	}
 	return nil
+}
+
+// renderSecondsDuration writes a whole number of seconds as a bare integer
+// and a fractional one as a quoted Go duration, so a loaded "1500ms" is
+// written back as "1.5s" and never truncated to 1.
+func renderSecondsDuration(d time.Duration) string {
+	if d%time.Second == 0 {
+		return strconv.FormatInt(int64(d/time.Second), 10)
+	}
+	return strconv.Quote(d.String())
 }

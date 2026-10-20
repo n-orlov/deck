@@ -8,6 +8,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/n-orlov/deck/internal/interactive"
+	"github.com/n-orlov/deck/internal/service"
 	"github.com/n-orlov/deck/internal/store"
 	"github.com/n-orlov/deck/internal/tmux"
 )
@@ -66,7 +67,6 @@ func (m Model) enterInteractiveBody(force bool) (tea.Model, tea.Cmd) {
 	}
 	session, _ := m.selectedSession()
 	ctx := context.Background()
-	client := m.tmuxClient
 	entry, ref := m.claimInteractiveEntry(ctx, session, force)
 	if ref != nil {
 		m.setEntryRefusal(session.ID, ref.kind, ref.reason)
@@ -74,27 +74,13 @@ func (m Model) enterInteractiveBody(force bool) (tea.Model, tea.Cmd) {
 	}
 	windowTarget, claim, dispatcher, grid := entry.windowTarget, entry.claim, entry.dispatcher, entry.grid
 
-	// SPEC §7: entering the interactive preview is a deck-mediated
-	// attachment in exactly `a`'s sense -- the keyboard is about to reach
-	// the pane -- so the same durable transaction (store.RecordAttachment,
-	// via the same m.prepareAttach attachSelected consults) answers a
-	// waiting row and acknowledges an error row, against the durable row
-	// rather than the possibly-stale list frame. It runs only after every
-	// refusal and every fallible tmux step above: a refused or failed
-	// entry must not claim the user answered anything. A store failure
-	// here refuses the entry like attachSelected refuses the attach, and
-	// unwinds the claim already made -- grid first, then geometry, then
-	// ownership, the same order exitInteractive's teardown uses (and
-	// through the same still-mine-gated helper, so an unwind that races a
-	// steal disarms nothing of the winner's; task 112).
-	if m.prepareAttach != nil {
-		if err := m.prepareAttach(ctx, session.ID); err != nil {
-			teardownInteractiveClaim(ctx, client, claim.ownership, windowTarget, claim.geometry, grid)
-			m.setEntryRefusal(session.ID, entryRefusalOther, err.Error())
-			return m, nil
-		}
-	}
+	// R320: entering the interactive preview is inert on status and seen
+	// state -- no store write happens here, so the row neither changes
+	// status nor moves. Engagement (R321) is what sets seen.
 
+	// R305: the entry fit (and the pin, and later the restore) resized the
+	// window, so the pane redraws.
+	m.discountOutput(session.ID, service.DiscountResize)
 	m.interactive = true
 	m.interactiveWindowTarget = windowTarget
 	m.interactiveGeometry = claim.geometry
@@ -104,6 +90,7 @@ func (m Model) enterInteractiveBody(force bool) (tea.Model, tea.Cmd) {
 	m.interactivePaneID = entry.claim.pane.ID
 	m.interactiveWidth, m.interactiveHeight = entry.width, entry.height
 	m.setInteractiveScrollOffset(0)
+	m.baselineInteractiveScreen()
 	m.clearEntryRefusal()
 	return m, nil
 }
@@ -564,6 +551,9 @@ func (m Model) exitInteractive() (tea.Model, tea.Cmd) {
 		m.sidebarScrollDrifted = false
 	}
 	m.teardownInteractive(context.Background())
+	if session, ok := m.interactiveTargetSession(); ok {
+		m.discountOutput(session.ID, service.DiscountResize)
+	}
 	m.interactive = false
 	m.interactiveWindowTarget = ""
 	m.interactiveGeometry = tmux.WindowGeometry{}
@@ -573,6 +563,7 @@ func (m Model) exitInteractive() (tea.Model, tea.Cmd) {
 	m.interactivePaneID = ""
 	m.interactiveWidth, m.interactiveHeight = 0, 0
 	m.setInteractiveScrollOffset(0)
+	m.engagementCell().screenTarget = ""
 	// steer 018 item 4 / SPEC §11: RestoreWindowGeometry above just put the
 	// window back at its PRE-entry size, which is not generally the preview
 	// panel's own current content size -- previewFit's own coalescing
@@ -617,6 +608,9 @@ func (m Model) updateInteractive(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if handled {
 		return m, nil
 	}
+	if next, cmd, handled := m.handleInteractiveUnseenKey(msg); handled {
+		return next, cmd
+	}
 	ctx := context.Background()
 	if named, ok := interactiveNamedKey(msg); ok {
 		// Any keystroke forwarded to the target snaps the view back to
@@ -651,8 +645,10 @@ func (m Model) updateInteractive(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.sidebarScrollDrifted = false
 		}
 		m.setInteractiveScrollOffset(0)
+		m.discountForwardedKey()
+		engaged := m.engage(engageKey)
 		_ = m.interactiveDispatcher.SendNamedKey(ctx, named)
-		return m, nil
+		return m, engaged
 	}
 	if payload, ok := interactiveLiteralPayload(msg); ok {
 		if m.sidebarScrollDrifted {
@@ -660,9 +656,20 @@ func (m Model) updateInteractive(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.sidebarScrollDrifted = false
 		}
 		m.setInteractiveScrollOffset(0)
+		m.discountForwardedKey()
+		engaged := m.engage(engageKey)
 		_ = interactive.SendKeyRun(ctx, m.interactiveDispatcher, payload)
+		return m, engaged
 	}
 	return m, nil
+}
+
+// discountForwardedKey (R305) tells the output clock that the pane is about
+// to print the echo of a key deck forwards to it.
+func (m Model) discountForwardedKey() {
+	if session, ok := m.interactiveTargetSession(); ok {
+		m.discountOutput(session.ID, service.DiscountKey)
+	}
 }
 
 // revealInteractiveDriftTarget ends a sidebar-wheel drift armed while

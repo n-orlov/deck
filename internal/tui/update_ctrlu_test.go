@@ -16,6 +16,7 @@ import (
 	"regexp"
 	"runtime"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -24,21 +25,44 @@ import (
 
 	"github.com/n-orlov/deck/internal/config"
 	"github.com/n-orlov/deck/internal/store"
+	"github.com/n-orlov/deck/internal/testrelbin"
 	"github.com/n-orlov/deck/internal/tmux"
 	upd "github.com/n-orlov/deck/internal/update"
 )
 
 const (
 	ctrlUOldBody = "old deck binary\n"
-	ctrlUNewBody = "new deck binary\n"
 	ctrlUCurrent = "v1.0.0"
 )
+
+// ctrlUNewBody is the release's "deck" binary: a real Go executable whose
+// build info reports the tag the fixture serves (indicatorTag).
+func ctrlUNewBody(t testing.TB) string { return string(testrelbin.Bytes(t, indicatorTag)) }
 
 var ctrlUKey = tea.KeyMsg(tea.Key{Type: tea.KeyCtrlU})
 
 func ctrlUSum(b []byte) string { s := sha256.Sum256(b); return hex.EncodeToString(s[:]) }
 
+var (
+	ctrlUArchiveMu    sync.Mutex
+	ctrlUArchiveCache = map[string][]byte{}
+)
+
+// ctrlUArchive builds a .tar.gz holding body as "deck". It is memoized per
+// body because the release binary is megabytes; each caller gets a copy.
 func ctrlUArchive(t *testing.T, body string) []byte {
+	t.Helper()
+	ctrlUArchiveMu.Lock()
+	defer ctrlUArchiveMu.Unlock()
+	if b, ok := ctrlUArchiveCache[body]; ok {
+		return append([]byte(nil), b...)
+	}
+	b := buildCtrlUArchive(t, body)
+	ctrlUArchiveCache[body] = b
+	return append([]byte(nil), b...)
+}
+
+func buildCtrlUArchive(t *testing.T, body string) []byte {
 	t.Helper()
 	var buf bytes.Buffer
 	zw := gzip.NewWriter(&buf)
@@ -67,7 +91,7 @@ func ctrlUFakeServer(t *testing.T, badChecksum bool) *httptest.Server {
 	if err != nil {
 		t.Skipf("no release asset for this platform: %v", err)
 	}
-	archive := ctrlUArchive(t, ctrlUNewBody)
+	archive := ctrlUArchive(t, ctrlUNewBody(t))
 	digest := ctrlUSum(archive)
 	if badChecksum {
 		digest = strings.Repeat("0", 64)
@@ -93,7 +117,6 @@ func ctrlUInstallModel(t *testing.T, badChecksum bool) (Model, string, string, *
 	t.Helper()
 	srv := ctrlUFakeServer(t, badChecksum)
 	t.Setenv("DECK_UPDATE_URL", srv.URL)
-	t.Setenv("PATH", t.TempDir()) // no gh: the update is checksum-verified only
 	dir := t.TempDir()
 	exe := filepath.Join(dir, "deck")
 	if err := os.WriteFile(exe, []byte(ctrlUOldBody), 0o755); err != nil {
@@ -180,11 +203,11 @@ func TestCtrlUConfirmInstall(t *testing.T) {
 		t.Fatalf("update ran %d times, want 1", runs.Load())
 	}
 	m = sendUpdateMsg(t, m, msg)
-	const want = "update installed: v1.2.3 — restart deck to apply"
+	const want = "update installed: v1.2.3 (not verified immutable) — restart deck to apply"
 	if got := m.footerNote(); got != want {
 		t.Fatalf("after the update: note = %q, want %q", got, want)
 	}
-	if got, _ := os.ReadFile(exe); string(got) != ctrlUNewBody {
+	if got, _ := os.ReadFile(exe); string(got) != ctrlUNewBody(t) {
 		t.Fatalf("binary = %q, want the new release", got)
 	}
 }
@@ -488,7 +511,7 @@ func TestCtrlUFailureNeverShowsMirrorPassword(t *testing.T) {
 			case r.URL.Path == "/releases/latest":
 				latest(w, r)
 			case strings.HasSuffix(r.URL.Path, "/"+asset):
-				_, _ = w.Write(ctrlUArchive(t, ctrlUNewBody))
+				_, _ = w.Write(ctrlUArchive(t, ctrlUNewBody(t)))
 			default:
 				_, _ = w.Write(bytes.Repeat([]byte("a"), 2<<20))
 			}

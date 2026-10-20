@@ -274,12 +274,14 @@ func reclaimOne(ctx context.Context, client Client, dir string, record Interacti
 	// ownership -- so a concurrent claimant racing this reclaim pass never
 	// observes a window resized by an owner that has already let go of it,
 	// and R100's original-geometry record never outlives the claim it was
-	// kept for.
+	// kept for. The release is a compare-and-set against the exact dead
+	// value read above, so a claimant that stole it in the meantime keeps
+	// its claim instead of having it unset from under it.
 	_, _ = client.run(ctx, "pipe-pane", "-t", record.PaneTarget)
 	_ = client.RestoreWindowGeometry(ctx, record.WindowTarget, record.Geometry)
 	_ = client.ClearIsizeGeometry(ctx, record.WindowTarget)
 	if state.Set {
-		_ = client.unsetWindowOwnership(ctx, record.WindowTarget)
+		_, _ = client.compareAndSetWindowOwnership(ctx, record.WindowTarget, state, "")
 	}
 	_ = os.RemoveAll(dir)
 	return true

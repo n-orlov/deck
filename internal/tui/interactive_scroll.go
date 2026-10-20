@@ -128,7 +128,8 @@ func (m Model) scrollInteractiveByLines(delta int) (tea.Model, tea.Cmd) {
 	// same way RenderRows itself always has.
 	m.setInteractiveScrollOffset(offset)
 	m = m.healInteractiveScrollOffsetFromRender()
-	return m, nil
+	// R321: the first scroll engages (a page scroll comes through here too).
+	return m, m.engage(engageScroll)
 }
 
 // healInteractiveScrollOffsetFromRender re-derives the stored scroll

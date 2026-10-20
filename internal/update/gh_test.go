@@ -13,13 +13,16 @@ import (
 )
 
 // TestMain keeps every update test off the developer's real gh: PATH holds
-// only an empty directory unless a test installs a fake gh.
+// only an empty directory unless a test installs a fake gh. The package's
+// tests serve a loopback mirror, which has no release API, so the baseline
+// is DECK_REQUIRE_IMMUTABLE=0; the immutability tests set it themselves.
 func TestMain(m *testing.M) {
 	dir, err := os.MkdirTemp("", "deck-update-nopath-")
 	if err != nil {
 		panic(err)
 	}
 	_ = os.Setenv("PATH", dir)
+	_ = os.Setenv(EnvRequireImmutable, "0")
 	// Behind a rejecting proxy: a test that forgot its fake release server
 	// fails the package naming the public host it reached.
 	code := testnet.Main(m)
@@ -120,7 +123,7 @@ func TestDownloadPrefersGh(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if fileSum(t, exe) != sum([]byte(newBody)) {
+			if fileSum(t, exe) != sum([]byte(newBody(t))) {
 				t.Errorf("binary not replaced (%+v)", res)
 			}
 			serverDl := 0

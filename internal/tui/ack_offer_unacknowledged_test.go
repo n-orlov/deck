@@ -28,31 +28,31 @@ func ackOfferModel(sessions []store.Session, selected sidebarCursor) Model {
 
 func TestFooterOffersYOnlyForUnacknowledgedRows(t *testing.T) {
 	t.Run("acknowledged waiting row omits Y", func(t *testing.T) {
-		m := ackOfferModel([]store.Session{{ID: "s1", Name: "a", Slug: "a", Agent: "claude", Status: "waiting", Acknowledged: true}}, rowCursor(0))
+		m := ackOfferModel([]store.Session{{ID: "s1", Name: "a", Slug: "a", Agent: "claude", Status: "waiting"}}, rowCursor(0))
 		if legend := ackOfferFooter(m); strings.Contains(legend, "Y acknowledge") {
 			t.Fatalf("acknowledged row: footer must not offer Y: %q", legend)
 		}
 	})
 	t.Run("acknowledged running row omits Y", func(t *testing.T) {
-		m := ackOfferModel([]store.Session{{ID: "s1", Name: "a", Slug: "a", Agent: "claude", Status: "running", Acknowledged: true}}, rowCursor(0))
+		m := ackOfferModel([]store.Session{{ID: "s1", Name: "a", Slug: "a", Agent: "claude", Status: "running"}}, rowCursor(0))
 		if legend := ackOfferFooter(m); strings.Contains(legend, "Y acknowledge") {
 			t.Fatalf("acknowledged running row: footer must not offer Y: %q", legend)
 		}
 	})
 	t.Run("group header omits Y", func(t *testing.T) {
-		m := ackOfferModel([]store.Session{{ID: "s1", Name: "a", Slug: "a", Agent: "claude", Status: "waiting", Acknowledged: false}}, headerCursor(0))
+		m := ackOfferModel([]store.Session{{ID: "s1", Name: "a", Slug: "a", Agent: "claude", Status: "waiting", StatusAt: 100}}, headerCursor(0))
 		if legend := ackOfferFooter(m); strings.Contains(legend, "Y acknowledge") {
 			t.Fatalf("group header: footer must not offer Y: %q", legend)
 		}
 	})
 	t.Run("unacknowledged waiting row shows Y", func(t *testing.T) {
-		m := ackOfferModel([]store.Session{{ID: "s1", Name: "a", Slug: "a", Agent: "claude", Status: "waiting"}}, rowCursor(0))
+		m := ackOfferModel([]store.Session{{ID: "s1", Name: "a", Slug: "a", Agent: "claude", Status: "waiting", StatusAt: 100}}, rowCursor(0))
 		if legend := ackOfferFooter(m); !strings.Contains(legend, "Y acknowledge") {
 			t.Fatalf("unacknowledged waiting row: footer must offer Y: %q", legend)
 		}
 	})
 	t.Run("unacknowledged error row shows Y", func(t *testing.T) {
-		m := ackOfferModel([]store.Session{{ID: "s1", Name: "a", Slug: "a", Agent: "claude", Status: "error"}}, rowCursor(0))
+		m := ackOfferModel([]store.Session{{ID: "s1", Name: "a", Slug: "a", Agent: "claude", Status: "error", StatusAt: 100}}, rowCursor(0))
 		if legend := ackOfferFooter(m); !strings.Contains(legend, "Y acknowledge") {
 			t.Fatalf("unacknowledged error row: footer must offer Y: %q", legend)
 		}
@@ -91,7 +91,7 @@ func ackOfferStoreModel(t *testing.T) (Model, *store.Store) {
 	return updated.(Model), db
 }
 
-func TestFooterDropsYOnceAttachAcknowledgesTheRow(t *testing.T) {
+func TestFooterKeepsOfferingYAfterAttach(t *testing.T) {
 	m, _ := ackOfferStoreModel(t)
 	if legend := ackOfferFooter(m); !strings.Contains(legend, "Y acknowledge") {
 		t.Fatalf("before attach: footer must offer Y: %q", legend)
@@ -103,8 +103,8 @@ func TestFooterDropsYOnceAttachAcknowledgesTheRow(t *testing.T) {
 	m = updated.(Model)
 	updated, _ = m.Update(m.loadSessions())
 	m = updated.(Model)
-	if legend := ackOfferFooter(m); strings.Contains(legend, "Y acknowledge") {
-		t.Fatalf("after attach acknowledged the row: footer must drop Y: %q", legend)
+	if legend := ackOfferFooter(m); !strings.Contains(legend, "Y acknowledge") {
+		t.Fatalf("after attach (R320: inert, the row stays unseen): footer must still offer Y: %q", legend)
 	}
 }
 
@@ -130,19 +130,19 @@ func TestFooterDropsYOnceYAcknowledgesTheRow(t *testing.T) {
 func TestYOnAcknowledgedRowDoesNothingAndStaysInHelp(t *testing.T) {
 	m, db := ackOfferStoreModel(t)
 	ctx := context.Background()
-	if err := db.AcknowledgeSession(ctx, "waiting"); err != nil {
+	if err := acknowledgeCurrent(ctx, db, "waiting"); err != nil {
 		t.Fatal(err)
 	}
 	updated, _ := m.Update(m.loadSessions())
 	m = updated.(Model)
-	if !m.sessions[0].Acknowledged {
+	if !m.sessions[0].StatusSeen() {
 		t.Fatalf("test assumption violated: row is not acknowledged: %#v", m.sessions[0])
 	}
 	calls := 0
 	realAck := m.acknowledge
-	m.acknowledge = func(c context.Context, id string) error {
+	m.acknowledge = func(c context.Context, id string, episode store.StatusEpisode) error {
 		calls++
-		return realAck(c, id)
+		return realAck(c, id, episode)
 	}
 	before, err := db.GetSession(ctx, "waiting")
 	if err != nil {

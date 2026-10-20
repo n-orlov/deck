@@ -17,13 +17,34 @@ import (
 type updateInstaller struct {
 	current string
 	run     func(context.Context) (upd.Result, error)
+	// immPlan says what the update will do about the release's immutability
+	// (upd.ImmutableReported / ImmutableRequired / ImmutableRefused). Nil
+	// means upd.PlanImmutable.
+	immPlan func() string
+}
+
+// WithUpdateImmutablePlan replaces how the ctrl+u confirmation learns what
+// the update will do about the release's immutability (#104). Tests use it;
+// the default asks upd.PlanImmutable.
+func (m Model) WithUpdateImmutablePlan(plan func() string) Model {
+	m.updateInstall.immPlan = plan
+	return m
+}
+
+// immutablePlan asks the installer what the update will do about the
+// release's immutability, now. It makes no request.
+func (m Model) immutablePlan() string {
+	if m.updateInstall.immPlan != nil {
+		return m.updateInstall.immPlan()
+	}
+	return upd.PlanImmutable(upd.Options{})
 }
 
 // WithUpdateInstaller wires ctrl+u's confirmed update into the model. A model
 // without an installer still shows the confirmation, but confirming it fails
 // with "updating is unavailable".
 func (m Model) WithUpdateInstaller(current string, run func(context.Context) (upd.Result, error)) Model {
-	m.updateInstall = updateInstaller{current: current, run: run}
+	m.updateInstall = updateInstaller{current: current, run: run, immPlan: m.updateInstall.immPlan}
 	return m
 }
 
@@ -58,6 +79,7 @@ func (m Model) keyUpdate(_ tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	m.updateConfirming = true
+	m.updateImmPlan = m.immutablePlan()
 	return m, nil
 }
 
@@ -95,7 +117,7 @@ func (m *Model) startUpdate() tea.Cmd {
 		}
 		res, err := run(context.Background())
 		if err != nil {
-			return updateFailedMsg{cause: upd.RedactText(err.Error())}
+			return updateFailure(err)
 		}
 		if res.Unchanged {
 			return updateFailedMsg{cause: "no newer release to install"}
@@ -103,7 +125,17 @@ func (m *Model) startUpdate() tea.Cmd {
 		if res.Tag == "" {
 			res.Tag = tag
 		}
-		return updateInstalledMsg{tag: res.Tag}
+		return updateInstalledMsg{tag: res.Tag, immutable: res.Immutable}
+	}
+}
+
+// updateFailure is the updateFailedMsg for a failed update: its cleaned
+// cause, and whether it is the immutability refusal.
+func updateFailure(err error) updateFailedMsg {
+	r, ok := upd.AsRefusal(err)
+	return updateFailedMsg{
+		cause:        upd.RedactText(upd.StripControl(err.Error())),
+		notImmutable: ok && r.Reason == upd.RefusedNotImmutable,
 	}
 }
 
@@ -114,7 +146,7 @@ func (m Model) updateConfirmView() string {
 // updateConfirmBody is the confirmation's text: the running and the target
 // version, what confirming does and what it leaves alone.
 func (m Model) updateConfirmBody() string {
-	current := m.updateInstall.current
+	current := upd.StripControl(m.updateInstall.current)
 	if current == "" {
 		current = "unknown"
 	}
@@ -123,13 +155,38 @@ func (m Model) updateConfirmBody() string {
 Current version: %s
 Target version:  %s
 
-Confirming downloads the release, verifies its checksum and replaces
-the deck binary on disk, in the background.
-deck keeps running, does not restart and does not touch your sessions:
-restart deck to run the new version.
+Immutable release: %s
+%s
 
-Enter installs · Esc cancels
-`, current, m.updateInd.tag)
+Confirming downloads the release, verifies its checksum and replaces
+the deck binary on disk, in the background. deck keeps running, does
+not restart and does not touch your sessions: restart deck to run the
+new version.
+
+%s
+`, current, upd.StripControl(m.updateInd.tag),
+		m.updateImmPlan, immutableSentence(m.updateImmPlan), updateConfirmHint(m.updateImmPlan))
+}
+
+// updateConfirmHint is the dialog's key line: a refused update cannot be
+// installed, so Enter is not offered.
+func updateConfirmHint(immPlan string) string {
+	if immPlan == upd.ImmutableRefused {
+		return "Enter tries anyway and is refused · Esc cancels"
+	}
+	return "Enter installs · Esc cancels"
+}
+
+// immutableSentence is what the confirmation says about the release's
+// immutability for one plan (#104); the token on the line above carries it.
+func immutableSentence(plan string) string {
+	switch plan {
+	case upd.ImmutableRequired:
+		return "An immutable release is required: unless GitHub reports the release\nimmutable, the update will be refused and nothing will be installed\n(" + upd.EnvRequireImmutable + "=0 opts out)."
+	case upd.ImmutableRefused:
+		return "The release source is a mirror with no GitHub release API, so its\nimmutability cannot be confirmed: the update will be refused and nothing\nwill be installed (" + upd.EnvRequireImmutable + "=0 opts out)."
+	}
+	return upd.EnvRequireImmutable + "=0 is set: GitHub is asked whether the release is\nimmutable; one that is not verified immutable still installs, and the\nresult says so."
 }
 
 func (m Model) styledUpdateConfirmBody() string {
@@ -139,7 +196,7 @@ func (m Model) styledUpdateConfirmBody() string {
 		switch {
 		case i == 0:
 			lines[i] = m.colorToken(theme.Title, l)
-		case l == "Enter installs · Esc cancels":
+		case l == "Enter installs · Esc cancels" || l == updateConfirmHint(upd.ImmutableRefused):
 			lines[i] = m.colorToken(theme.Hint, l)
 		}
 	}

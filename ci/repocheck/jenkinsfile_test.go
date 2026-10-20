@@ -170,8 +170,9 @@ func TestJenkinsfileNeverReleases(t *testing.T) {
 
 // TestJenkinsfileReleasePublishesTheCandidate: deck/release takes the commit
 // from a green deck/ci main build's release candidate, refuses an existing
-// tag, builds through ci/release-build.sh and lets gh create the tag at that
-// commit; it never pushes a tag itself.
+// tag, requires immutable releases, builds through ci/release-build.sh and
+// lets gh create the tag at that commit when the draft is published; it never
+// pushes a tag itself.
 func TestJenkinsfileReleasePublishesTheCandidate(t *testing.T) {
 	jf := readRepoFile(t, "Jenkinsfile.release")
 	want := []string{"Candidate", "Checkout", "Version check", "Build", "Publish"}
@@ -190,9 +191,21 @@ func TestJenkinsfileReleasePublishesTheCandidate(t *testing.T) {
 			"export GIT_TERMINAL_PROMPT=0",
 			"git ls-remote --exit-code --tags",
 			"already exists on GitHub",
+			"gh api repos/n-orlov/deck/immutable-releases --jq .enabled",
+			`if [ "$enabled" != true ]`,
 		},
-		"Build":   {"sh 'ci/jenkins-image.sh'", `ci/run.sh ci/release-build.sh "$VERSION"`},
-		"Publish": {"!params.DRY_RUN", `gh release create "$VERSION" dist/* --repo n-orlov/deck --target "$RELEASE_SHA"`, "--generate-notes"},
+		"Build": {"sh 'ci/jenkins-image.sh'", `ci/run.sh ci/release-build.sh "$VERSION"`},
+		// Draft first, assets attached, then publish (immutable releases
+		// freeze a release at publication), then read it back.
+		"Publish": {
+			"!params.DRY_RUN",
+			`gh release create "$VERSION" dist/* --repo n-orlov/deck --target "$RELEASE_SHA"`,
+			"--generate-notes --draft $pre",
+			`gh api --method PATCH "repos/n-orlov/deck/releases/$id"`,
+			"-F draft=false",
+			"[.draft, .immutable, ([.assets[].name] | sort | join(\" \"))]",
+			`want="false|true|`,
+		},
 	}
 	for stage, wants := range checks {
 		body, ok := jenkinsStage(jf, stage)
@@ -214,8 +227,16 @@ func TestJenkinsfileReleasePublishesTheCandidate(t *testing.T) {
 			t.Errorf("Jenkinsfile.release line %q echoes the token", l)
 		}
 	}
-	if !strings.Contains(readRepoFile(t, "ci", "release-build.sh"), `want="deck ${version} linux/amd64"`) {
+	rb := readRepoFile(t, "ci", "release-build.sh")
+	if !strings.Contains(rb, `want="deck ${version} linux/amd64"`) {
 		t.Error("ci/release-build.sh no longer smoke-checks deck --version")
+	}
+	// deck update refuses a binary whose build info does not carry the
+	// release tag, so the build tags HEAD locally and checks every binary.
+	for _, w := range []string{`git tag "$version" HEAD`, `go version -m "dist/${os}_${arch}/deck"`, `if [ "$embedded" != "$version" ]`} {
+		if !strings.Contains(rb, w) {
+			t.Errorf("ci/release-build.sh lacks %q: its binaries may not embed the release tag deck update requires", w)
+		}
 	}
 }
 

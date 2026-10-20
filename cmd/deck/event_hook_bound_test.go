@@ -19,7 +19,7 @@ import (
 // looser). It is the existing overall latency bound this file holds _hook to.
 const agentHookBound = time.Duration(agent.CopilotHookTimeoutSec) * time.Second
 
-const idlePromptPayload = `{"hook_event_name":"Notification","session_id":"conv-1","notification_type":"idle_prompt"}`
+const waitingPromptPayload = `{"hook_event_name":"Notification","session_id":"conv-1","notification_type":"permission_prompt"}`
 
 // eventResults maps every event row to the hook result stored against it.
 func eventResults(t *testing.T, paths config.Paths) (events []store.Event, results map[int64]store.EventHookResult) {
@@ -59,7 +59,7 @@ func TestHookWithHungIncomingAndDeathScriptsStaysInsideTheAgentBoundAtDefaultTim
 		t.Fatal(err)
 	}
 	start := time.Now()
-	if code, stderr := f.run(idlePromptPayload); code != 0 || stderr != "" {
+	if code, stderr := f.run(waitingPromptPayload); code != 0 || stderr != "" {
 		t.Fatalf("hook exit = %d, stderr %q", code, stderr)
 	}
 	elapsed := time.Since(start)
@@ -103,7 +103,7 @@ func TestHookBoundHoldsForFailingDeathScriptsAndAHungIncomingScriptAlone(t *test
 		f.settings.EventHookTimeout = config.DefaultEventHookTimeout
 		f.script(t, "sleep 30\n")
 		start := time.Now()
-		if code, stderr := f.run(idlePromptPayload); code != 0 || stderr != "" {
+		if code, stderr := f.run(waitingPromptPayload); code != 0 || stderr != "" {
 			t.Fatalf("hook exit = %d, stderr %q", code, stderr)
 		}
 		if elapsed := time.Since(start); elapsed > f.settings.EventHookTimeout+f.settings.Reconcile+time.Second {
@@ -119,7 +119,7 @@ func TestHookBoundHoldsForFailingDeathScriptsAndAHungIncomingScriptAlone(t *test
 			t.Fatal(err)
 		}
 		start := time.Now()
-		if code, stderr := f.run(idlePromptPayload); code != 0 || stderr != "" {
+		if code, stderr := f.run(waitingPromptPayload); code != 0 || stderr != "" {
 			t.Fatalf("hook exit = %d, stderr %q", code, stderr)
 		}
 		// Serial would be 2 s + 2 s; overlapped it is one script plus the reconcile.

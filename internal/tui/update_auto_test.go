@@ -31,7 +31,7 @@ func newAutoServer(t *testing.T, badChecksum bool) *autoServer {
 	if err != nil {
 		t.Skipf("no release asset for this platform: %v", err)
 	}
-	archive := ctrlUArchive(t, ctrlUNewBody)
+	archive := ctrlUArchive(t, ctrlUNewBody(t))
 	digest := ctrlUSum(archive)
 	if badChecksum {
 		digest = strings.Repeat("0", 64)
@@ -70,7 +70,6 @@ func autoRun(t *testing.T, srv *autoServer, exe, current string, autoUpdate bool
 func autoRunCache(t *testing.T, srv *autoServer, exe, current string, autoUpdate bool, cache string) Model {
 	t.Helper()
 	t.Setenv("DECK_UPDATE_URL", srv.URL)
-	t.Setenv("PATH", t.TempDir()) // no gh: checksum-verified only
 	settings := config.Settings{AutoUpdate: autoUpdate, UpdateCheck: true}
 	opts := upd.Options{Exe: exe, Current: current}
 	checker := &upd.Checker{
@@ -119,13 +118,13 @@ func TestAutoUpdate(t *testing.T) {
 	if m.updateConfirming {
 		t.Fatal("auto-update opened a confirmation")
 	}
-	if got, want := m.footerNote(), "update installed: v1.2.3 — restart deck to apply"; got != want {
+	if got, want := m.footerNote(), "update installed: v1.2.3 (not verified immutable) — restart deck to apply"; got != want {
 		t.Fatalf("indicator = %q, want %q", got, want)
 	}
 	if got := srv.archives.Load(); got != 1 {
 		t.Fatalf("archive downloads = %d, want 1", got)
 	}
-	if got, _ := os.ReadFile(exe); string(got) != ctrlUNewBody {
+	if got, _ := os.ReadFile(exe); string(got) != ctrlUNewBody(t) {
 		t.Fatalf("binary = %q, want the new release", got)
 	}
 }

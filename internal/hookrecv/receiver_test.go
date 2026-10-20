@@ -21,14 +21,11 @@ func TestReceiveMappingTable(t *testing.T) {
 		wantReason  string
 		wantMessage string
 	}{
-		{name: "session start fresh", event: "SessionStart", extra: `,"source":"startup"`, current: "starting", wantStatus: "running", wantReason: "startup"},
-		{name: "session start resumed", event: "SessionStart", extra: `,"source":"resume"`, current: "starting", wantStatus: "running", wantReason: "resume"},
-		{name: "session start compacted", event: "SessionStart", extra: `,"source":"compact"`, current: "starting", wantStatus: "running", wantReason: "compact"},
+		{name: "session start fresh", event: "SessionStart", extra: `,"source":"startup"`, current: "starting", wantStatus: "idle", wantReason: "startup"},
+		{name: "session start resumed", event: "SessionStart", extra: `,"source":"resume"`, current: "starting", wantStatus: "idle", wantReason: "resume"},
+		{name: "session start compacted", event: "SessionStart", extra: `,"source":"compact"`, current: "starting", wantStatus: "idle", wantReason: "compact"},
 		{name: "user prompt", event: "UserPromptSubmit", current: "idle", wantStatus: "running"},
 		{name: "permission notification", event: "Notification", extra: `,"notification_type":"permission_prompt"`, current: "running", wantStatus: "waiting", wantReason: "permission_prompt"},
-		{name: "question notification", event: "Notification", extra: `,"notification_type":"question"`, current: "running", wantStatus: "waiting", wantReason: "question"},
-		{name: "needs input notification", event: "Notification", extra: `,"notification_type":"needs_input"`, current: "running", wantStatus: "waiting", wantReason: "needs_input"},
-		{name: "idle notification", event: "Notification", extra: `,"notification_type":"idle_prompt"`, current: "running", wantStatus: "waiting", wantReason: "idle_prompt"},
 		{name: "stop", event: "Stop", extra: `,"last_assistant_message":"done ✓"`, current: "running", wantStatus: "idle", wantMessage: "done ✓"},
 		{name: "API failure", event: "StopFailure", extra: `,"error_type":"api_error"`, current: "running", wantStatus: "error", wantReason: "api_error"},
 		{name: "turn failure", event: "StopFailure", extra: `,"error_type":"turn_error"`, current: "running", wantStatus: "error", wantReason: "turn_error"},
@@ -97,10 +94,10 @@ func TestReceiveHookAppliesOverAnyStaleSourceExceptStopped(t *testing.T) {
 					db := newHookStore(t)
 					id := event + "-" + current + "-" + currentSource
 					createHookSession(t, db, id, "claude", id)
-					if _, err := db.DB().Exec(`UPDATE sessions SET status = ?, status_reason = 'before', status_source = ?, status_at = 7, notify_epoch = 3, acknowledged = 1, last_message = 'before message' WHERE id = ?`, current, currentSource, id); err != nil {
+					if _, err := db.DB().Exec(`UPDATE sessions SET status = ?, status_reason = 'before', status_source = ?, status_at = 7, notify_epoch = 3, seen_status_at = 7, last_message = 'before message' WHERE id = ?`, current, currentSource, id); err != nil {
 						t.Fatal(err)
 					}
-					raw := []byte(fmt.Sprintf(`{"hook_event_name":%q,"session_id":%q,"source":"resume","notification_type":"question","error_type":"api_error","reason":"logout","last_assistant_message":"after message"}`, event, id))
+					raw := []byte(fmt.Sprintf(`{"hook_event_name":%q,"session_id":%q,"source":"resume","notification_type":"permission_prompt","error_type":"api_error","reason":"logout","last_assistant_message":"after message"}`, event, id))
 					if _, err := Receive(context.Background(), db, raw, "", "", 20); err != nil {
 						t.Fatal(err)
 					}
@@ -114,12 +111,21 @@ func TestReceiveHookAppliesOverAnyStaleSourceExceptStopped(t *testing.T) {
 						// nothing: the status stays stopped, and the hook's own
 						// verdict outranks tmux's bare liveness fact (SPEC §7
 						// precedence; internal/store hookRefinesTmuxStop).
-						if got.Status != "stopped" || got.StatusSource != "hook" || got.StatusReason != "logout" || got.StatusAt != 20 || got.NotifyEpoch != 3 || !got.Acknowledged || got.LastMessage != "before message" {
+						// The row was already stopped, so the write repeats the status
+						// (R303) and keeps status_at.
+						if got.Status != "stopped" || got.StatusSource != "hook" || got.StatusReason != "logout" || got.StatusAt != 7 || got.NotifyEpoch != 3 || !got.StatusSeen() || got.LastMessage != "before message" {
 							t.Fatalf("SessionEnd did not refine a tmux-sourced stop: %#v", got)
 						}
 					case current == "stopped":
-						if got.Status != current || got.StatusReason != "before" || got.StatusSource != currentSource || got.StatusAt != 7 || got.NotifyEpoch != 3 || !got.Acknowledged || got.LastMessage != "before message" {
+						if got.Status != current || got.StatusReason != "before" || got.StatusSource != currentSource || got.StatusAt != 7 || got.NotifyEpoch != 3 || !got.StatusSeen() || got.LastMessage != "before message" {
 							t.Fatalf("hook resurrected a stopped row: %#v", got)
+						}
+					case current == mapping.Status:
+						// A hook repeating the row's status is inert (R303): the
+						// verdict's source is recorded, but status_at, the notify
+						// epoch and the acknowledged flag keep their values.
+						if got.Status != current || got.StatusSource != "hook" || got.StatusAt != 7 || got.NotifyEpoch != 3 || !got.StatusSeen() {
+							t.Fatalf("a repeated %s hook over a stale %s verdict was not inert: %#v", current, currentSource, got)
 						}
 					case got.Status != mapping.Status || got.StatusSource != "hook" || got.StatusAt != 20:
 						t.Fatalf("hook did not apply over stale %s verdict: %#v", currentSource, got)
@@ -266,7 +272,7 @@ func TestReceiveDoesNotReviveCleanStopOrProcessCrash(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			db := newHookStore(t)
 			createHookSession(t, db, tc.name, "claude", tc.name)
-			if _, err := db.DB().Exec(`UPDATE sessions SET status = ?, status_reason = 'terminal', status_source = 'tmux', status_at = 9, pane_exit_status = ?, crash_tail = 'fatal', notify_epoch = 4, acknowledged = 0, last_message = 'last' WHERE id = ?`, tc.status, tc.paneStatus, tc.name); err != nil {
+			if _, err := db.DB().Exec(`UPDATE sessions SET status = ?, status_reason = 'terminal', status_source = 'tmux', status_at = 9, pane_exit_status = ?, crash_tail = 'fatal', notify_epoch = 4, seen_status_at = 0, last_message = 'last' WHERE id = ?`, tc.status, tc.paneStatus, tc.name); err != nil {
 				t.Fatal(err)
 			}
 			raw := []byte(fmt.Sprintf(`{"hook_event_name":%q,"session_id":%q,"source":"resume"}`, tc.event, tc.name))
@@ -277,7 +283,7 @@ func TestReceiveDoesNotReviveCleanStopOrProcessCrash(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if got.Status != tc.status || got.StatusReason != "terminal" || got.StatusSource != "tmux" || got.StatusAt != 9 || got.CrashTail != "fatal" || got.NotifyEpoch != 4 || got.Acknowledged || got.LastMessage != "last" {
+			if got.Status != tc.status || got.StatusReason != "terminal" || got.StatusSource != "tmux" || got.StatusAt != 9 || got.CrashTail != "fatal" || got.NotifyEpoch != 4 || got.StatusSeen() || got.LastMessage != "last" {
 				t.Fatalf("terminal metadata changed: %#v", got)
 			}
 			if tc.paneStatus != nil && (got.PaneExitStatus == nil || *got.PaneExitStatus != 137) {
@@ -362,10 +368,10 @@ func TestReceiveSessionStartFollowsLiveConversation(t *testing.T) {
 	if row.ConversationID != "new-conversation" {
 		t.Fatalf("conversation_id = %q, want new-conversation", row.ConversationID)
 	}
-	// The status transition itself (SessionStart's AllowedFrom is "starting"
-	// only) is correctly a no-op from "running" -- the row was never stopped.
-	if row.Status != "running" {
-		t.Fatalf("status = %q, want running (unaffected)", row.Status)
+	// SessionStart lands on idle (R307, see TestSessionStartLandsOnIdleForClaude):
+	// the new conversation has been given no prompt yet.
+	if row.Status != "idle" {
+		t.Fatalf("status = %q, want idle", row.Status)
 	}
 	var kind, reason, payload string
 	if err := reopened.DB().QueryRow(`SELECT kind, reason, payload FROM events WHERE session_id = ? AND kind = 'set_conversation_id' ORDER BY at DESC LIMIT 1`, "resumed-row").Scan(&kind, &reason, &payload); err != nil {

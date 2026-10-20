@@ -216,7 +216,7 @@ Feature: a running client picks up another client's config.toml change (R226, R2
 
   @requirement-238-live-keys-reload
   Scenario: [ui] sort_order saved in client A's settings view re-sorts client B's list within one shortened poll interval
-    # activity orders by status_at newest first, name case-insensitively:
+    # activity orders by last_output_at newest first, name case-insensitively:
     # the two sequences differ in every position of this fixture.
     Given the scenario's config.toml is written with:
       """
@@ -230,9 +230,9 @@ Feature: a running client picks up another client's config.toml change (R226, R2
     Then within one configured reconcile interval deck client "A" row "ord-alpha" contains "running"
     And within one configured reconcile interval deck client "A" row "ord-bravo" contains "running"
     And within one configured reconcile interval deck client "A" row "ord-charlie" contains "running"
-    When the state database session "ord-alpha" has status_at 25 seconds ago
-    And the state database session "ord-bravo" has status_at 5 seconds ago
-    And the state database session "ord-charlie" has status_at 15 seconds ago
+    When the state database session "ord-alpha" has last_output_at 500 seconds ago
+    And the state database session "ord-bravo" has last_output_at 100 seconds ago
+    And the state database session "ord-charlie" has last_output_at 300 seconds ago
     And deck client "B" is started with colour enabled and a shortened config poll interval
     Then deck client "B" screen shows sessions in this order:
       | ord-bravo   |

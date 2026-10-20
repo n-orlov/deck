@@ -231,10 +231,122 @@ func (s Service) reconcileLivePane(ctx context.Context, session store.Session, o
 	if err := s.promoteLiveShell(ctx, session); err != nil {
 		return err
 	}
-	if staleAfter > 0 && session.Agent != "shell" && probeEligible(session, s.Clock.Now(), staleAfter) {
+	return s.samplePane(ctx, session, observed, staleAfter)
+}
+
+// samplePane is the probing path of reconcileLivePane (staleAfter > 0 only):
+// the output clock reads the pane, the movement fallback may write a verdict
+// (which ends the pass), and an eligible agent row is probed.
+func (s Service) samplePane(ctx context.Context, session store.Session, observed tmux.Session, staleAfter time.Duration) error {
+	if staleAfter <= 0 {
+		return nil
+	}
+	if err := s.observeOutput(ctx, session, observed); err != nil {
+		return err
+	}
+	if moved, err := s.applyMovement(ctx, session, staleAfter); err != nil || moved {
+		return err
+	}
+	if session.Agent != "shell" && probeEligible(session, s.Clock.Now(), staleAfter) {
 		return s.probeLivePane(ctx, session, observed, staleAfter)
 	}
 	return nil
+}
+
+// observeOutput feeds sessions.last_output_at (R304) from the session's pane:
+// tmux's window_activity nominates a bucket and the transcript-region hash
+// confirms it (OutputClock). It runs only on the TUI's probing path, never in
+// the hook-critical Reconcile, and only when the service carries a clock.
+func (s Service) observeOutput(ctx context.Context, session store.Session, observed tmux.Session) error {
+	if s.Output == nil || len(observed.Panes) == 0 {
+		return nil
+	}
+	return s.observePaneOutput(ctx, session, observed.Panes[0])
+}
+
+func (s Service) observePaneOutput(ctx context.Context, session store.Session, pane tmux.Pane) error {
+	_, err := s.Output.Observe(ctx, s.Store, session.ID, pane.WindowActivity, func(ctx context.Context) (string, error) {
+		captured, err := s.TMux.CapturePane(ctx, pane.ID, tmux.CaptureOptions{StartLine: "-200", EndLine: "-"})
+		return string(captured), err
+	})
+	if err != nil && tmux.IsTargetAbsent(err) {
+		return nil
+	}
+	return err
+}
+
+// ObserveAttachedOutput feeds the output clock for one session outside a
+// reconcile tick (R305): a full attach hands the terminal to the tmux client
+// and the TUI's own ticks stop for as long as it lasts, so the attach watcher
+// reads the clock through this while the client is attached. What the agent
+// prints during a long attach is then counted bucket by bucket like any other
+// output, and only the attach's own bounded windows are discounted. It writes
+// last_output_at only, never a status.
+func (s Service) ObserveAttachedOutput(ctx context.Context, session store.Session) error {
+	if s.Output == nil || session.Slug == "" {
+		return nil
+	}
+	pane, ok, err := s.TMux.PreviewPane(ctx, session.Slug)
+	if err != nil || !ok {
+		return err
+	}
+	return s.observePaneOutput(ctx, session, pane)
+}
+
+// applyMovement is the output-movement fallback (R316). Output counted in two
+// consecutive buckets moves an idle row to running; one quiet bucket takes back
+// a running row the fallback itself set. Pi has no hook verdict to defer to and
+// uses movement directly; Claude, Codex and Copilot use it only when no hook
+// verdict is fresh (the store re-checks that against the stored row). It
+// reports whether it wrote, in which case this pass takes no probe.
+func (s Service) applyMovement(ctx context.Context, session store.Session, staleAfter time.Duration) (bool, error) {
+	if s.Output == nil || session.Agent == "shell" {
+		return false, nil
+	}
+	status, reason, ok := movementVerdict(session, s.Output.Moving(session.ID))
+	if !ok {
+		return false, nil
+	}
+	now := s.Clock.Now()
+	stale, vetoed := movementStaleAfter(session, status, now, staleAfter)
+	if vetoed {
+		return false, nil
+	}
+	kind := "movement." + status
+	if err := s.Store.UpdateSessionStatus(ctx, store.StatusUpdateInput{
+		SessionID: session.ID, Status: status, Reason: reason, Source: "movement", At: now.UnixMilli(),
+		StaleAfter: stale, EventKind: kind, ExpectedStatus: session.Status,
+	}); err != nil {
+		return false, fmt.Errorf("record output movement for session %q: %w", session.ID, err)
+	}
+	if err := s.Audit.Transition(session.ID, kind); err != nil {
+		return false, fmt.Errorf("audit output movement for session %q: %w", session.ID, err)
+	}
+	return true, nil
+}
+
+// movementVerdict is the status movement asks for: idle and moving goes to
+// running, and a running row the fallback itself set goes back to idle once
+// output is quiet. ok is false when movement has nothing to say.
+func movementVerdict(session store.Session, moving bool) (status, reason string, ok bool) {
+	switch {
+	case session.Status == "idle" && moving:
+		return "running", "output movement", true
+	case session.Status == "running" && session.StatusSource == "movement" && !moving:
+		return "idle", "output quiet", true
+	}
+	return "", "", false
+}
+
+// movementStaleAfter is the hook-freshness window (in milliseconds) the store
+// re-checks a movement write against: Pi has no hook verdict to defer to (0).
+// vetoed reports a running write that a still-fresh hook verdict overrules.
+func movementStaleAfter(session store.Session, status string, now time.Time, staleAfter time.Duration) (stale int64, vetoed bool) {
+	if session.Agent == "pi" {
+		return 0, false
+	}
+	stale = staleAfter.Milliseconds()
+	return stale, status == "running" && session.StatusSource == "hook" && now.UnixMilli()-session.VerdictAt() < stale
 }
 
 // promoteLiveShell: shells have no higher-quality signal or probe, so a live
@@ -327,6 +439,13 @@ func (s Service) recordProbe(ctx context.Context, session store.Session, status,
 	}); err != nil {
 		return fmt.Errorf("record probe for session %q: %w", session.ID, err)
 	}
+	if session.Status == "idle" {
+		// An idle row is sampled at the sparse cadence measured from this
+		// sample, whatever it said (R314).
+		if err := s.Store.RecordProbeSample(ctx, session.ID, now); err != nil {
+			return fmt.Errorf("record probe sample for session %q: %w", session.ID, err)
+		}
+	}
 	// Only a probe that CHANGED the status is an event of its own; a verdict
 	// that repeats what a hook (or an earlier probe) already put on the row is
 	// the same attention episode, not a second event to ping about.
@@ -390,10 +509,24 @@ func (s Service) repairTerminalRowWithLivePane(ctx context.Context, session stor
 	return nil
 }
 
+// idleProbeFactor is the multiple of stale_after an idle row waits before it is
+// probe-eligible (R314). It is a fixed multiple of the configured window, not a
+// setting of its own.
+const idleProbeFactor = 4
+
+// probeEligible reports whether a row is sampled on this pass: starting,
+// running and waiting rows after stale_after, idle rows after
+// idleProbeFactor x stale_after (a sparse check for a turn begun without a
+// hook, R314). error and stopped rows are never probed.
 func probeEligible(session store.Session, now time.Time, staleAfter time.Duration) bool {
 	switch session.Status {
 	case "starting", "running", "waiting":
-		return now.UnixMilli()-session.StatusAt >= staleAfter.Milliseconds()
+		return now.UnixMilli()-session.VerdictAt() >= staleAfter.Milliseconds()
+	case "idle":
+		// The anchor is the newer of the verdict and the last sample: a
+		// probe that matched idle again or nothing at all leaves the verdict
+		// old, and must still push the next sample a whole cadence out.
+		return now.UnixMilli()-max(session.VerdictAt(), session.LastProbeAt) >= idleProbeFactor*staleAfter.Milliseconds()
 	default:
 		return false
 	}

@@ -16,19 +16,27 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 
 	"github.com/cucumber/godog"
+
+	"github.com/n-orlov/deck/internal/testrelbin"
 )
 
 // registerSelfUpdateSteps backs features/self_update.feature (R296). The
 // scenario builds its own deck with a release version (a plain build is `dev`
 // and refuses to update), runs it with a hermetic environment and an empty
-// PATH, and points it at a loopback fake release server.
+// PATH, and points it at a loopback fake release server. That server is a
+// mirror with no GitHub release API, so the default immutability requirement
+// refuses its release; a scenario that installs passes DECK_REQUIRE_IMMUTABLE=0
+// through "the operator runs ... with ...".
 func registerSelfUpdateSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^a deck binary at version "([^"]+)" installed in a scratch directory$`, selfUpdateInstallBinary)
 	sc.Step(`^a fake release server whose latest release is "([^"]+)"$`, selfUpdateStartServer)
 	sc.Step(`^the operator runs "([^"]+)"$`, selfUpdateRun)
+	sc.Step(`^the operator runs "([^"]+)" with "([A-Z_]+=[^"]*)"$`, selfUpdateRunEnv)
 	sc.Step(`^the command exits 0$`, selfUpdateExitsZero)
+	sc.Step(`^the command exits 1$`, selfUpdateExitsOne)
 	sc.Step(`^the output mentions "([^"]+)", "([^"]+)" and "([^"]+)"$`, selfUpdateOutputMentions3)
 	sc.Step(`^the output mentions "([^"]+)" and "([^"]+)"$`, selfUpdateOutputMentions2)
 	sc.Step(`^the installed binary is the release's binary$`, selfUpdateBinaryIsRelease)
@@ -46,11 +54,10 @@ func registerSelfUpdateSteps(sc *godog.ScenarioContext) {
 	})
 }
 
-const selfUpdateReleaseBody = "the release's deck binary\n"
-
 type selfUpdateScenario struct {
 	dir, home, exe string
 	before         string // sha256 of the installed binary before the verb
+	release        []byte // the "deck" binary the fake release serves
 	server         *httptest.Server
 	url            string
 	output         string
@@ -105,34 +112,68 @@ func selfUpdateStartServer(latest string) error {
 		return err
 	}
 	asset := "deck_" + runtime.GOOS + "_" + runtime.GOARCH + ".tar.gz"
-	var buf bytes.Buffer
-	zw := gzip.NewWriter(&buf)
-	tw := tar.NewWriter(zw)
-	body := []byte(selfUpdateReleaseBody)
-	if err := tw.WriteHeader(&tar.Header{Name: "deck", Mode: 0o755, Size: int64(len(body)), Typeflag: tar.TypeReg}); err != nil {
+	// A tag's release binary is a real Go executable whose build info reports
+	// that tag; each tag's archive and checksums.txt are built once.
+	type served struct {
+		archive   []byte
+		checksums string
+	}
+	var mu sync.Mutex
+	tags := map[string]served{}
+	forTag := func(tag string) (served, error) {
+		mu.Lock()
+		defer mu.Unlock()
+		if sv, ok := tags[tag]; ok {
+			return sv, nil
+		}
+		body, err := testrelbin.Build(tag)
+		if err != nil {
+			return served{}, err
+		}
+		var buf bytes.Buffer
+		zw := gzip.NewWriter(&buf)
+		tw := tar.NewWriter(zw)
+		if err := tw.WriteHeader(&tar.Header{Name: "deck", Mode: 0o755, Size: int64(len(body)), Typeflag: tar.TypeReg}); err != nil {
+			return served{}, err
+		}
+		if _, err := tw.Write(body); err != nil {
+			return served{}, err
+		}
+		if err := errors.Join(tw.Close(), zw.Close()); err != nil {
+			return served{}, err
+		}
+		sum := sha256.Sum256(buf.Bytes())
+		sv := served{archive: buf.Bytes(), checksums: hex.EncodeToString(sum[:]) + "  " + asset + "\n"}
+		tags[tag] = sv
+		return sv, nil
+	}
+	if _, err := forTag(latest); err != nil {
 		return err
 	}
-	if _, err := tw.Write(body); err != nil {
+	body, err := testrelbin.Build(latest)
+	if err != nil {
 		return err
 	}
-	if err := errors.Join(tw.Close(), zw.Close()); err != nil {
-		return err
-	}
-	archive := buf.Bytes()
-	sum := sha256.Sum256(archive)
-	checksums := hex.EncodeToString(sum[:]) + "  " + asset + "\n"
+	s.release = body
 	mux := http.NewServeMux()
 	mux.HandleFunc("/releases/latest", func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/releases/tag/"+latest, http.StatusFound)
 	})
 	mux.HandleFunc("/releases/download/", func(w http.ResponseWriter, r *http.Request) {
-		switch {
-		case strings.HasSuffix(r.URL.Path, "/"+asset):
-			_, _ = w.Write(archive)
-		case strings.HasSuffix(r.URL.Path, "/checksums.txt"):
-			_, _ = w.Write([]byte(checksums))
-		default:
+		tag, file, ok := strings.Cut(strings.TrimPrefix(r.URL.Path, "/releases/download/"), "/")
+		if !ok || tag == "" || (file != asset && file != "checksums.txt") {
 			http.NotFound(w, r)
+			return
+		}
+		sv, err := forTag(tag)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		if file == asset {
+			_, _ = w.Write(sv.archive)
+		} else {
+			_, _ = w.Write([]byte(sv.checksums))
 		}
 	})
 	s.server = httptest.NewServer(mux)
@@ -140,7 +181,11 @@ func selfUpdateStartServer(latest string) error {
 	return nil
 }
 
-func selfUpdateRun(command string) error {
+func selfUpdateRun(command string) error { return selfUpdateRunEnv(command, "") }
+
+// selfUpdateRunEnv runs the deck command with the hermetic environment plus
+// one NAME=value assignment (none when env is empty).
+func selfUpdateRunEnv(command, env string) error {
 	s, err := selfUpdateCurrent()
 	if err != nil {
 		return err
@@ -149,12 +194,15 @@ func selfUpdateRun(command string) error {
 	if len(fields) == 0 || fields[0] != "deck" {
 		return fmt.Errorf("unsupported command %q", command)
 	}
-	empty := filepath.Join(s.dir, "empty-path")
-	if err := os.MkdirAll(empty, 0o755); err != nil {
+	path := filepath.Join(s.dir, "empty-path")
+	if err := os.MkdirAll(path, 0o755); err != nil {
 		return err
 	}
 	cmd := exec.Command(s.exe, fields[1:]...)
-	cmd.Env = []string{"PATH=" + empty, "HOME=" + s.home, "DECK_UPDATE_URL=" + s.url}
+	cmd.Env = []string{"PATH=" + path, "HOME=" + s.home, "DECK_UPDATE_URL=" + s.url}
+	if env != "" {
+		cmd.Env = append(cmd.Env, env)
+	}
 	out, err := cmd.CombinedOutput()
 	s.output = string(out)
 	var exit *exec.ExitError
@@ -176,6 +224,17 @@ func selfUpdateExitsZero() error {
 	}
 	if s.code != 0 {
 		return fmt.Errorf("exit code %d, output:\n%s", s.code, s.output)
+	}
+	return nil
+}
+
+func selfUpdateExitsOne() error {
+	s, err := selfUpdateCurrent()
+	if err != nil {
+		return err
+	}
+	if s.code != 1 {
+		return fmt.Errorf("exit code %d, want 1, output:\n%s", s.code, s.output)
 	}
 	return nil
 }
@@ -206,7 +265,7 @@ func selfUpdateBinaryIsRelease() error {
 	if err != nil {
 		return err
 	}
-	sum := sha256.Sum256([]byte(selfUpdateReleaseBody))
+	sum := sha256.Sum256(s.release)
 	if want := hex.EncodeToString(sum[:]); got != want {
 		return fmt.Errorf("installed binary sha256 %s, want the release's %s", got, want)
 	}

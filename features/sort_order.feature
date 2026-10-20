@@ -2,8 +2,8 @@
 Feature: `[ui] sort_order` -- attention, created, activity and name orders (requirement R53)
   SPEC §11's rewritten Sort bullet (amendment 6584299): `[ui] sort_order`
   selects among four total orders -- attention (default, unchanged), created
-  (sessions.created_at descending), activity (sessions.status_at
-  descending) and name (case-insensitive ascending) -- every one ending in
+  (sessions.created_at descending), activity (sessions.last_output_at,
+  bucketed by `[ui] output_bucket`, descending) and name (case-insensitive ascending) -- every one ending in
   id ascending as its tie-break.
 
   All four scenarios below share one fixture shape of four shell sessions --
@@ -11,7 +11,7 @@ Feature: `[ui] sort_order` -- attention, created, activity and name orders (requ
   orders give FOUR DIFFERENT row sequences (no two agree):
     attention: ord-delta, ord-bravo, ord-alpha, ord-charlie   (by status: waiting, error, running, idle)
     created:   ord-bravo, ord-delta, ord-charlie, ord-alpha   (by created_at, newest first)
-    activity:  ord-charlie, ord-alpha, ord-delta, ord-bravo   (by status_at, newest first)
+    activity:  ord-bravo, ord-delta, ord-alpha, ord-charlie   (by last_output_at, newest first)
     name:      ord-alpha, ord-bravo, ord-charlie, ord-delta   (case-insensitive ascending)
   A wrong comparator that happens to agree with a different order on this
   fixture would fail its scenario, since every expected sequence differs
@@ -94,7 +94,7 @@ Feature: `[ui] sort_order` -- attention, created, activity and name orders (requ
     When deck client "A" exits cleanly
 
   @requirement-53-sort-order-activity
-  Scenario: sort_order = activity orders by status_at descending, most recently changed first
+  Scenario: sort_order = activity orders by last_output_at descending, most recent output first (R306)
     Given the scenario's config.toml is written with:
       """
       [ui]
@@ -125,21 +125,20 @@ Feature: `[ui] sort_order` -- attention, created, activity and name orders (requ
     And the state database session "ord-delta" has status "waiting" 30 seconds ago
     Then within one configured reconcile interval deck client "A" screen contains "waiting"
     And within one configured reconcile interval deck client "A" row "ord-bravo" contains "error"
-    # sort_order = activity ranks purely by status_at descending, so
-    # ord-bravo's genuine crash (whose status_at otherwise lands wherever
-    # the crash-collecting reconcile tick actually ran, in real wall-clock
-    # time) must still be pinned to this fixture's engineered age. By this
-    # point ord-bravo's pane is already dead and gone -- reconcile's
-    # crash-collection already killed it (repairTerminalRowWithLivePane's
-    # own doc comment) -- so this raw status_at-only write (status and
-    # status_source untouched) can never race a live-pane repair the way a
-    # raw status write would (task 804).
-    And the state database session "ord-bravo" has status_at 40 seconds ago
+    # sort_order = activity ranks by last_output_at (R306), bucketed by
+    # [ui] output_bucket (10 s), newest bucket first -- never by status_at,
+    # which the rows above carry in the OPPOSITE sequence (charlie, alpha,
+    # delta, bravo), so a comparator still reading status_at fails here. The
+    # output ages are 100 s apart, so no two rows share a bucket.
+    And the state database session "ord-bravo" has last_output_at 100 seconds ago
+    And the state database session "ord-delta" has last_output_at 200 seconds ago
+    And the state database session "ord-alpha" has last_output_at 300 seconds ago
+    And the state database session "ord-charlie" has last_output_at 400 seconds ago
     And deck client "A" screen shows sessions in this order:
-      | ord-charlie |
-      | ord-alpha   |
-      | ord-delta   |
       | ord-bravo   |
+      | ord-delta   |
+      | ord-alpha   |
+      | ord-charlie |
     When deck client "A" exits cleanly
 
   @requirement-53-sort-order-name

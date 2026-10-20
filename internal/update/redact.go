@@ -306,7 +306,9 @@ func redactErr(err error, configured string) error {
 	msg := err.Error()
 	clean := msg
 	for _, t := range serverTexts(err) {
-		if scrubbed := scrubServerText(t, configured); scrubbed != t {
+		// Control characters go first, so a credential an echo split with
+		// one is whole again by the time it is scrubbed.
+		if scrubbed := scrubServerText(StripControl(t), configured); scrubbed != t {
 			clean = strings.ReplaceAll(clean, t, scrubbed)
 		}
 	}

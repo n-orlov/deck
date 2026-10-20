@@ -56,8 +56,8 @@ func TestCopilotHookTable(t *testing.T) {
 		wantKind   string
 	}{
 		{name: "userPromptSubmitted", event: "userPromptSubmitted", extra: `,"prompt":"hi"`, current: "idle", wantStatus: "running", wantReason: "prompt", wantKind: "user_prompt_submitted"},
-		{name: "sessionStart new", event: "sessionStart", extra: `,"source":"new"`, current: "starting", wantStatus: "running", wantReason: "new", wantKind: "session_start"},
-		{name: "sessionStart resume", event: "sessionStart", extra: `,"source":"resume"`, current: "starting", wantStatus: "running", wantReason: "resume", wantKind: "session_start"},
+		{name: "sessionStart new", event: "sessionStart", extra: `,"source":"new"`, current: "starting", wantStatus: "idle", wantReason: "new", wantKind: "session_start"},
+		{name: "sessionStart resume", event: "sessionStart", extra: `,"source":"resume"`, current: "starting", wantStatus: "idle", wantReason: "resume", wantKind: "session_start"},
 		{name: "notification permission_prompt", event: "notification", extra: `,"notification_type":"permission_prompt"`, current: "running", wantStatus: "waiting", wantReason: "permission_prompt", wantKind: "notification"},
 		{name: "notification elicitation_dialog", event: "notification", extra: `,"notification_type":"elicitation_dialog"`, current: "running", wantStatus: "waiting", wantReason: "elicitation_dialog", wantKind: "notification"},
 		{name: "notification other type", event: "notification", extra: `,"notification_type":"idle_prompt"`, current: "running", wantStatus: "running", wantKind: "notification"},
@@ -118,6 +118,13 @@ func TestCopilotNoChangeEventsLeaveTheRowUntouched(t *testing.T) {
 			before, _ := db.GetSession(context.Background(), "row-1")
 			receiveCopilot(t, db, tc.event, copilotPayload(tc.extra), "")
 			after, _ := db.GetSession(context.Background(), "row-1")
+			// The event itself moves only the derived event clock
+			// (Session.LastEventAt, read from events and stored on no row;
+			// covered by store.TestAnyEventOnTheRowAdvancesLastEventAt).
+			if after.LastEventAt <= before.LastEventAt {
+				t.Fatalf("no-change event not seen by LastEventAt: %d -> %d", before.LastEventAt, after.LastEventAt)
+			}
+			after.LastEventAt = before.LastEventAt
 			if fmt.Sprintf("%#v", before) != fmt.Sprintf("%#v", after) {
 				t.Fatalf("row changed:\nbefore %#v\nafter  %#v", before, after)
 			}
@@ -304,9 +311,9 @@ func TestCopilotRootResolution(t *testing.T) {
 func TestReceiveFromWithoutAnEnvEventIsReceive(t *testing.T) {
 	db := newHookStore(t)
 	createHookSession(t, db, "row-1", "claude", "conv-1")
-	raw := []byte(`{"hook_event_name":"Notification","session_id":"conv-1","notification_type":"idle_prompt"}`)
+	raw := []byte(`{"hook_event_name":"Notification","session_id":"conv-1","notification_type":"permission_prompt"}`)
 	result, err := ReceiveFrom(context.Background(), db, raw, Origin{SessionID: "row-1"}, 100)
-	if err != nil || result.Status != "waiting" || result.Reason != "idle_prompt" {
+	if err != nil || result.Status != "waiting" || result.Reason != "permission_prompt" {
 		t.Fatalf("result = %#v err = %v", result, err)
 	}
 }

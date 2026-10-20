@@ -22,8 +22,8 @@ func TestSupersededLaunchGenerationDropsTheWholeHookClass(t *testing.T) {
 	}{
 		{event: "SessionEnd", extra: `,"reason":"other"`, wantStatus: "stopped"},
 		{event: "Stop", extra: `,"last_assistant_message":"from the dead pane"`, wantStatus: "idle"},
-		{event: "Notification", extra: `,"notification_type":"question"`, wantStatus: "waiting"},
-		{event: "SessionStart", extra: `,"source":"resume"`, wantStatus: "running"},
+		{event: "Notification", extra: `,"notification_type":"permission_prompt"`, wantStatus: "waiting"},
+		{event: "SessionStart", extra: `,"source":"resume"`, wantStatus: "idle"},
 		{event: "UserPromptSubmit", wantStatus: "running"},
 		{event: "StopFailure", extra: `,"error_type":"api_error"`, wantStatus: "error"},
 	}
@@ -52,7 +52,13 @@ func TestSupersededLaunchGenerationDropsTheWholeHookClass(t *testing.T) {
 				createHookSession(t, db, id, "claude", conversationID)
 				// The live pane's launch is running: this is the row a late
 				// hook from the replaced pane must not be allowed to move.
-				if _, err := db.DB().Exec(`UPDATE sessions SET status = 'running', status_reason = 'before', status_source = 'hook', status_at = 7, last_message = 'before message' WHERE id = ?`, id); err != nil {
+				// A row already at the event's own status would make the hook a
+				// repeat (R303), which keeps status_at: start from a different one.
+				before := "running"
+				if ev.wantStatus == "running" {
+					before = "waiting"
+				}
+				if _, err := db.DB().Exec(`UPDATE sessions SET status = ?, status_reason = 'before', status_source = 'hook', status_at = 7, last_message = 'before message' WHERE id = ?`, before, id); err != nil {
 					t.Fatal(err)
 				}
 				owner := "4242@boot"
@@ -76,7 +82,7 @@ func TestSupersededLaunchGenerationDropsTheWholeHookClass(t *testing.T) {
 					if row.Status != ev.wantStatus || row.StatusSource != "hook" || row.StatusAt != 20 {
 						t.Fatalf("hook carrying the current token did not apply: %#v", row)
 					}
-				} else if row.Status != "running" || row.StatusReason != "before" || row.StatusAt != 7 || row.LastMessage != "before message" {
+				} else if row.Status != before || row.StatusReason != "before" || row.StatusAt != 7 || row.LastMessage != "before message" {
 					t.Fatalf("hook from a superseded launch reached the row: %#v", row)
 				}
 				if result.Superseded == tk.wantApply {

@@ -220,7 +220,9 @@ func TestProbeEligibilityIncludesOnlySignalStatesAtWallClockBoundary(t *testing.
 			}
 		})
 	}
-	for _, status := range []string{"idle", "error", "stopped"} {
+	// Idle rows are eligible at 4 x stale_after (R314); this test used to pin
+	// idle as never eligible and is covered by idle_probe_test.go now.
+	for _, status := range []string{"error", "stopped"} {
 		if probeEligible(store.Session{Status: status, StatusAt: 1}, now, time.Millisecond) {
 			t.Fatalf("%s row must never be probe-eligible", status)
 		}

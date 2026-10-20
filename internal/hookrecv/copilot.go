@@ -64,7 +64,7 @@ const (
 // refined by copilotMapping: only two notification types are a status.
 var copilotMappings = map[string]Mapping{
 	"userPromptSubmitted": {Status: "running", Kind: "user_prompt_submitted", Reason: "prompt"},
-	"sessionStart":        {Status: "running", Kind: "session_start", ReasonField: "source"},
+	"sessionStart":        {Status: "idle", Kind: "session_start", ReasonField: "source"},
 	"notification":        {Status: "waiting", Kind: copilotNotificationKind, ReasonField: "notification_type"},
 	"agentStop":           {Status: "idle", Kind: "stop", ReasonField: "stopReason", Reason: "end_turn"},
 	"errorOccurred":       {Kind: "error_occurred"},
@@ -73,7 +73,7 @@ var copilotMappings = map[string]Mapping{
 
 // copilotWaitingNotifications are the notification_type values that are a
 // status; every other type changes nothing.
-var copilotWaitingNotifications = map[string]bool{"permission_prompt": true, "elicitation_dialog": true}
+var copilotWaitingNotifications = waitingNotifications
 
 // copilotMapping returns the mapping of one Copilot event. A mapping with an
 // empty Status is recorded as an event and never applied.

@@ -26,7 +26,13 @@ func updateIndicatorSource(settings config.Settings) (func(context.Context) upda
 
 // updateInstallSource is what ctrl+u runs once confirmed: the running build's
 // version and the same verified update `deck update` performs.
-func updateInstallSource() (string, func(context.Context) (update.Result, error)) {
-	opts := update.Options{Current: version, OnlyIfNewer: true}
+func updateInstallSource(settings config.Settings) (string, func(context.Context) (update.Result, error)) {
+	opts := updateInstallOptions(settings)
 	return version, func(ctx context.Context) (update.Result, error) { return update.Run(ctx, opts) }
+}
+
+// updateInstallOptions is what ctrl+u and the auto-update hand update.Run: the
+// install lock sits beside the shared update cache.
+func updateInstallOptions(settings config.Settings) update.Options {
+	return update.Options{Current: version, OnlyIfNewer: true, InstallLock: update.InstallLockPath(settings.Paths.UpdateCache)}
 }

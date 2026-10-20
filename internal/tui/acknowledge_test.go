@@ -2,7 +2,6 @@ package tui
 
 import (
 	"context"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -10,93 +9,6 @@ import (
 	"github.com/n-orlov/deck/internal/config"
 	"github.com/n-orlov/deck/internal/store"
 )
-
-func TestAAtomicallyClearsSelectedWaitingEpisodeBeforeAttach(t *testing.T) {
-	home := t.TempDir()
-	db, err := store.OpenPath(home, filepath.Join(home, "state.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer db.Close()
-	ctx := context.Background()
-	if _, err := db.CreateSession(ctx, store.CreateSessionInput{
-		ID: "waiting", Name: "waiting", CWD: "/work", Agent: "claude", CapturedPath: "/bin",
-		Status: "running", StatusSource: "hook", StatusAt: 100, CreatedAt: 1,
-	}); err != nil {
-		t.Fatal(err)
-	}
-	if err := db.UpdateSessionStatus(ctx, store.StatusUpdateInput{
-		SessionID: "waiting", Status: "waiting", Reason: "permission_prompt", Source: "hook", At: 110,
-	}); err != nil {
-		t.Fatal(err)
-	}
-	clock, err := config.NewClock("2025-01-02T03:04:05Z", "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	model := NewWithShellCreatorAndAttacher(db, config.Settings{ASCII: true, Clock: clock}, "", nil,
-		func(context.Context, string) (*exec.Cmd, error) { return exec.Command("true"), nil })
-	updated, _ := model.Update(model.loadSessions())
-	model = updated.(Model)
-	_, command := model.Update(key("a"))
-	if command == nil {
-		t.Fatal("a did not schedule attachment")
-	}
-	got, err := db.GetSession(ctx, "waiting")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got.Status != "running" || got.StatusSource != "user" || !got.Acknowledged || got.NotifyEpoch != 1 || got.StatusAt != clock.Now().UnixMilli() {
-		t.Fatalf("waiting attach transition = %#v", got)
-	}
-	var events int
-	if err := db.DB().QueryRow(`SELECT count(*) FROM events WHERE session_id = 'waiting' AND kind = 'attached'`).Scan(&events); err != nil || events != 1 {
-		t.Fatalf("attached events = %d, %v; want 1", events, err)
-	}
-}
-
-func TestAAcknowledgesErrorWithoutChangingVerdict(t *testing.T) {
-	home := t.TempDir()
-	db, err := store.OpenPath(home, filepath.Join(home, "state.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer db.Close()
-	ctx := context.Background()
-	if _, err := db.CreateSession(ctx, store.CreateSessionInput{
-		ID: "error", Name: "error", CWD: "/work", Agent: "claude", CapturedPath: "/bin",
-		Status: "running", StatusSource: "hook", StatusAt: 100, CreatedAt: 1,
-	}); err != nil {
-		t.Fatal(err)
-	}
-	exit := 137
-	if err := db.UpdateSessionStatus(ctx, store.StatusUpdateInput{
-		SessionID: "error", Status: "error", Reason: "pane exited", Source: "tmux", At: 110,
-		EventKind: "tmux.pane_crash", PaneExitStatus: &exit, CrashTail: "fatal output",
-	}); err != nil {
-		t.Fatal(err)
-	}
-	clock, err := config.NewClock("2025-01-02T03:04:05Z", "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	model := NewWithShellCreatorAndAttacher(db, config.Settings{ASCII: true, Clock: clock}, "", nil,
-		func(context.Context, string) (*exec.Cmd, error) { return exec.Command("true"), nil })
-	updated, _ := model.Update(model.loadSessions())
-	model = updated.(Model)
-	_, command := model.Update(key("a"))
-	if command == nil {
-		t.Fatal("a on error row did not schedule attachment")
-	}
-	got, err := db.GetSession(ctx, "error")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got.Status != "error" || got.StatusReason != "pane exited" || got.StatusSource != "tmux" || got.StatusAt != 110 ||
-		!got.Acknowledged || got.NotifyEpoch != 0 || got.PaneExitStatus == nil || *got.PaneExitStatus != exit || got.CrashTail != "fatal output" {
-		t.Fatalf("error attachment changed verdict fields: %#v", got)
-	}
-}
 
 func TestYAcknowledgesOnlySelectedRowDurably(t *testing.T) {
 	home := t.TempDir()
@@ -160,14 +72,14 @@ func TestYAcknowledgesOnlySelectedRowDurably(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !selected.Acknowledged || selected.Status != "waiting" || selected.StatusSource != "hook" || selected.StatusAt != 111 || selected.NotifyEpoch != 0 {
+	if !selected.StatusSeen() || selected.Status != "waiting" || selected.StatusSource != "hook" || selected.StatusAt != 111 || selected.NotifyEpoch != 0 {
 		t.Fatalf("selected row acknowledgement changed verdict fields: %#v", selected)
 	}
 	other, err := db.GetSession(ctx, "other")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if other.Acknowledged || other.Status != "error" {
+	if other.StatusSeen() || other.Status != "error" {
 		t.Fatalf("Y changed unrelated row: %#v", other)
 	}
 	if got := strings.Count(model.View(), "!"); got != 1 {

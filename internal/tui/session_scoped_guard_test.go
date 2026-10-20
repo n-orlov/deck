@@ -54,7 +54,7 @@ func sessionScopedKeyGuardFixture() Model {
 	}}
 	m.selected = headerCursor(groupID)
 	m.kill = func(context.Context, store.Session) error { return nil }
-	m.acknowledge = func(context.Context, string) error { return nil }
+	m.acknowledge = func(context.Context, string, store.StatusEpisode) error { return nil }
 	m.resume = func(context.Context, string) (store.Session, service.ResumeOutcome, error) {
 		return store.Session{}, service.ResumeOutcome(0), nil
 	}

@@ -312,7 +312,7 @@ func statusColumnsSnapshot(ctx context.Context, h *ScenarioHarness) (string, err
 	}
 	defer db.Close()
 	rows, err := db.QueryContext(ctx, `
-		SELECT id, status, status_reason, status_source, status_at, acknowledged, notify_epoch
+		SELECT id, status, status_reason, status_source, status_at, seen_status_at, notify_epoch
 		FROM sessions ORDER BY id`)
 	if err != nil {
 		return "", fmt.Errorf("snapshot session status columns: %w", err)

@@ -25,7 +25,7 @@ import (
 const busyTimeoutMillis = 5000
 
 // SchemaVersion is the newest schema understood by this binary.
-const SchemaVersion = 14
+const SchemaVersion = 21
 
 // SupportedSchemaVersion is the newest schema this binary opens: SchemaVersion
 // in every shipped build. A test build (-tags deckoldschema, see
@@ -382,7 +382,9 @@ type Session struct {
 	CrashTail      string
 	NotifyEpoch    int64
 	LastMessage    string
-	Acknowledged   bool
+	// SeenStatusAt is the status_at stamp the user has seen (R318): the row's
+	// status is seen exactly when it equals StatusAt (StatusSeen).
+	SeenStatusAt int64
 
 	LaunchArgs []string
 	Env        map[string]string
@@ -428,6 +430,35 @@ type Session struct {
 	// the moment any later verdict — probe or otherwise — updates the row,
 	// so a stale miss can never be shown once fresher evidence exists.
 	LastProbeAt int64
+	// ProbeMissStreak counts the consecutive probe total misses since the
+	// last verdict (R315): RecordProbeMiss adds one, any probe or hook verdict
+	// (and any status write) resets it to 0. A column, never an event.
+	ProbeMissStreak int
+	// LastEventAt is the `at` of the newest event recorded for the row, 0
+	// when none has been (R315). It is derived at read time from the events
+	// table (indexed by events_session_at), not stored on the row, so
+	// recording an event never rewrites the session row, yet every event — a
+	// repeat verdict that leaves status_at alone included — restarts the
+	// unverified quiet window.
+	LastEventAt int64
+	// LastOutputAt is the wall-clock millisecond time of the newest
+	// transcript-region output confirmed at reconcile (R304), 0 when none has
+	// been. It is the output clock: footer/statusline churn never advances it,
+	// and it is written by RecordOutput as a column, never an event.
+	LastOutputAt int64
+	// LastSeenAt is the last_output_at value the user has viewed (R324), 0
+	// until the first view. MarkViewed copies last_output_at into it.
+	LastSeenAt int64
+	// HookAt is the wall-clock millisecond time of the newest hook verdict
+	// the store applied (R303, SPEC §7), 0 until one has been. It is hook
+	// evidence's own clock: a hook repeating the current status leaves
+	// status_at (the transition stamp) alone but still advances this, so the
+	// freshness of a hook verdict never depends on when the status last
+	// changed.
+	HookAt int64
+	// StatusSeq counts the row's status transitions (schemaV21); with StatusAt
+	// it names the status episode (Episode).
+	StatusSeq int64
 	// EnvDirty is SPEC §6.1/§6.3's env_dirty column (task 021): true once a
 	// session-env edit has been written and mirrored into tmux's own
 	// environment table for future panes, but has NOT yet reached the
@@ -519,9 +550,6 @@ type StatusUpdateInput struct {
 	// that outlives its pane keeps the row terminal, which silently removes it
 	// from reconciliation and blocks the transitions that would correct it.
 	ClearCrashVerdict bool
-	// Acknowledged explicitly changes the durable unseen marker. Independently,
-	// every waiting/error transition resets it to false.
-	Acknowledged *bool
 	// ExpectedStatus makes a transition conditional on the row still having the
 	// status the caller observed. Attach uses this to clear only a waiting
 	// episode; a hook racing the keypress must not be overwritten by stale UI.
@@ -614,7 +642,7 @@ func (s *Store) CreateSession(ctx context.Context, input CreateSessionInput) (Se
 	return Session{
 		ID: input.ID, Name: input.Name, Slug: slug, CWD: input.CWD, Agent: input.Agent,
 		Status: input.Status, StatusSource: input.StatusSource, StatusAt: input.StatusAt, CreatedAt: input.CreatedAt,
-		NameSource: input.NameSource, Acknowledged: true,
+		NameSource: input.NameSource, SeenStatusAt: input.StatusAt,
 		LaunchArgs: input.LaunchArgs, Env: input.Env, PreLaunch: input.PreLaunch, PostDestroy: input.PostDestroy, LoginShell: input.LoginShell,
 		EventHookEnabled: input.EventHookEnabled, EventHookEvents: input.EventHookEvents,
 		PermissionProfile: input.PermissionProfile, PermissionProfileReason: input.PermissionProfileReason,
@@ -719,13 +747,13 @@ func insertSessionRowTx(ctx context.Context, tx *sql.Tx, input CreateSessionInpu
 	_, err := tx.ExecContext(ctx, `INSERT INTO sessions
 		(id, name, slug, cwd, agent, captured_path, status, status_source, status_at, created_at,
 		 launch_args, env, pre_launch, post_destroy, login_shell, permission_profile, permission_profile_reason, conversation_id, resume_pin, resume_state, group_id,
-		 event_hook_enabled, event_hook_events, name_source)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		 event_hook_enabled, event_hook_events, name_source, seen_status_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		input.ID, input.Name, slug, input.CWD, input.Agent, input.CapturedPath,
 		input.Status, input.StatusSource, input.StatusAt, input.CreatedAt,
 		launchArgsJSON, envJSON, nullableString(input.PreLaunch), nullableString(input.PostDestroy), input.LoginShell,
 		input.PermissionProfile, nullableString(input.PermissionProfileReason), nullableString(input.ConversationID), nullableString(input.ResumePin), input.ResumeState,
-		nullableGroupID(input.GroupID), eventHookEnabledArg(input.EventHookEnabled), eventHookEventsArg(input.EventHookEvents), input.NameSource)
+		nullableGroupID(input.GroupID), eventHookEnabledArg(input.EventHookEnabled), eventHookEventsArg(input.EventHookEvents), input.NameSource, input.StatusAt)
 	if err != nil {
 		if strings.Contains(err.Error(), "sessions.name") || strings.Contains(err.Error(), "UNIQUE constraint failed: sessions.name") {
 			return fmt.Errorf("session name %q already exists", input.Name)
@@ -814,7 +842,7 @@ func scanSession(row interface {
 	var groupID sql.NullInt64
 	var groupName sql.NullString
 	var leaseOwner string
-	var loginShell, killedByUser, acknowledged, envDirty, launchDirty int
+	var loginShell, killedByUser, envDirty, launchDirty int
 	var paneExitStatus, eventHookEnabled sql.NullInt64
 	var eventHookEvents, pendingName sql.NullString
 	var pendingAt, nameAdopt sql.NullInt64
@@ -822,10 +850,10 @@ func scanSession(row interface {
 	if err := row.Scan(&session.ID, &session.Name, &session.Slug, &session.CWD,
 		&session.Agent, &session.CapturedPath, &session.Status, &session.StatusReason, &session.StatusSource,
 		&session.StatusAt, &session.CreatedAt, &killedByUser, &paneExitStatus, &crashTail,
-		&session.NotifyEpoch, &lastMessage, &acknowledged, &launchArgsJSON, &envJSON, &preLaunch, &postDestroy,
+		&session.NotifyEpoch, &lastMessage, &session.SeenStatusAt, &launchArgsJSON, &envJSON, &preLaunch, &postDestroy,
 		&loginShell, &session.PermissionProfile, &permissionProfileReason, &conversationID, &resumePin, &session.ResumeState,
-		&groupID, &groupName, &session.LastProbeAt, &envDirty, &session.DeletedAt, &session.ArchivedAt, &launchDirty,
-		&leaseOwner, &session.PinnedAt, &session.HookExecutable, &eventHookEnabled, &eventHookEvents, &session.NameSource, &pendingName, &pendingAt, &nameAdopt, &nameAdopted); err != nil {
+		&groupID, &groupName, &session.LastProbeAt, &session.LastOutputAt, &session.LastSeenAt, &session.ProbeMissStreak, &session.LastEventAt, &envDirty, &session.DeletedAt, &session.ArchivedAt, &launchDirty,
+		&leaseOwner, &session.PinnedAt, &session.HookExecutable, &eventHookEnabled, &eventHookEvents, &session.NameSource, &pendingName, &pendingAt, &nameAdopt, &nameAdopted, &session.HookAt, &session.StatusSeq); err != nil {
 		return Session{}, err
 	}
 	session.NameAdopted = nameAdopted != 0
@@ -867,17 +895,16 @@ func scanSession(row interface {
 	}
 	session.CrashTail = crashTail.String
 	session.LastMessage = lastMessage.String
-	session.Acknowledged = acknowledged != 0
 	return session, nil
 }
 
 const sessionColumns = `sessions.id, sessions.name, slug, cwd, agent, captured_path, status,
 		COALESCE(status_reason, ''), status_source, status_at, created_at,
-		killed_by_user, pane_exit_status, crash_tail, notify_epoch, last_message, acknowledged,
+		killed_by_user, pane_exit_status, crash_tail, notify_epoch, last_message, seen_status_at,
 		launch_args, env, pre_launch, post_destroy, login_shell, permission_profile, permission_profile_reason, conversation_id, resume_pin, resume_state,
-		sessions.group_id, groups.name, last_probe_at, env_dirty, deleted_at, archived_at, launch_dirty,
+		sessions.group_id, groups.name, last_probe_at, last_output_at, last_seen_at, probe_miss_streak, COALESCE((SELECT MAX(events.at) FROM events WHERE events.session_id = sessions.id), 0), env_dirty, deleted_at, archived_at, launch_dirty,
 		COALESCE(launch_lease_owner, ''), pinned_at, COALESCE(hook_executable, ''),
-		event_hook_enabled, event_hook_events, name_source, pending_harness_name, pending_harness_name_at, harness_name_adopt, name_adopted`
+		event_hook_enabled, event_hook_events, name_source, pending_harness_name, pending_harness_name_at, harness_name_adopt, name_adopted, hook_at, status_seq`
 
 // sessionsFromClause is every sessionColumns-backed query's shared FROM:
 // a LEFT JOIN against groups so GroupName resolves (or reads back empty
@@ -943,20 +970,23 @@ func validateStatusUpdate(input StatusUpdateInput) error {
 // statusRow is the slice of a session row UpdateSessionStatus reads before
 // deciding whether a verdict wins.
 type statusRow struct {
-	status, source, agent      string
-	at, notifyEpoch            int64
-	killedByUser, acknowledged int
-	paneExitStatus             sql.NullInt64
+	status, source, agent string
+	at, notifyEpoch       int64
+	hookAt                int64
+	seq                   int64
+	killedByUser          int
+	seenStatusAt          int64
+	paneExitStatus        sql.NullInt64
 }
 
 // readStatusRow loads the row a status update is judged against.
 func readStatusRow(ctx context.Context, tx *sql.Tx, sessionID string) (statusRow, error) {
 	var row statusRow
 	if err := tx.QueryRowContext(ctx, `SELECT status, status_source, status_at, agent,
-		killed_by_user, acknowledged, notify_epoch, pane_exit_status
+		killed_by_user, seen_status_at, notify_epoch, pane_exit_status, hook_at, status_seq
 		FROM sessions WHERE id = ?`, sessionID).Scan(
 		&row.status, &row.source, &row.at, &row.agent, &row.killedByUser,
-		&row.acknowledged, &row.notifyEpoch, &row.paneExitStatus); err != nil {
+		&row.seenStatusAt, &row.notifyEpoch, &row.paneExitStatus, &row.hookAt, &row.seq); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return statusRow{}, fmt.Errorf("session %q not found", sessionID)
 		}
@@ -976,6 +1006,7 @@ var statusVetoes = []func(in StatusUpdateInput, cur statusRow) bool{
 	vetoTmuxStopOverStopped,
 	vetoHookRunningAfterCrash,
 	vetoFreshHookOverProbe,
+	vetoMovementOutOfBounds,
 	vetoTmuxInventedState,
 	vetoSecondCrashCollection,
 }
@@ -1025,14 +1056,43 @@ func vetoTmuxStopOverStopped(in StatusUpdateInput, cur statusRow) bool {
 }
 
 // vetoHookRunningAfterCrash: an error carrying a pane exit status is a terminal process-crash verdict,
-// not the recoverable turn/API failure represented by error -> running.
+// not the recoverable turn/API failure represented by error -> running. A
+// SessionStart lands on idle (R307) but is vetoed the same way: it is the
+// event a replaced pane's agent still sends, and an idle landing would
+// revive the crashed row exactly as the running one did.
 func vetoHookRunningAfterCrash(in StatusUpdateInput, cur statusRow) bool {
-	return in.Source == "hook" && in.Status == "running" && cur.paneExitStatus.Valid
+	revives := in.Status == "running" || in.EventKind == "session_start"
+	return in.Source == "hook" && revives && cur.paneExitStatus.Valid
+}
+
+// freshHook reports whether the stored row carries a hook verdict younger
+// than the incoming write's StaleAfter. Freshness is measured from the newest
+// hook evidence (hook_at), which a hook repeating the current status advances
+// although it leaves status_at alone (R303); the later of the two stamps
+// counts so a row never reads older than its own transition.
+func freshHook(in StatusUpdateInput, cur statusRow) bool {
+	return cur.source == "hook" && in.At-max(cur.at, cur.hookAt) < in.StaleAfter
 }
 
 // vetoFreshHookOverProbe: a probe never replaces a hook verdict that is still fresh.
 func vetoFreshHookOverProbe(in StatusUpdateInput, cur statusRow) bool {
-	return in.Source == "probe" && cur.source == "hook" && in.At-cur.at < in.StaleAfter
+	return in.Source == "probe" && freshHook(in, cur)
+}
+
+// vetoMovementOutOfBounds: the output-movement fallback (R316) may only move
+// an idle row to running, and only take back a running row it set itself. A
+// non-zero StaleAfter also makes it lose to a hook verdict that is still fresh
+// (pi passes none: it has no hook verdict to defer to).
+func vetoMovementOutOfBounds(in StatusUpdateInput, cur statusRow) bool {
+	if in.Source != "movement" {
+		return false
+	}
+	if in.StaleAfter > 0 && freshHook(in, cur) {
+		return true
+	}
+	enter := in.Status == "running" && cur.status == "idle"
+	leave := in.Status == "idle" && cur.status == "running" && cur.source == "movement"
+	return !enter && !leave
 }
 
 // vetoTmuxInventedState: tmux supplies terminal liveness, plus the one explicit shell promotion;
@@ -1102,25 +1162,82 @@ func statusWins(in StatusUpdateInput, cur statusRow) bool {
 	return true
 }
 
+// nextSeenStatusAt is the seen stamp a verdict leaves on the row. A transition
+// into an attention status opens an unseen episode whatever stamp it carries,
+// so a status_at equal to an older seen stamp cannot hide it. Any other
+// transition keeps the row's seen answer (what the acknowledged bit did): a
+// seen row stays seen at its new stamp, an unseen one stays unseen.
+func nextSeenStatusAt(input StatusUpdateInput, cur statusRow, repeat bool, statusAt int64) int64 {
+	switch {
+	case repeat:
+		return cur.seenStatusAt
+	case isAttentionStatus(input.Status):
+		return 0
+	case cur.seenStatusAt == cur.at:
+		return statusAt
+	}
+	return cur.seenStatusAt
+}
+
+// nextStatusSeq is status_seq after a winning write (R319, R321, R322): it
+// counts the row's status transitions, so (status_at, status_seq) names one
+// status episode even when two episodes share a millisecond or the wall clock
+// stepped backwards. A write repeating the current status opens no episode
+// (R303) and leaves it alone.
+func nextStatusSeq(cur statusRow, repeat bool) int64 {
+	if repeat {
+		return cur.seq
+	}
+	return cur.seq + 1
+}
+
+// nextHookAt is hook_at after a winning write (R303, SPEC §7). Only a hook
+// advances it, and it never moves backwards while the row stays hook-sourced:
+// hook deliveries can arrive out of order, and a delayed repeat dated before
+// a newer one must not age the newest hook evidence. A hook taking the row
+// over from another source starts the clock at its own time.
+func nextHookAt(in StatusUpdateInput, cur statusRow) int64 {
+	switch {
+	case in.Source != "hook":
+		return cur.hookAt
+	case cur.source == "hook":
+		return max(cur.hookAt, in.At)
+	}
+	return in.At
+}
+
+// nextKilledByUser is killed_by_user after the write: set wins over clear.
+func nextKilledByUser(input StatusUpdateInput, cur statusRow) int {
+	switch {
+	case input.KilledByUser:
+		return 1
+	case input.ClearKilledByUser:
+		return 0
+	}
+	return cur.killedByUser
+}
+
 // writeStatusUpdate stores the winning verdict on the session row.
+//
+// A write that leaves the status unchanged is inert (SPEC §7, R303): it
+// keeps status_at, notify_epoch, hook_fired and the seen state exactly
+// as stored, and updates only the reason, the source the precedence rules let
+// win (statusWins decides that exactly as for a transition) and the side
+// columns the write explicitly carries (kill/crash verdict, last message). A repeat is the same status being
+// reported again, not a transition, so it has no moment to date, no
+// episode to open or close and nothing to mark unseen.
 func writeStatusUpdate(ctx context.Context, tx *sql.Tx, input StatusUpdateInput, cur statusRow) error {
+	repeat := input.Status == cur.status
+	statusAt := input.At
+	if repeat {
+		statusAt = cur.at
+	}
 	notifyEpoch := cur.notifyEpoch
 	if isAttentionStatus(cur.status) && !isAttentionStatus(input.Status) {
 		notifyEpoch++
 	}
-	acknowledged := cur.acknowledged
-	if isAttentionStatus(input.Status) {
-		acknowledged = 0
-	} else if input.Acknowledged != nil {
-		acknowledged = boolInt(*input.Acknowledged)
-	}
-	newKilled := cur.killedByUser
-	if input.ClearKilledByUser {
-		newKilled = 0
-	}
-	if input.KilledByUser {
-		newKilled = 1
-	}
+	seenStatusAt := nextSeenStatusAt(input, cur, repeat, statusAt)
+	newKilled := nextKilledByUser(input, cur)
 	lastMessage := truncateUTF8(input.LastMessage, 2*1024)
 	// clearCrash drops both crash columns; otherwise they keep their existing
 	// pre-clear behaviour, where a tail is written only alongside the exit
@@ -1130,14 +1247,16 @@ func writeStatusUpdate(ctx context.Context, tx *sql.Tx, input StatusUpdateInput,
 	clearCrash := boolInt(input.ClearCrashVerdict)
 	_, err := tx.ExecContext(ctx, `UPDATE sessions SET
 		status = ?, status_reason = ?, status_source = ?, status_at = ?,
-		killed_by_user = ?, acknowledged = ?, notify_epoch = ?,
+		killed_by_user = ?, seen_status_at = ?, notify_epoch = ?,
 		hook_fired = CASE WHEN ? THEN NULL ELSE hook_fired END,
 		pane_exit_status = CASE WHEN ? = 1 THEN NULL ELSE COALESCE(?, pane_exit_status) END,
 		crash_tail = CASE WHEN ? = 1 THEN NULL WHEN ? IS NULL THEN crash_tail ELSE ? END,
-		last_message = CASE WHEN ? = '' THEN last_message ELSE ? END
-		WHERE id = ?`, input.Status, input.Reason, input.Source, input.At,
-		newKilled, acknowledged, notifyEpoch, notifyEpoch != cur.notifyEpoch, clearCrash, input.PaneExitStatus,
-		clearCrash, input.PaneExitStatus, input.CrashTail, lastMessage, lastMessage, input.SessionID)
+		last_message = CASE WHEN ? = '' THEN last_message ELSE ? END,
+		hook_at = ?, status_seq = ?,
+		probe_miss_streak = 0
+		WHERE id = ?`, input.Status, input.Reason, input.Source, statusAt,
+		newKilled, seenStatusAt, notifyEpoch, notifyEpoch != cur.notifyEpoch, clearCrash, input.PaneExitStatus,
+		clearCrash, input.PaneExitStatus, input.CrashTail, lastMessage, lastMessage, nextHookAt(input, cur), nextStatusSeq(cur, repeat), input.SessionID)
 	if err != nil {
 		return fmt.Errorf("update session status: %w", err)
 	}
@@ -1171,13 +1290,33 @@ func (s *Store) UpdateSessionStatus(ctx context.Context, input StatusUpdateInput
 		return nil
 	}
 
-	if statusWins(input, cur) {
-		if err := writeStatusUpdate(ctx, tx, input, cur); err != nil {
-			return err
-		}
+	if err := applyStatusVerdict(ctx, tx, input, cur); err != nil {
+		return err
 	}
 
 	return recordStatusEventTx(ctx, tx, input)
+}
+
+// applyStatusVerdict writes a winning verdict; a verdict that lost precedence
+// is still proof the pane matched a probe rule or the agent spoke, so a probe
+// or hook loser ends the miss streak (R315).
+func applyStatusVerdict(ctx context.Context, tx *sql.Tx, input StatusUpdateInput, cur statusRow) error {
+	if statusWins(input, cur) {
+		return writeStatusUpdate(ctx, tx, input, cur)
+	}
+	if input.Source == "probe" || input.Source == "hook" {
+		return clearProbeMissStreakTx(ctx, tx, input.SessionID)
+	}
+	return nil
+}
+
+// clearProbeMissStreakTx zeroes sessions.probe_miss_streak (R315) with a plain
+// UPDATE: the streak is a column, never an event.
+func clearProbeMissStreakTx(ctx context.Context, tx *sql.Tx, sessionID string) error {
+	if _, err := tx.ExecContext(ctx, `UPDATE sessions SET probe_miss_streak = 0 WHERE id = ?`, sessionID); err != nil {
+		return fmt.Errorf("clear probe_miss_streak: %w", err)
+	}
+	return nil
 }
 
 // recordStatusEventTx appends the status update's source event and commits
@@ -1199,109 +1338,60 @@ func recordStatusEventTx(ctx context.Context, tx *sql.Tx, input StatusUpdateInpu
 	return nil
 }
 
-// RecordAttachment atomically applies the status-side effects of a
-// deck-mediated attachment. A waiting row is answered and becomes running; an
-// error row is acknowledged without changing its durable verdict or diagnostic
-// fields. Any other status is a no-op, so a hook racing a stale list frame is
-// never overwritten.
-func (s *Store) RecordAttachment(ctx context.Context, sessionID string, at int64) error {
+// AcknowledgeSession is Y's durable write (R319): it clears the row's unseen
+// marker without changing its status verdict, source, timestamp, or
+// notification epoch. It is intentionally a targeted update rather than a
+// status transition: pressing Y acknowledges waiting/error but does not claim
+// that the user answered it. Like engagement's MarkStatusSeen it names the
+// status episode the user pressed Y on (status_at AND status_seq): the key's
+// write runs asynchronously, so by the time it lands the row may already be in
+// a newer episode -- even one sharing the old stamp, or one whose stepped-back
+// clock repeated it -- and acknowledging the older prompt must never mark that
+// newer one seen. A row that has moved on, or is already seen, is left
+// untouched (no write at all); only a missing row is an error.
+func (s *Store) AcknowledgeSession(ctx context.Context, sessionID string, episode StatusEpisode) error {
 	if sessionID == "" {
 		return errors.New("session id is required")
 	}
-	if at == 0 {
-		return errors.New("attachment timestamp is required")
-	}
-
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("begin attachment: %w", err)
-	}
-	defer rollbackTx(tx)
-
-	applied, err := recordAttachmentTx(ctx, tx, sessionID, at)
-	if err != nil || !applied {
-		return err
-	}
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("commit attachment: %w", err)
-	}
-	return nil
-}
-
-// recordAttachmentTx is RecordAttachment's transaction body: it reads the
-// status, applies the status-side effect and, only when one applied, appends
-// the 'attached' event. applied is false for a status that changes nothing.
-func recordAttachmentTx(ctx context.Context, tx *sql.Tx, sessionID string, at int64) (applied bool, err error) {
-	status, err := attachmentStatusTx(ctx, tx, sessionID)
-	if err != nil {
-		return false, err
-	}
-	applied, err = applyAttachmentToStatusTx(ctx, tx, sessionID, status, at)
-	if err != nil || !applied {
-		return false, err
-	}
-	if _, err := tx.ExecContext(ctx, `INSERT INTO events (session_id, at, kind, reason, payload)
-		VALUES (?, ?, 'attached', '', '')`, sessionID, at); err != nil {
-		return false, fmt.Errorf("record attachment event: %w", err)
-	}
-	return true, nil
-}
-
-// attachmentStatusTx reads the session's current status inside
-// RecordAttachment's transaction, reporting an unknown session by id.
-func attachmentStatusTx(ctx context.Context, tx *sql.Tx, sessionID string) (string, error) {
-	var status string
-	if err := tx.QueryRowContext(ctx, `SELECT status FROM sessions WHERE id = ?`, sessionID).Scan(&status); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return "", fmt.Errorf("session %q not found", sessionID)
-		}
-		return "", fmt.Errorf("read attachment status: %w", err)
-	}
-	return status, nil
-}
-
-// applyAttachmentToStatusTx writes RecordAttachment's status-side effect for
-// the row's current status: a waiting row is answered, an error row is
-// acknowledged, and any other status changes nothing (applied is false and the
-// caller records no event).
-func applyAttachmentToStatusTx(ctx context.Context, tx *sql.Tx, sessionID, status string, at int64) (applied bool, err error) {
-	switch status {
-	case "waiting":
-		if _, err := tx.ExecContext(ctx, `UPDATE sessions SET
-			status = 'running', status_reason = '', status_source = 'user', status_at = ?,
-			acknowledged = 1, notify_epoch = notify_epoch + 1, hook_fired = NULL
-			WHERE id = ? AND status = 'waiting'`, at, sessionID); err != nil {
-			return false, fmt.Errorf("answer waiting attachment: %w", err)
-		}
-	case "error":
-		if _, err := tx.ExecContext(ctx, `UPDATE sessions SET acknowledged = 1
-			WHERE id = ? AND status = 'error'`, sessionID); err != nil {
-			return false, fmt.Errorf("acknowledge error attachment: %w", err)
-		}
-	default:
-		return false, nil
-	}
-	return true, nil
-}
-
-// AcknowledgeSession durably clears the selected row's unseen marker without
-// changing its status verdict, source, timestamp, or notification epoch. It is
-// intentionally a targeted update rather than a status transition: pressing Y
-// acknowledges waiting/error but does not claim that the user answered it.
-func (s *Store) AcknowledgeSession(ctx context.Context, sessionID string) error {
-	if sessionID == "" {
-		return errors.New("session id is required")
-	}
-	result, err := s.db.ExecContext(ctx, `UPDATE sessions SET acknowledged = 1 WHERE id = ?`, sessionID)
-	if err != nil {
+	if _, err := s.MarkStatusSeen(ctx, sessionID, episode); err != nil {
 		return fmt.Errorf("acknowledge session: %w", err)
 	}
-	if changed, err := result.RowsAffected(); err != nil {
-		return fmt.Errorf("read acknowledged session count: %w", err)
-	} else if changed == 0 {
+	var exists int
+	switch err := s.db.QueryRowContext(ctx, `SELECT 1 FROM sessions WHERE id = ?`, sessionID).Scan(&exists); {
+	case errors.Is(err, sql.ErrNoRows):
 		return fmt.Errorf("session %q not found", sessionID)
+	case err != nil:
+		return fmt.Errorf("read acknowledged session: %w", err)
 	}
 	return nil
+}
+
+// MarkStatusSeen is engagement's (R321) one durable write: it sets
+// seen_status_at = status_at on a row that is still in the status episode the
+// caller saw (StatusEpisode: the stamp AND the transition count, because a
+// stamp alone is not an identity -- two episodes can share a millisecond and
+// a stepped clock can repeat an old stamp). It changes no status, source,
+// reason, status_at, notify_epoch or event, and it writes nothing at all when
+// the row is already seen or has moved to another episode since the caller
+// looked (a newer prompt must not be marked seen by an engagement with an
+// older one, however late that write runs). It reports whether a row was
+// written.
+func (s *Store) MarkStatusSeen(ctx context.Context, sessionID string, episode StatusEpisode) (bool, error) {
+	if sessionID == "" {
+		return false, errors.New("session id is required")
+	}
+	result, err := s.db.ExecContext(ctx,
+		`UPDATE sessions SET seen_status_at = status_at
+		 WHERE id = ? AND status_at = ? AND status_seq = ? AND seen_status_at <> status_at`,
+		sessionID, episode.At, episode.Seq)
+	if err != nil {
+		return false, fmt.Errorf("mark status seen: %w", err)
+	}
+	changed, err := result.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("read marked-seen session count: %w", err)
+	}
+	return changed > 0, nil
 }
 
 // RecordSessionNote appends one session-scoped "note" event (task 013,
@@ -1390,6 +1480,30 @@ func truncateUTF8(value string, limit int) string {
 	return value
 }
 
+// UnverifiedMissStreak and UnverifiedAgeFactor are R315's thresholds: a row is
+// unverified after this many consecutive probe misses and this multiple of
+// stale_after with no event.
+const (
+	UnverifiedMissStreak = 3
+	UnverifiedAgeFactor  = 3
+)
+
+// Unverified reports whether a `running` row has gone unconfirmed (R315): no
+// event has been recorded for it for at least UnverifiedAgeFactor x
+// staleAfter (measured from the newer of LastEventAt and status_at, so a
+// repeat verdict that leaves status_at alone still restarts the window) and
+// its probe has missed UnverifiedMissStreak times in a row. It is derived
+// for display only: it reads no stored flag, writes nothing, and changes
+// neither the status, its text nor the sort position. staleAfter <= 0 means
+// probing is off, so nothing is ever unverified.
+func (s Session) Unverified(now time.Time, staleAfter time.Duration) bool {
+	if staleAfter <= 0 || s.Status != "running" || s.ProbeMissStreak < UnverifiedMissStreak {
+		return false
+	}
+	quietSince := max(s.StatusAt, s.LastEventAt)
+	return now.UnixMilli()-quietSince >= UnverifiedAgeFactor*staleAfter.Milliseconds()
+}
+
 // RecordProbeMiss notes that a stale-eligible pane was sampled but matched
 // no probe.go rule at all, without changing the row's status, status_source,
 // or status_at — SPEC §7 precedence and every existing transition are
@@ -1411,13 +1525,58 @@ func (s *Store) RecordProbeMiss(ctx context.Context, sessionID string, at int64)
 	if at == 0 {
 		return errors.New("event timestamp is required")
 	}
-	result, err := s.db.ExecContext(ctx, `UPDATE sessions SET last_probe_at = ? WHERE id = ?`, at, sessionID)
+	result, err := s.db.ExecContext(ctx, `UPDATE sessions SET last_probe_at = ?, probe_miss_streak = probe_miss_streak + 1 WHERE id = ?`, at, sessionID)
 	if err != nil {
 		return fmt.Errorf("set last_probe_at: %w", err)
 	}
 	affected, err := result.RowsAffected()
 	if err != nil {
 		return fmt.Errorf("check set last_probe_at: %w", err)
+	}
+	if affected != 1 {
+		return fmt.Errorf("session %q not found", sessionID)
+	}
+	return nil
+}
+
+// RecordProbeSample stamps last_probe_at with the time a pane was sampled and
+// touches nothing else: no status, no events, no miss streak. It is the idle
+// cadence's anchor (R314) for a sample that did not move the row -- a matching
+// idle verdict repeats the status and so leaves status_at old, and a loser
+// leaves the row as it was -- so the row waits another full cadence instead of
+// being sampled on every pass.
+func (s *Store) RecordProbeSample(ctx context.Context, sessionID string, at int64) error {
+	if sessionID == "" {
+		return errors.New("session id is required")
+	}
+	if at == 0 {
+		return errors.New("event timestamp is required")
+	}
+	if _, err := s.db.ExecContext(ctx, `UPDATE sessions SET last_probe_at = ? WHERE id = ?`, at, sessionID); err != nil {
+		return fmt.Errorf("set last_probe_at: %w", err)
+	}
+	return nil
+}
+
+// RecordOutput sets sessions.last_output_at to at (R304). Like RecordProbeMiss
+// it is a plain UPDATE of one column and never appends to events: the output
+// clock advances once per bucket per session, and an event kind nothing reads
+// would grow the log for as long as an agent works. It does not touch status,
+// status_source or status_at.
+func (s *Store) RecordOutput(ctx context.Context, sessionID string, at int64) error {
+	if sessionID == "" {
+		return errors.New("session id is required")
+	}
+	if at <= 0 {
+		return errors.New("output timestamp is required")
+	}
+	result, err := s.db.ExecContext(ctx, `UPDATE sessions SET last_output_at = ? WHERE id = ?`, at, sessionID)
+	if err != nil {
+		return fmt.Errorf("set last_output_at: %w", err)
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("check set last_output_at: %w", err)
 	}
 	if affected != 1 {
 		return fmt.Errorf("session %q not found", sessionID)
@@ -1464,6 +1623,18 @@ func (s *Store) SetPermissionProfile(ctx context.Context, sessionID, profile, so
 		`UPDATE sessions SET permission_profile = ? WHERE id = ?`, profile)
 }
 
+// validateSetEnvArgs refuses a SetSessionEnvValue call missing its row, key or
+// event timestamp.
+func validateSetEnvArgs(sessionID, key string, at int64) error {
+	if sessionID == "" || key == "" {
+		return errors.New("session id and environment key are required")
+	}
+	if at == 0 {
+		return errors.New("event timestamp is required")
+	}
+	return nil
+}
+
 // SetSessionEnvValue edits exactly one key in a session's own env map --
 // SPEC §6.1/§6.3's highest-priority layer -- and marks the row env_dirty
 // (task 021): a change has been persisted but not yet applied to the live
@@ -1476,11 +1647,8 @@ func (s *Store) SetPermissionProfile(ctx context.Context, sessionID, profile, so
 // never-log-a-value convention (task 019/024): a value a user typed here
 // may be secret-shaped, and nothing durable should ever quote it back.
 func (s *Store) SetSessionEnvValue(ctx context.Context, sessionID, key, value, source string, at int64) error {
-	if sessionID == "" || key == "" {
-		return errors.New("session id and environment key are required")
-	}
-	if at == 0 {
-		return errors.New("event timestamp is required")
+	if err := validateSetEnvArgs(sessionID, key, at); err != nil {
+		return err
 	}
 	if source == "" {
 		source = "user"
@@ -2921,7 +3089,7 @@ func (s *Store) migrate(version int) error {
 // the schemaVN variables at call time (tests substitute them); a version
 // outside 0..SchemaVersion-1 has no migration path.
 func applySchemaLadder(tx *sql.Tx, version int) error {
-	rungs := [][]string{schemaV1, schemaV2, schemaV3, schemaV4, schemaV5, schemaV6, schemaV7, schemaV8, schemaV9, schemaV10, schemaV11, schemaV12, schemaV13, schemaV14}
+	rungs := [][]string{schemaV1, schemaV2, schemaV3, schemaV4, schemaV5, schemaV6, schemaV7, schemaV8, schemaV9, schemaV10, schemaV11, schemaV12, schemaV13, schemaV14, schemaV15, schemaV16, schemaV17, schemaV18, schemaV19, schemaV20, schemaV21}
 	if version < 0 || version >= len(rungs) {
 		return fmt.Errorf("no migration path from schema version %d", version)
 	}
@@ -3182,6 +3350,143 @@ var schemaV14 = []string{
 	`CREATE TRIGGER IF NOT EXISTS bookmarks_clear_on_tombstone AFTER UPDATE OF deleted_at ON sessions
 		WHEN NEW.deleted_at != 0 BEGIN DELETE FROM bookmarks WHERE session_id = NEW.id; END`,
 }
+
+// schemaV15 adds sessions.last_output_at (R304): the wall-clock millisecond
+// time of the newest transcript-region output reconcile has confirmed for the
+// session, 0 until the first. It is a clock, not a status: it is written by a
+// plain UPDATE (RecordOutput), never as an event row, and nothing in SPEC §7
+// precedence reads it. ALTER TABLE ADD COLUMN touches no existing value, so an
+// upgrade from v14 recreates no session.
+var schemaV15 = []string{
+	`ALTER TABLE sessions ADD COLUMN last_output_at INTEGER NOT NULL DEFAULT 0`,
+}
+
+// schemaV16 adds sessions.probe_miss_streak (R315): the number of consecutive
+// stale-eligible probes that matched no rule, 0 until the first. It is a
+// counter written by plain UPDATEs (RecordProbeMiss adds one; every verdict
+// resets it), never an event, and nothing in SPEC §7 precedence reads it.
+var schemaV16 = []string{
+	`ALTER TABLE sessions ADD COLUMN probe_miss_streak INTEGER NOT NULL DEFAULT 0`,
+}
+
+// schemaV17 adds the events_session_at index (R315). R315's quiet window is
+// "no event for 3 x stale_after", and status_at cannot measure that, because
+// a repeat verdict records an event while leaving status_at alone (R303).
+// Session.LastEventAt is therefore read as the newest events.at for the row,
+// and this index makes that per-row MAX a single index probe. It adds no
+// column and writes no row.
+var schemaV17 = []string{
+	`CREATE INDEX IF NOT EXISTS events_session_at ON events(session_id, at)`,
+}
+
+// schemaV18 is R318's seen schema (phase 4t). sessions.acknowledged (a bit)
+// is dropped (the schemaV10 column-drop precedent) and sessions.seen_status_at
+// added: the status_at stamp the user has seen, so a row's status is seen
+// exactly when seen_status_at equals status_at. Backfill keeps what each row
+// already said: an acknowledged row is seen at its current stamp, every other
+// row is unseen (0).
+var schemaV18 = []string{
+	`ALTER TABLE sessions ADD COLUMN seen_status_at INTEGER NOT NULL DEFAULT 0`,
+	`UPDATE sessions SET seen_status_at = CASE WHEN acknowledged = 1 THEN status_at ELSE 0 END`,
+	`ALTER TABLE sessions DROP COLUMN acknowledged`,
+}
+
+// schemaV19 adds sessions.last_seen_at (R324): the last_output_at value the
+// user has viewed, 0 until the first view. It is a clock mirror, not a wall
+// time: a view copies last_output_at into it (MarkViewed), so the output-unseen
+// test is a plain comparison that a stepped clock cannot upset. Backfill sets
+// it to last_output_at, so an upgrade does not mark every existing session
+// unseen at once.
+var schemaV19 = []string{
+	`ALTER TABLE sessions ADD COLUMN last_seen_at INTEGER NOT NULL DEFAULT 0`,
+	`UPDATE sessions SET last_seen_at = last_output_at`,
+}
+
+// schemaV20 adds sessions.hook_at (R303, SPEC §7): the time of the newest hook
+// verdict the store applied. The hook-over-sampling precedence reads it
+// instead of status_at, because a hook repeating the current status must not
+// move status_at (the transition stamp) yet is still fresh hook evidence.
+// Backfill dates a hook-sourced row by its status_at, the only hook time a
+// pre-v20 database recorded.
+var schemaV20 = []string{
+	`ALTER TABLE sessions ADD COLUMN hook_at INTEGER NOT NULL DEFAULT 0`,
+	`UPDATE sessions SET hook_at = status_at WHERE status_source = 'hook'`,
+}
+
+// schemaV21 adds sessions.status_seq (R319, R321, R322): the number of status
+// transitions the row has made. status_at is a wall-clock stamp and so not an
+// identity (two episodes can share a millisecond, a stepped clock can repeat
+// an old stamp); (status_at, status_seq) is, and every asynchronous seen write
+// and cached engagement/dwell decision is bound to it. A repeat of the current
+// status (R303) does not advance it, and seen_status_at == status_at stays the
+// public seen predicate.
+var schemaV21 = []string{
+	`ALTER TABLE sessions ADD COLUMN status_seq INTEGER NOT NULL DEFAULT 0`,
+}
+
+// StatusEpisode names one status episode of a row: the status_at stamp and the
+// transition count (status_seq) it was written at. Two episodes never share
+// both, whatever the clock did.
+type StatusEpisode struct {
+	At, Seq int64
+}
+
+// Episode is the status episode the row is in now.
+func (s Session) Episode() StatusEpisode {
+	return StatusEpisode{At: s.StatusAt, Seq: s.StatusSeq}
+}
+
+// VerdictAt is the time the row's verdict was last vouched for, the anchor of
+// every staleness decision (probe eligibility, the movement fallback, the
+// store's hook-over-sampling guards): status_at, or the newer hook_at when the
+// stored verdict is a hook's. A hook repeating the status therefore keeps its
+// verdict fresh without ever dating the row (R303).
+func (s Session) VerdictAt() int64 {
+	if s.StatusSource == "hook" {
+		return max(s.StatusAt, s.HookAt)
+	}
+	return s.StatusAt
+}
+
+// MarkViewed is the one durable write of a view (R324): it copies the row's
+// last_output_at into last_seen_at, so output the user has now looked at stops
+// counting as unseen. It writes nothing when the two already agree, which keeps
+// a watched row from rewriting its row on every tick: the column changes only
+// on a view change or when a new output bucket lands under a view. It changes
+// no status, seen_status_at, status_at or event and never moves a row in any
+// sort order (no order reads last_seen_at). It reports whether a row was
+// written.
+func (s *Store) MarkViewed(ctx context.Context, sessionID string) (bool, error) {
+	if sessionID == "" {
+		return false, errors.New("session id is required")
+	}
+	result, err := s.db.ExecContext(ctx,
+		`UPDATE sessions SET last_seen_at = last_output_at WHERE id = ? AND last_seen_at <> last_output_at`, sessionID)
+	if err != nil {
+		return false, fmt.Errorf("mark viewed: %w", err)
+	}
+	changed, err := result.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("read viewed session count: %w", err)
+	}
+	return changed > 0, nil
+}
+
+// Unseen reports whether the row carries the unseen marker (R324): output
+// the user has not viewed (last_output_at > last_seen_at) or an attention
+// status the user has not seen (waiting or error, and not StatusSeen per
+// R319). A running row never shows the output half: its output is the
+// expected state, and only a row that went quiet is worth a look.
+func (s Session) Unseen() bool {
+	if (s.Status == "waiting" || s.Status == "error") && !s.StatusSeen() {
+		return true
+	}
+	return s.Status != "running" && s.LastOutputAt > s.LastSeenAt
+}
+
+// StatusSeen reports whether the user has seen the row's current status stamp
+// (R318): equality of seen_status_at and status_at, never an ordering.
+func (s Session) StatusSeen() bool { return s.SeenStatusAt == s.StatusAt }
 
 // getUIState returns the persisted value for key, or def when no row exists
 // yet. Per SPEC §11.2, ui_state is not load-bearing: a missing row degrades

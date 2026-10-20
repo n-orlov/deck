@@ -3,7 +3,9 @@ package tui
 import (
 	"context"
 	"fmt"
+	"math/rand/v2"
 	"strings"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 
@@ -42,6 +44,15 @@ type updateIndicator struct {
 	state  updateIndicatorState
 	tag    string // the release the state talks about
 	reason string // the refusal reason (updateRefused) or the cause (updateFailed)
+	// immutable is Result.Immutable of an installed update (updateInstalled
+	// only): anything but upd.ImmutableVerified means the release was not
+	// verified immutable (#104).
+	immutable string
+	// notImmutable marks an updateFailed that is the immutability refusal
+	// (upd.RefusedNotImmutable): the release was held back, not broken, so
+	// the note reads calmly and the same release is not retried while this
+	// deck runs.
+	notImmutable bool
 }
 
 // updateSource is how the model learns about releases: the throttled daily
@@ -61,8 +72,11 @@ type updateChecked struct {
 
 // updateInstalledMsg and updateFailedMsg report an update attempt's end. The
 // ctrl+u flow and the auto-install send them.
-type updateInstalledMsg struct{ tag string }
-type updateFailedMsg struct{ cause string }
+type updateInstalledMsg struct{ tag, immutable string }
+type updateFailedMsg struct {
+	cause        string
+	notImmutable bool // the failure is an upd.RefusedNotImmutable refusal
+}
 
 // WithUpdateSource wires the daily update check into the model: check is the
 // throttled check (update.Checker.Check) and preflight says whether this
@@ -105,6 +119,47 @@ func (m Model) updateCheckCmd() tea.Cmd {
 	}
 }
 
+// updateRecheckTick fires about once per upd.CheckInterval while deck runs
+// (SPEC §6.5): it runs the daily check again, so a deck left open for days
+// still learns of a release published after it started.
+type updateRecheckTick struct{}
+
+// updateRecheckJitter bounds the random delay added to each recheck, so
+// instances started together do not all ask at the same moment (the cache
+// lock already makes them share one request).
+const updateRecheckJitter = time.Hour
+
+// updateRecheckDelay is the wait before the next recheck: upd.CheckInterval
+// plus a random jitter in [0, updateRecheckJitter), or m.updateRecheckAfter's
+// answer when a test set it.
+func (m Model) updateRecheckDelay() time.Duration {
+	if m.updateRecheckAfter != nil {
+		return m.updateRecheckAfter()
+	}
+	return upd.CheckInterval + rand.N(updateRecheckJitter) //nolint:gosec // scheduling jitter, not a secret
+}
+
+// updateRecheckCmd schedules the next recheck, or nil without a source. The
+// tick runs whatever the settings say: updateCheckCmd reads them when it
+// fires, so a check that is off makes no request.
+func (m Model) updateRecheckCmd() tea.Cmd {
+	if m.updateSrc.check == nil {
+		return nil
+	}
+	return tea.Tick(m.updateRecheckDelay(), func(time.Time) tea.Msg { return updateRecheckTick{} })
+}
+
+// onUpdateRecheckTick runs the daily check again and schedules the next
+// recheck. The check is still throttled by the shared cache and its lock:
+// across every instance and profile at most one request is made per
+// upd.CheckInterval, and an instance whose window has not run out reads the
+// cached answer another one recorded, so it shows the same indicator. The
+// answer is applied by onUpdateChecked, which keeps an Installed, Installing
+// or held-not-immutable state (applyUpdateCheck).
+func (m Model) onUpdateRecheckTick(updateRecheckTick) (tea.Model, tea.Cmd) {
+	return m, tea.Batch(m.updateCheckCmd(), m.updateRecheckCmd())
+}
+
 // updateSettingsApplied runs after a live settings save or an external reload
 // changed m.settings. Enabling the check (update_check or auto_update going
 // on) runs the daily check now, without a restart; turning auto_update on
@@ -144,7 +199,7 @@ func (m Model) onUpdateChecked(msg updateChecked) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) onUpdateInstalled(msg updateInstalledMsg) (tea.Model, tea.Cmd) {
-	m.updateInd = updateIndicator{state: updateInstalled, tag: msg.tag}
+	m.updateInd = updateIndicator{state: updateInstalled, tag: msg.tag, immutable: msg.immutable}
 	m.footerNoteSets[noteUpdate]++
 	return m, nil
 }
@@ -153,7 +208,7 @@ func (m Model) onUpdateFailed(msg updateFailedMsg) (tea.Model, tea.Cmd) {
 	if m.updateInd.state == updateInstalled {
 		return m, nil
 	}
-	m.updateInd = updateIndicator{state: updateFailed, tag: m.updateInd.tag, reason: msg.cause}
+	m.updateInd = updateIndicator{state: updateFailed, tag: m.updateInd.tag, reason: msg.cause, notImmutable: msg.notImmutable}
 	m.footerNoteSets[noteUpdate]++
 	return m, nil
 }
@@ -162,7 +217,7 @@ func (m Model) onUpdateFailed(msg updateFailedMsg) (tea.Model, tea.Cmd) {
 // the process: a later check never replaces it. A refusal that is not a
 // Refusal (the binary cannot be located) hides the indicator.
 func (m *Model) applyUpdateCheck(st upd.Status, refusal error) {
-	if m.updateInd.state == updateInstalled || m.updateInd.state == updateInstalling {
+	if m.updateInd.state == updateInstalled || m.updateInd.state == updateInstalling || m.heldNotImmutable(st) {
 		return
 	}
 	next := m.classifyUpdateCheck(st, refusal)
@@ -170,6 +225,14 @@ func (m *Model) applyUpdateCheck(st upd.Status, refusal error) {
 		m.footerNoteSets[noteUpdate]++
 	}
 	m.updateInd = next
+}
+
+// heldNotImmutable reports whether st offers the very release an update
+// already refused as not verified immutable. That answer stands for the life
+// of the process (DECK_REQUIRE_IMMUTABLE is read from its environment), so a
+// later check neither offers nor auto-installs it again; a newer tag does.
+func (m *Model) heldNotImmutable(st upd.Status) bool {
+	return m.updateInd.state == updateFailed && m.updateInd.notImmutable && st.Latest == m.updateInd.tag
 }
 
 // classifyUpdateCheck maps a check result and its preflight refusal to the
@@ -219,6 +282,7 @@ func (m Model) updateIndicatorText() string {
 // updateStateText is the note for one indicator state under the current
 // auto_update setting.
 func (m Model) updateStateText(ind updateIndicator) string {
+	ind.tag = upd.StripControl(ind.tag)
 	switch ind.state {
 	case updateAvailable:
 		if m.settings.AutoUpdate {
@@ -235,18 +299,42 @@ func (m Model) updateStateText(ind updateIndicator) string {
 	case updateInstalling:
 		return fmt.Sprintf("updating to %s — downloading and verifying…", ind.tag)
 	case updateInstalled:
-		return fmt.Sprintf("update installed: %s — restart deck to apply", ind.tag)
+		return updateInstalledText(ind)
 	case updateFailed:
-		return updateFailedText(ind.reason)
+		return updateFailedNote(ind)
 	}
 	return ""
+}
+
+// updateInstalledText is the Installed note; a release not verified
+// immutable says so. An empty immutability (an install
+// that did not report one) adds nothing.
+func updateInstalledText(ind updateIndicator) string {
+	var caveats []string
+	if ind.immutable == upd.ImmutableNot || ind.immutable == upd.ImmutableUnknown {
+		caveats = append(caveats, "not verified immutable")
+	}
+	if len(caveats) == 0 {
+		return fmt.Sprintf("update installed: %s — restart deck to apply", ind.tag)
+	}
+	return fmt.Sprintf("update installed: %s (%s) — restart deck to apply", ind.tag, strings.Join(caveats, "; "))
+}
+
+// updateFailedNote is the Failed note for ind. The immutability refusal
+// held a release back on purpose (#104), so it reads as a calm "not
+// installed" rather than "update failed".
+func updateFailedNote(ind updateIndicator) string {
+	if ind.notImmutable {
+		return fmt.Sprintf("update not installed: %s is not verified immutable — see deck update", ind.tag)
+	}
+	return updateFailedText(ind.reason)
 }
 
 // updateFailedText is the Failed note: the fixed phrase plus the cause, with
 // its whitespace collapsed to one line, when there is one.
 func updateFailedText(reason string) string {
 	text := "update failed — see deck update"
-	if cause := strings.Join(strings.Fields(upd.RedactText(reason)), " "); cause != "" {
+	if cause := strings.Join(strings.Fields(upd.RedactText(upd.StripControl(reason))), " "); cause != "" {
 		text += " (" + cause + ")"
 	}
 	return text

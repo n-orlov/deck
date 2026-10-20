@@ -322,10 +322,14 @@ so that work and home, or two organisations, never share a session list. (It is 
   `deck update --check` makes one request and changes nothing (no file, no state row) and reports
   `update available: <old> -> <new>` or `deck <old> is up to date`; `deck update --version vX.Y.Z`
   pins a release and permits a downgrade (it cannot be combined with `--check`). An install prints
-  `deck updated: <old> -> <new> (<path>)` and a note that a running deck must be restarted to use the
+  `deck updated: <old> -> <new> (<path>)`, a note on the release's immutability (§13.1, update
+  immutability: `the release is a GitHub immutable release`, or, only under the
+  `DECK_REQUIRE_IMMUTABLE=0` opt-out, `the release is not verified immutable` with the reason and
+  `installed because DECK_REQUIRE_IMMUTABLE=0 is set`), and a note that a running deck must be restarted to use the
   new version (running sessions are not disturbed); when the latest release is not newer it prints
   `already the latest release` and changes nothing. Every failure (a refusal of §13.1, a checksum
-  failure, no network, an unknown option) prints `deck update: <cause>` on stderr and
+  failure, a release not verified immutable while immutability is required (the
+  default; the cause names the `DECK_REQUIRE_IMMUTABLE=0` opt-out), no network, an unknown option) prints `deck update: <cause>` on stderr and
   exits 1, with the installed binary byte-identical; an unknown option or a stray argument is exit
   2. An offline `--check` is such an error and changes nothing.
 - **A deck stays on the profile it launched on.** There is no switcher and no in-place
@@ -441,10 +445,15 @@ CREATE TABLE sessions (
   hook_fired         TEXT,                  -- JSON (kind,reason) pairs fired in this notify_epoch (§10.3)
   important          INTEGER NOT NULL DEFAULT 0, -- exported to the event hook (§10.1)
   group_id           INTEGER,               -- manual group (§11); NULL = the implicit "default"
-  acknowledged       INTEGER NOT NULL DEFAULT 1,
+  seen_status_at     INTEGER NOT NULL DEFAULT 0, -- the status_at stamp the user has seen (R318, schema v18); a row's status is seen iff seen_status_at = status_at. Replaces the dropped `acknowledged` bit; the v18 rung backfills it to status_at where acknowledged was 1, else 0
   launch_lease_owner TEXT,                  -- pid@boot_id#generation holding a start (§9.3)
   launch_lease_until INTEGER NOT NULL DEFAULT 0,
   last_probe_at      INTEGER NOT NULL DEFAULT 0, -- last pane sample that matched no §7 rule; a column, never an event (§7)
+  last_output_at     INTEGER NOT NULL DEFAULT 0, -- the output clock: ms of the newest transcript-region output reconcile confirmed (§7); a column, never an event
+  hook_at            INTEGER NOT NULL DEFAULT 0, -- ms of the newest hook verdict the store applied (R303, schema v20); the freshness clock of a hook verdict, independent of status_at (§7). A column, never an event
+  last_seen_at       INTEGER NOT NULL DEFAULT 0, -- the last_output_at value the user has viewed (R324, schema v19); a column, never an event. A row is output-unseen iff last_output_at > last_seen_at (§7, §11)
+  status_seq         INTEGER NOT NULL DEFAULT 0, -- number of status transitions the row has made (R319/R321/R322, schema v21); with status_at it names a status episode. A repeat of the current status does not advance it. A column, never an event
+  probe_miss_streak  INTEGER NOT NULL DEFAULT 0, -- consecutive probe passes that matched no §7 rule (R315); a column, never an event
   created_at         INTEGER NOT NULL,
   last_attached_at   INTEGER NOT NULL DEFAULT 0,
   archived_at        INTEGER NOT NULL DEFAULT 0,
@@ -556,6 +565,25 @@ Invariants:
   slot is not an error. The table is machine-local, survives a restart,
   and is not load-bearing: a missing slot is an empty slot, and a jump to an empty slot is a no-op
   with a one-line status message. A migrated database starts with no slot assigned.
+
+- Schema version 15 adds `sessions.last_output_at` (the output clock, §7), `0` until a session's
+  transcript has been seen to change. `ALTER TABLE ADD COLUMN` touches no existing value, so a migrated
+  database starts every session at 0 and recreates no row. The column is written by a plain
+  `UPDATE` and never as an `events` row.
+- Schema version 19 adds `sessions.last_seen_at` (R324, §7, §11), the `last_output_at` value the user has
+  viewed. The rung backfills it to `last_output_at`, so an upgrade does not light every existing session.
+  It is written by a plain `UPDATE` (`MarkViewed`) and never as an `events` row.
+- Schema version 20 adds `sessions.hook_at` (R303, §7), the time of the newest applied hook verdict, the
+  clock hook-over-sampling precedence reads instead of `status_at`. The rung backfills it to `status_at` on
+  hook-sourced rows and is written by the status update itself, never as an `events` row.
+- Schema version 21 adds `sessions.status_seq` (R319, R321, R322, §7), the count of status transitions, `0`
+  on a migrated row. `(status_at, status_seq)` is the identity of a status episode; it is written by the
+  status update itself and never as an `events` row.
+- Schema version 16 adds `sessions.probe_miss_streak` (R315, §7), `0` on a migrated row. It is written by
+  plain `UPDATE`s and never as an `events` row.
+- Schema version 17 adds the index `events_session_at` on `events(session_id, at)` (R315, §7), so the newest
+  event of a session (the unverified marker's quiet window) is one index probe. It adds no column and
+  rewrites no row.
 
 ---
 
@@ -794,7 +822,7 @@ schema:
 |---|---|
 | top level | `allow_yolo` (default false, §5), `yolo_default` (default false, §5 — inert unless `allow_yolo`), `stale_after` (default 45 s, §7), `capture_min_interval` (§9.4), `tmux_mouse` (default true, §3.2 — `false` restores tmux's own default and with it the arrow-key behaviour), `event_retention_days` (default 30, §12), `pre_launch` (empty by default, §6.4 — the global launch hook), `agent` (empty by default, §3.4 — the kind `deck new` creates when `--agent` is absent; it is a string stored verbatim and checked against the registered kinds only when `deck new` uses it, so a kind deck does not know fails there with `unknown agent kind`; the create dialog ignores it), `post_destroy` (empty by default, §9.2 — the global teardown hook), `event_hook` (empty by default, §10.1 — the one event script; empty makes §10 inert), `event_hook_default` (default false, §10.2), `adopt_harness_names` (default true, §11.4), `bookmarks` (default false, `DECK_BOOKMARKS`, §11.5 — the numbered session bookmarks), `update_check` (default true, `DECK_UPDATE_CHECK` — the daily check for a newer release, below), `auto_update` (default false, `DECK_AUTO_UPDATE` — true implies the check), `event_hook_events` (default `["waiting","error","ended"]`, §10.2), `event_hook_timeout` (default 3 s, §10.3) |
 | `[env]` | the middle PATH/env layer (§6.1) |
-| `[ui]` | `theme` (§11.6), `ascii` (§11), `mouse` (default true, §11.8), `preview_fit` (default true, §11), `preview_paint` (default `"fit"`, one of `fit`/`nofit`/`bg`/`off`, §11.3), `sort_order` (default `"attention"`, one of `attention`/`created`/`activity`/`name`, §11), `default_group_first` (default false, §11), `attach_on_new` (default true, §11), `attach_on_click` (default true, §11.8), `select_on_drag` (default true, §11.8), `attach_on_resume` (default false, §9.1), `recent_cwd_limit` (default 5, §11.7). **Not** `layout_mode`, `sidebar_width` or the recent-directory list itself — those are machine-local UI state/history and live in `state.db` (§11.2, §11.7), so a keypress never rewrites this file, `note_timeout` (whole seconds or a quoted duration, at least 1; default 10, `DECK_NOTE_TIMEOUT` in whole seconds overrides it, §11.3 — how long a transient footer note stays up) |
+| `[ui]` | `theme` (§11.6), `ascii` (§11), `mouse` (default true, §11.8), `preview_fit` (default true, §11), `preview_paint` (default `"fit"`, one of `fit`/`nofit`/`bg`/`off`, §11.3), `sort_order` (default `"attention"`, one of `attention`/`created`/`activity`/`name`, §11), `default_group_first` (default false, §11), `attach_on_new` (default true, §11), `attach_on_click` (default true, §11.8), `select_on_drag` (default true, §11.8), `attach_on_resume` (default false, §9.1), `recent_cwd_limit` (default 5, §11.7). **Not** `layout_mode`, `sidebar_width` or the recent-directory list itself — those are machine-local UI state/history and live in `state.db` (§11.2, §11.7), so a keypress never rewrites this file, `note_timeout` (whole seconds or a quoted duration, at least 1; default 10, `DECK_NOTE_TIMEOUT` in whole seconds overrides it, §11.3 — how long a transient footer note stays up), `output_bucket` (whole seconds or a quoted duration, at least 1 second, kept exactly to the nanosecond — `"1500ms"` is 1.5 s and `"2.000000001s"` is not 2 s, never truncated or rounded; the output clock, the `activity` sort and the saved file all bucket and round-trip on that same width, a bucket being floor(instant ÷ width) in exact nanoseconds; default 10, `DECK_OUTPUT_BUCKET` in whole seconds overrides it, §7, §11 — the width of one `last_output_at` bucket, which the output clock writes at and the `activity` sort orders by) |
 
 The settings view (§11.5) edits this file: `,` opens it and `,` or `esc` closes it (§11.5
 spells out the discard prompt and the text-entry modes where `,` is a literal character).
@@ -826,7 +854,7 @@ view (§11.5) uses: `allow_yolo`, `yolo_default`, `ui.theme`, `ui.ascii`, `ui.mo
 terminal's mouse reporting is switched on or off with it), `ui.preview_fit`, `ui.preview_paint`,
 `ui.sort_order` (the loaded sessions are re-sorted, the selection stays on its session),
 `ui.default_group_first`, `ui.attach_on_new`, `ui.attach_on_click`, `ui.select_on_drag`,
-`ui.attach_on_resume`, `ui.note_timeout` (the next note follows it), `event_hook`, `event_hook_default`, `adopt_harness_names` (the next adoption or
+`ui.attach_on_resume`, `ui.note_timeout` (the next note follows it), `ui.output_bucket` (the output clock writes at the new width from its next read, judging the readings it already holds by the new width's bucket boundaries too, and an `activity` list re-sorts at once), `event_hook`, `event_hook_default`, `adopt_harness_names` (the next adoption or
 push follows it), `bookmarks`, `update_check`, `auto_update` (a save or reload that turns the check on runs it at once, one that turns `auto_update` on installs an offered release at once, and one that turns them off stops every later automatic request or install), `event_hook_events` and
 `event_hook_timeout` (the dispatcher reads them from the running settings when an event fires,
 so the next event follows them). A key the file did not change is left as it is, and a key a `DECK_*`
@@ -906,23 +934,54 @@ or `auto_update`, which implies it) runs the daily check at once, without a rest
 the 24-hour cache; one that turns `auto_update` on while a newer release is on offer installs it at
 once; one that turns the check off makes no later request, and an answer already in flight is shown
 but never installed while `auto_update` is off. A key a `DECK_*` variable overrides stays pinned.
+**A running deck rechecks (#119).** The check runs at start-up and then again from a slow tick,
+every 24 hours plus a random jitter of up to one hour, for as long as deck stays open, so a deck
+left running for days still shows a release published after it started, without a restart. Each
+recheck is the same throttled check: it reads `update-check.json` under the lock and makes a
+request only when the cached answer is older than 24 hours, so all instances and profiles still
+make at most one request per window between them, and an instance whose recheck finds a fresh
+answer another one recorded shows that answer (the Available indicator) with no request of its
+own. The tick keeps running with the check off but asks nothing (no request at all while
+`update_check` and `auto_update` are off), and a release held as not verified immutable stays
+held (below); a newer tag is offered. The tick period and jitter are a test seam
+(`Model.updateRecheckAfter`); `internal/tui/update_recheck_test.go` drives two models sharing one
+cache against a loopback fake server with a frozen clock.
 The explicit `deck update` verb (§3.4, §13.1) is the one other request and runs only when asked.
 
 **Auto-update (R300).** With `auto_update = true` (or `DECK_AUTO_UPDATE=1`), a check that finds a
 newer stable release installs it at once, with no prompt, through the same verified update `deck
-update` and `ctrl+u` run (§13.1: checksum, then an atomic replace): the
+update` and `ctrl+u` run (§13.1: release immutability, checksum, staged version, then an atomic replace): the
 indicator reads `updating to vX.Y.Z…` while it runs and Installed (§11) when it ends. deck never
 restarts itself and never touches sessions; the new binary runs at the next start. A failed
 install leaves the binary byte-for-byte as it was, never a partial file, and the indicator reads
-Failed with the cause. A running deck attempts the install once, at its start-up check (or when a live change first turns the check or `auto_update` on), and never
-retries it while it runs; a later start inside the 24-hour window reads the cached answer (the
+Failed with the cause. A running deck attempts the install once, at its start-up check (or when a live change first turns the check or `auto_update` on), and
+retries a failed install only at a later daily recheck that still names a newer release (above),
+never sooner; a later start inside the 24-hour window reads the cached answer (the
 check itself makes no request) and, while that answer still names a newer release, attempts the install again.
+A release not verified immutable (a mirror's, an older release's, or one the release API could
+not confirm) is refused by default before any download (§13.1, update immutability): the
+indicator reads `update not installed: vX.Y.Z is not verified immutable — see deck update`, and
+that tag is not tried again while deck runs, even by a live change turning the check back on; a
+later start asks the release API once more. `DECK_REQUIRE_IMMUTABLE=0` opts out.
 Where the update would be refused (an install directory deck cannot write, a
 package-managed prefix, a `dev` build) deck downloads no archive: the unwritable and managed
 cases show their reason in the indicator, and a `dev` build, which is never outdated, shows
 Skipped with its reason (`auto-update skipped: vX.Y.Z — dev build, install a release with
 install.sh`). With `auto_update` off, deck downloads no archive on its own: a newer release is
 only offered (Available, `ctrl+u`), and a `dev` build shows nothing.
+
+**Terminal-safe update errors (R330).** Text a release server or `gh` sent back (a redirect path, an
+HTTP reason phrase, a `checksums.txt` field, `gh` stderr) can hold terminal control characters. Every
+C0 (U+0000-U+001F, newline included), DEL (U+007F) and C1 (U+0080-U+009F) character is removed from it,
+a C1 control sent as one raw byte 0x80-0x9F outside a valid UTF-8 sequence (0x9B is CSI to an 8-bit
+terminal) as well as one UTF-8 encoded, before it reaches the footer's `update failed` note, the `ctrl+u` confirmation (target and current
+version) or `deck update`'s stderr (`update.StripControl`); printable and multi-byte UTF-8 text stays.
+The removal runs before the credential redaction, so a secret an echo split with a control character
+is whole again and is still masked. `TestStripControl`, `TestServerTextErrorsCarryNoControlCharacters`
+and `TestRedactionStillAppliesToSanitisedText` (`internal/update`), `TestUpdateFailedTextStripsControlCharacters`,
+`TestCtrlUDialogStripsControlCharacters` and `TestUpdateFailedTextRedactsSanitisedText` (`internal/tui`)
+and `TestUpdateVerbStderrStripsControlCharacters` (`cmd/deck`) cover ESC, BEL, a C1 CSI byte (raw and UTF-8 encoded), an OSC
+title sequence, a newline, a normal string and a multi-byte string at those sinks.
 
 **Live sessions across an update (R301).** An update never disturbs a running agent. The atomic
 replace makes the next `_hook` run any session's agent starts the new binary, with the session's
@@ -954,13 +1013,16 @@ other section restates a transition, they only refer here:
 | from | trigger | to |
 |---|---|---|
 | `stopped` | `r` — start or resume (§9.1) | `starting` |
-| `starting` | first agent signal | `running` |
+| `starting` | first agent signal: `UserPromptSubmit` or a working indicator the probe sees | `running` |
+| `starting` | `SessionStart` (startup, `--resume`, `--continue`, `clear`, `compact`; Claude, Codex, Copilot) | `idle` |
+| `idle` | `SessionStart` | stays `idle` |
 | `starting` | no signal for `stale_after` | stays `starting`, becomes probe-eligible |
 | `starting` | pane is alive, **`shell` rows only** | `running` — see the shell rule below |
-| `running` | needs input: permission prompt, question, idle prompt | `waiting` |
+| `running` | needs input: a `permission_prompt` or `elicitation_dialog` notification, or a prompt or question the probe sees | `waiting` |
+| *any* | Claude `idle_prompt` notification (R308) | unchanged — recorded as an event, never applied |
 | `running` | turn finished cleanly | `idle` |
 | `running` | turn or API failure | `error` |
-| `waiting` | answered: probe verdict, or the user attaches | `running` |
+| `waiting` | answered: probe verdict or a later hook (attaching, clicking and previewing never answer it, R320) | `running` |
 | `idle` | new prompt | `running` |
 | `error` | new prompt, or a retry that succeeds | `running` |
 | *any* | pane exit 0 · `x` kill · session-end hook | `stopped` |
@@ -976,42 +1038,229 @@ clearable by unarchiving (§9.2).
 |---|---|---|
 | `starting` | tmux session created, no agent signal yet | dim |
 | `running` | agent is working | normal |
-| `waiting` | **needs me** — permission prompt, question, idle prompt | bright, in the attention count, sorted first |
+| `waiting` | **needs me** — permission prompt, question | bright, in the attention count, sorted first, seen or not |
 | `idle` | turn finished cleanly | check, `last_message` in the detail pane |
-| `error` | turn or process died | red, unseen marker sticks, crash tail captured |
+| `error` | turn or process died | red, unseen marker sticks until seen, crash tail captured; needs attention only while unseen (§7) |
 | `stopped` | record alive, no tmux session (post-reboot, killed) | grey, labelled *resumable* |
 | `archived` | hidden from the default list, retained; **not startable** — unarchive (`U`) to resume | hidden behind a filter |
 
 Rules:
+- **`SessionStart` lands on `idle` (R307).** For Claude, Codex and Copilot, a `SessionStart` hook
+  (`sessionStart` for Copilot) — startup, `--resume`, `--continue`, `clear` or `compact` — sets `idle`,
+  never `running`. Only a `UserPromptSubmit` (`userPromptSubmitted`) hook, or a working indicator the
+  probe sees, enters `running`. A resumed session that has been given no prompt therefore stays
+  `idle`: a probe tick that matches no rule leaves it untouched (`idle` is probe-eligible only at the sparse cadence below). Pi's
+  own `session_start` extension event keeps `running` (§8.3).
+  A `SessionStart` never revives a process-crash row (an `error` carrying a pane exit status), the
+  same veto a `running` hook has. Copilot fires `userPromptSubmitted` and then `sessionStart` on its
+  first prompt, so that first turn reads `idle` until the next hook or a probe that sees the working
+  indicator; the next prompt's `userPromptSubmitted` enters `running`.
+- **Idle probe cadence (R314).** An `idle` row is probe-eligible once its verdict age (`status_at`, or `hook_at` for
+  a hook-sourced row, see the hook-evidence clock below) is at least
+  **4 × `stale_after`** old (`starting`, `running` and `waiting` stay at 1 × `stale_after`). The multiple is
+  fixed, not a setting, and it applies only on the TUI's probing path, never in `deck _hook`. This is the
+  sparse check for a turn begun without a hook: a probe that sees the working indicator moves the row to
+  `running` with source `probe`; a probe that matches nothing leaves it `idle` (`last_probe_at` only). The
+  cadence repeats: after any sample of an `idle` row (a miss, a matching `idle` verdict that repeats the
+  status and so leaves `status_at` alone, or a verdict that lost precedence) the row is next due
+  **4 × `stale_after` after that sample**, so the age is measured from the newer of the verdict and
+  `sessions.last_probe_at`, never re-met on every reconcile. A sample writes `last_probe_at` only (no
+  event beyond the verdict's own, no new bound); the detail pane's "sampled, no rule matched" line needs
+  a live miss streak, so a matched sample never prints it. An `error` or `stopped` row is never probed.
+- **Unverified running row (R315).** A `running` row with no event for at least **3 × `stale_after`**
+  and whose probe has matched no rule on **3 consecutive** passes is shown as *unverified*: its status
+  glyph is `◔` (ASCII `-`) instead of `◐` (ASCII `~`), in the same one column (§11). The miss streak is the
+  column `sessions.probe_miss_streak` (schema v16): `RecordProbeMiss` adds one with a plain `UPDATE`, never
+  an event, and any probe verdict (even one that lost precedence), any hook verdict and any status write
+  sets it back to 0, which clears the marker at once. "No event" is measured from the newest `events.at`
+  recorded for the session, of any kind and from any writer (the newer of it and `status_at` is used), read
+  at render time through the `events_session_at` index (schema v17) and stored on no row: a repeat verdict
+  that leaves `status_at` alone (R303) still restarts the 3 × `stale_after` window. The marker is derived at render time and stored
+  nowhere: the status stays `running`, the status word reads `running`, no text is added, and the row keeps
+  its sort position in every order. It never applies with `stale_after` 0 (probing off) and never to a
+  `starting`, `waiting`, `idle`, `error` or `stopped` row.
+- **Movement fallback (R316).** An `idle` row whose transcript region (§4, the `last_output_at` clock) changed in
+  **two consecutive output buckets** becomes `running` (source `movement`, reason `output movement`); a
+  counted bucket is one the clock wrote `last_output_at` for, so footer-only churn and deck-caused output
+  (R305) never count, and one counted bucket alone, or two with a quiet bucket between them, enters nothing.
+  It leaves with **one quiet bucket**: once the bucket after the newest counted one has passed without a
+  counted write, a `running` row the fallback itself set returns to `idle`. It never ends a `running` row
+  any other source set, and only moves `idle` to `running` and back. Pi has no hook verdict to defer to and
+  uses movement directly. Claude, Codex and Copilot use it only as the stale fallback: the store refuses a
+  movement write over a `hook` verdict whose `hook_at` is younger than `stale_after` (a repeated hook included), so a fresh hook always wins and a stale
+  one does not. The streak lives in memory beside the clock (a restart starts from a baseline), the write
+  is an ordinary status write with an event (`movement.running`, `movement.idle`), and it runs only on the
+  TUI's probing path with `stale_after` above 0. The pass that writes it takes no probe of that row. Its
+  quality badge reads `sampled`, like a probe.
 - **Precedence:** `user-terminal` > `hook` > `probe` > `tmux`. A user kill sets
   `killed_by_user`, which an in-flight hook arriving milliseconds later cannot undo —
   explicit human action outranks automation. Below that, a probe never overwrites a fresher
   hook verdict, and `tmux` only ever supplies liveness.
-- `waiting` and `error` set `acknowledged = 0`; cleared by attaching or by `Y`. `Y` is the
-  way to clear it without attaching, so it applies only where there is something to clear: on
-  a row already at `acknowledged = 1` it does nothing at all — no write, no event, no message —
-  and §11.3's footer does not offer it there. "Attaching"
-  means every way the keyboard reaches the pane through deck: `a`'s full attach and the
-  interactive preview (§11.9), whether entered by `↵` or forced by `F` — the same durable
-  transaction applies to any of them, and a forced entry is an attachment for exactly the
-  reason an ordinary one is, since the keyboard reaches the pane either way. Being
-  *displaced* from the preview by another client records nothing: that is something done to
-  the user, not by them. Leaving an attention state bumps `notify_epoch` (§10.3).
-- **Attaching to a `waiting` row also clears the status to `running`** (not only the
-  acknowledgement): answering the prompt is why you attached, deck watched you do it, and
-  no hook fires on a prompt being answered — the subscribed hooks (§8.1) are per-turn, not
-  per-tool-call, so the next event is the turn's `stop`. Without this rule a row you just
-  unblocked stays `waiting` until the turn ends — a standing false positive in the one
-  signal the product exists to provide.
-- Staleness: a `starting`, `running` **or `waiting`** session with no event for
-  `stale_after` (default 45 s) becomes eligible for probing. For non-hook agents, probing
+- A transition into `waiting` or `error` leaves the row unseen (`seen_status_at` reset to 0, so it
+  differs from the new `status_at`); a row is seen exactly when `seen_status_at = status_at`.
+  `Y` sets `seen_status_at = status_at`; engagement (R321) does too, and nothing else does. **Attach, click
+  and passive preview are inert (R320):** they never change `status` or the seen state, write no `attached`
+  event and no `notify_epoch` bump, and the row does not move, in the `attention` order or the `activity`
+  order. This holds for every way the keyboard reaches the pane through deck: `a`'s full attach and the
+  interactive preview (§11.9), whether entered by `↵`, forced by `F`, reached by a sidebar or preview click,
+  or entered by `[ui] attach_on_new` / `attach_on_resume`. `Y` is the way to mark a row seen without
+  engaging, so it applies only where there is something unseen: on
+  a row already seen it does nothing at all — no write, no event, no message —
+  and §11.3's footer does not offer it there. `Y`'s write runs after the key, so it names the status
+  episode the key was pressed on (`status_at` **and** `status_seq`; `Store.AcknowledgeSession` takes a
+  `StatusEpisode`): if the row has moved to another episode by the time it lands, even one with the
+  same `status_at`, it writes nothing and the newer prompt stays unseen. Being
+  *displaced* from the preview by another client records nothing either. Covering tests:
+  `TestAttachIsInertOnStatusSeenAndPosition` (eight cases: `waiting`, `error`, `running`, `idle` under the
+  `attention` and `activity` orders), `TestClickIsInertOnStatusSeenAndPosition` and
+  `TestPassivePreviewIsInertOnStatusSeenAndPosition`.
+  **Engagement sets seen (R321).** On an unseen `waiting` or `error` row, in `a`'s full attach, in the
+  interactive preview or over the passive preview, the first of these sets `seen_status_at = status_at`
+  through one function (`Model.engageRow`, one `Store.MarkStatusSeen` write): the first key forwarded to
+  the pane, the first scroll, and the first change of the pane's screen content. In the interactive and
+  passive preview deck sees them itself: a forwarded key; the wheel over the interactive preview, a page
+  scroll, or a wheel notch over the *passive* preview (which still scrolls nothing, §11.8); and a change of
+  the interactive preview's live screen since entry (compared on the preview tick). In a full attach the
+  real tmux client draws the terminal, but deck stays in its key path: the client runs on a pty deck owns,
+  and deck copies the user's terminal (put in raw mode, its size and resizes passed on) to it byte for
+  byte. Beside it a watcher samples tmux read-only every 200 ms (`tmux.Client.AttachSample`: pane size,
+  copy mode and scroll position, the `prefix`/`prefix2` options, the attach client's key table, and the
+  visible screen; the first sample is taken before the client exists). It also reads the row from the
+  store before every sample, and binds a trigger to the status episode only when the read before the
+  sample that opens the trigger's evidence interval and a read after the trigger name the same
+  `status_at` **and** `status_seq`; a trigger whose interval straddled an episode change is credited to
+  neither episode. The moment a trigger is so bound, the watcher engages that observed episode through
+  `Model.engageRow` -- while the attach is still running, from the store's row, so a prompt that arrives
+  after the attach began is marked seen by the first trigger that observes it, not by the row deck showed
+  when the attach began and not at detach. It never engages the row as a `sessionsLoaded` delivered
+  meanwhile shows it, so a trigger from an older prompt leaves a newer, unobserved one unseen, whether it
+  shares the stamp or a clock step back dated it. At exit `onAttachFinished` hands the latest trigger to
+  `engageRow` again (a no-op for an episode already written) and reports a failed mid-attach write. A key is a key event decoded from the bytes deck forwarded -- not a mouse report, a
+  focus change or the terminal's reply to a tmux query, not the prefix key and not the key after it --
+  confirmed by the client still being attached in its `root` table at the next sample, so `prefix d` and
+  any other detach never count; it involves no clock, so a key in the attach's first instant counts. A
+  scroll is the pane entering copy mode or moving its scroll position; a screen change is the screen's
+  hash moving at an unchanged size from the pre-attach baseline, where a size change (the attach's own
+  resize) and the 1 s after it only re-baseline. An attach with none of these stays inert
+  (R320). Engagement sets seen only: no status, reason, source, `status_at`, event or `notify_epoch`
+  changes, and no row moves. An engaged `error` row is therefore held in the sidebar tier it had before
+  engagement while its `status_at` is the one engagement saw (`attentionSortRank`); the count and `space`
+  read the seen predicate as it is, so it leaves them at once, and it takes the seen-`error` tier only
+  when it is seen with no engagement hold (`Y`, a later status, a restart). The write names the
+  status episode it saw (`status_at` **and** `status_seq`; `Store.MarkStatusSeen` takes a
+  `StatusEpisode`), so a newer prompt is never hidden by an engagement with an older one however late
+  the older write runs, and the cached engagement decision, the sidebar hold and the R322 dwell are
+  bound to that same episode, not to the stamp. The cached decision and the hold only move forward in
+  `status_seq` (which orders episodes where `status_at` cannot: equal stamps, a stepped-back clock): an
+  engagement delayed from an older episode (a full attach's completion arriving after the newer prompt
+  was engaged) issues no write, leaves that episode's cached entry and hold in place, and so neither
+  changes the newer episode's durable state nor moves its already-engaged row. A second
+  engagement on an already-seen row issues no write at all. Covering tests:
+  `TestDelayedOlderEngagementCannotDisturbAnEngagedNewerEpisode`, `TestOlderEpisodeEngageRowKeepsTheNewerEpisodesEntry`,
+  `TestFullAttachEngagesPromptThatArrivesWhileAttachedAtTheTrigger`, `TestFullAttachLeavesNewerUnobservedEpisodesUnseen`, `TestEngagementFirstForwardedKeySetsSeen`, `TestEngagementFirstInteractiveScrollSetsSeen`,
+  `TestEngagementFirstPassivePreviewScrollSetsSeen`, `TestEngagementFirstScreenContentChangeSetsSeen`,
+  `TestFullAttachFirstForwardedKeyIsReported`, `TestFullAttachFirstScrollIsReported`,
+  `TestFullAttachFirstScreenContentChangeIsReported`, `TestFullAttachTriggersSetSeenThroughEngageRow`,
+  `TestFullAttachWithoutEngagementReportsNothing`, `TestFullAttachDetachByKeyReportsNothing`,
+  `TestAttachKeyProxyCountsOnlyForwardedKeys`,
+  `TestSecondEngagementWritesNothing`, `TestEngagementChangesNoStatusAndMovesNoRow` and
+  `TestEngagementHoldEndsWithTheStatus`. Leaving an attention state bumps `notify_epoch` (§10.3).
+  **Dwell sets seen (R322).** A dwell of 1.5 s (`seenDwell`) with the pane in view also sets seen, through
+  the same `Model.engageRow` write, but only when the row's prompt was already on screen when the view
+  started. The *view* is the uninterrupted, focused, visible pane on a row: the row is the one the preview
+  shows (the selected row, or the interactive target), the preview panel is shown (not collapsed away below
+  its floor, §11.2, and no modal or the settings takeover over it), the capture on screen is its own, and the
+  terminal window has not reported losing focus. The view is anchored to its own start, whatever the row's
+  status then was: it begins when the row comes into view, not when the row first needs attention, and a new
+  attention status or `status_at` arriving during it neither restarts it nor counts as a prompt that was
+  there at the start. *The prompt on screen at the start* means that, when the view began, the row was an
+  unseen `waiting`/`error` and its agent adapter's probe of the pane text in view (the passive capture, or
+  the interactive grid) reported that same status; an agent with no probe rule for it never reaches seen by
+  dwell. At 1.5 s from the view's start the row is set seen only if it still carries that status episode
+  (status, `status_at` and `status_seq`). A prompt that appears after the view began -- the status or its
+  episode changing, even to a `status_at` equal to the old one, or the
+  prompt text arriving in the capture -- stays unseen until an engagement (R321) sets it, whichever of the
+  capture, the hook or the reload brought it first. The view is followed after every message, so anything
+  that stops being true ends it -- arrowing to another row, the panel collapsing, the window blurring -- and
+  the next time the row is in view a new view starts and reads its prompt-at-start afresh: time spent before
+  arrowing past a row, while collapsed or while unfocused, never counts. The dwell only ever sets seen, so it
+  changes no status, writes no event and moves no row, and a row already seen or already written for its
+  `status_at` is not written again. The check runs on the preview tick (`DECK_PREVIEW_MS`), so the write
+  lands on the first tick at or after the 1.5 s mark. Focus is learnt from the terminal's focus reports,
+  which `cmd/deck` requests for its own window (`tea.WithReportFocus`); the model consumes them and, as
+  before, never writes a focus report into a pane. A terminal that sends none leaves deck focused. Covering
+  tests: `TestDwellWithPromptOnScreenAtStartSetsSeen`,
+  `TestDwellPromptAppearingMidDwellStaysUnseenUntilEngagement`,
+  `TestDwellViewStartedBeforeThePromptStaysUnseenWhateverTheOrdering`,
+  `TestDwellNewStatusAtMidViewDoesNotRestartOrSetSeen`,
+  `TestDwellAlreadyVisiblePromptBecomesSeenAfterTheDwellFromViewStart`,
+  `TestDwellCollapseEndsTheViewAndTheNextOneReadsItsPromptAfresh`,
+  `TestDwellWithPaneCollapsedDoesNotSetSeen`, `TestDwellWithDeckUnfocusedDoesNotSetSeen`,
+  `TestDwellArrowingPastARowDoesNotSetSeen` and `TestPreviewTickRunsTheDwellTrigger`.
+- **Needs attention (R319).** A row needs attention when it is `waiting`, or `error` **and
+  unseen**; seen means `seen_status_at = status_at`, an equality and never an ordering. A
+  seen `waiting` row still needs attention (it is still blocked on the user): it stays in the
+  top tier, in the strip's count and a `space` target. A seen `error` row does not: it is
+  dropped from the count and from `space`, and sorts just above `stopped` (after `idle`).
+  The `attention` sort tier, the collapsed strip's count and `space` all call that one
+  predicate (`NeedsAttention`, `internal/tui/attention.go`), so the three cannot disagree. The one
+  exception is R321's engagement hold (above): an `error` row engagement set seen keeps its sidebar
+  position until its `status_at` changes, because engagement moves no row.
+  Because the test is equality, a clock that steps back or two stamps in the same
+  millisecond cannot hide a prompt: a transition into `waiting` or `error` resets
+  `seen_status_at` to 0, so a later prompt is unseen whatever stamp it carries. A stamp is also not
+  an identity for asynchronous work: `status_seq` counts the row's transitions (a repeat of the current
+  status, being inert, does not advance it), so a seen write issued for one episode matches nothing once
+  the row is in another, even one with the same `status_at`. Covering tests:
+  `TestMarkStatusSeenNamesTheEpisodeNotTheStamp`, `TestStatusEpisodeAdvancesOnTransitionsOnly`,
+  `TestLateEngagementWriteCannotSeeANewerPromptSharingItsStamp`,
+  `TestDwellOfAnEarlierPromptNeverSeesANewPromptOnTheSameStamp`, `TestEngagementHoldBelongsToItsEpisode`,
+  `TestAcknowledgeNamesTheEpisodeNotTheStamp`, `TestAcknowledgeCannotSeeAPromptWhoseStampAStepBackRepeated`,
+  `TestQueuedYCannotSeeANewErrorSharingItsStamp`, `TestQueuedYCannotSeeAPromptAfterAClockStepBackToItsStamp`,
+  `TestDelayedFullAttachTriggerCannotSeeAReloadedEpisode`, `TestDelayedFullAttachTriggerSurvivesARepeatOfItsEpisode`,
+  `TestFullAttachTriggerWithoutItsObservedRowWritesNothing`, `TestAttachWatcherBindsTheTriggerToTheEpisodeItObserved`.
+- **A repeat write is inert.** A status write that leaves the status unchanged — a probe
+  seeing `waiting`, `running` or `error` again, a hook or the user restating the current
+  status — does not touch `status_at`, `notify_epoch`, `hook_fired` or the seen state
+  (`seen_status_at`); precedence decides the stored `status_source` exactly as it does for a
+  transition. It updates the reason (a hook repeating the status with a different reason
+  changes the reason and not `status_at`), and `last_probe_at` may still advance. The event
+  is still recorded. Only a change of status dates the row, opens an attention episode and
+  marks it unseen, so a row cleared with `Y` and then re-probed `waiting` stays cleared and
+  keeps its position in the `attention` sort order (which orders by `status_at`); the
+  `activity` order reads `last_output_at` (§7, §11) and no status write can move it. A hook repeating the current status therefore does not date the row or
+  extend its transition state. Hook freshness has a clock of its own, `hook_at` (below), so that repeat still
+  keeps a hook verdict fresh while changing none of the transition state this bullet protects.
+- **Fresh hook evidence (R303, R316, R317).** A fresh hook verdict keeps precedence over every sampled
+  source: a probe and the movement fallback alike. Freshness is the hook's own clock, `sessions.hook_at`
+  (schema v20), the time of the newest hook verdict the store applied. It is **independent of `status_at`**:
+  a hook that repeats the current status leaves `status_at`, `notify_epoch`, `hook_fired` and the seen
+  state alone (the inert repeat above) but still advances `hook_at`, so a hook that says "still running" or
+  "still idle" is fresh for `stale_after` from that moment. The row's *verdict age* is `hook_at` (never
+  older than `status_at`) while `status_source` is `hook`, and `status_at` for every other source; a
+  verdict from another writer never advances `hook_at`, and a hook that lost precedence leaves none.
+  `hook_at` **never moves backwards** while the row stays hook-sourced: hook deliveries can arrive out of
+  order, so a delayed hook (a repeat or a transition) dated before a hook the store already applied keeps
+  the newer stamp, and freshness is always measured from the newest hook. A hook taking the row over from
+  another source starts the clock at its own time. The
+  age is read twice: by reconcile's eligibility (`probeEligible`, and the movement fallback's pre-check)
+  and, atomically against the stored row, by the store's own guards (a probe or movement write younger than
+  its `stale_after` over a fresh hook verdict loses, whatever the writer read earlier), so a probe that
+  sampled the pane before a hook landed cannot undo it. A genuinely stale hook (older than `stale_after`
+  by `hook_at`) permits sampling and the fallback exactly as before. The v20 rung backfills `hook_at` to
+  `status_at` on hook-sourced rows and leaves 0 elsewhere.
+- **Attaching never answers a `waiting` row (R320).** The old rule that attaching moved a `waiting` row to
+  `running` is removed: looking at a session is not evidence that the prompt was answered. A `waiting` row
+  leaves `waiting` on evidence only: a later hook, or a probe verdict (including the staleness rule below).
+- Staleness: a `starting`, `running` **or `waiting`** session whose verdict age (above: `hook_at` for a
+  hook verdict, else `status_at`) has reached `stale_after` (default 45 s) becomes eligible for probing. For non-hook agents, probing
   is the only source. `waiting` is included for the unattended half of the same hole: a
   prompt answered from a raw `tmux attach` (not through deck) fires no hook either, so the
   probe is what corrects it. This does not violate precedence — by the time a `waiting` row
   is probe-eligible, the hook verdict it would override is at least `stale_after` old, and
   "a probe never overwrites a *fresher* hook verdict" is unchanged.
 - **Copilot rows.** A `copilot` row's hook statuses are the table in §8.4: `userPromptSubmitted`
-  → `running` (`prompt`), `sessionStart` → `running` (the payload's `source`), `notification`
+  → `running` (`prompt`), `sessionStart` → `idle` (the payload's `source`), `notification`
   of type `permission_prompt` or `elicitation_dialog` → `waiting` (that type), `agentStop` →
   `idle` (`end_turn` or the payload's `stopReason`), `sessionEnd` → `stopped` (the payload's
   `reason`). `errorOccurred` and a `notification` of any other type change nothing: errors are
@@ -1027,6 +1276,49 @@ Rules:
   old and the pane shows the idle footer, the probe records `idle` (`ready`); while the pane
   shows the `Working` footer the row stays `running`, and a hook verdict younger than the window
   is never probed over.
+- **Claude idle probe (R310).** Claude probes `idle` (reason `idle footer`) when the permission-mode footer
+  `⏵⏵ … (shift+tab to cycle)` is present and the `esc to interrupt` working indicator is absent, whatever the
+  composer holds: an unsent draft does not change status (`Claude.PromptReady` is what detects drafts). The old
+  `Claude Code` + `❯` banner rule is gone, since the banner scrolls away. Goldens in
+  `internal/agent/testdata/probes/claude/` (a scrolled pane with an empty composer, the same with a draft, the
+  alternate screen with no scrollback, and an `esc to interrupt` pane) reproduce observed pane shapes and are not
+  byte captures; `claude-PROVENANCE.md` says so. **Verification:** the bypass-permissions footer text
+  (`⏵⏵ bypass permissions on (shift+tab to cycle)`) is taken from the phase 4t PRD and is the only mode text a
+  golden carries. The default-mode footer text was **not verified**: no repo evidence of it exists, so no golden
+  covers it, and the rule matches on the `⏵⏵` and `(shift+tab to cycle)` markers rather than a mode string.
+- **Claude live region (R311).** For Claude, `API Error:` (`error`, reason `api error`) and the permission-dialog
+  markers (`Do you want to proceed?` with `Yes`, `waiting`, reason `permission prompt`) count only in the **live
+  region** of the capture: from the last transcript line down to the composer, composer excluded. A transcript
+  line starts with `●` (assistant message or tool call), `⎿` (tool result) or the prompt glyph `❯`/`>` not followed
+  by a dialog option number (an echoed user turn); the composer is the chrome from the composer frame's top separator rule down (the same cut as the output clock's transcript region),
+  or, on a pane with no rules, a bare trailing prompt line. A marker above the last transcript line has been
+  followed by newer output, so it is history: an old `API Error:` above a live composer is not `error`, and an
+  answered `Do you want to proceed?` above a live composer is not `waiting`. A live dialog is `waiting` and a live
+  error is `error`. A pane with no transcript line is live throughout. Only these two rules are anchored; the
+  working indicator and the idle footer are read from the whole capture as before.
+- **Claude waiting shapes (R312, probe half of R309).** The Claude probe reads these dialog markers as `waiting`,
+  each in the live region (R311) and each with `Yes` on screen; the marker is the first text, the reason follows,
+  and the golden under `internal/agent/testdata/probes/claude/` is named:
+  `Do you want to proceed?` (`permission prompt`, `waiting.txt`);
+  `Do you want to make this edit` (`file edit confirmation`, `waiting-edit.txt`);
+  `Do you want to create` (`file create confirmation`, `waiting-create.txt`);
+  `Do you trust the files in this folder` (`folder trust`, `waiting-trust.txt`).
+  The edit, create and trust markers are the ones `claude_gate.go` already lists; the goldens are hand-written
+  reproductions, not captures (`claude-PROVENANCE.md`). **Petitioned, no golden and no rule:** an
+  **AskUserQuestion** choice list (question/elicitation), **plan approval**, and a **write**-file confirmation
+  wording. The repository holds no capture, fixture, report or code that states any of their texts (searched: the
+  Claude and Copilot probe corpora, `claude_gate.go`, `docs/reports/`, `docs/spikes/`, `prds/`, `cmd/fake-*`,
+  and the phase 2 real-Claude logs), so none is guessed; until one is established the hook side
+  (`permission_prompt`, `elicitation_dialog`) is the only source for those shapes. The idle, running, starting
+  and error goldens never probe `waiting`.
+- **Codex terminal error is anchored (R313).** Codex's `■` error rule (`error`, reason `terminal error`) matches only
+  on the **last content line**, the way pi's `Error:` is anchored: the last content block above codex's composer
+  (the last column-0 line when it is a `›` line, then the draft's indented lines and its footer) must be led by a
+  `■ ` in column 0.
+  Codex indents an agent cell's and a tool result's continuation lines, and a long error line wraps with indented
+  continuations, so the block's head is found by reading up over indented lines. A `■` in a markdown body, in a
+  progress bar (`[■■■□□]`) or in a tool's output, followed or surrounded by more transcript, is not `error`. A
+  trailing `■ unexpected status ...` line is. Goldens: `testdata/probes/codex/error.txt`.
 - Probe heuristics live in one table-driven file with golden-file tests over captured pane
   text — a fixture corpus per agent, so a spinner or prompt redesign upstream is a
   one-fixture fix.
@@ -1117,6 +1409,140 @@ reader is unbounded write amplification, and at §6.5's default reconcile cadenc
 unmatched session alone produces two rows a second forever. The general rule the events
 table is held to: **a kind is only written if something reads that kind**, and the reader is
 named where the kind is introduced.
+
+**The output clock (`sessions.last_output_at`).** Reconcile keeps one more clock per session, and it
+answers "when did the agent last print something", not "what is its status": nothing in the
+precedence above reads it. tmux's `window_activity` (whole seconds) only *nominates* a moment,
+because it also moves for footer and statusline churn (`ctx:%`, branch, model). Each probing
+reconcile tick (the TUI's, never the hook-critical `Reconcile`) compares the window's activity bucket
+(`window_activity` divided by the bucket width, `[ui] output_bucket`, 10 s by default, applied live) with the last one examined for that session. A
+tick in the same bucket reads and writes nothing (except inside a discount window, below). When the bucket has advanced, deck captures the
+pane, cuts it at the composer/footer chrome and hashes the **transcript region** above it
+(trailing blanks ignored). The cut is **the composer frame's top separator** (the boundary the
+probe's `lastContentLine` uses; claude, pi, copilot): the bottom rule is the pane's last separator
+line and the top rule is a separator above it drawn identically (same characters, same
+width), so a draft line that is itself a rule (`---`, an indented `  ───` continuation) is composer
+content, not the frame. A draft may also hold a line drawn exactly like the frame (pasted or typed to the
+pane's width), and the transcript can hold one too (a divider a tool printed, a markdown rule), so every
+identical rule is a candidate top and the pane's own shape picks one, from the first capture of a session on.
+What only the transcript draws rules a candidate out: claude and copilot lead the composer with their `❯`
+prompt, so a rule no column-0 `❯` line follows is transcript, as is one with a `●` turn bullet drawn in column
+0 or 1 (claude's flush-left bullet, copilot's ` ●`) between it and the bottom rule, since a draft's
+continuation lines are indented by the prompt's width; pi (no prompt glyph; its frame is recognised by the cwd
+line, a path at column 0, under the bottom rule) pads every transcript line by at least one column (its own
+text by exactly one, a code block or tool output under it by more), while a draft is free text that starts at
+column 0 unless the user indents it. The identical rules cut the pane above the bottom rule into stretches; the
+one straight above the bottom rule is always draft, and so is any stretch holding a line of text at column 0,
+which only a draft draws (pi prints its startup warnings from column 0 above its whole UI, never between two
+rules): that stretch and every stretch under it lie inside the composer, so the top is at or above the topmost
+such stretch, and a draft's own indented lines (pasted code, an indented paragraph) under a column-0 line keep
+the frame's real top a candidate. Above the topmost draft stretch, the nearest stretch whose text is all
+indented, at any depth, is transcript, which rules out the rule above it and every rule higher up; a stretch
+of blank lines only is no evidence. If
+no rule passes, all stay candidates. Of the remaining candidates, claude and copilot take the topmost one a
+column-0 `❯` line follows (a draft can quote `❯` too, but never above the frame's own); in pi a `❯` line is
+draft text and no evidence, and pi leaves a blank line above its frame, so its top is the topmost candidate a
+blank line (or the pane's top) precedes. With neither evidence the nearest identical rule is taken. What is
+left is a genuinely ambiguous pane: a frame-identical transcript line with nothing under it but blank lines
+(the divider is the last transcript line), in pi a draft that adds a blank line and a frame-identical rule
+when the transcript runs up to the frame with no blank line (the clock below covers that draft case), and in pi
+a draft holding frame-identical rules with no column-0 line anywhere between the frame's top and the
+draft's lowest such rule: that stretch is drawn exactly the way pi draws its transcript and reads as transcript, so an edit
+inside it counts as output (pi's editor wraps draft text one column short of the pane's width, so a real pi
+draft never draws a frame-identical rule for such a stretch to sit on). A pane with no identical pair is cut at the earlier of its last two
+separator lines. For a pane that draws no
+separators, **codex's `›` composer line**: codex draws every transcript cell from column 0 and
+indents continuation lines, so the composer is the pane's last column-0 line when that line is a
+`›` line, whatever the draft holds (a numbered item such as `› 1. Write tests` included) and
+however many indented lines it spans, together with the status line under it. A pane whose last
+non-blank line is a codex dialog's `Press enter to …` line has no composer: the dialog, its `›`
+cursor option included, is transcript. Otherwise the cut is a bare
+trailing claude prompt line. A draft, spinner or statusline change below the cut is never output. The agent's
+working indicator above the cut is statusline too, recognised by its exact drawn shape, in the one place it is
+drawn (the bottom of the region), only: when the head of the region's last cell (its lowest column-0 line, with
+only indented continuation lines such as codex's `└ …` detail under it) has the form `<glyph> <phrase> (… esc
+to interrupt)`, it is hashed with its glyph dropped (whichever single symbol the agent animates it with: codex's
+`•`/`◦` blink, claude's `· ✢ ✳ ✶ ✻ ✽`) and the numbers inside the parenthesis (elapsed seconds,
+token counts) and codex's `Reconnecting... n/m` counter masked; when the region ends in pi's braille spinner
+line, that line's frame is dropped and the last non-blank line above it, if it reads exactly `Elapsed N.Ns`
+(the running tool's timer), is digit-masked. A ticking timer or a turning spinner is therefore not output,
+while transcript prose that merely reads like an indicator (`• Working on ticket 41.`, `Elapsed 41 seconds
+…`, a codex `• Running …` cell, an idle pane's `Elapsed 4.0s`), and a completed indicator- or timer-shaped line
+further up the transcript (an earlier tool's `Elapsed 42.0s`, a quoted `(12s · esc to interrupt)` line above a
+later cell), is hashed as written, so its numbers changing is output; the indicator appearing or
+vanishing, or its words changing, still is. Only a
+changed hash counts: it writes `last_output_at` as `window_activity` in milliseconds. A bucket
+whose transcript hash did not change, such as a footer-only update, writes nothing. When a framed draft
+holds frame-identical rules, the bucket counts only if **no** candidate top leaves exactly the baseline
+region above it, so once deck has read the frame, adding or editing such a draft is not output however it
+mimics the frame, unless a stretch of it reads as transcript by the evidence above (the last pi case listed,
+which rules the real top out); output above the draft still changes every candidate's region and counts. The new
+baseline is the candidate that matched, else the one whose composer (top rule to bottom rule, footer
+excluded) is unchanged since the last reading (output arrived above an untouched draft), else the chosen cut.
+A draft that already mimics the frame in a way the evidence above cannot rule out when deck first reads
+the pane, or that is edited in the same bucket as new output, is judged by the boundary rule alone. So two changes
+inside one bucket write once (the second sees no new bucket), and a tick with no bucket change
+writes nothing. The first reading of a session after deck starts is only a baseline and counts
+nothing, so a restart does not make every row look freshly active; the in-memory baseline is not
+persisted. The write is a plain `UPDATE` of that one column, never an `events` row (the same rule
+as `last_probe_at` above), and it leaves `status`, `status_source` and `status_at` untouched.
+
+**The unseen marker (`sessions.last_seen_at`, R324).** One marker answers "is there something here I have
+not looked at". A row is **unseen** iff `last_output_at > last_seen_at`, or its status is `waiting` or
+`error` and not seen per R319 (`seen_status_at != status_at`). A `running` row shows no output-unseen
+marker: its output is the expected state, so only an attention-unseen status can mark it (it never has
+one, because `waiting` and `error` are not `running`). `last_seen_at` is written only on a *view
+change* (a view of a row whose `last_output_at` it has not yet copied) or a *bucket change* (output in a
+new bucket landing under a view); a tick that changes neither writes nothing, and it is never written
+per tick. A view copies `last_output_at` into it (`Store.MarkViewed`), never a wall-clock time, so a
+stepped clock cannot hide or invent output. Output the clock does not count does not set the marker:
+statusline-only churn writes no `last_output_at`, so it leaves a row seen. Setting or clearing the marker
+never moves a row in any of the four sort orders (no comparator reads `last_seen_at`, and the marker is
+not in the attention tier). The one status-seen flip that does reorder is R319's own: marking an
+unseen `error` seen drops it to the seen-`error` tier. What counts as a view is R325's (§11, "What counts as viewed"). Tests:
+`TestSessionUnseenPredicate`, `TestMarkViewedWritesOnlyOnAChange`,
+`TestStatuslineChurnDoesNotSetTheUnseenMarker`, `TestMarkerFlipMovesNoRow{Attention,Created,Activity,Name}Order`.
+
+**Deck-caused output is discounted (R305).** Output deck itself provokes is not the agent's activity,
+so a transcript change the pane shows inside a *discount window* does not advance `last_output_at`
+(the change is still hashed and remembered, so the same text never counts later). This holds in a
+bucket already examined too: a tick whose `window_activity` moved inside a window captures and
+re-baselines the hash even though the bucket did not advance (it writes nothing), so a deck-caused
+redraw in the same bucket as the last reading is not counted by the next bucket's read. The window is
+**5 seconds, and never more than one output bucket** (`min(bucket, 5 s)`), and it starts at each of:
+a deck-caused resize (a preview fit that issued a `resize-window`, and interactive entry and exit,
+which resize the window and make the pane redraw on SIGWINCH), a key deck forwards to the pane in
+interactive mode (each forwarded key restarts the window; a key deck does not forward does not), and
+an attach. An attach is bounded like the rest: the hand-off from `a` to the tmux client opens one
+window (the client's attach resizes the window and the pane redraws), and the client's detach opens
+one more for the detach repaint. Nothing discounts the stretch in between: what the agent prints
+while a client stays attached is autonomous and counts, however long the attach lasts, because
+no discount ever outlasts one window. Deck's reconcile ticks do not run for the length of a full attach
+(the tmux client has the terminal), so the attach watcher feeds the clock itself, once a second, for as
+long as the client is attached (`Service.ObserveAttachedOutput`: it writes `last_output_at` only, never a
+status); without that read the detach window would swallow everything the agent printed during the
+attach. Deck stays in the attached client's key path (it proxies the user's terminal to the client's
+pty), so the keys and resizes the user makes during a full attach are deck-forwarded too: every
+forwarded chunk holding a key press or a paste (tmux's prefix and the key after it included, since a
+prefix command such as a zoom can make the pane redraw) opens a key window just before it is written to
+the client, and every terminal resize deck relays (SIGWINCH) opens a resize window just before the
+client's pty is resized. Mouse reports, focus changes and the terminal's replies to tmux's queries open
+nothing. Output caused by a resize or a forwarded key stays discounted for its own window, attached or
+not, and the agent's own output after that window counts while the client is still attached. A window is compared with the pane's `window_activity`, not with the
+tick that reads it, so a tick that lands late still discounts output that happened inside the
+window. Output whose `window_activity` falls after the window ends counts as before. The windows
+are in memory, like the baseline.
+Tests: `TestOutputInsideTheAttachStartWindowDoesNotAdvanceLastOutputAt`,
+`TestAutonomousOutputLongAfterAnAttachStartCountsWhileStillAttached`, `TestAttachDiscountNeverOutlastsOneBucket`,
+`TestDetachRepaintIsDiscountedButTheAttachedStretchIsNot`, `TestKeyAfterAnExpiredAttachWindowIsStillDiscounted`,
+`TestAttachDiscountsTheHandOffAndTheDetachRepaint`,
+`TestAutonomousOutputReadMidAttachCountsAndSurvivesTheDetachRepaint`,
+`TestMidAttachOutputCountsPerBucketButAResizeInsideItStaysDiscounted`, `TestAttachWatcherFeedsTheOutputClockWhileAttached`,
+`TestFullAttachReadsTheOutputClockWhileAttachedAndStopsAtDetach`,
+`TestFullAttachForwardedInputOpensAKeyDiscountBeforeTheWrite`,
+`TestFullAttachRelayedResizeOpensAResizeDiscountBeforeTheResize`,
+`TestModelHandsTheAttachedSessionToTheAttachDiscount`,
+`TestFullAttachForwardedKeyOutputIsDiscountedAndLaterAgentOutputCounts`.
 
 ---
 
@@ -1402,9 +1828,11 @@ Subscribed events — a handful per turn, never per tool call:
 
 | event | → status | notes |
 |---|---|---|
-| session start | `running` | confirms the assigned id; the source field distinguishes fresh vs resumed vs compacted |
-| user prompt submitted | `running` | also feeds prompt count |
-| notification (permission prompt / question / needs-input / idle prompt) | `waiting` | **the golden signal**; the notification type becomes `status_reason` |
+| session start | `idle` | confirms the assigned id; the source field distinguishes fresh vs resumed vs compacted. **`SessionStart` lands on `idle`, never `running` (R307)**, including `--resume` and `--continue`: a session that has started has not been asked anything. The `UserPromptSubmit` below, or a working indicator the probe sees, is what enters `running` |
+| user prompt submitted | `running` | also feeds prompt count; **enters `running`** |
+| notification, `notification_type` `permission_prompt` or `elicitation_dialog` | `waiting` | **the golden signal**; the notification type becomes `status_reason` |
+| notification, `notification_type` `idle_prompt` | no change | **R308**: it only says the agent has been idle a while. It writes no status, no `status_at`, no `seen_status_at` or `notify_epoch` change and no attention transition on an idle, a running or a waiting row, and `Stop` then `idle_prompt` leaves the row `idle`. No `idle_since` value is stamped: the notification is recorded as a `notification` event (reason `idle_prompt`) and nothing else |
+| notification, any other `notification_type` (`auth_success`, a type this deck build has not seen, or none) | no change | **R309 hook half**: recorded as a `notification` event, never applied. Only the two types above are `waiting`, the same two Copilot's `notification` maps (§8.4). The probe-side producers (permission, question, plan approval, trust prompt) are §7's probe rules |
 | stop | `idle` | carries the last assistant message — use it; the transcript file lags |
 | stop-failure | `error` | error type becomes `status_reason` |
 | session end | `stopped` | **Session-end hooks share a ~1.5 s total budget**, raisable to ~60 s only by declaring a longer per-hook timeout. deck declares a modest one and still does one SQLite write, dispatches the `ended` event hook detached (§10.3: started and left running, no timeout and no recorded result) and exits — a script's latency is the user's to bound, so it never holds the agent's exit. |
@@ -1478,8 +1906,8 @@ Subscribed events — the same shape as §8.1, and deliberately **not**
 
 | event | → status | notes |
 |---|---|---|
-| `SessionStart` | `running` | carries `session_id` — the id deck adopts — and `source` (`startup` \| `resume` \| `clear` \| `compact`) |
-| `UserPromptSubmit` | `running` | also feeds prompt count |
+| `SessionStart` | `idle` | **lands on `idle`, never `running` (R307)**; carries `session_id` — the id deck adopts — and `source` (`startup` \| `resume` \| `clear` \| `compact`). Codex fires it at the first prompt, immediately followed by `UserPromptSubmit` |
+| `UserPromptSubmit` | `running` | also feeds prompt count; **enters `running`** |
 | `PermissionRequest` | `waiting` | **the golden signal**, codex's analogue of Claude's notification: `tool_name` (`Bash` for a command approval, `apply_patch` for a file edit) plus `tool_input.command`, and `tool_input.description` when the model supplied a justification |
 | `Stop` | `idle` | carries the final assistant text under `last_assistant_message` — the same field name Claude uses; nullable when the turn produced no text |
 | `SessionEnd` | `stopped` | `reason` observed only as `other`, on both `/quit` and a double `Ctrl+C`. The one event with no output schema: fire-and-forget, it cannot influence codex |
@@ -1490,7 +1918,8 @@ names** as Claude (`session_id`, `cwd`, `transcript_path`, `hook_event_name`,
 Claude-compatible shim, so the receiver parses codex payloads with no new payload work.
 `PermissionRequest` is the only genuinely new event name. Codex has no analogue of Claude's
 stop-failure event, so a codex row's `error` comes from the probe or from process death, not
-from a hook.
+from a hook. The probe reads codex's `■` error glyph only as the head of the last content block above the
+composer (R313, §7), never from a `■` elsewhere in the capture.
 
 **The one hard limitation: in the interactive TUI `SessionStart` does not fire at launch — it
 fires when the first prompt is submitted.** A freshly launched, never-prompted codex is
@@ -1812,7 +2241,7 @@ Every other call keeps the payload's own `hook_event_name` and `session_id`. The
 | event | status | reason |
 |---|---|---|
 | `userPromptSubmitted` | `running` | `prompt` |
-| `sessionStart` | `running` | the payload's `source` (`new` or `resume`) |
+| `sessionStart` | `idle` | the payload's `source` (`new` or `resume`); **lands on `idle`, never `running` (R307)**, and `userPromptSubmitted` enters `running` |
 | `notification`, `notification_type` `permission_prompt` | `waiting` | `permission_prompt` |
 | `notification`, `notification_type` `elicitation_dialog` | `waiting` | `elicitation_dialog` |
 | `notification`, any other `notification_type` | no change | none |
@@ -2476,14 +2905,18 @@ hold them side by side.
     second implementation of deletion. An empty group needs no prompt. deck never mass-kills
     sessions as a side effect of a list edit.
 - Sort: **configurable**, `[ui] sort_order` (§6.5), four values, `attention` the default:
-  - `attention` (default) — `waiting` (oldest first) → `error` → `running` → `starting` →
-    `idle` → `stopped`. This is the order every earlier phase shipped and the one the list
+  - `attention` (default) — `waiting` (oldest first, seen or not) → unseen `error` → `running` →
+    `starting` → `idle` → seen `error` → `stopped` (seen means `seen_status_at = status_at`, §7). This is the order every earlier phase shipped and the one the list
     exists to provide; it stays the default precisely because it is the order that answers
     "which session needs me".
   - `created` — newest first, by `sessions.created_at` descending.
-  - `activity` — most recent first, by `sessions.status_at` descending. "Activity" is a
-    **status change** (§7's own timestamp), not last pane output: deck records no
-    per-session output clock, and inventing one is a schema change, not a sort option.
+  - `activity` — most recent output first, by `sessions.last_output_at` (§7's output clock)
+    bucketed by `[ui] output_bucket` (10 s by default), newest bucket first, the session `id`
+    ascending breaking a tie inside one bucket. Two sessions that printed within the same
+    bucket therefore keep a fixed relative order from tick to tick, and a chatty pane moves
+    its row at most once per bucket. A session that has not printed since deck began
+    recording (`last_output_at` 0) sorts last. A status change does not move a row in this
+    order. The order follows `output_bucket` live.
   - `name` — `name` ascending, case-insensitively, so `Api` and `api` sort together.
 
   **Pinned sessions come first within their group, in every order.** `p` pins or unpins
@@ -2588,8 +3021,48 @@ always did), and the permission badge for non-`safe` **last**. The
   session. A pinned row shows `✦` before its name, drawn in the `accent` token; under
   `NO_COLOR` the glyph alone carries it, as the status glyphs do. `i` shows `pinned: yes`/`no`
   and also toggles it with `p`.
+- **The unseen marker (R324) is `◆`** (U+25C6, one column, EAW `Ambiguous` like the status glyphs), ASCII `!`,
+  drawn after the name in the row's status token. It is distinct from the `●` waiting status glyph, which
+  it used to share (the old marker was `●` too, so an unseen waiting row drew `●` twice). Neither
+  form collides with any status glyph (`? ~ o . # x`, `-`), the pin (`✦`/`*`) or the selection cue (`>`).
+  The sidebar title carries the count as `deck — sessions · N unseen` (ASCII `deck - sessions - N unseen`),
+  shown only when N is at least 1; N counts the rows that carry the marker (§7).
+- **What counts as viewed (R325).** A row is *viewed* when the passive preview has been visible on it for
+  at least 1.5 s, or when interactive mode is on it (no dwell: interactive mode is the view). *Visible*
+  is the same test as the R322 view's: the row is the one the preview shows (the selected row, or the
+  interactive target), the preview panel is on screen (stacked below its floor it is collapsed away and
+  views nothing), no modal or takeover covers it, the pane's capture is the row's own and live, and the
+  terminal window has not reported losing focus. While a row stays in view the preview tick keeps
+  copying `last_output_at` into `last_seen_at` (`Store.MarkViewed`, a write only when the two differ,
+  once per new output bucket), so a watched session never goes unseen. Arrowing away from a row, a
+  collapsed preview or a blurred window ends the clock; coming back starts a new 1.5 s, so rows passed
+  over while arrowing down a list stay unseen and only the row the cursor rests on is cleared. Viewing
+  writes no status, no `seen_status_at` and no event, and moves no row; it is independent of the
+  R322 prompt dwell, which sets status-seen only. Tests: `TestPreviewVisibleForDwellMarksRowViewed`,
+  `TestInteractiveModeOnARowMarksItViewed`, `TestWatchedSessionDoesNotGoUnseen`,
+  `TestCollapsedPreviewViewsNothing`, `TestUnfocusedDeckViewsNothing`,
+  `TestArrowingDownUnseenRowsLeavesPassedOverRowsUnseen`, `TestPreviewTickRunsTheViewingTrigger`.
+- **Unseen jumps (R326).** In the list, `Alt+U` selects the next unseen session in list order from the
+  current row and `Alt+Shift+U` the previous one, both wrapping through the painted list (visible rows
+  only; the current row is reached last when it is the only unseen one). *Unseen* is the one predicate
+  the `◆` marker and the `N unseen` header use, so a **seen `error` row with output not yet viewed is
+  reachable until it is viewed**; `space` keeps its own, status-only meaning (a `waiting` row or an unseen
+  `error` row) and never lands on a row that is merely unseen. With nothing unseen a one-line footer
+  message (`No unseen sessions`) is shown and the selection stays. Landing views the row exactly as
+  R325 does (`last_seen_at` takes `last_output_at`, once) and nothing else: no `seen_status_at`, no
+  status, no event, and no row moves. **Decoder:** tmux keeps the case of `M-u` and `M-U` (the bytes are
+  `ESC u` and `ESC U`) and the decoder names them `alt+u` and `alt+U`, so `Alt+Shift+U` is distinguishable
+  from `Alt+U` and the gap `Alt+Shift+Tab` has (§11.9: tmux discards that modifier) does not apply.
+  Tests: `TestAltUJumpsToTheNextUnseenSessionAndOnlyViewsIt`,
+  `TestAltShiftUJumpsToThePreviousUnseenSession`, `TestAltUAndAltShiftUWrapThroughTheList`,
+  `TestAltUWithNothingUnseenShowsAOneLineMessageAndMovesNothing`,
+  `TestASeenErrorIsReachableByAltUUntilItIsViewed`, `TestSpaceIsUnaffectedByTheUnseenJumps`,
+  `TestAltShiftUIsDistinguishableFromAltUThroughTmux`. The interactive-mode form is R327 (§11, bookmarks paragraph; §11.9).
 - Status glyphs `●` waiting · `◐` running · `○` idle · `◌` starting · `■` stopped ·
-  `✗` error · `▣` archived. One column, always in the same column, so the shape of the
+  `✗` error · `▣` archived. Under `DECK_ASCII=1` / `[ui] ascii` each is one ASCII column: `?` waiting,
+  `~` running, `o` idle, `.` starting, `#` stopped, `x` error. An **unverified** `running` row (§7, R315:
+  3 × `stale_after` without an event, measured from the session's newest event, and 3 consecutive probe misses) draws `◔` (ASCII `-`) in the running
+  glyph's column, in the running token; the status word and the sort position do not change. One column, always in the same column, so the shape of the
   list is readable before any text is. **No glyph deck renders may have East Asian Width
   `Wide` or `Fullwidth`** (`⏸` U+23F8, `⚡` U+26A1 and most emoji): those occupy two cells
   in some terminals and one in others, so a column-aligned list built on one silently
@@ -2705,7 +3178,7 @@ always did), and the permission badge for non-`safe` **last**. The
   with the full keymap. A capability that can only be reached by editing a file by hand is
   a defect against R7, not a documentation gap.
 
-Keymap: `↵` attach · `space` next needing attention · `Y` acknowledge · `n` new · `r`
+Keymap: `↵` attach · `space` next needing attention (a `waiting` row or an unseen `error` row, §7) · `Alt+U` / `Alt+Shift+U` next / previous unseen session (R326, below; also while attached, R327) · `Y` mark seen (acknowledge; only where something is unseen) · `n` new · `r`
 resume/start · `R` restart preserving conversation · `x` kill (undo toast) · `dd` delete ·
 `s` send message (§11.1) · `i` session detail (§11.4 — **rename, the launch-inputs editor, the
 group move, the permission profile `P` and the conversation lock `c` are actions inside it**,
@@ -2768,6 +3241,17 @@ cancels it too; leaving any other way drops it). With the setting off every one 
 these keys is forwarded to the pane exactly as before. **`Ctrl+digit` is deliberately not bound:** a terminal only delivers it with user tmux
 configuration, and for `2`…`8` it collides with legacy control keys (`Ctrl+2` is NUL,
 `Ctrl+3`…`Ctrl+7` are ESC, FS, GS, RS, US and `Ctrl+8` is DEL).
+
+**Unseen jumps while attached (R327).** In interactive mode (§11.9) `Alt+U` and `Alt+Shift+U` are
+intercepted next to `Ctrl+Q` and the bookmark keys and send zero bytes to the pane, whatever the
+`bookmarks` setting says. They switch the attached view to the next / previous unseen session (the
+same predicate and list order as the list's R326 jump, counted from the session the view is bound
+to and wrapping) and stay in interactive mode, without returning to the list, exactly as a bookmark
+jump does. A stopped session cannot be attached and is skipped. With no other unseen session the
+view stays and the footer's note slot shows `No unseen sessions` until the next key. The new view is
+viewed on entry (R325). Tests: `TestInteractiveUnseenJumpForward`, `TestInteractiveUnseenJumpBackward`,
+`TestInteractiveUnseenJumpWithNoneUnseenKeepsTheView`, `TestInteractiveUnseenKeysForwardZeroBytes`,
+`TestInteractiveUnseenJumpStaysInteractive`, `TestInteractiveForwardCorpusIsUnchangedByTheUnseenKeys`.
 
 **Every capability in this section has a key or a documented entry point here, and every
 key here has a scenario (§13.5).** A capability listed above with nowhere to reach it is an
@@ -2972,7 +3456,7 @@ truncated-but-honest frame beats an unpredictable one.
   **Nor does it list a key that would refuse the current selection.** `x` is absent on a row
   with no pane to kill, `r` on a row that is already running, `A` on a row that is already
   archived, `U` on one that is not, `Y` on a row with nothing to acknowledge (§7's
-  `acknowledged = 1`, which every attach leaves behind), and every per-row key when the list
+  seen state, `seen_status_at = status_at`), and every per-row key when the list
   is empty; with a mark
   set in force the question is asked of the marked rows, since that is what the key would act
   on. This is the same argument one step finer: a key that is bound but refuses *here* is,
@@ -2992,6 +3476,9 @@ truncated-but-honest frame beats an unpredictable one.
   §11's keymap plus the `?` overlay remain the complete list. With the `bookmarks` setting on,
   two more entries, `alt+0-9/m bookmarks` and `alt+m del clear bookmark`, trail the fixed set and are
   the first to be elided on a narrow frame; with the setting off the footer never mentions bookmarks.
+  The **interactive** footer (§11.9) names the unseen jumps as `Alt+U/Alt+Shift+U unseen` (R327): it trails
+  the optional segments and is the first dropped on a narrow frame, and it is shown whatever the
+  `bookmarks` setting is.
 - **The footer also carries the selected row's status reason**, on its left, separated from
   the keys. §7's reasons are prose — `awaiting signal`, `resumable`, `pane failed after the
   stale frame` — and a sidebar with 31 content columns cannot hold a name and a reason on the
@@ -3032,9 +3519,20 @@ truncated-but-honest frame beats an unpredictable one.
     indicator goes straight to the progress text): `update available: vX.Y.Z — press ctrl+u to install`.
   - **Installed** (after an auto or manual update): `update installed: vX.Y.Z — restart deck to
     apply`. It replaces the Available text and stays until deck restarts: no later check result,
-    failure or setting change takes it back.
+    failure or setting change takes it back. The TUI keeps the update's `Result.Immutable`
+    (§13.1, update immutability): a release not verified immutable (`not-immutable` or
+    `unknown`; only installed under the `DECK_REQUIRE_IMMUTABLE=0` opt-out) reads `update
+    installed: vX.Y.Z (not verified immutable) — restart deck to apply`. An immutable install
+    keeps the plain text. The state is the indicator's `immutable` field; the tests assert it and
+    the `not verified immutable` token.
   - **Failed** (an update attempt failed): `update failed — see deck update`, followed by the
-    cause in parentheses.
+    cause in parentheses. An update refused because the release is not verified immutable while
+    that is required (the default, §13.1, update immutability; `update.RefusedNotImmutable`) held
+    the release back on purpose, so it reads instead `update not installed: vX.Y.Z is not verified
+    immutable — see deck update` (the indicator's `notImmutable`; the full cause, naming the
+    `DECK_REQUIRE_IMMUTABLE=0` opt-out, is `deck update`'s). That answer stands for the life of the
+    process: a later check offering the same tag neither re-offers nor re-installs it (with
+    `auto_update` on, no retry loop), while a newer tag is taken up as usual. A new deck asks again.
   - **Refused** (a newer release exists but this install cannot take it): `update available:
     vX.Y.Z — ` and the reason instead of `ctrl+u`: `install directory is not writable, see deck
     update`, or `installed by a package manager, update it there`.
@@ -3086,7 +3584,17 @@ contract so learning any one of them teaches the rest:
   at the place it acts. Nothing *undeclared* is load-bearing.
 - **The update confirmation** (`ctrl+u` while the update indicator reads Available, §11) is a
   dialog with no fields: it shows the current version and the target version, says that
-  confirming downloads the release, verifies its checksum and replaces the binary in the background, and that deck keeps running and does not touch sessions.
+  confirming downloads the release, verifies its checksum and replaces the binary in the
+  background, and that deck keeps running and does not touch sessions. Before anything runs, a
+  second line `Immutable release: <plan>` states, without a request, what the update will do about the release's
+  immutability (§13.1, update immutability): `required` by default, when the release source is
+  the default one (only a release the API reports immutable installs); `refused` by default when
+  `DECK_UPDATE_URL` names a mirror, which has no release API, so the update will be refused;
+  `reported` only when `DECK_REQUIRE_IMMUTABLE=0` opts out (the release API is asked and a
+  release not verified immutable still installs, with the Installed caveat). The `required` and
+  `refused` sentences name the `DECK_REQUIRE_IMMUTABLE=0` opt-out. It is asked each time
+  the dialog opens (`update.PlanImmutable`) and is the model's `updateImmPlan`. When the plan
+  is `refused` the key line reads `Enter tries anyway and is refused · Esc cancels`.
   `↵` installs and closes the dialog, leaving the progress state in the footer indicator; `esc`
   cancels and changes nothing — no request, no write. Every other key is swallowed, so a second
   `ctrl+u` inside it does nothing. It is never offered in interactive mode, where `ctrl+u` is
@@ -3524,6 +4032,19 @@ scroll, no close button that is the only way to dismiss.
 | click the collapsed strip | restore the previous non-collapsed mode | `|` |
 | click the passive preview | enter §11.9's interactive preview on the **already selected** row | `↵` |
 | click empty sidebar space while interactive | leave interactive mode | `Ctrl+Q` |
+| click the **gutter** of the attached row while interactive | leave interactive mode, selection left where it is (R328) | `Ctrl+Q` |
+| click the **gutter** of any other row while interactive | leave interactive mode and select that row, **without** entering it (R328) | `↑`/`↓` |
+| click the **gutter** of a row while not interactive | select that row only, whatever `[ui] attach_on_click` says (R328) | `↑`/`↓` |
+| click the **gutter** cells of a group header | nothing of its own: the gutter is inert on headers, and the press is the header click (collapse) above (R328) | `c` (§11) |
+
+**The gutter is the cursor marker's two cells.** A row's *gutter* is the two cells at the left of
+every sidebar row that hold the `>` marker (the same cells on every other row, and on both of the
+row's lines): column 2 and 3, 0-based, right after the left border and one pad column, in the side-by-side
+and the stacked layout alike, with Unicode or `ascii` glyphs, and at the 80x24 minimum. It is resolved by
+the same hit-test as every other cell (R329), so it cannot drift from where the marker is drawn. A press there
+*navigates and never attaches* (R328): the main area of a row keeps the select-and-enter behaviour above,
+the empty space below the rows keeps its meaning, and a gutter navigate is not an engagement (§7, R320) —
+the row it lands on does not move and its seen state is untouched.
 
 **A wheel over the passive preview does nothing, and a click over it is `↵`.** The passive
 preview is a non-interactive, non-scrolling crop (§11): there is no viewport for a wheel to
@@ -3577,7 +4098,7 @@ than the obvious one:
 - **`[ui] attach_on_click` turns that handover off.** With it false (default true, §6.5,
   `DECK_ATTACH_ON_CLICK`, editable in Settings §11.5), a click **and a double-click** on a
   sidebar row only select it: the list keeps keyboard focus, the preview stays passive, and
-  no entry, ownership claim, fit or attachment record happens, so a key typed next is a list
+  no entry, ownership claim or fit happens, so a key typed next is a list
   key. A double-click is two presses on the row and has no handler of its own, so the one
   setting governs both. `↵` still enters. The setting does not touch the group-header click
   (collapse), a click on the passive preview (that is `↵`), the collapsed-strip click, a
@@ -3592,9 +4113,9 @@ than the obvious one:
   gratuitous resize of a live window). A click over the **preview** while interactive is
   unchanged from below: it is the drag-to-copy gesture's press, never a navigation.
 - **The wheel scrolls the list under the pointer and changes neither focus nor selection.**
-  Scrolling to look at something is not selecting it. A wheel that moved the selection would
-  fire status-changing side effects (§7's attach-clears-`waiting` is one keystroke away)
-  from an idle gesture. Over the preview it scrolls nothing, because there is nothing there
+  Scrolling to look at something is not selecting it. Attach, click and preview write no
+  status and no seen state (§7, R320), but a wheel that moved the selection would still turn an
+  idle gesture into a navigation. Over the preview it scrolls nothing, because there is nothing there
   to scroll.
 - **A click outside a dialog does nothing.** It neither cancels nor confirms; `esc` cancels
   (§11.4). "Click outside to dismiss" puts cancel and confirm a few cells apart on a
@@ -3715,14 +4236,18 @@ footer (it is a hint line, not a toolbar, and §11.3 already binds it to what is
 `Enter` hands the keyboard to the selected session without leaving the list. deck fits the
 session's window to the preview panel, streams the pane into an in-process cell grid, and
 forwards keystrokes to it. `Ctrl+Q` returns. `a` remains the escalation to a real terminal.
+**Intercepted keys (never forwarded).** `Ctrl+Q`; with the `bookmarks` setting on, `Alt+0`…`Alt+9`,
+`Alt+M` (and the digit or `Delete` that completes its chord) and the ten `Alt+Shift+digit` keys (§11);
+and, always, `Alt+U` and `Alt+Shift+U` (R327), which switch the attached view to the next / previous
+unseen session and stay interactive (§11, "Unseen jumps while attached"). Every other key, `u`, `U`, `Alt+I`, `Alt+Y`,
+`Alt+A`, `Ctrl+U`, `Alt+Up`, `Enter` and `Esc` included, reaches the pane exactly as before.
 `Ctrl+U` is among the forwarded keys: deck never handles it here, so the update confirmation (§11.4) is
 not offered and the pane receives the single byte 0x15 whatever the update indicator reads.
-Entering is an attachment in §7's sense: the same durable transaction as `a`'s attach answers
-a `waiting` row and acknowledges an `error` row, applied only once entry has actually
-succeeded — a refused entry claims nothing.
+Entering is an attachment in §7's sense, and an attachment is inert (R320): it writes no status, no seen
+state and no event, so the row neither changes nor moves. A refused entry claims nothing either.
 A successful create from `n` (§11, `[ui] attach_on_new`) or resume from `r`/`R` (§9.1,
 `[ui] attach_on_resume`) enters by itself through exactly this path — the same refusals and
-banner, the same claim and fit, the same attachment transaction — so there is one way in, not
+banner, the same claim and fit — so there is one way in, not
 two.
 
 **A host terminal resize re-fits an interactive session at once too.** While interactive, a
@@ -3748,6 +4273,33 @@ must be restored afterwards.
   `set -g window-size latest` does not substitute for it: `resize-window` writes `manual`
   into the **window** options, which shadow the global. Cost is exactly two `SIGWINCH` per
   cycle.
+- **The claim is one window option, read verbatim and compared exactly.** Every change to the
+  claim (`@deck_isize_owner`) is one atomic tmux compare-and-set: the new value is written, or
+  the option unset on release, only if the option holds exactly the value last read. That
+  comparison reads the option through tmux's format lookup, which is pane first, then the
+  window (with the global window options), then the session and the global options — so a
+  value at a scope other than the window can defeat it: a pane value always does, and a
+  global-window, session or global value does while the window's own option is absent — a
+  window option set to the empty string is present and ends the lookup, so nothing behind it
+  is a shadow. Whether
+  such a value exists is asked of tmux scope by scope (`show-options` at the pane, global-window,
+  session and global scope), never inferred from comparing values: a shadow holding the very
+  value the window holds, an empty one, or one with control characters shadows all the same. A
+  claim or a release that finds such a value refuses with an error naming the scope
+  (`pane-scope`, `global-window-scope`, `session-scope` or `global-scope`) and tells the
+  operator to unset it with `set-option -u`; it writes nothing, so a release leaves the window
+  option as it was — whether the window still holds this claim, holds a later claimant's, or
+  is unset — and a claim never writes over a live window claim, and neither retries. With no
+  such value, a release whose claim the window no longer holds writes nothing and succeeds. The stored value is read verbatim: the read uses tmux's escaped
+  `show-options -w` form and decodes it, because `show-options -wv` and `display-message`
+  print a control character as `_`. The single newline tmux prints after the line is the only
+  one removed, so a value that itself ends in one or more newlines is compared with them, and
+  a dead or unparseable claim carrying them is stolen and a claim carrying them is released
+  by the same exact comparison. The read does not depend on the locale deck or the tmux
+  server runs under: every ownership read and compare-and-set tells the tmux client its
+  terminal is UTF-8 (`LC_ALL` set for that one invocation), because tmux otherwise prints each
+  non-ASCII byte as `_`. A value with non-ASCII text, and a trailing newline, therefore reads
+  back exactly under a non-UTF-8 locale, and the compare-and-set compares that exact string.
 - **Refused rather than degraded, in three cases**, each naming its reason and offering `a`:
   another client is attached to that session — one window has one size, and an attached client
   re-expresses its own under `window-size latest`, so the fit cannot be *held*, and unlike
@@ -4089,7 +4641,10 @@ listed here rather than left to a test package:
 | **Interactive transport** | `DECK_INTERACTIVE_TRANSPORT=pipe\|capture` pins §11.9's render path. | A *selector over two implementations of one contract*, not a behaviour switch: both paths must satisfy the same scenarios, so a scenario can exercise either deterministically. The **scrollback scenarios are the one exception**, and named as such: §11.9 gives interactive scrollback to the pipe transport only, because the capture path's own poll tick rebuilds the grid from the visible screen, so those scenarios are pipe-only by construction rather than by oversight. Stated explicitly because this section otherwise forbids knobs that change what the product does. |
 | **Update source** | `DECK_UPDATE_URL` overrides the release base URL `deck update` (and the update check) use, default `https://github.com/n-orlov/deck`. `<base>/releases/latest` must answer with a redirect to `<base>/releases/tag/vX.Y.Z`, and the archive `deck_<os>_<arch>.tar.gz` and `checksums.txt` are fetched from `<base>/releases/download/<tag>/`. The base must be `https`; plain `http` is accepted only for a loopback host (`127.0.0.1`, `::1`, `localhost`), and every redirect hop is held to the same rule. | Every update test points deck at an `httptest` loopback fake release server, so no test touches the network. A fixture that launches a deck binary for another purpose sets `DECK_UPDATE_CHECK=0` (the scenario launcher and the pty driver do by default). `cmd/deck`, `internal/tui`, `internal/update` and `features` run behind a rejecting loopback proxy (`internal/testnet`) that fails the package naming any public host a test or a deck it launched asked for. |
 | **Update error redaction** | A configured release URL may carry credentials (`https://user:password@mirror/...`, or a token in the query). Every update error and message that quotes a URL (HTTP status, truncated body, size limit, unreachable host, refused scheme or unparsable URL, a wrapped `net/http` or `gh` error, and the TUI's `update failed` footer note) shows the scheme, host and path but replaces the userinfo with `***` and every query value with `***`. The userinfo masked is what Go's `url.Parse` takes as userinfo: everything up to the last `@` of the authority, whatever it holds (`'`, `@`, `(`, `)`, `!`, `$`, `&`, `*`, `+`, `,`, `;`, `=`, `~`, `%` or non-ASCII bytes); a configured URL that does not parse, or has no `://`, is masked up to its last `@`. Inside a Go-quoted URL (a wrapped `net/http` error) a backslash escape such as `\"` is part of the userinfo or query value, not its end. `update.Run`, `update.Check` and the footer note redact the whole message, so a cause formatted elsewhere is covered as well. Before any pattern runs, `update.Run`, `update.Check` and every update message that quotes the configured URL replace that URL's own userinfo, password and query values whole, wherever they appear: each raw, percent-decoded, percent-encoded and Go-quoted. A credential of any length, even one byte, is masked whole where its position is fixed by its anchor (`key=` before a query value, `://` or `:` before and `@` after a userinfo or password), so `?t=K>Z` and `?t=K Z` leave no `Z`; a secret of at least 4 bytes is also replaced wherever it appears. A configured credential of 1-3 bytes that coincides with non-secret text of the configured URL (its scheme, host, port, path or a query key, e.g. a two-byte `/q` equal to part of the path) is outside this guarantee, because that text cannot be told from the credential. Text a release server or `gh` sent back (an HTTP reason phrase, a redirect's path, a malformed `Location` header on any status that a parse error quotes, a `checksums.txt` hash field, bytes a transport or body-read error quotes, `gh` output) may echo the credential anywhere, so inside that text every configured secret, of any length and in each of the forms above, is replaced wherever it appears, and so is a prefix of one, two bytes or longer, that a closing quote cuts off (`invalid URL escape "%Q>"` quotes only three bytes of what was sent). Every cause of an error type declared outside deck (a `net/url`, `net`, `net/http` or TLS error), except a file-system, process, syscall or deadline error, counts as such server text even where deck did not mark it so; only an occurrence lying wholly inside the configured URL's scheme, host, port, path or a query key is kept, so a dial error still names the host. The status code is printed from the parsed number, never from the server's status text, and deck's own wording around server text is never rewritten. Each is then also replaced piece by piece, cut at the bytes that end a pattern match (whitespace, `"`, `<`, `>`, `\`, `/`, `?`, `#`, `&`). A credential holding such a byte (`?token=a"b`, a password with a `\`) therefore leaves no piece of itself behind. The cause (status, `unexpected EOF`, `larger than N bytes`) stays, and a failure still leaves the old binary and directory untouched. | The real-binary rows of `TestUpdateVerbRedactsMirrorCredentials`, `TestCtrlUFailureNeverShowsMirrorPassword`, `TestCtrlUFailureNeverShowsOddMirrorPassword` and `internal/update/redact_test.go` use sentinel passwords and query tokens, including ones holding `'`, `@`, sub-delims, `"`, `\`, `<` and a space, and assert no piece of them reaches stdout, stderr or the frame (`TestCtrlUFailureNeverShowsBreakingSecret` and `TestRunAndCheckRedactBreakingSecrets` for the last four). The `short …` rows of `TestUpdateVerbRedactsMirrorCredentials` and `TestCtrlUFailureNeverShowsBreakingSecret`, `TestRedactShortBreakingSecrets` and `TestRunAndCheckRedactShortSecrets` do the same for one- and three-byte delimiter-bearing query and userinfo credentials (`K>Z`, `K Z`, `Z`). `TestUpdateVerbScrubsServerEchoedCredentials` (real binary), `TestCtrlUFailureNeverShowsServerEchoedCredential` (TUI), `TestRunAndCheckScrubServerEchoedSecrets` and `TestChecksumFieldEchoIsScrubbed` use a loopback mirror that echoes a short credential (`Q>7`, `Z`, `K"Q`, `K>Z`, `R>`, `Q>Z`, a two-byte password) in a reason phrase, percent-encoded, in the latest redirect's path, in a malformed status line, in a malformed `Location` header (on a 503, a 200, the latest redirect and a download redirect) and in `checksums.txt`, and assert none of it reaches the output while the status code, the server's other words and the host stay. `TestRedactErrScrubsUnmarkedForeignErrors` covers a foreign cause no boundary marked and a local file-system cause that keeps its wording. |
-| **Update download** | `deck update` downloads the archive and `checksums.txt` through an authenticated `gh` (`gh release download <tag> -R n-orlov/deck`) when one is on `PATH` and the base is the default one, and over plain HTTPS otherwise (also when the `gh` download fails). The archive's SHA-256 checksum against `checksums.txt` is the only verification: releases are built by Jenkins and carry no build attestation, so neither `deck update` nor `install.sh` asks for one. A mismatch aborts, leaving the old binary byte-identical and no file beside it. | Tests put a fake `gh` alone on `PATH` that records each call; no test reaches the real `gh` or the network. |
+| **Update download** | `deck update` downloads the archive and `checksums.txt` through an authenticated `gh` (`gh release download <tag> -R n-orlov/deck`) when one is on `PATH` and the base is the default one, and over plain HTTPS otherwise (also when the `gh` download fails). The archive's SHA-256 checksum against `checksums.txt` is the only verification: releases are built by Jenkins and carry no build attestation, so neither `deck update` nor `install.sh` asks for one. A mismatch aborts, leaving the old binary byte-identical and no file beside it. **A `DECK_UPDATE_URL` mirror** serves both the archive and `checksums.txt`, so its checksum catches corruption only, not a substituted build; and a mirror has no release API, so update immutability refuses it by default. A mirror therefore installs only under the explicit `DECK_REQUIRE_IMMUTABLE=0` opt-out, on the checksum alone, with no `gh` needed, and the install notes that the release is not verified immutable. | Tests put a fake `gh` alone on `PATH` that records each call; no test reaches the real `gh` or the network. |
+| **Update immutability** | After the tag is resolved and before anything is downloaded (so before `checksums.txt` is trusted), `deck update`, `ctrl+u` and the auto-update ask the GitHub release API, unauthenticated, `GET https://api.github.com/repos/n-orlov/deck/releases/tags/<tag>` (the repository is pinned; no `gh` is needed). Only when the release base is the default one: a `DECK_UPDATE_URL` mirror has no release API, so nothing is asked. The request is held to the download rules (https only, every redirect hop too, a non-200 is no answer), its body is capped at 1 MiB and it times out after 15 s. Only a JSON object whose `immutable` member is the literal `true` is `immutable`; the literal `false` is `not-immutable`; everything else is `unknown`: a mirror, no network, a rate limit or any other non-200, an oversize or malformed body, a missing member or one of another type (`"true"`, `1`, `null`). The outcome is `Result.Immutable` and is reported, never free server text: `deck update` prints `note: the release is a GitHub immutable release` or `note: the release is not verified immutable: …` (§3.4), and the Installed indicator names `not verified immutable` (§11). **Requiring an immutable release is the default (fail closed):** anything but `immutable` aborts before any download, as an `update.Refusal` with reason `RefusedNotImmutable`: the old binary stays byte-identical, no file is left beside it or in the temporary directory, and the error, in deck's own words and never quoting server text, names the release, why (`is not a GitHub immutable release`; `could not be confirmed immutable: the release source is a mirror with no GitHub release API`; or `could not be confirmed immutable: the GitHub release API gave no usable answer (offline, rate-limited or an unexpected reply)`), `nothing was installed` and the opt-out `set DECK_REQUIRE_IMMUTABLE=0 to install it anyway`. So a mirror, an offline or rate-limited API, and every release up to v0.2.18 (none is immutable, so `deck update --version v0.2.18` included) are refused by default. Only the exact value `DECK_REQUIRE_IMMUTABLE=0` opts out: the release is then only reported, and one not verified immutable installs with the note. Every other value, empty, `1`, `true` or ` 0` included, keeps it required. `update.Options.RequireImmutable` requires it even under `=0`. A check that finds nothing newer asks nothing. | `internal/update/immutable_test.go` serves a fake release API on loopback (through a test-only API base) answering `immutable` true, false, absent, of another type, malformed, non-200, oversize and too slowly, and asserts the state, the unauthenticated request for the pinned repository and tag, and, unset (the default), empty, `1` and any other value but `0`, a `RefusedNotImmutable` refusal for every state but `immutable` naming the cause and the opt-out, quoting no server text, with no download, no temporary file and the binary unchanged; under `0` every state installs, and `immutable` installs in every mode; a mirror is asked nothing and is refused unless `0`. The package baseline (its `TestMain`) is `0`, since its other tests serve a mirror. `cmd/deck/update_command_test.go` and `features/self_update.feature` refuse a mirror by default, install it with a note under `0`, and refuse it under `1`; `internal/tui/update_immutable_test.go` asserts the dialog plans, the calm Failed note and that auto-update does not retry the refused tag. No test reaches `api.github.com`. |
+| **Update staged version** | After the archive's checksum is verified and before anything is written beside the executable, `deck update`, `ctrl+u` and the auto-update read the version embedded in the staged binary's Go build info (`debug/buildinfo`, from the bytes in memory) and require it to equal the release tag being installed. The staged binary is never executed to learn it: no process is started with its path or bytes. A binary whose embedded version is older or newer than the tag, whose build info cannot be read (not a Go executable), or whose build info carries no release version (empty, or `(devel)`) is refused (fail closed) with an error that names the embedded version and the release tag; the old binary stays byte-identical and no file is left beside it. A pinned `--version` older than the running build installs when the staged binary's version equals that pinned tag. | `internal/update/update_test.go`: `TestStagedVersionEqualToTagInstalls` and `TestPinnedOlderVersionInstallsWhenStagedMatches` install; `TestStagedOlderVersionRefusesNamingBoth`, `TestStagedNewerVersionRefuses`, `TestStagedUnreadableVersionRefuses` and `TestStagedAbsentVersionRefuses` each assert an error, the old binary byte-identical and the install directory listing unchanged. Release fixtures serve a real Go executable (`internal/testrelbin`) stamped with the served tag. |
+| **Update install lock** | `deck update`, `ctrl+u` and the auto-update serialise installs machine-wide: `update.Run` takes an exclusive advisory `flock` (no PID file) on `update-install.lock`, in the directory of the shared update cache (§4; `$DECK_HOME`, else `$XDG_CACHE_HOME/deck`), a file distinct from the check's `update-check.json.lock`. The lock is taken after the refusals (dev build, platform, URL, managed prefix, writable directory) and before the latest tag is asked, and is held until the install has replaced the binary or failed; both CLI callers pass its path in `update.Options.InstallLock`. A second install waits on the lock; if its context ends first (a signal, a cancelled dialog) it returns the context's error (`errors.Is(err, context.Canceled)`), makes no request and leaves the binary untouched. A lock file that cannot be created is not an error: the install proceeds unlocked. Once the lock is held, an install that only wants a newer release (`OnlyIfNewer`, no pinned version) re-reads the version embedded in the binary on disk (`debug/buildinfo`, never by running it) and compares the latest tag to that, not to the running build's version: when another deck already installed the latest tag, the result is `Unchanged` with no archive request. A binary on disk whose version is unreadable or not a release tag falls back to the running build's version. An install without `OnlyIfNewer`, or with a pinned version, installs whatever the binary on disk is. | `internal/update/lock_test.go`: `TestOnlyIfNewerRechecksTheBinaryOnDisk` and `TestExplicitUpdateInstallsEvenWhenTargetIsAtTag`; `TestInstallLockUncreatableProceedsUnlocked`, `TestInstallLockReleasedAfterSuccess` and `TestInstallLockReleasedAfterFailure` (a `LOCK_EX\|LOCK_NB` flock succeeds after `Run` returns); `TestInstallLockWaiterCancelledReturnsContextError` (another holder, the waiter cancelled). `cmd/deck/update_install_lock_test.go`: `TestUpdateCallersPassTheInstallLockPath`. |
 | **Update refusals** | `deck update` changes nothing, prints a message and never escalates privileges (no `sudo`, `doas` or `pkexec` is ever run) when: the running build's version is `dev`; the binary, before or after resolving symlinks, lies at or under one of these managed prefixes: `/usr/bin`, `/usr/sbin`, `/bin`, `/sbin`, `/usr/lib`, `/usr/libexec`, `/opt/homebrew`, `/usr/local/Cellar`, `/home/linuxbrew`, `/nix/store`, `/snap` (end of managed prefixes; Homebrew on macOS is `/opt/homebrew` or `/usr/local/Cellar`, on Linux `/home/linuxbrew`; a bare `/usr` is not listed, so a manual install in `/usr/local/bin` is updated); or the binary's directory is not writable, in which case the message names the directory and says to re-run with sudo or to reinstall to `~/.local/bin` via `DECK_INSTALL_DIR` (§13.2). The refusals are checked before any network request. | One test per refusal, each asserting the binary's sha256 is unchanged; a further test puts recording fakes for `sudo`, `doas` and `pkexec` on `PATH` and asserts none is invoked. The real-binary test in `cmd/deck/` cannot create `/usr/bin`, so it builds with `-tags deckupdatetest`, which lets `DECK_UPDATE_TEST_ROOT` relocate the tree the prefixes are matched under (never part of a release). |
 | **Structured log** | JSONL to `$DECK_HOME/log/deck.jsonl`: every state transition, launch argv, hook receipt with duration, and one `event_hook` line per event-hook spawn with its exit status and the script's duration (none for a detached session-end spawn, §10.3). | The observability surface for things not visible on screen — argv, timings, retries. |
 | **Launch audit** | Each launch appends the exact argv + resolved env keys (values redacted) to the log. | Proves "resume by id, never `--continue`" (R2) without reading agent internals. |
@@ -4153,11 +4708,21 @@ in the help view.
   release candidate of a green `deck/ci` `main` build (the last successful one by default). A
   `deck/ci` build with no candidate was not green and never releases. `VERSION` must match
   `vMAJOR.MINOR.PATCH[-pre]` and must not exist as a tag yet; a check that cannot be answered
-  fails the release rather than passing it. `ci/release-build.sh` builds the four archives and
-  `checksums.txt` in the CI image from that commit and smoke-checks `deck --version`; then
-  `gh release create --target <commit>` creates the tag and the release together on GitHub (no
-  tag is ever pushed from the agent). `DRY_RUN` builds and archives without publishing.
-  Releases carry no build attestation: `install.sh` and `deck update` verify the archive's
+  fails the release rather than passing it. Before building, the release also requires the repository's
+  immutable-releases setting to be enabled (`gh api repos/n-orlov/deck/immutable-releases`) and
+  stops otherwise. `ci/release-build.sh` builds the four archives and `checksums.txt` in the CI
+  image from that commit, under a local, never-pushed `VERSION` tag on it so that Go stamps
+  `VERSION` into each binary's build info (the version `deck update` requires, §13.1, update
+  staged version); it checks each binary's embedded version (`go version -m`) and smoke-checks
+  `deck --version`. **Publish order:** `gh release create --target <commit> --draft` creates the
+  tag and a draft release with every asset attached (no tag is ever pushed from the agent); only
+  then is the draft published (`draft=false`, marked latest unless `VERSION` is a pre-release,
+  which is published as a pre-release), so the immutable-releases setting, which freezes a
+  release at publication, never sees a half-populated release. The build then reads the release
+  back and fails unless it is published, `immutable` and carries exactly the built assets.
+  `DRY_RUN` builds and archives without publishing.
+  Releases carry no build attestation (R236 and R331, the attestation and its dialog line, are
+  withdrawn): `install.sh` and `deck update` verify the archive's
   SHA-256 checksum against the release's `checksums.txt` and nothing else, and a mismatch
   aborts with nothing installed. The maintainer's `v*` tag ruleset is an
   operator step documented in `docs/ci.md`, never applied by the build. Both `FROM` lines of

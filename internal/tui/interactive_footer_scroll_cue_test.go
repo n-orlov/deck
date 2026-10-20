@@ -212,7 +212,10 @@ func TestInteractiveFooterAtLiveBottomRendersNoCueAndMatchesPreChangeFooter(t *t
 	sep := got.glyph(" · ", " - ")
 	key := got.colorToken(theme.Key, got.glyph("Ctrl+Q", "Ctrl+Q"))
 	hint := got.colorToken(theme.Hint, "leave interactive mode")
-	preChangeContent := forwardNote + sep + key + " " + hint
+	// R327 adds the unseen-jump segment between the forward note and Ctrl+Q;
+	// TestInteractiveFooterAndHelpNameTheUnseenJumps is its covering test.
+	unseen := got.colorToken(theme.Key, interactiveUnseenKey) + " " + got.colorToken(theme.Hint, interactiveUnseenHint)
+	preChangeContent := forwardNote + sep + unseen + sep + key + " " + hint
 	want := got.canvasFillLine(preChangeContent, width)
 
 	if footer != want {

@@ -1,0 +1,8 @@
+● Update(internal/agent/probe.go)
+
+ Edit file
+ internal/agent/probe.go
+
+ Do you want to make this edit to probe.go?
+ ❯ 1. Yes
+   2. No

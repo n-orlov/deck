@@ -10,9 +10,15 @@ import (
 )
 
 // optionFake is a tmux whose window option OwnershipOption lives in a file:
-// show-options prints it (or fails "invalid option" when unset), set-option
-// writes the value argument through writeBody ($VALUE holds it) and logs the
-// call to "$0.sent".
+// show-options -w prints it as `@deck_isize_owner <value>` (or fails
+// "invalid option" when unset). The
+// compare-and-set invocation (`if-shell -F -t T COND SET ; show-options ...`)
+// logs the call to "$0.sent", and when COND's expected value equals the
+// stored one runs writeBody with $VALUE holding the value SET would write;
+// it then prints the option as its trailing show-options would. A
+// show-options at any other scope (the shadow probes: -p, -wg, session, -g)
+// fails "invalid option": the fake has no pane, session or global scope. A plain
+// set-option is handled the same way, unconditionally.
 func optionFake(t *testing.T, initial, writeBody string) Client {
 	t.Helper()
 	setup := `:`
@@ -20,9 +26,24 @@ func optionFake(t *testing.T, initial, writeBody string) Client {
 		setup = fmt.Sprintf(`[ -e "$0.state" ] || printf '%%s\n' %q > "$0.state"`, initial)
 	}
 	return fakeTmuxClient(t, setup+`
+show() {
+  if [ -s "$0.state" ]; then printf '@deck_isize_owner %s\n' "$(cat "$0.state")"; else echo "invalid option: @deck_isize_owner" >&2; exit 1; fi
+}
 case "$3" in
 show-options)
-  if [ -s "$0.state" ]; then cat "$0.state"; else echo "invalid option: @deck_isize_owner" >&2; exit 1; fi;;
+  if [ "$4" = "-w" ]; then show; else echo "invalid option: @deck_isize_owner" >&2; exit 1; fi;;
+display-message)
+  cat "$0.state" 2>/dev/null || :;;
+if-shell)
+  echo "$*" >> "$0.sent"
+  EXPECTED="${7#'#{==:#{@deck_isize_owner},'}"
+  EXPECTED="${EXPECTED%'}'}"
+  CURRENT="$(cat "$0.state" 2>/dev/null)"
+  if [ "$CURRENT" = "$EXPECTED" ]; then
+    VALUE="$(printf '%s' "$8" | sed "s/.* '\(.*\)'\$/\1/")"
+    `+writeBody+`
+  fi
+  show;;
 set-option)
   echo "$*" >> "$0.sent"
   VALUE="$8"
@@ -99,16 +120,17 @@ func TestClaimWindowOwnershipReportsTransportFailures(t *testing.T) {
 		t.Fatalf("failing first read = %v, %v", owned, err)
 	}
 	writeFails := optionFake(t, "", `echo "read-only" >&2; exit 1`)
-	if _, owned, err := writeFails.ClaimWindowOwnership(ctx, "s0"); owned || err == nil || !strings.Contains(err.Error(), "claim @deck_isize_owner") {
+	if _, owned, err := writeFails.ClaimWindowOwnership(ctx, "s0"); owned || err == nil || !strings.Contains(err.Error(), "compare-and-set @deck_isize_owner") {
 		t.Fatalf("failing write = %v, %v", owned, err)
 	}
 	confirmFails := fakeTmuxClient(t, `case "$3" in
 show-options)
-  if [ -e "$0.read" ]; then echo "protocol error" >&2; exit 1; fi
-  : > "$0.read"; echo "invalid option: @deck_isize_owner" >&2; exit 1;;
+  echo "invalid option: @deck_isize_owner" >&2; exit 1;;
+if-shell)
+  echo "protocol error" >&2; exit 1;;
 esac`)
-	if _, owned, err := confirmFails.ClaimWindowOwnership(ctx, "s0"); owned || err == nil || !strings.Contains(err.Error(), "show-options") {
-		t.Fatalf("failing confirm-read = %v, %v", owned, err)
+	if _, owned, err := confirmFails.ClaimWindowOwnership(ctx, "s0"); owned || err == nil || !strings.Contains(err.Error(), "compare-and-set") {
+		t.Fatalf("failing compare-and-set confirm-read = %v, %v", owned, err)
 	}
 }
 

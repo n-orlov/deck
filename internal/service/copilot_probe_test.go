@@ -73,27 +73,40 @@ func newCopilotProbeService(t *testing.T, seed string) (Service, *store.Store) {
 // running is corrected by the ordinary stale-verdict probe, with the window the
 // other hook kinds use (config.DefaultStaleAfter), once the pane shows the idle footer.
 func TestCopilotAbortDemotesAHookRunningRowWhoseIdleFooterIsShown(t *testing.T) {
-	svc, db := newCopilotProbeService(t, "copilot-abort")
-	row := copilotProbeRow(t, svc, db, "copilot", "safe", "idle.txt", 1)
+	// Each hook verdict below is a transition out of idle, so it dates both
+	// status_at and hook_at; the repeat case (hook_at alone) is covered by
+	// hook_evidence_test.go. The fresh and the stale case each get their own
+	// row: hook_at only ever moves forward (newest hook evidence, SPEC §7), so
+	// a hook dated a window back cannot age a row a fresher hook already dated.
+	hookRunningAt := func(t *testing.T, db *store.Store, row store.Session, at int64) {
+		t.Helper()
+		for _, in := range []store.StatusUpdateInput{
+			{SessionID: row.ID, Status: "idle", Reason: "ready", Source: "hook", At: at, EventKind: "stop"},
+			{SessionID: row.ID, Status: "running", Reason: "prompt", Source: "hook", At: at, EventKind: "user_prompt_submitted"},
+		} {
+			if err := db.UpdateSessionStatus(context.Background(), in); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
 	// Younger than the window, the same pane changes nothing.
-	if err := db.UpdateSessionStatus(context.Background(), store.StatusUpdateInput{
-		SessionID: row.ID, Status: "running", Reason: "prompt", Source: "hook", At: svc.Clock.Now().UnixMilli(), EventKind: "user_prompt_submitted",
-	}); err != nil {
-		t.Fatal(err)
-	}
-	if got := probeCopilotRow(t, svc, db, row); got.Status != "running" || got.StatusSource != "hook" {
-		t.Fatalf("a fresh hook verdict was probed: %#v", got)
-	}
-	if err := db.UpdateSessionStatus(context.Background(), store.StatusUpdateInput{
-		SessionID: row.ID, Status: "running", Reason: "prompt", Source: "hook",
-		At: svc.Clock.Now().UnixMilli() - config.DefaultStaleAfter.Milliseconds(), EventKind: "user_prompt_submitted",
-	}); err != nil {
-		t.Fatal(err)
-	}
-	got := probeCopilotRow(t, svc, db, row)
-	if got.Status != "idle" || got.StatusSource != "probe" || got.StatusReason != "ready" {
-		t.Fatalf("aborted copilot row = status %q source %q reason %q, want idle/probe/ready", got.Status, got.StatusSource, got.StatusReason)
-	}
+	t.Run("fresh", func(t *testing.T) {
+		svc, db := newCopilotProbeService(t, "copilot-abort-fresh")
+		row := copilotProbeRow(t, svc, db, "copilot", "safe", "idle.txt", 1)
+		hookRunningAt(t, db, row, svc.Clock.Now().UnixMilli())
+		if got := probeCopilotRow(t, svc, db, row); got.Status != "running" || got.StatusSource != "hook" {
+			t.Fatalf("a fresh hook verdict was probed: %#v", got)
+		}
+	})
+	t.Run("stale", func(t *testing.T) {
+		svc, db := newCopilotProbeService(t, "copilot-abort")
+		row := copilotProbeRow(t, svc, db, "copilot", "safe", "idle.txt", 1)
+		hookRunningAt(t, db, row, svc.Clock.Now().UnixMilli()-config.DefaultStaleAfter.Milliseconds())
+		got := probeCopilotRow(t, svc, db, row)
+		if got.Status != "idle" || got.StatusSource != "probe" || got.StatusReason != "ready" {
+			t.Fatalf("aborted copilot row = status %q source %q reason %q, want idle/probe/ready", got.Status, got.StatusSource, got.StatusReason)
+		}
+	})
 }
 
 func TestCopilotWorkingFooterIsNotDemotedByTheProbe(t *testing.T) {

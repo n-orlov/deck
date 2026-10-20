@@ -28,7 +28,9 @@ func TestNeedsAttentionMatchesWaitingAndErrorOnly(t *testing.T) {
 		{"archived", false},
 	}
 	for _, c := range cases {
-		if got := NeedsAttention(store.Session{Status: c.status}); got != c.want {
+		// StatusAt 100 with no seen stamp is an unseen row; an error needs
+		// attention only while unseen (R319, seen_attention_test.go).
+		if got := NeedsAttention(store.Session{Status: c.status, StatusAt: 100}); got != c.want {
 			t.Errorf("NeedsAttention(%q) = %v, want %v", c.status, got, c.want)
 		}
 	}
@@ -45,7 +47,7 @@ func TestNextAttentionSelectionWrapsAndSkipsInvisible(t *testing.T) {
 			{ID: "a", GroupName: "ws", Status: "running"},
 			{ID: "b", GroupName: "ws", Status: "waiting"},
 			{ID: "c", GroupName: "ws", Status: "running"},
-			{ID: "d", GroupName: "hidden-ws", GroupID: &hiddenGroupID, Status: "error"},
+			{ID: "d", GroupName: "hidden-ws", GroupID: &hiddenGroupID, Status: "error", StatusAt: 100},
 			{ID: "e", GroupName: "ws", Status: "idle"},
 		},
 	}

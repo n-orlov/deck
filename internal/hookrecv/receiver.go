@@ -69,7 +69,11 @@ type Mapping struct {
 // codex-only payload struct: the receiver has no notion of which agent kind
 // sent a hook, only of which event name arrived.
 var Mappings = map[string]Mapping{
-	"SessionStart":      {Status: "running", Kind: "session_start", ReasonField: "source"},
+	// SessionStart (startup, --resume, --continue, clear, compact) lands on
+	// idle for Claude and Codex (R307): a session that has only started has
+	// not been asked anything. UserPromptSubmit, or a working indicator the
+	// probe sees, is what enters running. Pi keeps running (piSessionStartStatus).
+	"SessionStart":      {Status: "idle", Kind: "session_start", ReasonField: "source"},
 	"UserPromptSubmit":  {Status: "running", Kind: "user_prompt_submitted"},
 	"Notification":      {Status: "waiting", Kind: "notification", ReasonField: "notification_type"},
 	"PermissionRequest": {Status: "waiting", Kind: "permission_request", ReasonField: "tool_name"},
@@ -81,6 +85,18 @@ var Mappings = map[string]Mapping{
 	// triggers a name adoption.
 	"session_info_changed": {Kind: "session_info_changed"},
 }
+
+// waitingNotifications are the Notification notification_type values that are a
+// status (R309 hook half): a permission prompt and an elicitation dialog ask
+// the operator for something. idle_prompt (R308) only says the agent has been
+// idle for a while; auth_success and any unrecognised type say nothing about a
+// question either. Those are recorded as events and change no status.
+var waitingNotifications = map[string]bool{"permission_prompt": true, "elicitation_dialog": true}
+
+// piSessionStartStatus is the status Pi's SessionStart keeps: R307 moves
+// Claude, Codex and Copilot onto idle, and the shared SessionStart mapping
+// follows them, so Pi's own extension event (SPEC §8.3) is held at running here.
+const piSessionStartStatus = "running"
 
 // adoptionTriggers are the hook events after which deck reads the harness's
 // name for the row (SPEC §8): Stop, UserPromptSubmit, Copilot's agentStop and
@@ -264,12 +280,7 @@ func ReceiveFrom(ctx context.Context, db Store, raw []byte, origin Origin, at in
 	eventKind := mapping.Kind
 
 	reason := payloadReason(p, mapping)
-	var allowedFrom []string
-	if p.EventName == "SessionEnd" && sessionEndInSessionReasons[reason] {
-		// Requirement 43: this is not the process going away. Keep the event
-		// (kind session_end, this reason) but never let it stop the row.
-		allowedFrom = noCurrentStatusMatches
-	}
+	allowedFrom := sessionEndAllowedFrom(p, reason)
 	result := Result{
 		Status: mapping.Status, Kind: mapping.Kind, Reason: reason,
 		Message:   payloadField(p, mapping.MessageField),
@@ -281,32 +292,51 @@ func ReceiveFrom(ctx context.Context, db Store, raw []byte, origin Origin, at in
 	}
 
 	result.SessionID = session.ID
+	if p.EventName == "SessionStart" && session.Agent == "pi" {
+		mapping.Status = piSessionStartStatus
+		result.Status = piSessionStartStatus
+	}
 	if copilotMismatch(p, session.ConversationID) {
 		return receiveMismatch(ctx, db, p, mapping, session, raw, at, result)
 	}
-	write := hookWrite{status: mapping.Status, reason: reason, eventKind: eventKind, allowedFrom: allowedFrom}
-	if write.status == "" {
-		// A Copilot event that is not a status (errorOccurred, a notification
-		// of another type): recorded, never applied.
-		write.status = session.Status
-		write.allowedFrom = noCurrentStatusMatches
-	}
-	if supersededLaunch(session.LaunchGeneration, injectedLaunchGeneration) {
-		// Recorded, never applied -- the same mechanism requirement 43 uses
-		// for an in-session SessionEnd. The event keeps the evidence that a
-		// superseded pane spoke, while the unsatisfiable AllowedFrom makes the
-		// status write a no-op inside the store's own transaction, so the row
-		// is never wrong even momentarily and nothing has to repair it after.
-		result.Superseded = true
-		write.allowedFrom = noCurrentStatusMatches
-		write.eventKind = supersededEventKind(mapping.Kind)
-		write.reason = supersededReason(session.LaunchGeneration, injectedLaunchGeneration)
-	}
+	write := newHookWrite(mapping, session, reason, eventKind, allowedFrom, injectedLaunchGeneration, &result)
 	result, err = persistHook(ctx, db, p, mapping, session, raw, origin, at, write, result)
 	if err == nil {
 		adoptAfterHook(ctx, origin, p, result)
 	}
 	return result, err
+}
+
+// sessionEndAllowedFrom is the AllowedFrom list for a SessionEnd that is not
+// the process going away (requirement 43): the event is kept (kind
+// session_end, this reason) but the unsatisfiable list never lets it stop the
+// row. Any other event has no restriction (nil).
+func sessionEndAllowedFrom(p payload, reason string) []string {
+	if p.EventName == "SessionEnd" && sessionEndInSessionReasons[reason] {
+		return noCurrentStatusMatches
+	}
+	return nil
+}
+
+// newHookWrite is the status write a resolved hook asks for. An event that is
+// not a status (a Copilot errorOccurred, a notification of another type) is
+// recorded, never applied. A hook of a launch deck has replaced is recorded,
+// never applied, by the same mechanism: the unsatisfiable AllowedFrom makes the
+// status write a no-op inside the store's own transaction, so the row is never
+// wrong even momentarily and nothing has to repair it after.
+func newHookWrite(mapping Mapping, session store.Session, reason, eventKind string, allowedFrom []string, injectedLaunchGeneration string, result *Result) hookWrite {
+	write := hookWrite{status: mapping.Status, reason: reason, eventKind: eventKind, allowedFrom: allowedFrom}
+	if write.status == "" {
+		write.status = session.Status
+		write.allowedFrom = noCurrentStatusMatches
+	}
+	if supersededLaunch(session.LaunchGeneration, injectedLaunchGeneration) {
+		result.Superseded = true
+		write.allowedFrom = noCurrentStatusMatches
+		write.eventKind = supersededEventKind(mapping.Kind)
+		write.reason = supersededReason(session.LaunchGeneration, injectedLaunchGeneration)
+	}
+	return write
 }
 
 // adoptAfterHook hands a landed trigger hook's row to origin.Adopt. A hook of
@@ -418,6 +448,12 @@ func decodeHook(db Store, raw []byte, event string, at int64) (payload, Mapping,
 	mapping, ok := Mappings[p.EventName]
 	if !ok {
 		return payload{}, Mapping{}, fmt.Errorf("unsupported hook event %q", p.EventName)
+	}
+	if p.EventName == "Notification" && !waitingNotifications[p.Notification] {
+		// R308/R309: idle_prompt, auth_success and any type deck does not
+		// recognise are recorded, never applied. Only a notification that asks
+		// the operator something is waiting.
+		mapping.Status = ""
 	}
 	return p, mapping, nil
 }

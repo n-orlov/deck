@@ -1,8 +1,10 @@
 package update
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
+	"debug/buildinfo"
 	"encoding/hex"
 	"fmt"
 	"net/http"
@@ -25,12 +27,24 @@ type Options struct {
 	// always installs.
 	OnlyIfNewer bool
 	Client      *http.Client // default: HTTPS-only redirects, 2 min timeout
+	// InstallLock is the lock file that serialises installs machine-wide: Run
+	// holds an exclusive advisory flock on it from before the latest tag is
+	// asked until the install ends. Empty, or a file that cannot be created,
+	// means no lock. It is distinct from the daily check's cache lock.
+	InstallLock string
 
 	// Repo is the GitHub repository an authenticated gh downloads the release
 	// from. Empty means DefaultRepo when the base is DefaultBaseURL, and "no gh
 	// download" for any other base (a mirror is fetched over HTTPS).
 	Repo string
+	// RequireImmutable aborts unless the GitHub release API reports the
+	// release immutable even when DECK_REQUIRE_IMMUTABLE=0 opts out (that
+	// abort is already the default).
+	RequireImmutable bool
 
+	// apiBase is test-only: the release API to ask in place of
+	// DefaultAPIBase, whatever the release base is.
+	apiBase string
 	// root is test-only: the tree the managed prefixes are matched under.
 	root string
 	// writeFile and rename are the two filesystem steps that can fail after
@@ -46,6 +60,12 @@ type Result struct {
 	// downloaded and the binary was not touched.
 	Unchanged bool
 	Path      string // the resolved (symlink-resolved) file that was replaced
+
+	// Immutable is what the GitHub release API said about the installed
+	// release: ImmutableVerified, ImmutableNot or ImmutableUnknown (a mirror,
+	// or no usable answer). Only ImmutableVerified is a verified immutable
+	// release.
+	Immutable string
 }
 
 // Run downloads, verifies and installs the release over the executable. On
@@ -57,12 +77,35 @@ func Run(ctx context.Context, o Options) (Result, error) {
 
 func run(ctx context.Context, o Options) (Result, error) {
 	o = o.withDefaults()
-	pl, err := o.prepare(ctx)
+	pl, err := o.prepare()
 	if err != nil {
 		return Result{}, err
 	}
-	if o.OnlyIfNewer && o.Version == "" && !IsNewer(pl.tag, o.Current) {
+	// The lock is held to the end of the install, and what the binary on disk
+	// is, is decided only once it is held: another deck may have just
+	// replaced it.
+	unlock, ok := flockPath(ctx, o.InstallLock)
+	if !ok {
+		return Result{}, fmt.Errorf("wait for another update to finish: %w", ctx.Err())
+	}
+	defer unlock()
+	if pl.tag, err = o.tag(ctx, pl.base); err != nil {
+		return Result{}, err
+	}
+	if o.OnlyIfNewer && o.Version == "" && !IsNewer(pl.tag, o.installedVersion(pl.target)) {
 		return Result{Tag: pl.tag, Path: pl.target, Unchanged: true}, nil
+	}
+	return o.install(ctx, pl)
+}
+
+// install runs the part of Run that fetches, verifies and replaces, once the
+// tag to install is settled and the install lock is held.
+func (o Options) install(ctx context.Context, pl runPlan) (Result, error) {
+	// The release's immutability is settled before checksums.txt is trusted,
+	// and before anything is downloaded or staged.
+	imm, err := o.checkImmutable(ctx, pl.base, pl.tag)
+	if err != nil {
+		return Result{}, err
 	}
 	work, err := os.MkdirTemp("", "deck-update-")
 	if err != nil {
@@ -73,10 +116,13 @@ func run(ctx context.Context, o Options) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
+	if err := checkStagedVersion(bin, pl.tag); err != nil {
+		return Result{}, err
+	}
 	if err := o.replace(pl.target, bin); err != nil {
 		return Result{}, err
 	}
-	return Result{Tag: pl.tag, Path: pl.target}, nil
+	return Result{Tag: pl.tag, Path: pl.target, Immutable: imm}, nil
 }
 
 // runPlan is what Run settles before it downloads anything.
@@ -85,8 +131,8 @@ type runPlan struct {
 }
 
 // prepare runs Run's refusals and lookups in order: dev build, platform,
-// release URL, install target, then the tag to install.
-func (o Options) prepare(ctx context.Context) (runPlan, error) {
+// release URL, then install target. The tag to install is settled after.
+func (o Options) prepare() (runPlan, error) {
 	var pl runPlan
 	if err := refuseDev(o.Current); err != nil {
 		return pl, err
@@ -99,11 +145,18 @@ func (o Options) prepare(ctx context.Context) (runPlan, error) {
 	if err = CheckURL(pl.base); err != nil {
 		return pl, err
 	}
-	if pl.target, err = o.checkTarget(); err != nil {
-		return pl, err
-	}
-	pl.tag, err = o.tag(ctx, pl.base)
+	pl.target, err = o.checkTarget()
 	return pl, err
+}
+
+// installedVersion is the version of the binary at target, read from its Go
+// build info on disk (never by running it). When that is not a stable release
+// tag (a text file, a source build) the running build's version stands.
+func (o Options) installedVersion(target string) string {
+	if info, err := buildinfo.ReadFile(target); err == nil && stableTag.MatchString(info.Main.Version) {
+		return info.Main.Version
+	}
+	return o.Current
 }
 
 func (o Options) withDefaults() Options {
@@ -197,6 +250,26 @@ func (o Options) fetchBinary(ctx context.Context, p fetchPlan) ([]byte, error) {
 		return nil, err
 	}
 	return extractBinary(archive)
+}
+
+// checkStagedVersion refuses a staged binary whose embedded module version is
+// not the release tag. The version is read from the build info inside the
+// bytes (debug/buildinfo); the staged binary is never executed to learn it.
+// It runs before anything is written beside the target, so a refusal leaves
+// the old binary and its directory untouched.
+func checkStagedVersion(bin []byte, tag string) error {
+	info, err := buildinfo.Read(bytes.NewReader(bin))
+	if err != nil {
+		return fmt.Errorf("refusing to install: cannot read the version embedded in the staged binary (release %s): %w", tag, err)
+	}
+	got := info.Main.Version
+	if got == "" || got == "(devel)" {
+		return fmt.Errorf("refusing to install: the staged binary embeds no release version (release %s)", tag)
+	}
+	if got != tag {
+		return fmt.Errorf("refusing to install: the staged binary embeds version %q but the release is %s", got, tag)
+	}
+	return nil
 }
 
 // replace writes bin beside target and renames it over target. The

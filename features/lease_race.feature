@@ -22,9 +22,9 @@ Feature: Launch-lease race
     And the audit log has 2 launch records for session "race target"
     When fake Claude session "race target" fires "SessionStart" for itself using injected identity:
       | source | resume |
-    Then within one configured reconcile interval deck client "A" row "race target" contains "running"
-    And within one configured reconcile interval deck client "B" row "race target" contains "running"
-    And within one configured reconcile interval deck client "C" row "race target" contains "running"
+    Then within one configured reconcile interval deck client "A" row "race target" contains "idle"
+    And within one configured reconcile interval deck client "B" row "race target" contains "idle"
+    And within one configured reconcile interval deck client "C" row "race target" contains "idle"
     # This separate live agent has sent no hook or probe signal, so none of the
     # clients may fabricate running merely because its pane exists.
     And deck client "A" row "unsignalled agent" does not contain "running"

@@ -1,0 +1,7 @@
+  Done. The status parser now reads the footer instead of the banner.
+  Ran 14 tests, all passed.
+
+────────────────────────────────────────────────────────────────
+❯ 
+────────────────────────────────────────────────────────────────
+  ⏵⏵ bypass permissions on (shift+tab to cycle)

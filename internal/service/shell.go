@@ -66,6 +66,10 @@ type Service struct {
 	// dispatches: `deck new` and the post-hook liveness pass.
 	EventHook func() EventHookDispatcher
 
+	// Output is the R304 output clock the TUI's probing reconcile feeds
+	// sessions.last_output_at from. nil (every other caller) writes nothing.
+	Output *OutputClock
+
 	// Agents looks up an adapter by its declared kind (e.g. "claude", "pi")
 	// for CreateAgent and, later, Resume. Only CreateShell tolerates it
 	// being nil; agent creation requires it.

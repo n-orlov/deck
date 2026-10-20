@@ -3,10 +3,13 @@
 //
 // It releases exactly the commit that a green deck/ci main build recorded in
 // ci-results/release-candidate.json (the last fully green one, or CI_BUILD):
-// Candidate -> Checkout -> Version check -> Build -> Publish. The tag is
-// created on GitHub by `gh release create --target`, together with the
-// release; nothing is ever pushed from the agent. DRY_RUN stops before
-// publishing. Every result posts a Telegram message (notifyTelegram, from
+// Candidate -> Checkout -> Version check -> Build -> Publish. The release is
+// created as a draft with every asset attached and only then published, so
+// GitHub's immutable-releases setting (which freezes a release at
+// publication) never sees a half-populated release; the tag is created on
+// GitHub at the candidate commit when the draft is published. Nothing is ever
+// pushed from the agent. Publish then checks the release is immutable, which
+// deck update requires by default. DRY_RUN stops before publishing. Every result posts a Telegram message (notifyTelegram, from
 // the homelab shared library github.com/n-orlov/jenkins-library).
 @Library('homelab') _
 
@@ -90,7 +93,10 @@ pipeline {
     }
 
     // The tag must not exist yet: ls-remote exits 2 when nothing matches, 0
-    // when the tag exists, anything else when GitHub cannot be asked.
+    // when the tag exists, anything else when GitHub cannot be asked. The
+    // repository's immutable-releases setting must be on: deck update refuses
+    // a release GitHub does not report immutable, so publishing without it
+    // would ship a release nobody can update to.
     stage('Version check') {
       steps {
         withCredentials([usernamePassword(credentialsId: 'github-n-orlov',
@@ -105,6 +111,13 @@ pipeline {
               0) echo "tag $VERSION already exists on GitHub; not releasing" >&2; exit 1 ;;
               *) echo "could not list the tags on GitHub (exit $rc); not releasing" >&2; exit 1 ;;
             esac
+            export GH_PROMPT_DISABLED=1
+            enabled=$(gh api repos/n-orlov/deck/immutable-releases --jq .enabled 2>/dev/null) || enabled=unknown
+            if [ "$enabled" != true ]; then
+              echo "immutable releases are not enabled on n-orlov/deck (answer: $enabled); deck update would refuse this release. Enable them in the repository settings; not releasing" >&2
+              exit 1
+            fi
+            echo "immutable releases are enabled on n-orlov/deck"
           '''
         }
       }
@@ -119,6 +132,13 @@ pipeline {
       }
     }
 
+    // Draft first, then publish: with immutable releases on, a release is
+    // frozen the moment it is published, so every asset is attached to the
+    // draft before that. The draft is published through its id (a draft has
+    // no tag yet, so it cannot be looked up by one); publishing creates the
+    // tag at the candidate commit. A -pre version is a prerelease and never
+    // becomes "latest". Then the published release must be immutable, with
+    // every asset, or the build fails.
     stage('Publish') {
       when { expression { !params.DRY_RUN } }
       steps {
@@ -127,10 +147,36 @@ pipeline {
           script {
             env.RELEASE_URL = sh(returnStdout: true, script: '''
               export GH_PROMPT_DISABLED=1 GIT_TERMINAL_PROMPT=0
+              case "$VERSION" in
+                *-*) pre=--prerelease latest=false ;;
+                *)   pre= latest=true ;;
+              esac
               gh release create "$VERSION" dist/* --repo n-orlov/deck --target "$RELEASE_SHA" \
-                --title "$VERSION" --generate-notes
+                --title "$VERSION" --generate-notes --draft $pre >&2
+              id=$(gh api 'repos/n-orlov/deck/releases?per_page=100' \
+                --jq '.[] | select(.draft and .tag_name == env.VERSION) | .id')
+              case "$id" in
+                ''|*[!0-9]*) echo "cannot find the one draft release for $VERSION (got: $id)" >&2; exit 1 ;;
+              esac
+              gh api --method PATCH "repos/n-orlov/deck/releases/$id" \
+                -F draft=false -f make_latest="$latest" --jq .html_url
             ''').trim()
           }
+          sh '''
+            export GH_PROMPT_DISABLED=1
+            want="false|true|$(ls dist | LC_ALL=C sort | paste -sd ' ' -)"
+            for try in 1 2 3; do
+              rel=$(gh api "repos/n-orlov/deck/releases/tags/$VERSION" \
+                --jq '[.draft, .immutable, ([.assets[].name] | sort | join(" "))] | map(tostring) | join("|")') || rel=
+              [ "$rel" = "$want" ] && break
+              sleep 5
+            done
+            if [ "$rel" != "$want" ]; then
+              echo "published $VERSION is not an immutable release with every asset: got [$rel], want [$want]" >&2
+              exit 1
+            fi
+            echo "published $VERSION: immutable, with every asset"
+          '''
         }
       }
     }

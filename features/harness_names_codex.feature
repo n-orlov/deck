@@ -91,7 +91,7 @@ Feature: Codex session names travel between deck and the harness
     And the fake Codex pane of session "dialog guard" is titled "dialog guard"
     When fake Codex session "dialog guard" is prompted with "first"
     And fake Codex session "dialog guard" requests approval to run tool "apply_patch"
-    Then the state database session "dialog guard" has hook status "waiting", reason "apply_patch", message "", acknowledged 0, and notify_epoch 0
+    Then the state database session "dialog guard" has hook status "waiting", reason "apply_patch", message "", unseen, and notify_epoch 0
     When deck client "A" renames session "dialog guard" to "guard renamed" from its detail dialog
     Then the state database session "guard renamed" has an event of kind "harness_rename_refused" with reason containing "waiting for an answer"
     And the state database session "guard renamed" has name source "user"

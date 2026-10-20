@@ -74,7 +74,7 @@ func assertLiveSourcedErrorRowUntouched(t *testing.T, source, sessionID string) 
 	if before.Status != "error" || before.StatusSource != source || before.PaneExitStatus != nil {
 		t.Fatalf("fixture is not a bare %s-sourced error row: %#v", source, before)
 	}
-	if before.Acknowledged {
+	if before.StatusSeen() {
 		t.Fatalf("fixture must start unacknowledged (an error row always sets the unseen marker): %#v", before)
 	}
 	fakeTMuxLivePane(t, svc.TMux, session.Slug)
@@ -88,7 +88,7 @@ func assertLiveSourcedErrorRowUntouched(t *testing.T, source, sessionID string) 
 		t.Fatal(err)
 	}
 	if after.Status != before.Status || after.StatusSource != before.StatusSource ||
-		after.StatusReason != before.StatusReason || after.Acknowledged != before.Acknowledged {
+		after.StatusReason != before.StatusReason || after.StatusSeen() != before.StatusSeen() {
 		t.Fatalf("a live-pane %s-sourced error row must not be touched by the repair: before=%#v after=%#v", source, before, after)
 	}
 

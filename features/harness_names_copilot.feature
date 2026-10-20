@@ -83,10 +83,10 @@ Feature: Copilot session names travel between deck and the harness
     And deck client "A" is started
     When deck client "A" creates copilot session "dialog guard" with permission profile "safe"
     And fake Copilot session "dialog guard" starts working on "first"
-    Then the state database session "dialog guard" has hook status "running" with reason "new"
+    Then the state database session "dialog guard" has hook status "idle" with reason "new"
     When fake Copilot session "dialog guard" opens a permission dialog for "sleep 90"
     Then the fake Copilot pane of session "dialog guard" shows "Do you want to run this command?"
-    And the state database session "dialog guard" has hook status "running" with reason "new"
+    And the state database session "dialog guard" has hook status "idle" with reason "new"
     When deck client "A" renames session "dialog guard" to "guard renamed" from its detail dialog
     Then the state database session "guard renamed" has an event of kind "harness_rename_refused" with reason containing "a harness dialog is focused"
     And the state database session "guard renamed" has name source "user"

@@ -78,6 +78,9 @@ type Pane struct {
 	// real geometry ("45×22 of 120×40") rather than inferring it from
 	// however much non-blank content happened to be captured.
 	Width, Height int
+	// WindowActivity is the pane's window_activity: the Unix time in whole
+	// seconds of the window's last output. 0 when tmux reports none.
+	WindowActivity int64
 }
 
 // CaptureOptions describes an explicit tmux pane range. Line positions use
@@ -830,15 +833,15 @@ func sessionFromPaneFacts(name, output string) (Session, error) {
 // pane_current_command, pane_title, ...): List splits ONE `list-panes -a` read
 // on newline and `|`, and tmux prints such fields raw, so a directory named
 // with a newline and a fake line could forge a dead pane for another deck
-// session. Every field here is a number or a %-prefixed pane id.
-const paneFactsFormat = "#{pane_id}|#{pane_pid}|#{pane_dead}|#{pane_dead_status}|#{pane_dead_signal}|#{pane_width}|#{pane_height}"
+// session. Every field here is a number or a %-prefixed pane id (window_activity is epoch seconds).
+const paneFactsFormat = "#{pane_id}|#{pane_pid}|#{pane_dead}|#{pane_dead_status}|#{pane_dead_signal}|#{pane_width}|#{pane_height}|#{window_activity}"
 
 // sessionNamePattern is the shape of every name sessionName produces.
 var sessionNamePattern = regexp.MustCompile(`^deck_[a-z0-9_-]+$`)
 
 func parsePaneFacts(name, line string) (Pane, error) {
 	fields := strings.Split(line, "|")
-	if len(fields) != 7 || !paneIDPattern.MatchString(fields[0]) {
+	if (len(fields) != 7 && len(fields) != 8) || !paneIDPattern.MatchString(fields[0]) {
 		return Pane{}, fmt.Errorf("parse pane facts for session %q: %q", name, line)
 	}
 	pid, err := strconv.Atoi(fields[1])
@@ -853,12 +856,29 @@ func parsePaneFacts(name, line string) (Pane, error) {
 	if err != nil {
 		return Pane{}, fmt.Errorf("parse pane height for session %q: %w", name, err)
 	}
-	pane := Pane{ID: fields[0], PID: pid, Dead: fields[2] == "1", Width: width, Height: height}
+	activity, err := parseWindowActivity(name, fields)
+	if err != nil {
+		return Pane{}, err
+	}
+	pane := Pane{ID: fields[0], PID: pid, Dead: fields[2] == "1", Width: width, Height: height, WindowActivity: activity}
 	pane.DeadStatus, err = parseDeadStatus(name, fields[3], fields[4])
 	if err != nil {
 		return Pane{}, err
 	}
 	return pane, nil
+}
+
+// parseWindowActivity reads the optional eighth pane fact; a fixture
+// predating window_activity sends seven.
+func parseWindowActivity(name string, fields []string) (int64, error) {
+	if len(fields) != 8 || fields[7] == "" {
+		return 0, nil
+	}
+	activity, err := strconv.ParseInt(fields[7], 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("parse pane window activity for session %q: %w", name, err)
+	}
+	return activity, nil
 }
 
 // parseDeadStatus reads a pane's exit status from its pane_dead_status and
@@ -943,4 +963,96 @@ func (c Client) Bootstrap(ctx context.Context) error {
 		return fmt.Errorf("bootstrap tmux server on socket %q: %w: %s", c.Socket, err, strings.TrimSpace(string(output)))
 	}
 	return nil
+}
+
+// AttachSample is one look at a session while a full attach holds it (R321):
+// the active pane's geometry, whether it is in a mode (copy mode: a scroll)
+// and its scroll position, tmux's prefix keys, the attached client's key
+// table, and the pane's visible screen. It is read by deck's full-attach
+// engagement watcher, which never writes anything to tmux.
+type AttachSample struct {
+	Width, Height  int
+	InMode         bool
+	ScrollPosition string
+	// Prefix and Prefix2 are the prefix and prefix2 options ("C-b", "None").
+	Prefix, Prefix2 string
+	// ClientFound reports whether the client with the requested pid is still
+	// attached to the session; ClientKeyTable is its current key table.
+	ClientFound    bool
+	ClientKeyTable string
+	Screen         []byte
+}
+
+// attachSampleSeparator divides AttachSample's client listing from the
+// captured screen in one tmux invocation.
+const attachSampleSeparator = "::deck-attach-sample-end-of-clients::"
+
+// AttachSample reads one AttachSample for deck_<slug> in a single tmux
+// invocation (display-message x2, list-clients, a separator, capture-pane), so
+// the facts and the screen describe the same moment. clientPID names the
+// attach client deck spawned.
+func (c Client) AttachSample(ctx context.Context, slug string, clientPID int) (AttachSample, error) {
+	if c.Socket == "" {
+		return AttachSample{}, errors.New("tmux socket name is required")
+	}
+	name, err := sessionName(slug)
+	if err != nil {
+		return AttachSample{}, err
+	}
+	target := "=" + name + ":"
+	data, err := c.run(ctx,
+		"display-message", "-p", "-t", target, "#{pane_width}|#{pane_height}|#{pane_in_mode}|#{scroll_position}",
+		";",
+		"display-message", "-p", "-t", target, "#{prefix} #{prefix2}",
+		";",
+		"list-clients", "-t", "="+name, "-F", "#{client_pid}|#{client_key_table}",
+		";",
+		"display-message", "-p", attachSampleSeparator,
+		";",
+		"capture-pane", "-p", "-t", target)
+	if err != nil {
+		return AttachSample{}, fmt.Errorf("attach sample %q: %w", name, err)
+	}
+	return parseAttachSample(name, data, clientPID)
+}
+
+// findAttachClient scans list-clients lines ("pid|key table") for the attach
+// client's pid; the last matching line wins.
+func findAttachClient(lines []string, clientPID int) (found bool, table string) {
+	for _, line := range lines {
+		pidText, keyTable, ok := strings.Cut(line, "|")
+		if !ok {
+			continue
+		}
+		pid, perr := strconv.Atoi(pidText)
+		if perr != nil || pid != clientPID {
+			continue
+		}
+		found, table = true, keyTable
+	}
+	return found, table
+}
+
+func parseAttachSample(name string, data []byte, clientPID int) (AttachSample, error) {
+	head, screen, ok := bytes.Cut(data, []byte(attachSampleSeparator+"\n"))
+	if !ok {
+		return AttachSample{}, fmt.Errorf("attach sample %q: no separator", name)
+	}
+	lines := strings.Split(strings.TrimRight(string(head), "\n"), "\n")
+	facts := strings.Split(lines[0], "|")
+	if len(facts) != 4 {
+		return AttachSample{}, fmt.Errorf("attach sample %q: parse pane facts %q", name, lines[0])
+	}
+	width, werr := strconv.Atoi(facts[0])
+	height, herr := strconv.Atoi(facts[1])
+	if werr != nil || herr != nil {
+		return AttachSample{}, fmt.Errorf("attach sample %q: parse pane geometry %q", name, lines[0])
+	}
+	sample := AttachSample{Width: width, Height: height, InMode: facts[2] == "1", ScrollPosition: facts[3], Screen: screen}
+	if len(lines) < 2 {
+		return AttachSample{}, fmt.Errorf("attach sample %q: no prefix keys", name)
+	}
+	sample.Prefix, sample.Prefix2, _ = strings.Cut(lines[1], " ")
+	sample.ClientFound, sample.ClientKeyTable = findAttachClient(lines[2:], clientPID)
+	return sample, nil
 }

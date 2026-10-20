@@ -45,7 +45,8 @@ func registerBlackBoxAssertionSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^the state database session "([^"]+)" is "([^"]+)" from "([^"]+)" with killed_by_user=([01])$`, databaseSessionTerminalFields)
 	sc.Step(`^the released running hook fires for session "([^"]+)"$`, releasedRunningHookForSession)
 	sc.Step(`^the released waiting hook fires for session "([^"]+)"$`, releasedWaitingHookForSession)
-	sc.Step(`^the state database session "([^"]+)" is "([^"]+)" from "([^"]+)" with acknowledged=([01]), notify_epoch=([0-9]+), and ([0-9]+) attached events?$`, databaseSessionAttentionFields)
+	sc.Step(`^the state database session "([^"]+)" is "([^"]+)" from "([^"]+)" and is (seen|unseen), with notify_epoch=([0-9]+), and ([0-9]+) attached events?$`, databaseSessionSeenFields)
+	sc.Step(`^after one configured reconcile interval deck client "([^"]+)" row "([^"]+)" still contains "([^"]+)"$`, clientRowStillContainsAfterReconcileInterval)
 	sc.Step(`^the state database session "([^"]+)" has ([0-9]+) attached events?$`, databaseSessionAttachedEventCount)
 	sc.Step(`^the audit log is valid JSONL$`, auditLogIsJSONL)
 	sc.Step(`^the audit log contains event "([^"]+)" for a session$`, auditContainsSessionEvent)
@@ -142,6 +143,37 @@ func clientScreenStillContainsAfterReconcileInterval(ctx context.Context, name, 
 		return fmt.Errorf("client %q does not still show %q after reconcile interval %s:\n%s", name, want, scenarioReconcileInterval, frame)
 	}
 	return nil
+}
+
+// clientRowStillContainsAfterReconcileInterval waits one reconcile interval,
+// then asserts the row still shows want: the positive twin of the step above
+// for a marker (the unseen "!") that must survive looking at the row (R320).
+func clientRowStillContainsAfterReconcileInterval(ctx context.Context, clientName, sessionName, want string) error {
+	timer := time.NewTimer(scenarioReconcileInterval + 100*time.Millisecond)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+	}
+	h, err := assertionHarness(ctx)
+	if err != nil {
+		return err
+	}
+	client, err := h.Client(clientName)
+	if err != nil {
+		return err
+	}
+	frame := client.Frame(false)
+	for _, line := range strings.Split(frame, "\n") {
+		if strings.Contains(line, sessionName) {
+			if !strings.Contains(line, want) {
+				return fmt.Errorf("deck client %q row %q no longer contains %q: %s", clientName, sessionName, want, line)
+			}
+			return nil
+		}
+	}
+	return fmt.Errorf("deck client %q has no rendered row %q:\n%s", clientName, sessionName, frame)
 }
 
 func clientRowDoesNotContainAfterReconcileInterval(ctx context.Context, clientName, sessionName, unwanted string) error {
@@ -540,7 +572,8 @@ func databaseSessionTerminalFields(ctx context.Context, name, wantStatus, wantSo
 // user-kill assertion and this process. Using the injected durable row ID
 // exercises the same fallback identity that deck supplies to a real pane.
 func releasedRunningHookForSession(ctx context.Context, name string) error {
-	return releasedHookForSession(ctx, name, `{"hook_event_name":"SessionStart","source":"resume"}`)
+	// UserPromptSubmit is what enters running; SessionStart lands on idle (R307).
+	return releasedHookForSession(ctx, name, `{"hook_event_name":"UserPromptSubmit"}`)
 }
 
 func releasedWaitingHookForSession(ctx context.Context, name string) error {
@@ -588,7 +621,17 @@ func releasedHookForSession(ctx context.Context, name, payload string) error {
 	return nil
 }
 
-func databaseSessionAttentionFields(ctx context.Context, name, wantStatus, wantSource string, wantAcknowledged, wantEpoch, wantAttachedEvents int) error {
+// databaseSessionSeenFields is the seen-vocabulary form of
+// databaseSessionAttentionFields: "seen" means seen_status_at = status_at.
+func databaseSessionSeenFields(ctx context.Context, name, wantStatus, wantSource, seen string, wantEpoch, wantAttachedEvents int) error {
+	wantSeen := 0
+	if seen == "seen" {
+		wantSeen = 1
+	}
+	return databaseSessionAttentionFields(ctx, name, wantStatus, wantSource, wantSeen, wantEpoch, wantAttachedEvents)
+}
+
+func databaseSessionAttentionFields(ctx context.Context, name, wantStatus, wantSource string, wantSeen, wantEpoch, wantAttachedEvents int) error {
 	h, err := assertionHarness(ctx)
 	if err != nil {
 		return err
@@ -599,17 +642,17 @@ func databaseSessionAttentionFields(ctx context.Context, name, wantStatus, wantS
 	}
 	defer db.Close()
 	var status, source, sessionID string
-	var acknowledged, epoch, attachedEvents int
-	if err := db.QueryRowContext(ctx, `SELECT id, status, status_source, acknowledged, notify_epoch FROM sessions WHERE name = ?`, name).Scan(
-		&sessionID, &status, &source, &acknowledged, &epoch); err != nil {
+	var seen, epoch, attachedEvents int
+	if err := db.QueryRowContext(ctx, `SELECT id, status, status_source, (seen_status_at = status_at), notify_epoch FROM sessions WHERE name = ?`, name).Scan(
+		&sessionID, &status, &source, &seen, &epoch); err != nil {
 		return fmt.Errorf("observe attention fields for session %q: %w", name, err)
 	}
 	if err := db.QueryRowContext(ctx, `SELECT count(*) FROM events WHERE session_id = ? AND kind = 'attached'`, sessionID).Scan(&attachedEvents); err != nil {
 		return fmt.Errorf("observe attached events for session %q: %w", name, err)
 	}
-	if status != wantStatus || source != wantSource || acknowledged != wantAcknowledged || epoch != wantEpoch || attachedEvents != wantAttachedEvents {
-		return fmt.Errorf("session %q attention fields = status %q source %q acknowledged=%d notify_epoch=%d attached_events=%d; want %q %q %d %d %d",
-			name, status, source, acknowledged, epoch, attachedEvents, wantStatus, wantSource, wantAcknowledged, wantEpoch, wantAttachedEvents)
+	if status != wantStatus || source != wantSource || seen != wantSeen || epoch != wantEpoch || attachedEvents != wantAttachedEvents {
+		return fmt.Errorf("session %q attention fields = status %q source %q seen=%d notify_epoch=%d attached_events=%d; want %q %q %d %d %d",
+			name, status, source, seen, epoch, attachedEvents, wantStatus, wantSource, wantSeen, wantEpoch, wantAttachedEvents)
 	}
 	return nil
 }
@@ -618,7 +661,7 @@ func databaseSessionAttentionFields(ctx context.Context, name, wantStatus, wantS
 // databaseSessionAttentionFields for scenarios that only need to prove
 // requirement 24 (a mouse gesture reaching the hidden main view while a
 // full-screen takeover is painted must never attach) -- pinning the
-// session's status/status_source/acknowledged/notify_epoch as well would
+// session's status/status_source/seen/notify_epoch as well would
 // couple this proof to unrelated probe timing.
 func databaseSessionAttachedEventCount(ctx context.Context, name string, wantAttachedEvents int) error {
 	h, err := assertionHarness(ctx)
@@ -1184,10 +1227,10 @@ func TestBlackBoxAssertionsObserveRealSession(t *testing.T) {
 	if err := privateOptionIs(stepCtx, "exit-empty", "off"); err != nil {
 		t.Fatal(err)
 	}
-	// The pinned version is internal/store.SchemaVersion (14 as of schemaV14);
+	// The pinned version is internal/store.SchemaVersion (21 as of schemaV21);
 	// this pin must track that constant exactly, as it has every time the
 	// constant moved before it.
-	if err := databaseSchemaVersion(stepCtx, 14); err != nil {
+	if err := databaseSchemaVersion(stepCtx, 21); err != nil {
 		t.Fatal(err)
 	}
 	if err := databaseJournalMode(stepCtx, "wal"); err != nil {

@@ -94,7 +94,11 @@ func TestResumedRowAcceptsTheNewPanesFirstHook(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if got.Status != "running" || got.StatusSource != "hook" || got.StatusAt != 14 {
+			wantStatus := "running"
+			if event == "SessionStart" {
+				wantStatus = "idle" // R307
+			}
+			if got.Status != wantStatus || got.StatusSource != "hook" || got.StatusAt != 14 {
 				t.Fatalf("the new pane's %s was dropped by the replaced pane's crash verdict (#9): status=%q source=%q status_at=%d",
 					event, got.Status, got.StatusSource, got.StatusAt)
 			}
