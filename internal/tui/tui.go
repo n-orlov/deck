@@ -1661,8 +1661,10 @@ type attachFinished struct {
 	observed store.Session
 	// writes are the seen writes the watcher issued during the attach.
 	writes []sessionEngaged
-	// at is the instant the exec callback saw the client end: the start of the
-	// detach repaint's discount span (R410). Zero when not taken.
+	// at is the instant the client's process was seen to end, taken the
+	// moment its wait returned (watchedAttach.Ended, endStampedCommand.Ended),
+	// before the output drain, the terminal restore and deck's re-fit: the
+	// start of the detach repaint's discount span (R410). Zero when not taken.
 	at time.Time
 }
 
@@ -3455,8 +3457,8 @@ func (m Model) onShellCreated(msg shellCreated) (tea.Model, tea.Cmd) {
 
 func (m Model) onAttachFinished(msg attachFinished) (tea.Model, tea.Cmd) {
 	if m.outputDiscount != nil && m.attachingSessionID != "" {
-		// R410: the instant the client's exit was seen (msg.at), taken in the
-		// exec callback before the detach repaint can be stamped.
+		// R410: the instant the client's exit was seen (msg.at), taken as its
+		// wait returned, before the drain, the terminal restore and the re-fit.
 		endedAt := msg.at
 		if endedAt.IsZero() {
 			endedAt = time.Now()
@@ -4429,21 +4431,30 @@ func (m Model) attachSelected() (tea.Model, tea.Cmd) {
 	}
 	m.attachingSessionID = session.ID
 	if m.attachSample != nil {
-		// R321: the watcher beside the client reports the attach's first
-		// engagement trigger; onAttachFinished hands it to engageRow.
-		// The trigger is bound to the status episode the watcher read
-		// across its evidence (episodeBracket), from the store when deck
-		// has one.
 		// The cell is created now so the watcher's seen writes and the
 		// Model that comes back from the attach share one record.
 		m.engagementCell()
-		engage := m.engageRow
-		watched := &watchedAttach{cmd: command, slug: session.Slug, sample: m.attachSample, interval: attachWatchInterval, settle: attachWatchSettle, session: session, read: m.attachRowReader(session.ID), engage: engage, observeOutput: m.attachOutputObserver(session), discount: m.attachOutputDiscount(session)}
-		return m, tea.Exec(watched, func(err error) tea.Msg {
-			return attachFinished{err: err, engaged: watched.Trigger, observed: watched.Observed, writes: watched.Engaged, at: time.Now()}
-		})
 	}
-	return m, tea.ExecProcess(command, func(err error) tea.Msg { return attachFinished{err: err, at: time.Now()} })
+	return m, tea.Exec(m.attachClient(session, command))
+}
+
+// attachClient is the command tea.Exec runs for a full attach and the
+// callback that reports its end. Either way the callback carries the instant
+// the client's process ended (R410), never the later instant it runs.
+func (m Model) attachClient(session store.Session, command *exec.Cmd) (tea.ExecCommand, tea.ExecCallback) {
+	if m.attachSample == nil {
+		plain := &endStampedCommand{cmd: command}
+		return plain, func(err error) tea.Msg { return attachFinished{err: err, at: plain.Ended} }
+	}
+	// R321: the watcher beside the client reports the attach's first
+	// engagement trigger; onAttachFinished hands it to engageRow. The
+	// trigger is bound to the status episode the watcher read across its
+	// evidence (episodeBracket), from the store when deck has one.
+	engage := m.engageRow
+	watched := &watchedAttach{cmd: command, slug: session.Slug, sample: m.attachSample, interval: attachWatchInterval, settle: attachWatchSettle, session: session, read: m.attachRowReader(session.ID), engage: engage, observeOutput: m.attachOutputObserver(session), discount: m.attachOutputDiscount(session)}
+	return watched, func(err error) tea.Msg {
+		return attachFinished{err: err, engaged: watched.Trigger, observed: watched.Observed, writes: watched.Engaged, at: watched.Ended}
+	}
 }
 
 // attachOutputObserver is the watcher's output-clock read for the attached

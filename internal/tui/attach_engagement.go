@@ -417,6 +417,11 @@ type watchedAttach struct {
 	// episode, the only one Trigger may set seen.
 	Trigger  engagementTrigger
 	Observed store.Session
+	// Ended is the instant Run saw the client's process end (R410), taken
+	// the moment Wait returns: before the output drain, the terminal restore
+	// and deck's own re-fit, so the detach repaint's discount span starts no
+	// later than deck learns of the detach. Zero until the client has ended.
+	Ended time.Time
 	// Engaged holds the result of every seen write the watcher issued while
 	// the attach ran; onAttachFinished reports the failed ones.
 	Engaged []sessionEngaged
@@ -536,6 +541,7 @@ func (w *watchedAttach) Run() error {
 	}()
 	outputDone := w.startOutputObserver(ctx)
 	err = w.cmd.Wait()
+	w.Ended = time.Now()
 	select {
 	case <-outDone:
 	case <-time.After(attachOutputDrain):
@@ -546,6 +552,42 @@ func (w *watchedAttach) Run() error {
 	engaged := <-found
 	w.Trigger, w.Observed = engaged.trigger, engaged.observed
 	return err
+}
+
+// endStampedCommand is the plain attach client (no watcher) as tea.Exec runs
+// it: it records the instant the client's process ended (R410), before
+// bubbletea restores the terminal and before deck's re-fit, the way
+// watchedAttach.Ended does for the watched attach.
+type endStampedCommand struct {
+	cmd   *exec.Cmd
+	Ended time.Time
+}
+
+// Run runs the client to its end and stamps Ended the moment it returns.
+func (c *endStampedCommand) Run() error {
+	err := c.cmd.Run()
+	c.Ended = time.Now()
+	return err
+}
+
+// SetStdin, SetStdout and SetStderr hand the client the terminal unless the
+// command already carries its own stream, as tea.ExecProcess does.
+func (c *endStampedCommand) SetStdin(r io.Reader) {
+	if c.cmd.Stdin == nil {
+		c.cmd.Stdin = r
+	}
+}
+
+func (c *endStampedCommand) SetStdout(w io.Writer) {
+	if c.cmd.Stdout == nil {
+		c.cmd.Stdout = w
+	}
+}
+
+func (c *endStampedCommand) SetStderr(w io.Writer) {
+	if c.cmd.Stderr == nil {
+		c.cmd.Stderr = w
+	}
 }
 
 // startOutputObserver runs observeOutput every outputEvery until ctx ends and

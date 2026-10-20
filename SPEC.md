@@ -1545,12 +1545,15 @@ are in memory, like the baseline.
 *A span covers every second it overlaps (R410).* tmux stamps `window_activity` in whole seconds, so a
 second names the interval `[second*1000, second*1000+999]` ms. A window is a span of Unix milliseconds,
 and a `window_activity` second is discounted iff the span overlaps that interval in any way. A span
-starts no later than the instant before deck issued the action it covers: every resize, attach, detach
-and forwarded-key site takes the instant before it issues the tmux call or the write and passes it to
-`Discount`, `AttachStarted` or `AttachEnded`, so a redraw stamped in the second the call began in, but
-returned after, is covered, in a new bucket and in an already-examined one alike. The span ends one
-window after that instant; a second that ended before the span began is not covered.
-Tests: `TestOutputClockDiscountCoversTheSecondItWasCausedIn`, `TestOutputInsideTheAttachStartWindowDoesNotAdvanceLastOutputAt`,
+starts no later than the instant before deck issued the action it covers: every resize, attach and
+forwarded-key site takes the instant before it issues the tmux call or the write and passes it to
+`Discount` or `AttachStarted`, so a redraw stamped in the second the call began in, but returned after,
+is covered, in a new bucket and in an already-examined one alike. A detach is the client's own act, not a
+call deck issues, so `AttachEnded` takes the instant deck's wait on the client returns, before deck drains
+the client's output, restores its terminal or issues its re-fit, never the later instant the exec
+callback runs; a detach by key is also covered from before the write by that key's own window. The
+span ends one window after its start; a second that ended before the span began is not covered.
+Tests: `TestOutputClockDiscountCoversTheSecondItWasCausedIn`, `TestDetachDiscountStartsWhenTheClientEndsNotWhenItsCallbackRuns`, `TestOutputInsideTheAttachStartWindowDoesNotAdvanceLastOutputAt`,
 `TestAutonomousOutputLongAfterAnAttachStartCountsWhileStillAttached`, `TestAttachDiscountNeverOutlastsOneBucket`,
 `TestDetachRepaintIsDiscountedButTheAttachedStretchIsNot`, `TestKeyAfterAnExpiredAttachWindowIsStillDiscounted`,
 `TestAttachDiscountsTheHandOffAndTheDetachRepaint`,
