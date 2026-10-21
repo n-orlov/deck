@@ -97,6 +97,11 @@ while [ "$i" -le "$runs" ]; do
         {
             echo "--- RUN $i failure excerpt ---"
             grep -E -- '^(--- FAIL|FAIL|panic:|WARNING: DATA RACE)|^\s+--- FAIL' "$run_log" | head -n 40
+            # godog prints the failing step and its error in a "--- Failed
+            # steps:" block (ANSI colours stripped here); the verdict lines
+            # above name only the scenario, never why it failed.
+            echo "--- RUN $i failed steps ---"
+            sed -e 's/\x1b\[[0-9;]*m//g' "$run_log" | awk '/^--- Failed steps:/{p=1} p{print} /^[0-9]+ scenarios \(/{p=0}' | head -n 60
             echo "--- RUN $i log tail ---"
             tail -n 40 "$run_log"
             echo "--- end RUN $i excerpt ---"
