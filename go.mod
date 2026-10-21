@@ -2,7 +2,7 @@ module github.com/n-orlov/deck
 
 go 1.25.0
 
-toolchain go1.26.9
+toolchain go1.26.10
 
 require (
 	github.com/aymanbagabas/go-osc52/v2 v2.0.1
