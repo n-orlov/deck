@@ -3,9 +3,11 @@ package notify
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -542,33 +544,91 @@ func TestSpawnMasksJSONMarshalledSecretsWithTrailingBackslashesOnEverySurface(t 
 }
 
 // Masking an escaped-JSON-shaped input stays linear: a 1 MiB run of
-// backslashes and a 1 MiB run of `\"k\":` each finish in well under a second
-// (about 50 ms on an idle core). A quadratic masker needs minutes on 1 MiB, so
-// it misses the one-second bound on every attempt; a loaded CI host can stall a
-// single attempt for a second without the masker being slow. The bound stays
-// one second and the verdict is the best of a few attempts, so a stall that
-// hits one attempt no longer reads as a regression.
+// backslashes and a 1 MiB run of `\"k\":` each finish in well under a second.
 func TestMaskSecretAssignmentsStaysLinearOnEscapedInputs(t *testing.T) {
 	const size = 1 << 20
-	const attempts = 4
 	for name, in := range map[string]string{
 		"backslashes":  strings.Repeat(`\`, size),
 		"escaped keys": strings.Repeat(`\"k\":`, size/len(`\"k\":`)+1)[:size],
 	} {
-		best := time.Duration(1<<63 - 1)
-		for range attempts {
-			start := time.Now()
-			got := maskSecretAssignments(in)
-			best = min(best, time.Since(start))
-			if len(got) > len(in)+len(MaskedPlaceholder) {
-				t.Errorf("%s: output grew from %d to %d bytes", name, len(in), len(got))
+		requireMaskedWithinBound(t, name, in, time.Second, maskSecretAssignments)
+	}
+}
+
+// errorfer is the slice of testing.TB requireMaskedWithinBound reports through,
+// so the guard itself can be tested against a recorder.
+type errorfer interface {
+	Errorf(format string, args ...any)
+}
+
+// requireMaskedWithinBound runs mask over in exactly once and reports a failure
+// when that one invocation takes bound or longer or grows the input by more than
+// the placeholder. There is no retry: an over-bound invocation is a failure
+// whatever a later one would measure. A collection runs first so garbage left by
+// earlier tests is not charged to the measured invocation.
+func requireMaskedWithinBound(t errorfer, name, in string, bound time.Duration, mask func(string) string) {
+	runtime.GC()
+	start := time.Now()
+	got := mask(in)
+	if elapsed := time.Since(start); elapsed >= bound {
+		t.Errorf("%s: masking %d bytes took %v, want under %v", name, len(in), elapsed, bound)
+	}
+	if len(got) > len(in)+len(MaskedPlaceholder) {
+		t.Errorf("%s: output grew from %d to %d bytes", name, len(in), len(got))
+	}
+}
+
+type errorRecorder struct{ msgs []string }
+
+func (r *errorRecorder) Errorf(format string, args ...any) {
+	r.msgs = append(r.msgs, fmt.Sprintf(format, args...))
+}
+
+// The linear-masking guard keeps its single-invocation failure condition: an
+// over-bound invocation fails even when every later invocation would be fast,
+// and the guard never invokes the masker a second time.
+func TestMaskedWithinBoundGuardDoesNotForgiveASlowInvocationByRetrying(t *testing.T) {
+	const bound = 20 * time.Millisecond
+	cases := map[string]string{
+		"backslashes":      strings.Repeat(`\`, 64),
+		"escaped keys":     strings.Repeat(`\"k\":`, 16),
+		"plain assignment": "token=abc",
+	}
+	for name, in := range cases {
+		t.Run(name, func(t *testing.T) {
+			calls := 0
+			slowOnce := func(s string) string {
+				calls++
+				if calls == 1 {
+					time.Sleep(2 * bound)
+				}
+				return s
 			}
-			if best < time.Second {
-				break
+			rec := &errorRecorder{}
+			requireMaskedWithinBound(rec, name, in, bound, slowOnce)
+			if calls != 1 {
+				t.Errorf("masker invoked %d times, want exactly 1", calls)
 			}
-		}
-		if best >= time.Second {
-			t.Errorf("%s: masking %d bytes took %v at best of %d attempts, want under 1s", name, len(in), best, attempts)
-		}
+			if len(rec.msgs) != 1 || !strings.Contains(rec.msgs[0], "want under") {
+				t.Errorf("slow invocation reported %q, want one bound failure", rec.msgs)
+			}
+		})
+	}
+}
+
+// A masker that stays under the bound passes, and one that grows its output past
+// the placeholder fails regardless of speed.
+func TestMaskedWithinBoundGuardStillJudgesGrowthAndPassesFastMaskers(t *testing.T) {
+	fast := &errorRecorder{}
+	requireMaskedWithinBound(fast, "fast", "a=b", time.Second, func(s string) string { return s })
+	if len(fast.msgs) != 0 {
+		t.Errorf("fast masker reported %q, want no failure", fast.msgs)
+	}
+	grow := &errorRecorder{}
+	requireMaskedWithinBound(grow, "grow", "a=b", time.Second, func(s string) string {
+		return s + strings.Repeat("x", len(MaskedPlaceholder)+1)
+	})
+	if len(grow.msgs) != 1 || !strings.Contains(grow.msgs[0], "grew") {
+		t.Errorf("growing masker reported %q, want one growth failure", grow.msgs)
 	}
 }
