@@ -54,7 +54,7 @@ the file is written. Only `deck/release` reads it (`copyArtifactPermission`
 allows `/deck/release`, and `/deck/ci/*` for the Allure history).
 
 **Telegram:** every build posts one message to the homelab notifier
-(`http://100.71.162.65:8090/notify`) through `notifyTelegram` from the homelab
+(`https://notify.wisent-owl.ts.net/notify`) through `notifyTelegram` from the homelab
 shared library (`@Library('homelab')`, github.com/n-orlov/jenkins-library), in
 `post { cleanup }` so it carries the final result. The message has the
 result (FIXED after a red build), branch, build link, failed stage, commit,
