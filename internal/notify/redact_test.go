@@ -542,20 +542,33 @@ func TestSpawnMasksJSONMarshalledSecretsWithTrailingBackslashesOnEverySurface(t 
 }
 
 // Masking an escaped-JSON-shaped input stays linear: a 1 MiB run of
-// backslashes and a 1 MiB run of `\"k\":` each finish in well under a second.
+// backslashes and a 1 MiB run of `\"k\":` each finish in well under a second
+// (about 50 ms on an idle core). A quadratic masker needs minutes on 1 MiB, so
+// it misses the one-second bound on every attempt; a loaded CI host can stall a
+// single attempt for a second without the masker being slow. The bound stays
+// one second and the verdict is the best of a few attempts, so a stall that
+// hits one attempt no longer reads as a regression.
 func TestMaskSecretAssignmentsStaysLinearOnEscapedInputs(t *testing.T) {
 	const size = 1 << 20
+	const attempts = 4
 	for name, in := range map[string]string{
 		"backslashes":  strings.Repeat(`\`, size),
 		"escaped keys": strings.Repeat(`\"k\":`, size/len(`\"k\":`)+1)[:size],
 	} {
-		start := time.Now()
-		got := maskSecretAssignments(in)
-		if elapsed := time.Since(start); elapsed >= time.Second {
-			t.Errorf("%s: masking %d bytes took %v, want under 1s", name, len(in), elapsed)
+		best := time.Duration(1<<63 - 1)
+		for range attempts {
+			start := time.Now()
+			got := maskSecretAssignments(in)
+			best = min(best, time.Since(start))
+			if len(got) > len(in)+len(MaskedPlaceholder) {
+				t.Errorf("%s: output grew from %d to %d bytes", name, len(in), len(got))
+			}
+			if best < time.Second {
+				break
+			}
 		}
-		if len(got) > len(in)+len(MaskedPlaceholder) {
-			t.Errorf("%s: output grew from %d to %d bytes", name, len(in), len(got))
+		if best >= time.Second {
+			t.Errorf("%s: masking %d bytes took %v at best of %d attempts, want under 1s", name, len(in), best, attempts)
 		}
 	}
 }
