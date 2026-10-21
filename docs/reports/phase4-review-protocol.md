@@ -22,7 +22,11 @@ directory) implements it.
 
 ## The Go analogue, concretely
 
-`ci/review.sh <go test args...>`:
+`ci/review.sh [--smoke | <go test args...>]` (with no argument, or `--smoke`, it stops
+after step 2 and exits 0 — the authorized no-argument invocation; it also pins the
+sibling's `/w` mount to the checkout the script lives in, so a fresh clone measures
+itself rather than `$RALPHD_HOST_WORKSPACE`, and step 2 checks every module package
+resolves under the clone and that a nonce only the clone's `.git` carries is there):
 
 1. Makes a disposable, git-ignored clone of this repository at
    `<repo-root>/.review-clone` (`git clone --local --no-hardlinks`, removed and
