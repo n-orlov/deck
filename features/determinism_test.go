@@ -91,18 +91,26 @@ func frozenClockSessionIsCreatedAndKilled(ctx context.Context) error {
 	// individual clients: the later released _hook process must join the same
 	// shared clock after SIGUSR1 advances it.
 	h.clientEnv = deterministicEnvironment()
-	client, err := h.StartNamedClient(ctx, "frozen-clock")
-	if err != nil {
-		return err
-	}
-	if err := client.WaitForFrame(ctx, true, "No sessions yet"); err != nil {
-		return err
-	}
+	// The observer starts BEFORE the creating client on purpose. Audit
+	// duration_ms is each deck process's own monotonic lifetime, and the
+	// scenario compares the creating client's launch record with the
+	// observer's killed record (frozenAuditIsSteppedAndAdvances). Starting the
+	// observer first makes the observer's lifetime at the kill exceed the
+	// client's lifetime at the launch by construction (it started earlier and
+	// killed later), instead of by a margin of tens of milliseconds that a
+	// slow client start-up could erase.
 	observer, err := h.StartNamedClient(ctx, "frozen-clock-observer")
 	if err != nil {
 		return err
 	}
 	if err := observer.WaitForFrame(ctx, true, "No sessions yet"); err != nil {
+		return err
+	}
+	client, err := h.StartNamedClient(ctx, "frozen-clock")
+	if err != nil {
+		return err
+	}
+	if err := client.WaitForFrame(ctx, true, "No sessions yet"); err != nil {
 		return err
 	}
 	cwd := filepath.Join(h.Home, "frozen-clock-cwd")
