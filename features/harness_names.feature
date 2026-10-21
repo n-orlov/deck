@@ -44,6 +44,7 @@ Feature: Claude session names travel between deck and the harness
     And fake Claude session "S3 upload retry policy" fires "UserPromptSubmit" for itself using injected identity:
       | prompt | and then |
     Then the state database session "Backoff for uploads" has name source "harness"
+    And deck client "A" screen contains "Backoff for uploads"
     When deck client "A" renames session "Backoff for uploads" to "my own name" from its detail dialog
     Then the state database session "my own name" has name source "user"
     Then the fake Claude transcript of session "my own name" has a "custom-title" record titled "my own name"
