@@ -86,7 +86,7 @@ func TestTrivyGate_OutsideAGitWorkTreeScansEverything(t *testing.T) {
 		t.Errorf("localSkipArgs outside a work tree = %q, want none", got)
 	}
 	got := len(trivyArgs(opts(t, "trivy", dir)))
-	if want := 2*(len(trivySkipFiles)+len(trivySkipDirs)) + 12; got != want {
+	if want := 2*(len(trivySkipFiles)+len(trivySkipDirs)) + 13; got != want {
 		t.Errorf("trivy argv has %d entries, want %d (fixed flags + fixed skips + target only)", got, want)
 	}
 }

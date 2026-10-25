@@ -230,6 +230,7 @@ func trivyArgs(o trivyOptions) []string {
 		"--exit-code", "1",
 		"--cache-dir", o.CacheDir,
 		"--skip-version-check",
+		"--no-progress",
 	}
 	for _, f := range trivySkipFiles {
 		args = append(args, "--skip-files", f)

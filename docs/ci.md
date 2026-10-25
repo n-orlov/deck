@@ -80,7 +80,9 @@ build has them too:
   archive in `~/.cache/deck-allure` on the agent (`ALLURE_CACHE_DIR`), re-verified
   before every use.
 - **CI summary**: `ci/summary.sh`'s counts, flaky tests, slowest packages and
-  coverage table, the nightly stability verdicts and the quality gate report.
+  coverage table, the nightly stability verdicts and the quality gate report,
+  rendered as HTML by `ci/jenkins-report.sh`: headline tiles, tables, and one
+  collapsible section per gate (open when it failed).
 - **Build page summary line** (badge plugin `addSummary`): pass/fail/skip/flaky
   counts and unit coverage, linking to both reports.
 - **README badges** (`embeddable-build-status`): `build` (the plugin's own),

@@ -142,7 +142,10 @@ trap 'rm -f "$times"' EXIT
 for junit in "$junit_dir/junit-go.xml" "$junit_dir/junit-features.xml"; do
     [ -f "$junit" ] || continue
     grep -oE '<testsuite [^>]*>' "$junit" | while IFS= read -r line; do
-        name=$(printf '%s' "$line" | grep -oE 'name="[^"]*"' | head -1 | sed -E 's/^name="//; s/"$//')
+        # The attribute's XML entities are decoded (&amp; last), so the
+        # summary carries the name as text and its HTML render escapes once.
+        name=$(printf '%s' "$line" | grep -oE 'name="[^"]*"' | head -1 | sed -E 's/^name="//; s/"$//' |
+            sed -e 's/&#39;/'"'"'/g; s/&apos;/'"'"'/g; s/&quot;/"/g; s/&lt;/</g; s/&gt;/>/g; s/&amp;/\&/g')
         tm=$(printf '%s' "$line" | grep -oE 'time="[0-9.]+"' | head -1 | grep -oE '[0-9.]+')
         [ -n "$name" ] && [ -n "$tm" ] && printf '%s %s\n' "$tm" "$name"
     done
