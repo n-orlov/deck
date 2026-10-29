@@ -186,7 +186,9 @@ pipeline {
           }
         }
       }
-      archiveArtifacts artifacts: 'ci-results/**/*.txt, ci-results/**/*.xml, ci-results/**/*.out, ci-summary/**, allure-history/**',
+      // ci-results/stability/**/*.log: ci/stability.sh's per-run go test logs,
+      // the only full record of a stability failure (the console has an excerpt).
+      archiveArtifacts artifacts: 'ci-results/**/*.txt, ci-results/**/*.xml, ci-results/**/*.out, ci-results/stability/**/*.log, ci-summary/**, allure-history/**',
                        allowEmptyArchive: true
     }
     // Only a fully green main build (SUCCESS, not UNSTABLE) is a release

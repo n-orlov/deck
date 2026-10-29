@@ -2,6 +2,7 @@ package features
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -56,6 +57,13 @@ func paneDrawsComposerFrame(ctx context.Context, name, footer string) error {
 	if err := os.WriteFile(script, []byte(activityPaneScript), 0o700); err != nil {
 		return fmt.Errorf("write activity pane script: %w", err)
 	}
+	// The draw must be output the clock counts, so it must not land while a
+	// resize is still being absorbed: deck fits a just-created, selected
+	// session's window to the preview (a discount window, R305), and a resize
+	// the clock has not read yet turns the next capture into a baseline (R409).
+	if err := waitForSettledWindow(ctx, h, name, 2); err != nil {
+		return err
+	}
 	// Every draw starts in a bucket later than any pane's last output, so the
 	// sessions' last_output_at differ by a whole bucket and the order is total.
 	if err := waitForLaterOutputBucket(ctx, h, 2); err != nil {
@@ -69,7 +77,88 @@ func paneDrawsComposerFrame(ctx context.Context, name, footer string) error {
 	if _, err := tmuxOutput(ctx, h, "send-keys", "-t", target, "Enter"); err != nil {
 		return fmt.Errorf("start the pane program in %q: %w", target, err)
 	}
-	return waitForPaneText(ctx, h, target, footer)
+	if err := waitForPaneText(ctx, h, target, footer); err != nil {
+		return err
+	}
+	return waitForCountedOutput(ctx, h, name, target, 2)
+}
+
+// waitForSettledWindow blocks until the session's window geometry has held
+// still for one discount window (min(output_bucket, 5 s), R305), one second
+// and two reconcile intervals: any deck-caused resize's discount has run out,
+// and the clock has read the settled size, so the next pane change is counted.
+// The second is window_activity's resolution: output in the second a discount
+// span ends in is discounted even after the span (R410).
+func waitForSettledWindow(ctx context.Context, h *ScenarioHarness, name string, bucketSeconds int) error {
+	quiet := min(time.Duration(bucketSeconds)*time.Second, 5*time.Second) + time.Second + 2*scenarioReconcileInterval
+	var last string
+	var since time.Time
+	return pollUntil(quiet+10*time.Second, func() error {
+		now, err := privateWindowGeometry(ctx, h, name)
+		if err != nil {
+			return err
+		}
+		if now != last {
+			last, since = now, time.Now()
+		}
+		if held := time.Since(since); held < quiet {
+			return fmt.Errorf("private tmux window for session %q held %s for only %s, want %s", name, now, held.Round(time.Millisecond), quiet)
+		}
+		return nil
+	})
+}
+
+// waitForCountedOutput blocks until deck has counted the pane's latest output:
+// the session's last_output_at is in the bucket of the window's
+// window_activity. Its error carries the session's audit records (a draw taken
+// as a baseline shows as output.rebaselined; a discounted one leaves none).
+func waitForCountedOutput(ctx context.Context, h *ScenarioHarness, name, target string, bucketSeconds int) error {
+	activity, err := windowActivity(ctx, h, target)
+	if err != nil {
+		return err
+	}
+	id, err := sessionIDByName(h, name)
+	if err != nil {
+		return err
+	}
+	width := int64(bucketSeconds)
+	return pollUntil(5*time.Second, func() error {
+		db, err := openObservedDatabase(h)
+		if err != nil {
+			return err
+		}
+		defer db.Close()
+		var at int64
+		if err := db.QueryRowContext(ctx, `SELECT last_output_at FROM sessions WHERE id = ?`, id).Scan(&at); err != nil {
+			return fmt.Errorf("observe session %q last_output_at: %w", name, err)
+		}
+		if at/1000/width >= activity/width {
+			return nil
+		}
+		return fmt.Errorf("deck has not counted the draw in session %q as output: last_output_at %d ms, window_activity %d s; its audit records:\n%s",
+			name, at, activity, sessionAudit(h, id))
+	})
+}
+
+// sessionAudit is every audit record of the session, one per line.
+func sessionAudit(h *ScenarioHarness, sessionID string) string {
+	var lines []string
+	for _, root := range agentStateRoots(h) {
+		for _, rec := range readAuditAt(root) {
+			var id string
+			_ = json.Unmarshal(rec["session_id"], &id)
+			if id != sessionID {
+				continue
+			}
+			if b, err := json.Marshal(rec); err == nil {
+				lines = append(lines, string(b))
+			}
+		}
+	}
+	if len(lines) == 0 {
+		return "(none)"
+	}
+	return strings.Join(lines, "\n")
 }
 
 func paneChurnsFooterInLaterBucket(ctx context.Context, name, footer string, bucketSeconds int) error {
