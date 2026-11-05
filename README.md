@@ -16,6 +16,10 @@ Named sessions, durable conversations, resume on demand.
 curl -fsSL https://raw.githubusercontent.com/n-orlov/deck/main/install.sh | sh
 ```
 
+Or ask your coding agent: *install deck following https://github.com/n-orlov/deck/blob/main/INSTALL-AGENT.md*.
+The [agent guide](INSTALL-AGENT.md) runs the same steps one command at a time, and also checks the release is
+immutable.
+
 - Installs to `~/.local/bin/deck`. Override: `DECK_INSTALL_DIR`, `DECK_VERSION=vX.Y.Z`.
 - Verifies the download against the release's `checksums.txt` (SHA-256); a mismatch aborts with
   nothing installed.
