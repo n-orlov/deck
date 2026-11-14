@@ -57,6 +57,7 @@ Feature: §11.8 mouse bindings and the [ui] mouse / DECK_MOUSE opt-out (requirem
     # genuinely exercised rather than merely still compiling.
     Given deck client "A" is started
     When deck client "A" creates shell session "dbl-click-enter"
+    And the state database contains session "dbl-click-enter" with status "running"
     And within one configured reconcile interval deck client "A" screen contains "running"
     And deck client "A" double-clicks on the row containing "dbl-click-enter"
     Then deck client "A" screen contains "dbl-click-enter"
@@ -133,6 +134,7 @@ Feature: §11.8 mouse bindings and the [ui] mouse / DECK_MOUSE opt-out (requirem
     Given deck client "A" is started with preview fit disabled
     When deck client "A" creates shell session "retarget-first"
     And deck client "A" creates shell session "retarget-second"
+    And the state database contains session "retarget-second" with status "running"
     And within one configured reconcile interval deck client "A" screen contains "running"
     And the private tmux window for session "retarget-first" is captured as "retarget-first-baseline"
     And deck client "A" selects session "retarget-first"
@@ -176,6 +178,7 @@ Feature: §11.8 mouse bindings and the [ui] mouse / DECK_MOUSE opt-out (requirem
     Given deck client "A" is started
     When deck client "A" creates shell session "retarget-noop-a"
     And deck client "A" creates shell session "retarget-noop-b"
+    And the state database contains session "retarget-noop-b" with status "running"
     And within one configured reconcile interval deck client "A" screen contains "running"
     And deck client "A" selects session "retarget-noop-a"
     And deck client "A" enters interactive mode
@@ -293,6 +296,7 @@ Feature: §11.8 mouse bindings and the [ui] mouse / DECK_MOUSE opt-out (requirem
     # the list.
     Given deck client "A" is started
     When deck client "A" creates shell session "mouse-attach-rt"
+    And the state database contains session "mouse-attach-rt" with status "running"
     And within one configured reconcile interval deck client "A" screen contains "running"
     And the state database session "mouse-attach-rt" has status "waiting" 5 seconds ago
     And within one configured reconcile interval deck client "A" screen contains "waiting"

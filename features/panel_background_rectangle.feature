@@ -90,7 +90,8 @@ Feature: A selected/striped sidebar row's background fills a real rectangle, and
     And deck client "A" creates shell session "rec-bbb-selected-session-with-a-name-far-too-long-to-fit-in-the-sidebar-at-all"
     And deck client "A" creates shell session "rec-ccc"
     And deck client "A" creates shell session "rec-ddd-stripe"
-    Then within one configured reconcile interval deck client "A" screen contains "running"
+    Then the state database contains session "rec-ddd-stripe" with status "running"
+    And within one configured reconcile interval deck client "A" screen contains "running"
     And deck client "A" screen shows sessions in this order:
       | rec-aaa                       |
       | rec-bbb-selected-session      |
@@ -120,7 +121,8 @@ Feature: A selected/striped sidebar row's background fills a real rectangle, and
     And deck client "A" creates shell session "rec-bbb-selected-session-with-a-name-far-too-long-to-fit-in-the-sidebar-at-all"
     And deck client "A" creates shell session "rec-ccc"
     And deck client "A" creates shell session "rec-ddd-stripe"
-    Then within one configured reconcile interval deck client "A" screen contains "running"
+    Then the state database contains session "rec-ddd-stripe" with status "running"
+    And within one configured reconcile interval deck client "A" screen contains "running"
     And deck client "A" selects session "rec-aaa"
     And deck client "A" cells at row 9 columns 1 to 34 have background token "surface"
     And deck client "A" cells at row 10 columns 1 to 34 have background token "surface"
@@ -163,7 +165,8 @@ Feature: A selected/striped sidebar row's background fills a real rectangle, and
     And deck client "A" creates shell session "rec-bbb-selected-session-with-a-name-far-too-long-to-fit-in-the-sidebar-at-all"
     And deck client "A" creates shell session "rec-ccc"
     And deck client "A" creates shell session "rec-ddd-stripe"
-    Then within one configured reconcile interval deck client "A" screen contains "running"
+    Then the state database contains session "rec-ddd-stripe" with status "running"
+    And within one configured reconcile interval deck client "A" screen contains "running"
     When deck client "A" presses "<" 11 times
     And deck client "A" sends "k"
     And deck client "A" sends "k"
@@ -225,7 +228,8 @@ Feature: A selected/striped sidebar row's background fills a real rectangle, and
     When deck client "A" creates shell session "rec-aaa"
     And deck client "A" creates shell session "rec-bbb"
     And deck client "A" creates shell session "rec-ccc"
-    Then within one configured reconcile interval deck client "A" screen contains "running"
+    Then the state database contains session "rec-ccc" with status "running"
+    And within one configured reconcile interval deck client "A" screen contains "running"
     And deck client "A" screen shows sessions in this order:
       | rec-aaa |
       | rec-bbb |
@@ -267,7 +271,8 @@ Feature: A selected/striped sidebar row's background fills a real rectangle, and
     When deck client "B" creates shell session "rec-aaa"
     And deck client "B" creates shell session "rec-bbb"
     And deck client "B" creates shell session "rec-ccc"
-    Then within one configured reconcile interval deck client "B" screen contains "running"
+    Then the state database contains session "rec-ccc" with status "running"
+    And within one configured reconcile interval deck client "B" screen contains "running"
     And deck client "B" screen shows sessions in this order:
       | rec-aaa |
       | rec-bbb |

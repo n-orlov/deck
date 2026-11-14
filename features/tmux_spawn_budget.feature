@@ -4,10 +4,14 @@ Feature: A deck client's tmux process cost is constant per tick (R184, R185, GH 
   sessions is one process however many sessions exist, a passive preview
   tick is one process, and an interactive tick on a shell is one
   display-message. This counts the processes a client really spawns, through
-  a fixture tmux first on the client's PATH, over a window that opens after
-  the twelve sessions exist (and after interactive entry has finished), at
-  the product's own default reconcile and preview cadence. The bound is an
-  upper bound, so load can only lower the count.
+  a fixture tmux first on the client's PATH, at the product's own default
+  reconcile and preview cadence. The window opens once the twelve sessions
+  exist (and interactive entry has finished) and the client's spawns have
+  settled to per-tick reads for a second, so the one-off work those steps
+  leave behind (a new selection's passive fit, the output clock's first
+  capture of each new pane) is not counted as per-tick cost however late
+  load makes it run. Inside the window the bound is an upper bound, so load
+  can only lower the count.
 
   @requirement-185-tmux-spawn-budget
   Scenario: twelve shell sessions in list mode spawn at most 75 tmux processes in 10 seconds

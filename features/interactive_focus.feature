@@ -15,7 +15,8 @@ Feature: Interactive mode's focus indicator is unmistakable, including under NO_
     Given the scenario's config.toml selects theme "empire"
     And deck client "focus" is started with colour enabled
     And deck client "focus" creates shell session "focus-target"
-    Then within one configured reconcile interval deck client "focus" screen contains "running"
+    Then the state database contains session "focus-target" with status "running"
+    And within one configured reconcile interval deck client "focus" screen contains "running"
     And deck client "focus" selects session "focus-target"
     And deck client "focus" cell at row 0 column 0 has foreground token "border_focus"
     And deck client "focus" cell at row 0 column 99 has foreground token "border"
@@ -36,7 +37,8 @@ Feature: Interactive mode's focus indicator is unmistakable, including under NO_
   Scenario: the preview's top border names the target session as plain screen text, legible even under NO_COLOR
     Given deck client "plain" is started
     And deck client "plain" creates shell session "plain-target"
-    Then within one configured reconcile interval deck client "plain" screen contains "running"
+    Then the state database contains session "plain-target" with status "running"
+    And within one configured reconcile interval deck client "plain" screen contains "running"
     And deck client "plain" selects session "plain-target"
     When deck client "plain" enters interactive mode
     Then deck client "plain" screen contains "plain-target"

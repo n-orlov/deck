@@ -19,7 +19,8 @@ Feature: The next start reclaims a leaked interactive pipe (Part II, R89, task 0
     # size at entry). The passive fit is covered in preview.feature.
     Given deck client "victim" is started with preview fit disabled
     And deck client "victim" creates shell session "leaky"
-    Then within one configured reconcile interval deck client "victim" screen contains "running"
+    Then the state database contains session "leaky" with status "running"
+    And within one configured reconcile interval deck client "victim" screen contains "running"
     And deck client "victim" selects session "leaky"
     And the private tmux window for session "leaky" is captured as "before-interactive"
     When deck client "victim" enters interactive mode
