@@ -94,7 +94,8 @@ Feature: every built-in theme paints its own `background` token across the whole
     # any "starting" (aaa's own can satisfy it), and "running" below can then
     # land before zzz-session's reload moves the selection off row 3 (cure-01-07).
     And deck client "bgempire" has session "zzz-session" selected
-    Then within one configured reconcile interval deck client "bgempire" screen contains "running"
+    Then the state database contains session "zzz-session" with status "running"
+    And within one configured reconcile interval deck client "bgempire" screen contains "running"
     And deck client "bgempire" cells at row 0 columns 0 to 99 have background token "background"
     And deck client "bgempire" cells at row 28 columns 0 to 99 have background token "background"
     And deck client "bgempire" cells at row 3 columns 0 to 36 have background token "background"
@@ -120,7 +121,8 @@ Feature: every built-in theme paints its own `background` token across the whole
     # any "starting" (aaa's own can satisfy it), and "running" below can then
     # land before zzz-session's reload moves the selection off row 3 (cure-01-07).
     And deck client "bgdaylight" has session "zzz-session" selected
-    Then within one configured reconcile interval deck client "bgdaylight" screen contains "running"
+    Then the state database contains session "zzz-session" with status "running"
+    And within one configured reconcile interval deck client "bgdaylight" screen contains "running"
     And deck client "bgdaylight" cells at row 0 columns 0 to 99 have background token "background"
     And deck client "bgdaylight" cells at row 28 columns 0 to 99 have background token "background"
     And deck client "bgdaylight" cells at row 3 columns 0 to 36 have background token "background"
@@ -146,7 +148,8 @@ Feature: every built-in theme paints its own `background` token across the whole
     # any "starting" (aaa's own can satisfy it), and "running" below can then
     # land before zzz-session's reload moves the selection off row 3 (cure-01-07).
     And deck client "bgmatrix" has session "zzz-session" selected
-    Then within one configured reconcile interval deck client "bgmatrix" screen contains "running"
+    Then the state database contains session "zzz-session" with status "running"
+    And within one configured reconcile interval deck client "bgmatrix" screen contains "running"
     And deck client "bgmatrix" cells at row 0 columns 0 to 99 have background token "background"
     And deck client "bgmatrix" cells at row 28 columns 0 to 99 have background token "background"
     And deck client "bgmatrix" cells at row 3 columns 0 to 36 have background token "background"
@@ -172,7 +175,8 @@ Feature: every built-in theme paints its own `background` token across the whole
     # any "starting" (aaa's own can satisfy it), and "running" below can then
     # land before zzz-session's reload moves the selection off row 3 (cure-01-07).
     And deck client "bgcobalt" has session "zzz-session" selected
-    Then within one configured reconcile interval deck client "bgcobalt" screen contains "running"
+    Then the state database contains session "zzz-session" with status "running"
+    And within one configured reconcile interval deck client "bgcobalt" screen contains "running"
     And deck client "bgcobalt" cells at row 0 columns 0 to 99 have background token "background"
     And deck client "bgcobalt" cells at row 28 columns 0 to 99 have background token "background"
     And deck client "bgcobalt" cells at row 3 columns 0 to 36 have background token "background"
@@ -198,7 +202,8 @@ Feature: every built-in theme paints its own `background` token across the whole
     # any "starting" (aaa's own can satisfy it), and "running" below can then
     # land before zzz-session's reload moves the selection off row 3 (cure-01-07).
     And deck client "bgparchment" has session "zzz-session" selected
-    Then within one configured reconcile interval deck client "bgparchment" screen contains "running"
+    Then the state database contains session "zzz-session" with status "running"
+    And within one configured reconcile interval deck client "bgparchment" screen contains "running"
     And deck client "bgparchment" cells at row 0 columns 0 to 99 have background token "background"
     And deck client "bgparchment" cells at row 28 columns 0 to 99 have background token "background"
     And deck client "bgparchment" cells at row 3 columns 0 to 36 have background token "background"

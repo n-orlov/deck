@@ -26,7 +26,8 @@ Feature: R149 (GH #47) -- the sidebar wheel while interactive mode is active, an
     And deck client "A" creates shell session "wheel149-3"
     And deck client "A" creates shell session "wheel149-4"
     And deck client "A" creates shell session "wheel149-5"
-    Then within one configured reconcile interval deck client "A" screen contains "running"
+    Then the state database contains session "wheel149-5" with status "running"
+    And within one configured reconcile interval deck client "A" screen contains "running"
     # Select the target BEFORE the shrink below: the sidebar viewport
     # follows the selection on a layout change too (SPEC §11), so the
     # newest row a create left selected would otherwise stay in view.

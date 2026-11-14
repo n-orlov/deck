@@ -13,22 +13,72 @@ import (
 
 // slowSpawn is a Spawn seam that holds every call for hold and then answers
 // with the result chosen for the session by outcome.
+//
+// With quorum set, every call first waits at a barrier until quorum calls have
+// started, so the barrier opens only when all of them are in flight at the
+// same time. That is the batch's "one bound" property stated structurally: a
+// dispatcher that ran the scripts one after another (or partly so) never
+// reaches the quorum, and each call gives up after quorumWait and counts a
+// miss. Wall-clock limits such as "one hold plus 300ms" also counted the
+// store work around each spawn (row read and claim before it, result after
+// it), which serialises on the Store's one pooled connection and, with the
+// SQLite engine itself race-instrumented, takes several times longer on a
+// loaded -race agent: nightly #55 measured 722ms for 8 deaths, and a 1-death
+// batch, with nothing to serialise, measured 886ms under local load.
 type slowSpawn struct {
 	hold    time.Duration
 	outcome func(sessionID string) (notify.Result, error)
+	quorum  int
 	mu      sync.Mutex
 	started map[string]int
+	calls   int
+	misses  int
+	all     chan struct{}
 }
+
+// quorumWait is how long a call waits for its siblings to start. Only a
+// serialised dispatcher waits this long; a concurrent one opens the barrier as
+// soon as the last claim commits.
+const quorumWait = 10 * time.Second
 
 func (s *slowSpawn) spawn(_ context.Context, req notify.Request) (notify.Result, error) {
 	s.mu.Lock()
 	if s.started == nil {
 		s.started = map[string]int{}
 	}
+	if s.all == nil {
+		s.all = make(chan struct{})
+	}
 	s.started[req.Session.ID]++
+	s.calls++
+	if s.calls == s.quorum {
+		close(s.all)
+	}
+	all := s.all
 	s.mu.Unlock()
+	if s.quorum > 0 {
+		select {
+		case <-all:
+		case <-time.After(quorumWait):
+			s.mu.Lock()
+			s.misses++
+			s.mu.Unlock()
+		}
+	}
 	time.Sleep(s.hold)
 	return s.outcome(req.Session.ID)
+}
+
+// requireAllInFlightTogether fails the test unless every spawn reached the
+// quorum barrier while all of its siblings were also running.
+func (s *slowSpawn) requireAllInFlightTogether(t *testing.T, what string) {
+	t.Helper()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.calls != s.quorum || s.misses != 0 {
+		t.Fatalf("%s: %d spawns started, %d of them waited %s for the rest without all %d in flight at once: the scripts did not run concurrently",
+			what, s.calls, s.misses, quorumWait, s.quorum)
+	}
 }
 
 func batchSessionID(n int) string { return fmt.Sprintf("00000000-0000-4000-8000-00000000b%03d", n) }
@@ -41,7 +91,7 @@ func TestDeferredHookBatchCostsOneBoundWhateverTheNumberOfDeaths(t *testing.T) {
 		t.Run(fmt.Sprintf("%d deaths", deaths), func(t *testing.T) {
 			svc, db, _, _ := newAgentTestService(t, nil, fmt.Sprintf("hook-batch-%d", deaths))
 			_, d := withEventHook(&svc, "tmux.session_gone")
-			slow := &slowSpawn{hold: 400 * time.Millisecond, outcome: func(string) (notify.Result, error) {
+			slow := &slowSpawn{hold: 400 * time.Millisecond, quorum: deaths, outcome: func(string) (notify.Result, error) {
 				return notify.Result{ExitCode: 0, Output: "slow done\n"}, nil
 			}}
 			d.Spawn = slow.spawn
@@ -50,14 +100,12 @@ func TestDeferredHookBatchCostsOneBoundWhateverTheNumberOfDeaths(t *testing.T) {
 				goneRow(t, db, batchSessionID(i), "claude", "running")
 			}
 
-			start := time.Now()
 			if err := svc.ReconcileWithin(context.Background(), 5*time.Second); err != nil {
 				t.Fatal(err)
 			}
-			// One hold plus slack; a serial dispatch would take deaths*hold.
-			if elapsed := time.Since(start); elapsed > slow.hold+300*time.Millisecond {
-				t.Fatalf("%d slow hooks held the pass %s, want about one hold (%s)", deaths, elapsed, slow.hold)
-			}
+			// All scripts in flight at once is what makes the batch cost one hold;
+			// a serial dispatch would cost deaths*hold and never reach the quorum.
+			slow.requireAllInFlightTogether(t, fmt.Sprintf("%d slow hooks", deaths))
 			for i := 0; i < deaths; i++ {
 				id := batchSessionID(i)
 				if slow.started[id] != 1 {
@@ -84,20 +132,19 @@ func TestDeferredHookBatchRecordsEveryOutcomeWhenSomeFail(t *testing.T) {
 		batchSessionID(2): func() (notify.Result, error) { return notify.Result{}, errors.New("cannot start script") },
 		batchSessionID(3): func() (notify.Result, error) { return notify.Result{ExitCode: 0, Output: "fine\n"}, nil },
 	}
-	slow := &slowSpawn{hold: 300 * time.Millisecond, outcome: func(id string) (notify.Result, error) { return outcomes[id]() }}
+	slow := &slowSpawn{hold: 300 * time.Millisecond, quorum: len(outcomes), outcome: func(id string) (notify.Result, error) { return outcomes[id]() }}
 	d.Spawn = slow.spawn
 	svc.EventHook = func() EventHookDispatcher { return d }
 	for i, agent := range []string{"claude", "shell", "codex", "claude"} {
 		goneRow(t, db, batchSessionID(i), agent, "running")
 	}
 
-	start := time.Now()
 	if err := svc.ReconcileWithin(context.Background(), 5*time.Second); err != nil {
 		t.Fatal(err)
 	}
-	if elapsed := time.Since(start); elapsed > slow.hold+300*time.Millisecond {
-		t.Fatalf("mixed batch held the pass %s, want about one hold", elapsed)
-	}
+	slow.requireAllInFlightTogether(t, "mixed batch")
+	// The repeat pass below spawns nothing; the barrier has done its job.
+	slow.quorum = 0
 	want := map[string]struct {
 		exit     int
 		timedOut bool
@@ -140,7 +187,9 @@ func TestPreparedIncomingScriptOverlapsTheDeathBatchWhateverTheNumberOfDeaths(t 
 		t.Run(fmt.Sprintf("%d deaths", deaths), func(t *testing.T) {
 			svc, db, _, _ := newAgentTestService(t, nil, fmt.Sprintf("hook-overlap-%d", deaths))
 			_, d := withEventHook(&svc, "tmux.session_gone")
-			slow := &slowSpawn{hold: 400 * time.Millisecond, outcome: func(string) (notify.Result, error) {
+			// The incoming script, each death's and the incoming session's own
+			// death: all deaths+2 must be in flight together.
+			slow := &slowSpawn{hold: 400 * time.Millisecond, quorum: deaths + 2, outcome: func(string) (notify.Result, error) {
 				return notify.Result{ExitCode: 0, Output: "slow done\n"}, nil
 			}}
 			d.Spawn = slow.spawn
@@ -151,7 +200,6 @@ func TestPreparedIncomingScriptOverlapsTheDeathBatchWhateverTheNumberOfDeaths(t 
 				goneRow(t, db, batchSessionID(i), "claude", "running")
 			}
 
-			start := time.Now()
 			run, outcome := d.Prepare(context.Background(), HookEvent{
 				SessionID: incoming, StoredKind: "notification", Reason: "permission_prompt", At: time.Now(),
 			}, false)
@@ -164,9 +212,9 @@ func TestPreparedIncomingScriptOverlapsTheDeathBatchWhateverTheNumberOfDeaths(t 
 				t.Fatal(err)
 			}
 			<-done
-			if elapsed := time.Since(start); elapsed > slow.hold+300*time.Millisecond {
-				t.Fatalf("incoming + %d deaths took %s, want about one hold (%s), not two serial ones", deaths, elapsed, slow.hold)
-			}
+			// The incoming script still running when the last death's starts is
+			// what makes the call one hold, not the incoming one then the batch.
+			slow.requireAllInFlightTogether(t, fmt.Sprintf("incoming + %d deaths", deaths))
 			slow.mu.Lock()
 			defer slow.mu.Unlock()
 			for i := 0; i < deaths; i++ {

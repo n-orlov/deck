@@ -11,6 +11,7 @@ Feature: A host terminal resize re-fits the preview and the attached pane with n
     And deck client "solo" is started
     And deck client "solo" creates shell session "alpha"
     And deck client "solo" creates claude session "beacon" with permission profile "safe"
+    And the state database contains session "alpha" with status "running"
     And within one configured reconcile interval deck client "solo" screen contains "running"
     And deck client "solo" selects session "beacon"
     And within 5 seconds the private tmux window for session "beacon" reports geometry "61x27"
@@ -26,6 +27,7 @@ Feature: A host terminal resize re-fits the preview and the attached pane with n
     And deck client "solo" is started
     And deck client "solo" creates shell session "alpha"
     And deck client "solo" creates claude session "beacon" with permission profile "safe"
+    And the state database contains session "alpha" with status "running"
     And within one configured reconcile interval deck client "solo" screen contains "running"
     And deck client "solo" selects session "beacon"
     And within 5 seconds the private tmux window for session "beacon" reports geometry "61x27"
@@ -42,6 +44,7 @@ Feature: A host terminal resize re-fits the preview and the attached pane with n
     And deck client "solo" is started
     And deck client "solo" creates shell session "alpha"
     And deck client "solo" creates claude session "beacon" with permission profile "safe"
+    And the state database contains session "alpha" with status "running"
     And within one configured reconcile interval deck client "solo" screen contains "running"
     And deck client "solo" selects session "beacon"
     And deck client "solo" enters interactive mode

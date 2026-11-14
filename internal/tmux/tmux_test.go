@@ -316,6 +316,16 @@ func TestAttachThroughPTY(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
+	// tmux's assume-paste-time heuristic (default 1ms) forwards a key
+	// straight to the pane, skipping key bindings, when it arrives within
+	// that window of the session's previous activity -- and attaching counts
+	// as activity. A prefix written soon enough after the attach starts a
+	// "paste", so the following "d" is typed into the pane instead of
+	// detaching, and the client never exits. Turn the heuristic off on this
+	// private server so the chord below is always read as a key binding.
+	if out, err := client.command(context.Background(), "set-option", "-g", "assume-paste-time", "0").CombinedOutput(); err != nil {
+		t.Fatalf("disable assume-paste-time: %v: %s", err, out)
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -346,7 +356,14 @@ func TestAttachThroughPTY(t *testing.T) {
 	if got := output.String(); !strings.Contains(got, "deck-attach-live") {
 		t.Fatalf("attached pane was not visible: %q", got)
 	}
-	if _, err := terminal.Write([]byte("\x02d")); err != nil { // tmux prefix + detach
+	// Send the detach chord one key at a time, each only once tmux shows it
+	// is ready for it: the client attached, then the prefix table active.
+	waitForClientFormat(t, client, "#{client_session}", "deck_attach_test")
+	if _, err := terminal.Write([]byte("\x02")); err != nil { // tmux prefix
+		t.Fatal(err)
+	}
+	waitForClientFormat(t, client, "#{client_prefix}", "1")
+	if _, err := terminal.Write([]byte("d")); err != nil { // detach
 		t.Fatal(err)
 	}
 	if err := cmd.Wait(); err != nil {
@@ -354,6 +371,29 @@ func TestAttachThroughPTY(t *testing.T) {
 	}
 	if sessions, err := client.List(context.Background()); err != nil || len(sessions) != 1 {
 		t.Fatalf("private server did not survive detach: sessions=%#v err=%v", sessions, err)
+	}
+}
+
+// waitForClientFormat polls list-clients until the server's only client
+// expands format to want, so a test can wait on tmux's own view of an
+// attached client (attached to the session, prefix table active) instead of
+// guessing with a sleep.
+func waitForClientFormat(t *testing.T, client Client, format, want string) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	var got string
+	for {
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		output, err := client.command(ctx, "list-clients", "-F", format).CombinedOutput()
+		cancel()
+		got = strings.TrimSpace(string(output))
+		if err == nil && got == want {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("list-clients -F %q = %q (err %v), want %q", format, got, err, want)
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 }
 

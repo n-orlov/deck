@@ -65,6 +65,7 @@ Feature: The preview capture engine and its visible behaviour
     And deck client "solo" is started
     And deck client "solo" creates shell session "alpha"
     And deck client "solo" creates claude session "beacon" with permission profile "safe"
+    And the state database contains session "alpha" with status "running"
     And within one configured reconcile interval deck client "solo" screen contains "running"
     And deck client "solo" selects session "beacon"
     # Let the settled selection's own fit land and coalesce before the
@@ -91,6 +92,7 @@ Feature: The preview capture engine and its visible behaviour
     And deck client "solo" is started
     And deck client "solo" creates shell session "alpha"
     And deck client "solo" creates claude session "beacon" with permission profile "safe"
+    And the state database contains session "alpha" with status "running"
     And within one configured reconcile interval deck client "solo" screen contains "running"
     When deck client "solo" selects session "beacon"
     Then the fake "claude" agent received exactly 1 SIGWINCH signals
@@ -124,6 +126,7 @@ Feature: The preview capture engine and its visible behaviour
     And deck client "solo" is started
     And deck client "solo" creates shell session "alpha"
     And deck client "solo" creates claude session "beacon" with permission profile "safe"
+    And the state database contains session "alpha" with status "running"
     And within one configured reconcile interval deck client "solo" screen contains "running"
     When deck client "solo" selects session "beacon"
     And deck client "solo" selects session "alpha"
@@ -159,6 +162,7 @@ Feature: The preview capture engine and its visible behaviour
     And deck client "maker" is started with preview fit disabled
     And deck client "maker" creates shell session "alpha"
     And deck client "maker" creates claude session "beacon" with permission profile "safe"
+    And the state database contains session "alpha" with status "running"
     And within one configured reconcile interval deck client "maker" screen contains "running"
     And deck client "maker" exits cleanly
     And deck client "solo" is started with terminal size 100x9
@@ -196,6 +200,7 @@ Feature: The preview capture engine and its visible behaviour
     # never cropped. The panel states it differently instead: "WxH fitted".
     Given deck client "solo" is started
     And deck client "solo" creates shell session "alpha"
+    And the state database contains session "alpha" with status "running"
     And within one configured reconcile interval deck client "solo" screen contains "running"
     And deck client "solo" selects session "alpha"
     When deck client "solo" enters interactive mode
@@ -225,7 +230,8 @@ Feature: The preview capture engine and its visible behaviour
     # resume instead of passing.
     Given deck client "solo" is started
     And deck client "solo" creates shell session "alpha"
-    Then within one configured reconcile interval deck client "solo" screen contains "running"
+    Then the state database contains session "alpha" with status "running"
+    And within one configured reconcile interval deck client "solo" screen contains "running"
     # "alpha" is the only row: it was auto-selected on creation and stays
     # selected through everything below, so nothing in this scenario ever
     # changes the selection -- the one condition the criterion this
@@ -238,7 +244,8 @@ Feature: The preview capture engine and its visible behaviour
     When shell session "alpha" exits with status zero
     Then within one configured reconcile interval deck client "solo" screen contains "stopped"
     When deck client "solo" presses r on session "alpha"
-    Then within one configured reconcile interval deck client "solo" screen contains "running"
+    Then the state database contains session "alpha" with status "running"
+    And within one configured reconcile interval deck client "solo" screen contains "running"
     # The resume above created a brand-new tmux window (task 117/002's own
     # scope: a relaunch's new pane), which starts life back at tmux's own
     # unfit 80x24 default -- exactly the state task 002's latch clear

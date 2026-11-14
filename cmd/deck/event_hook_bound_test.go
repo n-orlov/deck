@@ -11,6 +11,7 @@ import (
 
 	"github.com/n-orlov/deck/internal/agent"
 	"github.com/n-orlov/deck/internal/config"
+	"github.com/n-orlov/deck/internal/racebuild"
 	"github.com/n-orlov/deck/internal/store"
 )
 
@@ -113,18 +114,48 @@ func TestHookBoundHoldsForFailingDeathScriptsAndAHungIncomingScriptAlone(t *test
 	t.Run("failing incoming and failing deaths", func(t *testing.T) {
 		f := newEventHookFixture(t, "claude", "running")
 		f.settings.EventHookTimeout = config.DefaultEventHookTimeout
-		f.script(t, "sleep 2\necho boom >&2\nexit 7\n")
+		// The liveness pass's budget is a hard deadline on the pass's own work
+		// (list rows, list tmux, one status write per death), and its expiry is
+		// a reported hook failure by contract (TestRunHookReportsAFailedPost-
+		// HookLivenessPass). That work is not what this test measures. Under
+		// -race the in-process SQLite (modernc, pure Go) is itself race-
+		// instrumented: on a loaded agent the pass's median ~30 ms reaches
+		// several hundred ms, and nightly #49 crossed the 500 ms production
+		// default here, failing the hook with "mark session "row-2" stopped:
+		// begin session status update: context deadline exceeded". A deadline
+		// costs nothing when the pass is quick, so a race build gets a wider one.
+		if racebuild.Enabled {
+			f.settings.Reconcile = 2 * time.Second
+		}
+		// Each run records when it started and ended, so the overlap is read
+		// from the scripts themselves rather than inferred from wall time.
+		f.script(t, fmt.Sprintf(`s=$(date +%%s%%N)
+sleep 2
+printf '%%s %%s %%s %%s\n' "$DECK_EVENT_KIND" "$DECK_SESSION_ID" "$s" "$(date +%%s%%N)" >> %q
+echo boom >&2
+exit 7
+`, filepath.Join(f.out, "spans")))
 		f.seedExtraRows(t, 3)
 		if err := exec.Command("tmux", "-L", f.settings.Socket, "kill-server").Run(); err != nil {
 			t.Fatal(err)
 		}
-		start := time.Now()
 		if code, stderr := f.run(waitingPromptPayload); code != 0 || stderr != "" {
 			t.Fatalf("hook exit = %d, stderr %q", code, stderr)
 		}
-		// Serial would be 2 s + 2 s; overlapped it is one script plus the reconcile.
-		if elapsed := time.Since(start); elapsed > 2*time.Second+f.settings.Reconcile+time.Second {
-			t.Fatalf("_hook took %s, want one 2 s script plus the reconcile budget", elapsed)
+		// Serial would be the incoming 2 s script and then the death batch's;
+		// overlapped, every death script starts while the incoming one still
+		// runs. Asserted on the scripts' own clocks, so it holds however slow
+		// the agent is around them.
+		spans := scriptSpans(t, f.read(t, "spans"))
+		incoming, ok := spans["waiting row-1"]
+		if !ok || len(spans) != 5 {
+			t.Fatalf("scripts recorded %v, want the incoming waiting offer and four ended offers", spans)
+		}
+		for key, span := range spans {
+			if key != "waiting row-1" && span[0] >= incoming[1] {
+				t.Errorf("%s started %s after the incoming script ended: the death batch followed the incoming script instead of overlapping it",
+					key, time.Duration(span[0]-incoming[1]))
+			}
 		}
 		events, results := eventResults(t, f.paths)
 		var offered int

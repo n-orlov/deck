@@ -12,7 +12,8 @@ Feature: Interactive mode refuses rather than degrades in three named cases (Par
   Scenario: entering interactive mode is refused while another client is attached to the session
     Given deck client "host" is started
     And deck client "host" creates shell session "watched"
-    Then within one configured reconcile interval deck client "host" screen contains "running"
+    Then the state database contains session "watched" with status "running"
+    And within one configured reconcile interval deck client "host" screen contains "running"
     And deck client "host" selects session "watched"
     And a real tmux client attaches to deck session "watched" at 80x24
     And the private tmux window for session "watched" is captured as "before-refusal"
@@ -29,7 +30,8 @@ Feature: Interactive mode refuses rather than degrades in three named cases (Par
   Scenario: entering interactive mode is refused while the preview box has fewer than 7 inner rows
     Given deck client "cramped" is started
     And deck client "cramped" creates shell session "squeezed"
-    Then within one configured reconcile interval deck client "cramped" screen contains "running"
+    Then the state database contains session "squeezed" with status "running"
+    And within one configured reconcile interval deck client "cramped" screen contains "running"
     And deck client "cramped" selects session "squeezed"
     And deck client "cramped" terminal is resized to 80x9
     When deck client "cramped" enters interactive mode
@@ -42,7 +44,8 @@ Feature: Interactive mode refuses rather than degrades in three named cases (Par
   Scenario: entering interactive mode is refused while a live process holds the window's ownership
     Given deck client "solo" is started
     And deck client "solo" creates shell session "owned"
-    Then within one configured reconcile interval deck client "solo" screen contains "running"
+    Then the state database contains session "owned" with status "running"
+    And within one configured reconcile interval deck client "solo" screen contains "running"
     And deck client "solo" selects session "owned"
     And another live process holds ownership of deck session "owned"'s window
     When deck client "solo" enters interactive mode
@@ -65,7 +68,8 @@ Feature: Interactive mode refuses rather than degrades in three named cases (Par
     # size at entry). The passive fit is covered in preview.feature.
     Given deck client "shrink" is started with preview fit disabled
     And deck client "shrink" creates shell session "live"
-    Then within one configured reconcile interval deck client "shrink" screen contains "running"
+    Then the state database contains session "live" with status "running"
+    And within one configured reconcile interval deck client "shrink" screen contains "running"
     And deck client "shrink" selects session "live"
     And the private tmux window for session "live" is captured as "before-interactive"
     When deck client "shrink" enters interactive mode

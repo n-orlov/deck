@@ -22,7 +22,8 @@ Feature: The shared sidebar/preview seam reads focused whenever either panel is 
   Scenario: the seam reads border_focus with the sidebar focused, border_focus while interactive, and plain border with neither focused
     Given deck client "seam" is started with colour enabled
     And deck client "seam" creates shell session "seam-target"
-    Then within one configured reconcile interval deck client "seam" screen contains "running"
+    Then the state database contains session "seam-target" with status "running"
+    And within one configured reconcile interval deck client "seam" screen contains "running"
     And deck client "seam" selects session "seam-target"
     And deck client "seam" cell at row 0 column 35 has foreground token "border_focus"
     When deck client "seam" enters interactive mode

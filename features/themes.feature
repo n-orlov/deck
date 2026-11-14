@@ -23,7 +23,8 @@ Feature: theme rendering end-to-end (requirement 49)
     And a long-running fake "claude" binary is on PATH for future deck clients
     And deck client "<name>" is started with colour enabled
     And deck client "<name>" creates shell session "anchor"
-    Then within one configured reconcile interval deck client "<name>" screen contains "running"
+    Then the state database contains session "anchor" with status "running"
+    And within one configured reconcile interval deck client "<name>" screen contains "running"
     And deck client "<name>" creates shell session "target"
     And deck client "<name>" creates claude session "agent" with permission profile "safe"
     And deck client "<name>" selects session "anchor"
@@ -58,7 +59,8 @@ Feature: theme rendering end-to-end (requirement 49)
     And a long-running fake "claude" binary is on PATH for future deck clients
     And deck client "tok49-err" is started with colour enabled
     And deck client "tok49-err" creates shell session "anchor"
-    Then within one configured reconcile interval deck client "tok49-err" screen contains "running"
+    Then the state database contains session "anchor" with status "running"
+    And within one configured reconcile interval deck client "tok49-err" screen contains "running"
     And deck client "tok49-err" creates shell session "target"
     And deck client "tok49-err" creates claude session "agent" with permission profile "safe"
     And deck client "tok49-err" selects session "anchor"
@@ -83,7 +85,8 @@ Feature: theme rendering end-to-end (requirement 49)
     And a long-running fake "claude" binary is on PATH for future deck clients
     And deck client "tok49-stop" is started with colour enabled
     And deck client "tok49-stop" creates shell session "anchor"
-    Then within one configured reconcile interval deck client "tok49-stop" screen contains "running"
+    Then the state database contains session "anchor" with status "running"
+    And within one configured reconcile interval deck client "tok49-stop" screen contains "running"
     And deck client "tok49-stop" creates shell session "target"
     And deck client "tok49-stop" creates claude session "agent" with permission profile "safe"
     And deck client "tok49-stop" selects session "anchor"
