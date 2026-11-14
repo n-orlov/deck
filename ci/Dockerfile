@@ -8,8 +8,8 @@ FROM golang:1.26.4-trixie@sha256:68b7145ec43d1820b9a56704554b53d1520aa2a15cb5233
 RUN GOBIN=/out go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.14.0 \
     && GOBIN=/out go install golang.org/x/vuln/cmd/govulncheck@v1.8.0
 
-# golang:1.26.10-trixie
-FROM golang:1.26.10-trixie@sha256:9ba7dc6d09ebf6e9317263973174bbf44e15bdf58cb0103747d7376f7cfa2d2f
+# golang:1.26.11-trixie
+FROM golang:1.26.11-trixie@sha256:fa340cb59ebeb1d53ac1cccfc334201d938fe5f3458003cccb767096d8e032b8
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
