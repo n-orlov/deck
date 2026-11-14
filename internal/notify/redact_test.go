@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"runtime"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -189,14 +190,10 @@ func TestMaskSecretAssignmentsMasksEachSecretShape(t *testing.T) {
 }
 
 // The new passes stay linear: a megabyte of near-misses and real shapes is
-// masked and costs about what reading it does.
+// masked and costs about four times what its first quarter does.
 func TestMaskSecretAssignmentsStaysLinearOnAVeryLongText(t *testing.T) {
 	text := strings.Repeat("--token abc Bearer xyz sk-aaaaaaaaaa eyJ.a.b \"api_key\": \"v\" --max-tokens 5 ::: ", 1<<14)
-	start := time.Now()
-	got := maskSecretAssignments(text)
-	if elapsed := time.Since(start); elapsed > 5*time.Second {
-		t.Errorf("a %d-byte text took %v", len(text), elapsed)
-	}
+	got := requireMaskedLinearly(t, "long text", text, processCPU, maskSecretAssignments)
 	for _, leak := range []string{"abc", "xyz", "aaaaaaaaaa", `"v"`} {
 		if strings.Contains(got, leak) {
 			t.Fatalf("%q survived in a %d-byte text", leak, len(text))
@@ -544,38 +541,76 @@ func TestSpawnMasksJSONMarshalledSecretsWithTrailingBackslashesOnEverySurface(t 
 }
 
 // Masking an escaped-JSON-shaped input stays linear: a 1 MiB run of
-// backslashes and a 1 MiB run of `\"k\":` each finish in well under a second.
+// backslashes and a 1 MiB run of `\"k\":` each cost about four times what a
+// quarter of the same run does.
 func TestMaskSecretAssignmentsStaysLinearOnEscapedInputs(t *testing.T) {
 	const size = 1 << 20
 	for name, in := range map[string]string{
 		"backslashes":  strings.Repeat(`\`, size),
 		"escaped keys": strings.Repeat(`\"k\":`, size/len(`\"k\":`)+1)[:size],
 	} {
-		requireMaskedWithinBound(t, name, in, time.Second, maskSecretAssignments)
+		if got := requireMaskedLinearly(t, name, in, processCPU, maskSecretAssignments); len(got) > len(in)+len(MaskedPlaceholder) {
+			t.Errorf("%s: output grew from %d to %d bytes", name, len(in), len(got))
+		}
 	}
 }
 
-// errorfer is the slice of testing.TB requireMaskedWithinBound reports through,
+// errorfer is the slice of testing.TB requireMaskedLinearly reports through,
 // so the guard itself can be tested against a recorder.
 type errorfer interface {
 	Errorf(format string, args ...any)
 }
 
-// requireMaskedWithinBound runs mask over in exactly once and reports a failure
-// when that one invocation takes bound or longer or grows the input by more than
-// the placeholder. There is no retry: an over-bound invocation is a failure
-// whatever a later one would measure. A collection runs first so garbage left by
-// earlier tests is not charged to the measured invocation.
-func requireMaskedWithinBound(t errorfer, name, in string, bound time.Duration, mask func(string) string) {
+const (
+	// maxLinearGrowth bounds cost(in) / cost(first quarter of in). Linear
+	// masking measures about 4 (3.3 to 4.9 seen under -race on a machine at
+	// load 40); quadratic masking measures about 16.
+	maxLinearGrowth = 10
+	// linearCostFloor is the least quarter-input cost the ratio is taken
+	// against, so a quarter too cheap for the clock to resolve cannot turn
+	// noise into a failure. A quadratic pass over 1 MiB costs far more than
+	// maxLinearGrowth times this.
+	linearCostFloor = 5 * time.Millisecond
+)
+
+// processCPU reports the CPU time this process spends while f runs. CPU time,
+// unlike wall time, does not stretch when the machine is busy with other work,
+// which is what made the old one-second wall-clock bound flake on a loaded CI
+// agent running -race.
+func processCPU(f func()) time.Duration {
+	used := func() time.Duration {
+		var ru syscall.Rusage
+		if err := syscall.Getrusage(syscall.RUSAGE_SELF, &ru); err != nil {
+			panic(err)
+		}
+		return time.Duration(ru.Utime.Nano() + ru.Stime.Nano())
+	}
+	before := used()
+	f()
+	return used() - before
+}
+
+// requireMaskedLinearly runs mask exactly once over the first quarter of in and
+// exactly once over all of in, measuring each with cost, and reports a failure
+// when the whole input costs more than maxLinearGrowth times the quarter
+// (floored at linearCostFloor). It judges the growth rate, not an absolute time, so neither
+// a -race build nor a loaded machine moves it, while a quadratic pass still
+// fails it. There is no retry: an over-bound pair of invocations is a failure
+// whatever a later pair would measure. A collection runs before each
+// invocation so earlier garbage is not charged to it. It returns the masked
+// whole input.
+func requireMaskedLinearly(t errorfer, name, in string, cost func(func()) time.Duration, mask func(string) string) string {
+	quarter := in[:len(in)/4]
 	runtime.GC()
-	start := time.Now()
-	got := mask(in)
-	if elapsed := time.Since(start); elapsed >= bound {
-		t.Errorf("%s: masking %d bytes took %v, want under %v", name, len(in), elapsed, bound)
+	small := cost(func() { mask(quarter) })
+	runtime.GC()
+	var got string
+	full := cost(func() { got = mask(in) })
+	if full > maxLinearGrowth*max(small, linearCostFloor) {
+		t.Errorf("%s: masking %d bytes cost %v against %v for %d bytes (%.1fx), want at most %dx",
+			name, len(in), full, small, len(quarter), float64(full)/float64(max(small, 1)), maxLinearGrowth)
 	}
-	if len(got) > len(in)+len(MaskedPlaceholder) {
-		t.Errorf("%s: output grew from %d to %d bytes", name, len(in), len(got))
-	}
+	return got
 }
 
 type errorRecorder struct{ msgs []string }
@@ -584,51 +619,59 @@ func (r *errorRecorder) Errorf(format string, args ...any) {
 	r.msgs = append(r.msgs, fmt.Sprintf(format, args...))
 }
 
-// The linear-masking guard keeps its single-invocation failure condition: an
-// over-bound invocation fails even when every later invocation would be fast,
-// and the guard never invokes the masker a second time.
-func TestMaskedWithinBoundGuardDoesNotForgiveASlowInvocationByRetrying(t *testing.T) {
-	const bound = 20 * time.Millisecond
+// sizeCost is a fake cost clock for the guard tests: it charges each masking
+// invocation perByte(n) for an n-byte input, so a test can model a linear or a
+// quadratic masker without burning real time. The returned masker counts its
+// invocations.
+func sizeCost(perByte func(n int) time.Duration) (cost func(func()) time.Duration, mask func(string) string, calls *int) {
+	var last, n int
+	mask = func(s string) string { n++; last = len(s); return s }
+	cost = func(f func()) time.Duration { f(); return perByte(last) }
+	return cost, mask, &n
+}
+
+// The linear-masking guard fails a quadratic masker on its single pair of
+// invocations and never invokes the masker again to forgive it.
+func TestMaskedLinearlyGuardFailsAQuadraticMaskerWithoutRetrying(t *testing.T) {
 	cases := map[string]string{
-		"backslashes":      strings.Repeat(`\`, 64),
-		"escaped keys":     strings.Repeat(`\"k\":`, 16),
-		"plain assignment": "token=abc",
+		"backslashes":  strings.Repeat(`\`, 1<<12),
+		"escaped keys": strings.Repeat(`\"k\":`, 1<<10),
 	}
 	for name, in := range cases {
 		t.Run(name, func(t *testing.T) {
-			calls := 0
-			slowOnce := func(s string) string {
-				calls++
-				if calls == 1 {
-					time.Sleep(2 * bound)
-				}
-				return s
-			}
+			cost, mask, calls := sizeCost(func(n int) time.Duration { return time.Duration(n*n) * time.Microsecond })
 			rec := &errorRecorder{}
-			requireMaskedWithinBound(rec, name, in, bound, slowOnce)
-			if calls != 1 {
-				t.Errorf("masker invoked %d times, want exactly 1", calls)
+			requireMaskedLinearly(rec, name, in, cost, mask)
+			if *calls != 2 {
+				t.Errorf("masker invoked %d times, want exactly 2", *calls)
 			}
-			if len(rec.msgs) != 1 || !strings.Contains(rec.msgs[0], "want under") {
-				t.Errorf("slow invocation reported %q, want one bound failure", rec.msgs)
+			if len(rec.msgs) != 1 || !strings.Contains(rec.msgs[0], "want at most") {
+				t.Errorf("quadratic masker reported %q, want one growth-rate failure", rec.msgs)
 			}
 		})
 	}
 }
 
-// A masker that stays under the bound passes, and one that grows its output past
-// the placeholder fails regardless of speed.
-func TestMaskedWithinBoundGuardStillJudgesGrowthAndPassesFastMaskers(t *testing.T) {
-	fast := &errorRecorder{}
-	requireMaskedWithinBound(fast, "fast", "a=b", time.Second, func(s string) string { return s })
-	if len(fast.msgs) != 0 {
-		t.Errorf("fast masker reported %q, want no failure", fast.msgs)
-	}
-	grow := &errorRecorder{}
-	requireMaskedWithinBound(grow, "grow", "a=b", time.Second, func(s string) string {
-		return s + strings.Repeat("x", len(MaskedPlaceholder)+1)
-	})
-	if len(grow.msgs) != 1 || !strings.Contains(grow.msgs[0], "grew") {
-		t.Errorf("growing masker reported %q, want one growth failure", grow.msgs)
+// A linear masker passes however slow each byte is, and a quarter too cheap to
+// measure does not fail a cheap whole input.
+func TestMaskedLinearlyGuardPassesLinearMaskers(t *testing.T) {
+	in := strings.Repeat("a=b ", 1<<10)
+	for name, perByte := range map[string]func(int) time.Duration{
+		"slow linear": func(n int) time.Duration { return time.Duration(n) * time.Millisecond },
+		"unmeasured quarter": func(n int) time.Duration {
+			if n < len(in) {
+				return 0
+			}
+			return linearCostFloor
+		},
+	} {
+		cost, mask, _ := sizeCost(perByte)
+		rec := &errorRecorder{}
+		if got := requireMaskedLinearly(rec, name, in, cost, mask); got != in {
+			t.Errorf("%s: returned %d bytes, want the masked whole input", name, len(got))
+		}
+		if len(rec.msgs) != 0 {
+			t.Errorf("%s: reported %q, want no failure", name, rec.msgs)
+		}
 	}
 }
