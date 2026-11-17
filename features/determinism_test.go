@@ -31,6 +31,20 @@ func deterministicEnvironment() []string {
 	return []string{"DECK_ASCII=1", "DECK_ANIM=0", "NO_COLOR=1", "DECK_RECONCILE_MS=25", "DECK_PREVIEW_MS=65", "DECK_CLOCK=" + frozenClock, "DECK_CLOCK_STEP=2m", "DECK_ID_SEED=determinism-seed"}
 }
 
+// waitForLoadedEmptyList returns the first frame in which the released client
+// has both drawn the empty list and applied its first store load. The client
+// draws "No sessions yet" before that load lands, and the load then moves the
+// cursor onto the default group header, which adds the "group header" cue to
+// the footer. Capturing at the bare "No sessions yet" therefore raced the load
+// (one launch caught the pre-load frame, the other the loaded one). Waiting on
+// the cue makes the capture point product-observable state instead of timing;
+// the two launches are still compared byte for byte afterwards.
+func waitForLoadedEmptyList(ctx context.Context, c *ScreenDriver) (string, error) {
+	return c.WaitForFrameFunc(ctx, true, func(frame string) bool {
+		return strings.Contains(frame, "No sessions yet") && strings.Contains(frame, "group header")
+	})
+}
+
 // deterministicFrames compares emulator-derived, padding-normalized frames
 // from two separate launches. This observes the released binary rather than
 // rendering a product model in-process.
@@ -43,10 +57,10 @@ func deterministicFrames(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if err := first.WaitForFrame(ctx, true, "No sessions yet"); err != nil {
+	frame, err := waitForLoadedEmptyList(ctx, first)
+	if err != nil {
 		return err
 	}
-	frame := first.Frame(true)
 	if strings.Contains(first.Raw(), "\x1b[1;36m") {
 		return fmt.Errorf("NO_COLOR emitted product styling escape: %q", first.Raw())
 	}
@@ -67,10 +81,11 @@ func deterministicFrames(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if err := second.WaitForFrame(ctx, true, "No sessions yet"); err != nil {
+	got, err := waitForLoadedEmptyList(ctx, second)
+	if err != nil {
 		return err
 	}
-	if got := second.Frame(true); got != frame {
+	if got != frame {
 		return fmt.Errorf("normalized deterministic frames differ\nfirst:\n%s\nsecond:\n%s", frame, got)
 	}
 	if strings.Contains(second.Raw(), "\x1b[1;36m") {
