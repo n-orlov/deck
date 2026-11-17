@@ -676,13 +676,25 @@ func (s Service) ReconcileWithin(ctx context.Context, budget time.Duration) erro
 	// caller's cancellation is not one. The error a killed tmux child
 	// returns is `signal: killed`, never context.DeadlineExceeded, so the
 	// pass context, not the error, is what says the bound ran out.
-	ranOut := err != nil && ctx.Err() == nil && errors.Is(passCtx.Err(), context.DeadlineExceeded)
+	ranOut := err != nil && ctx.Err() == nil && passBudgetSpent(passCtx)
 	cancel()
 	s.dispatchDeferred(ctx, hooks)
 	if ranOut {
 		return &BoundExceededError{Budget: budget, Err: err}
 	}
 	return err
+}
+
+// passBudgetSpent reports whether the pass's own deadline has passed. A store
+// call bounded to that deadline (store.beginWithin) can fail with a busy error
+// the instant the deadline passes, before the context's timer has marked the
+// context done, so the clock is read as well as the context.
+func passBudgetSpent(passCtx context.Context) bool {
+	if errors.Is(passCtx.Err(), context.DeadlineExceeded) {
+		return true
+	}
+	deadline, bounded := passCtx.Deadline()
+	return bounded && !time.Now().Before(deadline)
 }
 
 // BoundExceededError is what ReconcileWithin returns when its pass ran out of

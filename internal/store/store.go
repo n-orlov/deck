@@ -1273,10 +1273,11 @@ func (s *Store) UpdateSessionStatus(ctx context.Context, input StatusUpdateInput
 		return err
 	}
 
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, done, err := s.beginWithin(ctx)
 	if err != nil {
 		return fmt.Errorf("begin session status update: %w", err)
 	}
+	defer done()
 	defer rollbackTx(tx)
 
 	cur, err := readStatusRow(ctx, tx, input.SessionID)

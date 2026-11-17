@@ -115,14 +115,15 @@ func TestHookBoundHoldsForFailingDeathScriptsAndAHungIncomingScriptAlone(t *test
 		f := newEventHookFixture(t, "claude", "running")
 		f.settings.EventHookTimeout = config.DefaultEventHookTimeout
 		// The liveness pass's budget is a hard deadline on the pass's own work
-		// (list rows, list tmux, one status write per death), and its expiry is
-		// a reported hook failure by contract (TestRunHookReportsAFailedPost-
-		// HookLivenessPass). That work is not what this test measures. Under
-		// -race the in-process SQLite (modernc, pure Go) is itself race-
-		// instrumented: on a loaded agent the pass's median ~30 ms reaches
-		// several hundred ms, and nightly #49 crossed the 500 ms production
-		// default here, failing the hook with "mark session "row-2" stopped:
-		// begin session status update: context deadline exceeded". A deadline
+		// (list rows, list tmux, one status write per death). Running out of it
+		// skips the rest of the pass and still exits the hook 0 with one line
+		// on stderr (SPEC §3.1, R416; TestReleasedHookExitsZeroWhenTheLiveness-
+		// Pass...), but this subtest asserts the hook's silence and that every
+		// death was recorded and offered, so the pass must finish. Under -race
+		// the in-process SQLite (modernc, pure Go) is itself race-instrumented:
+		// on a loaded agent the pass's median ~30 ms reaches several hundred ms,
+		// and nightly #49 crossed the 500 ms production default here (a death's
+		// "begin session status update: context deadline exceeded"). A deadline
 		// costs nothing when the pass is quick, so a race build gets a wider one.
 		if racebuild.Enabled {
 			f.settings.Reconcile = 2 * time.Second
