@@ -3175,6 +3175,19 @@ always did), and the permission badge for non-`safe` **last**. The
   attach that was cropped stops being cropped. Neither stand-down latches: both conditions are
   transient, and the row regains its fit as soon as the claim is released or the client
   detaches, without the user selecting away and back.
+  **Passive fit never undoes a resize another process made.** A fit reads the window's size
+  before it does anything else, and reads it again before every `resize-window`; when the
+  window is no longer at the size the fit last saw or set, someone else resized it, and the
+  fit stops without issuing another `resize-window` or the unpin, leaving the window and its
+  `window-size` as that process left them. This holds even when the fit's own
+  `resize-window` already landed before the other resize: the `manual` pin the window now
+  carries is that process's, so the interrupted fit leaves it in place. That fit counts as
+  done for the row, so deck does not re-fit the row until the selection changes, as with any
+  resize that lands after a fit.
+  A fit whose row is **no longer selected** by the time it would resize issues no
+  `resize-window` either, and does not latch: the row is fit when it is selected again. The
+  read and the resize are two tmux calls, so only a resize landing between that last read and
+  the `resize-window` itself is still overwritten.
 - **The cost is stated, not hidden.** A fit sends the agent `SIGWINCH` and reflows its output,
   so §3.2's history arithmetic applies: output produced while narrow consumes scrollback rows
   faster and evicted rows never return. A second client attached at another size sees the crop

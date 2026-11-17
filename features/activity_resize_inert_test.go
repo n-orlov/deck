@@ -332,6 +332,14 @@ func waitForPaneText(ctx context.Context, h *ScenarioHarness, target, want strin
 // privateWindowResizedByAnotherProcess resizes the session's window with tmux
 // itself, the way a second deck client or a real tmux client would. The
 // session is not the one the list has selected, so deck does not re-fit it.
+//
+// A passive fit deck scheduled while the session was still the selected row
+// can still be running (build 57: deck's 61x27 fit held for the whole 5 s,
+// want 100x27). Deck's fit now stands down for a row that is no longer
+// selected and for a window someone else resized (SPEC §11), but its last
+// size read and its resize-window are two tmux calls. So the resize still
+// waits for the one signal that no such fit is outstanding, then waits for
+// tmux itself to report the requested size.
 func privateWindowResizedByAnotherProcess(ctx context.Context, name string, width, height int) error {
 	h, err := scenarioHarness(ctx)
 	if err != nil {
@@ -341,19 +349,72 @@ func privateWindowResizedByAnotherProcess(ctx context.Context, name string, widt
 	if err != nil {
 		return err
 	}
+	if err := waitForPassiveFitsDone(ctx, h); err != nil {
+		return err
+	}
 	target := "deck_" + slug
 	if _, err := tmuxOutput(ctx, h, "resize-window", "-t", target, "-x", strconv.Itoa(width), "-y", strconv.Itoa(height)); err != nil {
 		return fmt.Errorf("resize %q to %dx%d: %w", target, width, height, err)
 	}
-	want := fmt.Sprintf("%dx%d", width, height)
-	return pollUntil(5*time.Second, func() error {
-		got, err := privateWindowGeometry(ctx, h, name)
+	return waitForGeometry(5*time.Second, fmt.Sprintf("%dx%d", width, height), func() (string, error) {
+		return privateWindowGeometry(ctx, h, name)
+	})
+}
+
+// waitForGeometry polls read until it reports want, and fails with the last
+// geometry it saw when that does not happen within timeout.
+func waitForGeometry(timeout time.Duration, want string, read func() (string, error)) error {
+	return pollUntil(timeout, func() error {
+		got, err := read()
 		if err != nil {
 			return err
 		}
 		if got != want {
-			return fmt.Errorf("private tmux window for session %q is %s, want %s", name, got, want)
+			return fmt.Errorf("private tmux window is %s, want %s", got, want)
 		}
 		return nil
 	})
+}
+
+// tmuxCreationGeometry is the size of a window no client has resized: a
+// detached new-session gets tmux's default-size.
+const tmuxCreationGeometry = "80x24"
+
+// waitForPassiveFitsDone blocks until deck has no passive preview fit
+// outstanding for any session the scenario created. Deck runs one fit at a
+// time and starts the next only after the previous one is done, and it fits
+// the selected row, which is the newest session: so once the newest session's
+// window has left tmux's creation size, every earlier fit has ended.
+func waitForPassiveFitsDone(ctx context.Context, h *ScenarioHarness) error {
+	return pollUntil(5*time.Second, func() error {
+		out, err := tmuxOutput(ctx, h, "list-sessions", "-F", "#{session_id} #{window_width}x#{window_height}")
+		if err != nil {
+			return fmt.Errorf("list private tmux sessions: %w", err)
+		}
+		return newestSessionFitted(string(out))
+	})
+}
+
+// newestSessionFitted reads list-sessions output ("$<n> WxH" per line) and
+// reports whether the session with the highest id has a window that is not at
+// tmuxCreationGeometry.
+func newestSessionFitted(listing string) error {
+	newest, geometry := -1, ""
+	for _, line := range strings.Split(strings.TrimSpace(listing), "\n") {
+		var id int
+		var g string
+		if _, err := fmt.Sscanf(strings.TrimSpace(line), "$%d %s", &id, &g); err != nil {
+			continue
+		}
+		if id > newest {
+			newest, geometry = id, g
+		}
+	}
+	if newest < 0 {
+		return fmt.Errorf("private tmux server lists no session")
+	}
+	if geometry == tmuxCreationGeometry {
+		return fmt.Errorf("deck has not yet fitted the newest session's window (still %s)", geometry)
+	}
+	return nil
 }

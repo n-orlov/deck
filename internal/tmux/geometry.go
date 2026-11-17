@@ -426,3 +426,89 @@ func (c Client) FitWindowToPaneUnpinned(ctx context.Context, target, paneTarget 
 	}
 	return resizes, unpinErr
 }
+
+// WindowSize reads target's #{window_width} and #{window_height} in one
+// display-message.
+func (c Client) WindowSize(ctx context.Context, target string) (width, height int, err error) {
+	width, height, _, _, err = c.windowAndPaneSize(ctx, target)
+	return width, height, err
+}
+
+// FitStop says why FitWindowToPaneUnlessResized ended.
+type FitStop int
+
+const (
+	// FitFinished means the pane reached the wanted size, or the fit gave up on
+	// its own (an error or too many resizes).
+	FitFinished FitStop = iota
+	// FitResizedElsewhere means the window was not at the size the fit last saw
+	// or set, so another process resized it and the fit left it alone.
+	FitResizedElsewhere
+	// FitUnwanted means the caller's keep check said the fit is no longer wanted.
+	FitUnwanted
+)
+
+// FitWindowToPaneUnlessResized is FitWindowToPaneUnpinned for a fit that must
+// never undo a resize another process made while the fit was running (passive
+// preview fit, SPEC §11). The caller passes the window size it read when it
+// started (fromWidth x fromHeight). Before every resize-window the window is
+// read again, and the fit stops, issuing nothing more, when:
+//
+//   - the window is not at the size the fit last saw or set: someone else
+//     resized it in between (FitResizedElsewhere);
+//   - keep, consulted after that read, returns false (FitUnwanted). keep
+//     must not be nil.
+//
+// The read and the resize are two tmux invocations, so a resize landing
+// between them is still overwritten; everything before the last read is not.
+//
+// A fit that stopped because the window was resized elsewhere never unpins,
+// however many resize-window calls it had already issued: the window's size
+// and its window-size option are now the other process's (a resize-window
+// writes `manual` each time, and under a deck pin nothing but another
+// resize-window or an option write can move the window), so unsetting the
+// option would undo that process's pin. A fit the caller stopped wanting
+// before it issued any resize-window touches nothing either. Every other
+// outcome -- including an unwanted fit that already resized, whose pin is
+// deck's own -- unpins exactly as FitWindowToPaneUnpinned does, for the same
+// reason.
+func (c Client) FitWindowToPaneUnlessResized(ctx context.Context, target, paneTarget string, fromWidth, fromHeight, wantWidth, wantHeight int, keep func() bool) (int, FitStop, error) {
+	resizes, stop, fitErr := c.fitWindowFrom(ctx, target, paneTarget, fromWidth, fromHeight, wantWidth, wantHeight, keep)
+	if stop == FitResizedElsewhere || (stop == FitUnwanted && resizes == 0) {
+		return resizes, stop, nil
+	}
+	unpinErr := c.UnpinWindowSize(ctx, target)
+	if fitErr != nil {
+		return resizes, stop, fitErr
+	}
+	return resizes, stop, unpinErr
+}
+
+// fitWindowFrom is FitWindowToPane's loop with FitWindowToPaneUnlessResized's
+// two stop checks before each resize.
+func (c Client) fitWindowFrom(ctx context.Context, target, paneTarget string, expectWidth, expectHeight, wantWidth, wantHeight int, keep func() bool) (int, FitStop, error) {
+	type size struct{ width, height int }
+	expect, want := size{expectWidth, expectHeight}, size{wantWidth, wantHeight}
+	resizes := 0
+	for attempt := 0; attempt < maxFitWindowAttempts; attempt++ {
+		windowWidth, windowHeight, paneWidth, paneHeight, err := c.windowAndPaneSize(ctx, paneTarget)
+		if err != nil {
+			return resizes, FitFinished, err
+		}
+		if (size{windowWidth, windowHeight}) != expect {
+			return resizes, FitResizedElsewhere, nil
+		}
+		if (size{paneWidth, paneHeight}) == want {
+			return resizes, FitFinished, nil
+		}
+		if !keep() {
+			return resizes, FitUnwanted, nil
+		}
+		expect = size{max(wantWidth+(windowWidth-paneWidth), 1), max(wantHeight+(windowHeight-paneHeight), 1)}
+		if err := c.resizeWindow(ctx, target, expect.width, expect.height); err != nil {
+			return resizes, FitFinished, err
+		}
+		resizes++
+	}
+	return resizes, FitFinished, fmt.Errorf("fit window %q to pane %q at %dx%d: did not converge in %d resizes", target, paneTarget, wantWidth, wantHeight, maxFitWindowAttempts)
+}

@@ -12,6 +12,7 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -1172,6 +1173,9 @@ type Model struct {
 	// clearing of previewFitSessionID must not license a second concurrent
 	// fit for a session whose first attempt is still outstanding.
 	previewFitInFlight string
+	// fitSelection mirrors the selected session's ID for the passive fit's
+	// goroutine (fitSelectionMirror); created by the first previewFit.
+	fitSelection *fitSelectionMirror
 	// outputDiscount (R305) is told about every deck-caused resize, attach
 	// and forwarded key so the output clock does not count the output they
 	// provoke. Nil (a Model built without it) discounts nothing.
@@ -1951,11 +1955,16 @@ type uiStatePersisted struct{ err error }
 // fit picks here is one it could keep. Nothing was resized, and -- for the
 // same transience reason as foreignLiveClaim -- this must not latch
 // either: the row regains its fit the moment that client detaches.
+//
+// selectionMoved is true when the fit stood down because its session was no
+// longer the selected row before it resized anything. It does not latch: the
+// row was never fit, so it is fit when it is selected again.
 type previewFitDone struct {
 	sessionID        string
 	noLivePane       bool
 	foreignLiveClaim bool
 	clientAttached   bool
+	selectionMoved   bool
 }
 
 // entryRefusalHolderRecheckDone reports the result of one
@@ -2521,7 +2530,7 @@ func (m *Model) previewFitCandidate() (session store.Session, width, height int,
 // the attached-client return below).
 //
 // "Any attaching client simply wins" is only true because the fit UNPINS
-// (FitWindowToPaneUnpinned, below). `resize-window` writes `window-size
+// (FitWindowToPaneUnlessResized, below). `resize-window` writes `window-size
 // manual` into the window options, which shadow the global `latest`, so a
 // plain fit leaves the window unable to follow any later client at all:
 // the operator's own report of this was pressing `a` on a row whose
@@ -2567,15 +2576,63 @@ func (m *Model) previewFit() tea.Cmd {
 	// marker, and a path that returns anything else (or nil) wedges passive
 	// fit for the rest of the session's lifetime.
 	m.previewFitInFlight = sessionID
+	if m.fitSelection == nil {
+		m.fitSelection = &fitSelectionMirror{}
+	}
+	selection := m.fitSelection
+	selection.set(sessionID)
 	return func() tea.Msg {
-		return fitPreviewPane(client, slug, sessionID, width, height, discounter)
+		return fitSelectedPreviewPane(client, slug, sessionID, width, height, discounter, selection)
 	}
 }
 
-// fitPreviewPane is the command previewFit schedules: it fits the session's
-// window to the panel, or stands down. EVERY return owes a previewFitDone for
-// sessionID, the only thing that clears previewFitInFlight.
+// fitSelectionMirror is the selected session's ID as the event loop last left
+// it, readable from the goroutine a passive fit runs on. Update publishes it
+// at the end of every message (publishFitSelection), so by the time a frame
+// shows a new selection, a fit for the old one already reads that it moved.
+// A nil mirror reads as "still selected".
+type fitSelectionMirror struct{ id atomic.Value }
+
+func (s *fitSelectionMirror) set(id string) { s.id.Store(id) }
+
+func (s *fitSelectionMirror) holds(id string) bool {
+	if s == nil {
+		return true
+	}
+	current, _ := s.id.Load().(string)
+	return current == id
+}
+
+// publishFitSelection writes the model's selected session into its
+// fitSelectionMirror, once one exists.
+func publishFitSelection(next tea.Model) tea.Model {
+	model, ok := next.(Model)
+	if !ok || model.fitSelection == nil {
+		return next
+	}
+	session, _ := model.selectedSession()
+	model.fitSelection.set(session.ID)
+	return model
+}
+
+// fitPreviewPane is fitSelectedPreviewPane with no selection to consult: the
+// fit runs as if its session stays selected.
 func fitPreviewPane(client tmux.Client, slug, sessionID string, width, height int, discounter OutputDiscounter) tea.Msg {
+	return fitSelectedPreviewPane(client, slug, sessionID, width, height, discounter, nil)
+}
+
+// fitSelectedPreviewPane is the command previewFit schedules: it fits the
+// session's window to the panel, or stands down. EVERY return owes a
+// previewFitDone for sessionID, the only thing that clears previewFitInFlight.
+//
+// It never undoes a resize another process made (SPEC §11). It reads the
+// window's size before anything else, and the fit stops without issuing
+// another resize-window when, at any read before a resize, the window is not
+// at the size the fit last saw or set (someone else resized it: settled, the
+// next fit waits for the selection to change, like any resize after a fit),
+// or the session is no longer the selected row (not settled: the row is fit
+// when it is selected again).
+func fitSelectedPreviewPane(client tmux.Client, slug, sessionID string, width, height int, discounter OutputDiscounter, selection *fitSelectionMirror) tea.Msg {
 	ctx := context.Background()
 	pane, ok, err := client.PreviewPane(ctx, slug)
 	if err != nil || !ok {
@@ -2598,26 +2655,35 @@ func fitPreviewPane(client tmux.Client, slug, sessionID string, width, height in
 	if err != nil {
 		return previewFitDone{sessionID: sessionID}
 	}
+	fromWidth, fromHeight, err := client.WindowSize(ctx, windowTarget)
+	if err != nil {
+		return previewFitDone{sessionID: sessionID}
+	}
+	if !selection.holds(sessionID) {
+		return previewFitDone{sessionID: sessionID, selectionMoved: true}
+	}
 	if done, standDown := previewFitStandDown(ctx, client, windowTarget, sessionID, discounter); standDown {
 		return done
 	}
-	// FitWindowToPane already no-ops (0 resize-window calls) when the
-	// pane already matches width/height, so a settled selection whose
-	// window some other action (an attaching client, a prior fit) has
-	// already brought to the panel's own size costs nothing beyond the
-	// one display-message read that discovers that.
+	// The fit no-ops (0 resize-window calls) when the pane already
+	// matches width/height, so a settled selection whose window some
+	// other action (an attaching client, a prior fit) has already brought
+	// to the panel's own size costs nothing beyond the display-message
+	// reads that discover that.
 	//
-	// The Unpinned variant is what makes passive fit's "owning and
-	// restoring nothing" true rather than merely intended -- see its
-	// own doc comment, and the paragraph on the crop it removes above.
+	// Its unpin is what makes passive fit's "owning and restoring
+	// nothing" true rather than merely intended -- see
+	// FitWindowToPaneUnpinned's doc comment, and the paragraph on the crop
+	// it removes above.
 	issuedAt := time.Now() // R410: taken before the resize is issued
-	resizes, _ := client.FitWindowToPaneUnpinned(ctx, windowTarget, pane.ID, width, height)
+	keep := func() bool { return selection.holds(sessionID) }
+	resizes, stop, _ := client.FitWindowToPaneUnlessResized(ctx, windowTarget, pane.ID, fromWidth, fromHeight, width, height, keep)
 	if resizes > 0 && discounter != nil {
 		// R305: the resize makes the pane's program redraw (SIGWINCH);
 		// that output is deck's, not the agent's.
 		discounter.Discount(sessionID, service.DiscountResize, issuedAt)
 	}
-	return previewFitDone{sessionID: sessionID}
+	return previewFitDone{sessionID: sessionID, selectionMoved: stop == tmux.FitUnwanted}
 }
 
 // previewFitStandDown reports the two reasons passive fit must not resize.
@@ -2822,6 +2888,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	next, cmd = m.releaseHeldReload(next, cmd)
 	next, cmd = releaseHeldRefit(next, cmd)
 	next = observeDwellAfterUpdate(next)
+	next = publishFitSelection(next)
 	return stampFooterNotes(prev, next, cmd)
 }
 
@@ -4336,7 +4403,7 @@ func (m Model) onPreviewFitDone(msg previewFitDone) (tea.Model, tea.Cmd) {
 	// stays (or is re-)selected. Every OTHER return path (the real fit,
 	// and the pre-existing tmux.SessionName failure path, both left
 	// unchanged by this task) keeps latching exactly as before.
-	if !msg.noLivePane && !msg.foreignLiveClaim && !msg.clientAttached {
+	if !msg.noLivePane && !msg.foreignLiveClaim && !msg.clientAttached && !msg.selectionMoved {
 		m.previewFitSessionID = msg.sessionID
 	}
 	// Cleared unconditionally, not only when it matches the session
