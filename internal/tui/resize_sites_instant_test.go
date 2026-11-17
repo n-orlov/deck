@@ -74,7 +74,7 @@ func resizeStampingTmux(t *testing.T) (binary string, stamps func() []int64, for
 	dir := t.TempDir()
 	log := filepath.Join(dir, "resizes")
 	binary = filepath.Join(dir, "tmux")
-	body := "#!/bin/sh\nfor arg in \"$@\"; do\n\tcase \"$arg\" in\n\tresize-window) date +%s%N >> '" + log + "' ;;\n\tesac\ndone\nexec '" + tmuxPath + "' \"$@\"\n"
+	body := "#!/bin/sh\nfor arg in \"$@\"; do\n\tcase \"$arg\" in\n\tresize-window|resize-window\\ *) date +%s%N >> '" + log + "' ;;\n\tesac\ndone\nexec '" + tmuxPath + "' \"$@\"\n"
 	if err := os.WriteFile(binary, []byte(body), 0o700); err != nil {
 		t.Fatal(err)
 	}

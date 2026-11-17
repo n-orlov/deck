@@ -29,7 +29,7 @@ func resizeAndUnpinStampingTmux(t *testing.T, attached bool) (string, func() []i
 	dir := t.TempDir()
 	wrapper := filepath.Join(dir, "tmux")
 	log := filepath.Join(filepath.Dir(inner), "resizes")
-	body := "#!/bin/sh\nfor arg in \"$@\"; do\n\tcase \"$arg\" in\n\t-u) date +%s%N >> '" + log + "' ;;\n"
+	body := "#!/bin/sh\nfor arg in \"$@\"; do\n\tcase \"$arg\" in\n\t-u|*\\ -u\\ *) date +%s%N >> '" + log + "' ;;\n"
 	if attached {
 		body += "\t'#{session_attached}') echo 1; exit 0 ;;\n"
 	}

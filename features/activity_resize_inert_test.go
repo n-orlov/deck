@@ -336,10 +336,12 @@ func waitForPaneText(ctx context.Context, h *ScenarioHarness, target, want strin
 // A passive fit deck scheduled while the session was still the selected row
 // can still be running (build 57: deck's 61x27 fit held for the whole 5 s,
 // want 100x27). Deck's fit now stands down for a row that is no longer
-// selected and for a window someone else resized (SPEC §11), but its last
-// size read and its resize-window are two tmux calls. So the resize still
-// waits for the one signal that no such fit is outstanding, then waits for
-// tmux itself to report the requested size.
+// selected and for a window someone else resized (SPEC §11), and each of its
+// resize-window calls and its unpin is one compare-and-set against the size it
+// last read, so a resize made here is never overwritten. The step still waits
+// for the one signal that no such fit is outstanding, so the resize is not made
+// into a fit's own window mid-flight, then waits for tmux itself to report the
+// requested size.
 func privateWindowResizedByAnotherProcess(ctx context.Context, name string, width, height int) error {
 	h, err := scenarioHarness(ctx)
 	if err != nil {

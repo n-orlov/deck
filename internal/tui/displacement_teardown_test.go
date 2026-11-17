@@ -46,7 +46,7 @@ func countWireOptionUnsets(t *testing.T, logPath, option string) int {
 	}
 	count := 0
 	for _, line := range strings.Split(string(data), "\n") {
-		fields := strings.Fields(line)
+		fields := wireEffectiveFields(strings.Fields(line))
 		// Every invocation the shim sees is `-L <socket> <command> ...`.
 		if len(fields) < 4 || fields[0] != "-L" || (fields[2] != "set-option" && fields[2] != "if-shell") {
 			continue

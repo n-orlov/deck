@@ -144,3 +144,38 @@ func TestPreviewFitForARowNoLongerSelectedResizesNothing(t *testing.T) {
 		t.Fatalf("the tick after the stand-down left %q in flight, want a fit for sess-b", m.previewFitInFlight)
 	}
 }
+
+// TestPreviewFitStandDownKeepsAResizeAnotherProcessMadeBeforeItsUnpin is the
+// same SPEC §11 rule for the attached-client stand-down, whose only act is the
+// unpin: another process resizes (and so pins) the window after the fit read
+// its size and before the unpin goes out (the tmux the fit talks to makes that
+// resize itself as it answers the fit's session_attached read with 1). The
+// unpin goes out only while the window still is the size the fit read, so the
+// other process's 100x27 and its `manual` pin are left alone, and the fit
+// still reports the stand-down.
+func TestPreviewFitStandDownKeepsAResizeAnotherProcessMadeBeforeItsUnpin(t *testing.T) {
+	socket := selectionTestSocket("fitstanddownext")
+	const slug = "fitstanddownext"
+	target := "deck_" + slug
+	newQuietSelectionPane(t, socket, target, 80, 24)
+
+	dir := t.TempDir()
+	binary := filepath.Join(dir, "tmux")
+	script := "#!/bin/sh\ncase \"$*\" in\n*'#{session_attached}'*)\n\ttmux -L \"$2\" resize-window -t '" + target + "' -x 100 -y 27 || exit 1\n\techo 1\n\texit 0 ;;\nesac\nexec tmux \"$@\"\n"
+	if err := os.WriteFile(binary, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	client := tmux.Client{Socket: socket, Binary: binary}
+	done, ok := fitPreviewPane(client, slug, "sess-fitstanddownext", 61, 27, nil).(previewFitDone)
+	if !ok || !done.clientAttached {
+		t.Fatalf("fit = %+v, want the attached-client stand-down", done)
+	}
+	if got := windowGeometry(t, socket, target); got != "100x27" {
+		t.Fatalf("window after the stand-down = %s, want the other process's 100x27", got)
+	}
+	out, err := exec.Command("tmux", "-L", socket, "show-options", "-wv", "-t", target, "window-size").CombinedOutput()
+	if err != nil || strings.TrimSpace(string(out)) != "manual" {
+		t.Fatalf("window-size after the stand-down = %q (%v), want the other process's manual pin left in place: the unpin overwrote it", out, err)
+	}
+}

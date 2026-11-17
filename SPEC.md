@@ -3179,15 +3179,19 @@ always did), and the permission badge for non-`safe` **last**. The
   before it does anything else, and reads it again before every `resize-window`; when the
   window is no longer at the size the fit last saw or set, someone else resized it, and the
   fit stops without issuing another `resize-window` or the unpin, leaving the window and its
-  `window-size` as that process left them. This holds even when the fit's own
-  `resize-window` already landed before the other resize: the `manual` pin the window now
-  carries is that process's, so the interrupted fit leaves it in place. That fit counts as
-  done for the row, so deck does not re-fit the row until the selection changes, as with any
-  resize that lands after a fit.
+  `window-size` as that process left them. The check and the mutation it guards are one
+  atomic step, not two: every `resize-window` and the closing unpin (and the unpin an
+  attached-client stand-down issues) is a single tmux `if-shell -F` whose condition is that
+  the window still is the size the fit last saw or set, so a resize that completes after the
+  fit's read and before its mutation makes the condition fail, and the mutation is not run.
+  Neither a stale `resize-window` nor a stale unpin overwrites that process's window or pin.
+  This holds even when the fit's own `resize-window` already landed before the other resize:
+  the `manual` pin the window now carries is that process's, so the interrupted fit leaves it
+  in place. That fit counts as done for the row, so deck does not re-fit the row until the
+  selection changes, as with any resize that lands after a fit. The one resize a fit cannot
+  tell from its own is one to exactly the size the fit last saw or set.
   A fit whose row is **no longer selected** by the time it would resize issues no
-  `resize-window` either, and does not latch: the row is fit when it is selected again. The
-  read and the resize are two tmux calls, so only a resize landing between that last read and
-  the `resize-window` itself is still overwritten.
+  `resize-window` either, and does not latch: the row is fit when it is selected again.
 - **The cost is stated, not hidden.** A fit sends the agent `SIGWINCH` and reflows its output,
   so §3.2's history arithmetic applies: output produced while narrow consumes scrollback rows
   faster and evicted rows never return. A second client attached at another size sees the crop
