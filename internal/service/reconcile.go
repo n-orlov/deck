@@ -638,13 +638,17 @@ func keepTerminalRune(r rune) bool {
 // pass: the ticker is created before the immediate pass, so a first snapshot
 // that is slow to return (and may have been taken just before a session
 // vanished) cannot push the detecting second pass a whole extra interval out.
+//
+// Cancelling ctx is how the caller stops the loop, so a pass cut short by that
+// cancellation (its tmux child killed: `signal: killed`) ends the loop with
+// nil. Any other pass error is returned.
 func (s Service) RunReconciler(ctx context.Context, interval time.Duration) error {
 	if interval <= 0 {
 		return errors.New("reconciliation interval must be positive")
 	}
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
-	if err := s.ReconcileWithin(ctx, interval); err != nil {
+	if err := s.reconcilePass(ctx, interval); err != nil {
 		return err
 	}
 	for {
@@ -652,11 +656,21 @@ func (s Service) RunReconciler(ctx context.Context, interval time.Duration) erro
 		case <-ctx.Done():
 			return nil
 		case <-ticker.C:
-			if err := s.ReconcileWithin(ctx, interval); err != nil {
+			if err := s.reconcilePass(ctx, interval); err != nil {
 				return err
 			}
 		}
 	}
+}
+
+// reconcilePass is one budgeted pass of the loop. An error that arrives once
+// ctx is cancelled is the cancellation's own doing, not a failure of the pass.
+func (s Service) reconcilePass(ctx context.Context, interval time.Duration) error {
+	err := s.ReconcileWithin(ctx, interval)
+	if err != nil && ctx.Err() != nil {
+		return nil
+	}
+	return err
 }
 
 // ReconcileWithin runs one liveness-only pass with a hard budget. It is shared
