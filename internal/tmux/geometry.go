@@ -2,6 +2,7 @@ package tmux
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -123,30 +124,40 @@ func (c Client) windowAndPaneSize(ctx context.Context, paneTarget string) (windo
 	return values[0], values[1], values[2], values[3], nil
 }
 
-// WindowView is what an observer saw of a window: its size and its effective
-// `window-size` value ("latest", "manual", ...), read in one display-message.
-// The pin is part of the view because `resize-window` and `set-option -w
-// window-size` change it without necessarily changing the numbers: another
-// process that pins a window at the very size it already has leaves the width
-// and height identical and the view different.
+// WindowView is what an observer saw of a window: its size, its effective
+// `window-size` value ("latest", "manual", ...) and whether the window's OWN
+// options hold that value (PinSet) or it is inherited from the global window
+// options -- all read in one tmux invocation. The pin is part of the view
+// because `resize-window` and `set-option -w window-size` change it without
+// necessarily changing the numbers: another process that pins a window at the
+// very size it already has leaves the width and height identical and the view
+// different. PinSet is part of it because that change need not move the
+// effective value either: under a global `window-size manual`, a
+// `resize-window` to the window's own size only turns the inherited `manual`
+// into a window-local one, which `show-options -w` shows.
 type WindowView struct {
 	Width, Height int
 	Pin           string
+	PinSet        bool
 }
 
 // windowViewAndPaneSize is windowAndPaneSize that also reads the window's
-// effective `window-size` value (#{window-size}) in the same display-message,
-// so the size and the pin are one observation.
+// effective `window-size` value (#{window-size}) and its window-local
+// `window-size` option in the same tmux invocation (`display-message ; show-options
+// -wv`, one command queue the server drains before any other client's command),
+// so the size, the pin and where the pin lives are one observation.
 func (c Client) windowViewAndPaneSize(ctx context.Context, paneTarget string) (view WindowView, paneWidth, paneHeight int, err error) {
 	commandCtx, cancel := context.WithTimeout(ctx, c.timeout())
 	defer cancel()
 	output, err := c.command(commandCtx, "display-message", "-p", "-t", paneTarget,
-		"#{window_width} #{window_height} #{pane_width} #{pane_height} #{window-size}").CombinedOutput()
+		"#{window_width} #{window_height} #{pane_width} #{pane_height} #{window-size}",
+		";", "show-options", "-wv", "-t", paneTarget, "window-size").CombinedOutput()
 	if err != nil {
 		return WindowView{}, 0, 0, fmt.Errorf("tmux -L %s display-message -p -t %s window/pane size: %w: %s", c.Socket, paneTarget, err, strings.TrimSpace(string(output)))
 	}
-	fields := strings.Fields(string(output))
-	if len(fields) != 5 {
+	lines := strings.Split(strings.TrimRight(string(output), "\n"), "\n")
+	fields := strings.Fields(lines[0])
+	if len(fields) != 5 || len(lines) > 2 {
 		return WindowView{}, 0, 0, fmt.Errorf("tmux -L %s display-message -p -t %s window/pane size: unexpected output %q", c.Socket, paneTarget, string(output))
 	}
 	values := make([]int, 4)
@@ -157,10 +168,11 @@ func (c Client) windowViewAndPaneSize(ctx context.Context, paneTarget string) (v
 		}
 		values[index] = parsed
 	}
-	return WindowView{Width: values[0], Height: values[1], Pin: fields[4]}, values[2], values[3], nil
+	pinSet := len(lines) == 2 && strings.TrimSpace(lines[1]) != ""
+	return WindowView{Width: values[0], Height: values[1], Pin: fields[4], PinSet: pinSet}, values[2], values[3], nil
 }
 
-// ReadWindowView reads target's WindowView in one display-message.
+// ReadWindowView reads target's WindowView in one tmux invocation.
 func (c Client) ReadWindowView(ctx context.Context, target string) (WindowView, error) {
 	view, _, _, err := c.windowViewAndPaneSize(ctx, target)
 	return view, err
@@ -493,31 +505,39 @@ const (
 
 // FitWindowToPaneUnlessResized is FitWindowToPaneUnpinned for a fit that must
 // never undo a resize another process made while the fit was running (passive
-// preview fit, SPEC §11). The caller passes the window view (size and
-// `window-size` pin, ReadWindowView) it read when it started. Before every resize-window the window is
-// read again, and the fit stops, issuing nothing more, when:
+// preview fit, SPEC §11). The caller passes the window view (size,
+// `window-size` pin and whether the window's own options hold it,
+// ReadWindowView) it read when it started. Before every resize-window the
+// window is read again, and the fit stops, issuing nothing more, when:
 //
-//   - the window is not as the fit last saw or set it, in size OR in its
-//     `window-size` pin: someone else resized or pinned it in between
-//     (FitResizedElsewhere);
+//   - the window is not as the fit last saw or set it, in size, in its
+//     effective `window-size` pin OR in whether that pin is window-local:
+//     someone else resized or pinned it in between (FitResizedElsewhere);
 //   - keep, consulted after that read, returns false (FitUnwanted). keep
 //     must not be nil.
 //
 // The read and the mutation after it are not two tmux processes with a gap
 // between them: every `resize-window` and the closing unpin go out as one
 // compare-and-set (resizeWindowIfAt, UnpinWindowSizeIfAt), a single
-// `if-shell -F` whose format condition compares the window's width, height
-// and `window-size` value with the ones the fit last saw or set. The tmux server evaluates that condition and
+// `if-shell -F` whose format condition compares the window's width, height,
+// effective `window-size` value and the window-local-or-inherited answer of a
+// probe run in the same invocation (windowCAS) with the ones the fit last saw
+// or set. The tmux server evaluates that condition and
 // runs the mutation in the same command queue, so a resize that lands after
 // the fit's read but before its mutation makes the condition fail: the fit
 // leaves the window and its `window-size` as the other process left them and
 // reports FitResizedElsewhere. That covers an external change that leaves
 // the numbers as they were: `resize-window` to the size the window already
 // has, or `set-option -w window-size manual`, still flips the pin from
-// `latest` to `manual`, and the condition sees the pin. What stays
-// indistinguishable from the fit's own state is only a change that leaves
-// width, height and the effective `window-size` value all as they were
-// (a resize-window on an already pinned window to its own size).
+// `latest` to `manual`, and the condition sees the pin; under a global
+// `window-size manual` the same commands change no number and no effective
+// value but make an inherited pin window-local, and the condition sees that
+// too, as it sees the opposite (another process unsetting the window's own
+// pin). What stays indistinguishable from the fit's own state is only a
+// change that leaves width, height, the effective `window-size` value and its
+// window-local presence all as they were (a resize-window to its own size on
+// a window whose own options already hold `manual`): nothing tmux reports
+// about the window differs afterwards.
 //
 // A fit that stopped because the window was resized elsewhere never unpins,
 // however many resize-window calls it had already issued: the window's size
@@ -529,7 +549,8 @@ const (
 // outcome -- including an unwanted fit that already resized, whose pin is
 // deck's own -- unpins exactly as FitWindowToPaneUnpinned does, for the same
 // reason, but only while the window still looks as the fit last saw or set it
-// (size and pin); a window moved or re-pinned since is reported as
+// (size, pin and where the pin lives); a window moved or re-pinned since is
+// reported as
 // FitResizedElsewhere.
 func (c Client) FitWindowToPaneUnlessResized(ctx context.Context, target, paneTarget string, from WindowView, wantWidth, wantHeight int, keep func() bool) (int, FitStop, error) {
 	resizes, stop, at, fitErr := c.fitWindowFrom(ctx, target, paneTarget, from, wantWidth, wantHeight, keep)
@@ -557,37 +578,111 @@ const (
 	windowCASStale   = "deck-window-cas-stale"
 )
 
+// windowSizeInheritedOption is the window user option windowCAS's probe sets,
+// for the length of one command queue, exactly when the window's own options
+// do not hold `window-size`. No tmux format tells a window-local option from
+// an inherited one (#{window-size} is the effective value either way), so the
+// probe turns that fact into one a format condition can read, and the same
+// invocation removes it again before any other client's command runs.
+const windowSizeInheritedOption = "@deck-window-size-inherited"
+
+// windowSizeAlreadySet is what tmux prints when the probe's `set-option -o`
+// finds `window-size` already set in the window's own options. That error
+// ends only the probe's own command sequence (an if-shell branch), and it is
+// the expected answer for a window-local pin, not a failure of the CAS.
+const windowSizeAlreadySet = "already set: window-size"
+
+// windowSizeInheritedProbe is the probe's command sequence: `set-option -o`
+// fails, ending the sequence, when the window's own options hold
+// `window-size`; otherwise it writes the effective value there (no change in
+// effect, so no resize), marks the window inherited and removes the
+// window-local copy again, leaving the window's options as they were.
+func windowSizeInheritedProbe(target string) string {
+	quoted := quoteTmuxCommandArg(target)
+	return "set-option -F -w -o -t " + quoted + " window-size '#{window-size}'" +
+		" ; set-option -w -t " + quoted + " " + windowSizeInheritedOption + " 1" +
+		" ; set-option -w -u -t " + quoted + " window-size"
+}
+
 // windowCAS runs action (one tmux command line, already quoted for tmux's own
-// parser) in ONE invocation, if and only if target's window is exactly at
-// width x height when the tmux server gets to it, and reports whether it ran.
-// The comparison and the action share a command queue the single-threaded
-// server drains before it runs any other client's command (the same
-// construction as compareAndSetWindowOwnership), so no other process can
-// resize the window between the check and the action. An action tmux rejects
-// is an error, not "stale".
+// parser) in ONE invocation, if and only if target's window looks exactly the
+// way at says when the tmux server gets to it -- the same width, height and
+// effective `window-size` value, with that value window-local or inherited as
+// at.PinSet says -- and reports whether it ran. The probe, the comparison and
+// the action share a command queue the single-threaded server drains before
+// it runs any other client's command (the same construction as
+// compareAndSetWindowOwnership), so no other process can resize or re-pin the
+// window between the check and the action. An action tmux rejects is an
+// error, not "stale".
 func (c Client) windowCAS(ctx context.Context, target string, at WindowView, action string) (bool, error) {
 	if !windowPinIsAWord(at.Pin) {
 		return false, fmt.Errorf("tmux -L %s %s if window view %+v: window-size %q is not a tmux option word", c.Socket, action, at, at.Pin)
 	}
-	condition := fmt.Sprintf("#{&&:#{==:#{window_width},%d},#{&&:#{==:#{window_height},%d},#{==:#{window-size},%s}}}", at.Width, at.Height, at.Pin)
 	commandCtx, cancel := context.WithTimeout(ctx, c.timeout())
 	defer cancel()
 	output, err := c.command(commandCtx,
-		"if-shell", "-F", "-t", target, condition,
+		"if-shell", "-F", "-t", target, "1", windowSizeInheritedProbe(target),
+		";", "if-shell", "-F", "-t", target, windowCASCondition(at),
 		action+" ; display-message -p "+windowCASApplied,
 		"display-message -p "+windowCASStale,
+		";", "set-option", "-w", "-u", "-t", target, windowSizeInheritedOption,
 	).CombinedOutput()
-	trimmed := strings.TrimSpace(string(output))
-	if err != nil {
-		return false, fmt.Errorf("tmux -L %s %s if window %dx%d %s: %w: %s", c.Socket, action, at.Width, at.Height, at.Pin, err, trimmed)
+	applied, known := windowCASOutcome(string(output), err)
+	if !known {
+		if err == nil {
+			err = errors.New("unexpected output")
+		}
+		return false, fmt.Errorf("tmux -L %s %s if window %+v: %w: %s", c.Socket, action, at, err, strings.TrimSpace(string(output)))
 	}
-	switch trimmed {
+	return applied, nil
+}
+
+// windowCASCondition is windowCAS's format condition: at's width, height and
+// effective `window-size` value, and the probe's marker present exactly when
+// at says the pin is inherited.
+func windowCASCondition(at WindowView) string {
+	inherited := "1"
+	if at.PinSet {
+		inherited = ""
+	}
+	return fmt.Sprintf("#{&&:#{==:#{window_width},%d},#{&&:#{==:#{window_height},%d},#{&&:#{==:#{window-size},%s},#{==:#{%s},%s}}}}",
+		at.Width, at.Height, at.Pin, windowSizeInheritedOption, inherited)
+}
+
+// windowCASOutcome reads a windowCAS invocation's output and exit error:
+// known is false unless tmux printed exactly one branch marker, and a
+// non-zero exit is accepted only with the probe's own expected refusal.
+func windowCASOutcome(output string, err error) (applied, known bool) {
+	answer, probeFoundPin := windowCASAnswer(output)
+	if err != nil && !probeFoundPin {
+		return false, false
+	}
+	switch answer {
 	case windowCASApplied:
-		return true, nil
+		return true, true
 	case windowCASStale:
-		return false, nil
+		return false, true
 	}
-	return false, fmt.Errorf("tmux -L %s %s if window %dx%d %s: unexpected output %q", c.Socket, action, at.Width, at.Height, at.Pin, trimmed)
+	return false, false
+}
+
+// windowCASAnswer splits a windowCAS invocation's output into the branch
+// marker (or whatever else tmux printed) and whether the probe reported a
+// window-local `window-size` -- the one error line, and the one non-zero exit,
+// that answer is expected to come with.
+func windowCASAnswer(output string) (answer string, probeFoundPin bool) {
+	var kept []string
+	for _, line := range strings.Split(output, "\n") {
+		line = strings.TrimSpace(line)
+		switch line {
+		case "":
+		case windowSizeAlreadySet:
+			probeFoundPin = true
+		default:
+			kept = append(kept, line)
+		}
+	}
+	return strings.Join(kept, "\n"), probeFoundPin
 }
 
 // windowPinIsAWord reports whether pin is made only of the letters and hyphens
@@ -621,14 +716,15 @@ func (c Client) resizeWindowIfAt(ctx context.Context, target string, at WindowVi
 type fitWindowSize struct{ width, height int }
 
 // UnpinWindowSizeIfAt is UnpinWindowSize that only runs while target's window
-// still looks exactly the way at says: the same width, the same height AND
-// the same effective `window-size` value (one atomic compare-and-set, see
-// windowCAS). Passive preview fit uses it so an unpin never lands over a
-// resize or a pin another process made after the fit last read the window --
-// including one that left the numbers as they were (`resize-window` to the
-// size the window already has, or `set-option -w window-size manual`), which
-// only the pin shows. False means the window had moved and its `window-size`
-// was left alone.
+// still looks exactly the way at says: the same width, the same height, the
+// same effective `window-size` value AND that value still window-local or
+// inherited as at.PinSet says (one atomic compare-and-set, see windowCAS).
+// Passive preview fit uses it so an unpin never lands over a resize or a pin
+// another process made after the fit last read the window -- including one
+// that left the numbers as they were (`resize-window` to the size the window
+// already has, or `set-option -w window-size manual`), which only the pin or
+// its window-local presence shows. False means the window had moved and its
+// `window-size` was left alone.
 func (c Client) UnpinWindowSizeIfAt(ctx context.Context, target string, at WindowView) (bool, error) {
 	applied, err := c.windowCAS(ctx, target, at, "set-option -w -u -t "+quoteTmuxCommandArg(target)+" window-size")
 	if err != nil {
@@ -665,7 +761,7 @@ func (c Client) fitWindowFrom(ctx context.Context, target, paneTarget string, ex
 		if !applied {
 			return resizes, FitResizedElsewhere, expect, nil
 		}
-		expect = WindowView{Width: next.width, Height: next.height, Pin: windowManualPin}
+		expect = WindowView{Width: next.width, Height: next.height, Pin: windowManualPin, PinSet: true}
 		resizes++
 	}
 	return resizes, FitFinished, expect, fmt.Errorf("fit window %q to pane %q at %dx%d: did not converge in %d resizes", target, paneTarget, wantWidth, wantHeight, maxFitWindowAttempts)

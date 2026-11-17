@@ -2721,8 +2721,9 @@ func previewFitStandDown(ctx context.Context, client tmux.Client, windowTarget, 
 		if discounter != nil {
 			discounter.Discount(sessionID, service.DiscountResize, time.Now())
 		}
-		// Only while the window still looks as this fit read it (size and pin): a resize
-		// or pin another process made since is theirs.
+		// Only while the window still looks as this fit read it (size, pin and
+		// whether the pin is window-local): a resize or pin another process made
+		// since is theirs.
 		_, _ = client.UnpinWindowSizeIfAt(ctx, windowTarget, from)
 		return previewFitDone{sessionID: sessionID, clientAttached: true}, true
 	}

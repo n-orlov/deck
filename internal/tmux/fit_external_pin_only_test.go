@@ -74,7 +74,7 @@ func newPinOnlySession(t *testing.T, name, externalArgs string) (Client, string)
 
 func TestFitKeepsASameSizeResizeWindowBetweenItsReadAndItsResize(t *testing.T) {
 	client, ran := newPinOnlySession(t, "pinonlyresize", "resize-window -t s0 -x 80 -y 24")
-	resizes, stop, err := client.FitWindowToPaneUnlessResized(context.Background(), "s0", "s0", WindowView{80, 24, "latest"}, 45, 15, func() bool { return true })
+	resizes, stop, err := client.FitWindowToPaneUnlessResized(context.Background(), "s0", "s0", WindowView{80, 24, "latest", false}, 45, 15, func() bool { return true })
 	if err != nil || resizes != 0 || stop != FitResizedElsewhere {
 		t.Fatalf("fit = (%d resizes, stop %d, %v), want (0, FitResizedElsewhere, nil)", resizes, stop, err)
 	}
@@ -83,7 +83,7 @@ func TestFitKeepsASameSizeResizeWindowBetweenItsReadAndItsResize(t *testing.T) {
 
 func TestFitKeepsASameSizeResizeWindowBetweenItsReadAndItsUnpin(t *testing.T) {
 	client, ran := newPinOnlySession(t, "pinonlyunpin", "resize-window -t s0 -x 80 -y 24")
-	resizes, stop, err := client.FitWindowToPaneUnlessResized(context.Background(), "s0", "s0", WindowView{80, 24, "latest"}, 80, 24, func() bool { return true })
+	resizes, stop, err := client.FitWindowToPaneUnlessResized(context.Background(), "s0", "s0", WindowView{80, 24, "latest", false}, 80, 24, func() bool { return true })
 	if err != nil || resizes != 0 || stop != FitResizedElsewhere {
 		t.Fatalf("fit = (%d resizes, stop %d, %v), want (0, FitResizedElsewhere, nil)", resizes, stop, err)
 	}
@@ -93,7 +93,7 @@ func TestFitKeepsASameSizeResizeWindowBetweenItsReadAndItsUnpin(t *testing.T) {
 // Same rule, a different external command: a bare option write, no resize.
 func TestFitKeepsAnExternalWindowSizeOptionWriteBetweenItsReadAndItsUnpin(t *testing.T) {
 	client, ran := newPinOnlySession(t, "pinonlyset", "set-option -w -t s0 window-size manual")
-	resizes, stop, err := client.FitWindowToPaneUnlessResized(context.Background(), "s0", "s0", WindowView{80, 24, "latest"}, 80, 24, func() bool { return true })
+	resizes, stop, err := client.FitWindowToPaneUnlessResized(context.Background(), "s0", "s0", WindowView{80, 24, "latest", false}, 80, 24, func() bool { return true })
 	if err != nil || resizes != 0 || stop != FitResizedElsewhere {
 		t.Fatalf("fit = (%d resizes, stop %d, %v), want (0, FitResizedElsewhere, nil)", resizes, stop, err)
 	}
@@ -102,7 +102,7 @@ func TestFitKeepsAnExternalWindowSizeOptionWriteBetweenItsReadAndItsUnpin(t *tes
 
 func TestFitKeepsAnExternalWindowSizeOptionWriteBetweenItsReadAndItsResize(t *testing.T) {
 	client, ran := newPinOnlySession(t, "pinonlysetresize", "set-option -w -t s0 window-size manual")
-	resizes, stop, err := client.FitWindowToPaneUnlessResized(context.Background(), "s0", "s0", WindowView{80, 24, "latest"}, 45, 15, func() bool { return true })
+	resizes, stop, err := client.FitWindowToPaneUnlessResized(context.Background(), "s0", "s0", WindowView{80, 24, "latest", false}, 45, 15, func() bool { return true })
 	if err != nil || resizes != 0 || stop != FitResizedElsewhere {
 		t.Fatalf("fit = (%d resizes, stop %d, %v), want (0, FitResizedElsewhere, nil)", resizes, stop, err)
 	}
@@ -119,7 +119,7 @@ func TestFitKeepsAPinWrittenBetweenTheCallersViewAndTheFit(t *testing.T) {
 	client := Client{Socket: socket, Timeout: 5 * time.Second}
 	ctx := context.Background()
 	view, err := client.ReadWindowView(ctx, "s0")
-	if err != nil || view != (WindowView{80, 24, "latest"}) {
+	if err != nil || view != (WindowView{80, 24, "latest", false}) {
 		t.Fatalf("ReadWindowView = %+v (%v), want 80x24 latest", view, err)
 	}
 	runTmux(t, socket, "resize-window", "-t", "s0", "-x", "80", "-y", "24")
@@ -146,10 +146,10 @@ func TestWindowCASTreatsADifferentPinAsStaleAtTheSameSize(t *testing.T) {
 	client := Client{Socket: socket, Timeout: 5 * time.Second}
 	ctx := context.Background()
 
-	if applied, err := client.UnpinWindowSizeIfAt(ctx, "s0", WindowView{80, 24, "latest"}); err != nil || applied {
+	if applied, err := client.UnpinWindowSizeIfAt(ctx, "s0", WindowView{80, 24, "latest", false}); err != nil || applied {
 		t.Fatalf("unpin from a latest view of a manual window = (%v, %v), want (false, nil)", applied, err)
 	}
-	if applied, err := client.resizeWindowIfAt(ctx, "s0", WindowView{80, 24, "latest"}, fitWindowSize{50, 20}); err != nil || applied {
+	if applied, err := client.resizeWindowIfAt(ctx, "s0", WindowView{80, 24, "latest", false}, fitWindowSize{50, 20}); err != nil || applied {
 		t.Fatalf("resize from a latest view of a manual window = (%v, %v), want (false, nil)", applied, err)
 	}
 	if w, h, _ := client.WindowSize(ctx, "s0"); w != 80 || h != 24 {
@@ -158,7 +158,7 @@ func TestWindowCASTreatsADifferentPinAsStaleAtTheSameSize(t *testing.T) {
 	if value, set, err := client.readBuiltinWindowOption(ctx, "s0"); err != nil || !set || value != "manual" {
 		t.Fatalf("window-size after the refused CASes = set=%v %q (%v), want manual", set, value, err)
 	}
-	if applied, err := client.UnpinWindowSizeIfAt(ctx, "s0", WindowView{80, 24, "manual"}); err != nil || !applied {
+	if applied, err := client.UnpinWindowSizeIfAt(ctx, "s0", WindowView{80, 24, "manual", true}); err != nil || !applied {
 		t.Fatalf("unpin from the true manual view = (%v, %v), want (true, nil)", applied, err)
 	}
 	if _, set, _ := client.readBuiltinWindowOption(ctx, "s0"); set {
@@ -170,7 +170,7 @@ func TestWindowCASTreatsADifferentPinAsStaleAtTheSameSize(t *testing.T) {
 // pasted into a format condition.
 func TestWindowCASRefusesAPinThatIsNotAnOptionWord(t *testing.T) {
 	client := Client{Socket: "unused", Timeout: time.Second}
-	if _, err := client.UnpinWindowSizeIfAt(context.Background(), "s0", WindowView{80, 24, "a,b}"}); err == nil {
+	if _, err := client.UnpinWindowSizeIfAt(context.Background(), "s0", WindowView{80, 24, "a,b}", false}); err == nil {
 		t.Fatal("unpin with a malformed pin = nil error, want a refusal")
 	}
 }

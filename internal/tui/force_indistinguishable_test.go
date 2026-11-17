@@ -80,27 +80,35 @@ func countWireCommands(t *testing.T, logPath, command string) int {
 
 // wireEffectiveFields reads one logged invocation the way the tmux server
 // runs it. Passive fit's mutations (resize-window, the window-size unpin) go
-// out as one compare-and-set, `if-shell -F -t <target> #{&&:#{==:#{window_width},W},
-// #{==:#{window_height},H}} <mutation> ; display-message -p ... <else>`
-// (tmux.Client.FitWindowToPaneUnlessResized), so that a resize landing after the
-// fit's read cannot be overwritten. Such an invocation counts as the mutation
-// it carries: its fields come back as `-L <socket> <mutation...>`, the mutation's
-// target unquoted. Every other invocation comes back unchanged. A compare-and-set
-// whose condition failed is counted too; the tests that count have no
-// competing resize, so every condition holds.
+// out as one compare-and-set (tmux.Client.FitWindowToPaneUnlessResized), so
+// that a resize or re-pin landing after the fit's read cannot be overwritten:
+// `if-shell -F -t <target> 1 <probe: is window-size window-local?> ;
+// if-shell -F -t <target> #{&&:#{==:#{window_width},W},...} <mutation> ;
+// display-message -p ... <else> ; set-option -w -u ... <probe marker>`. Such
+// an invocation counts as the mutation it carries: its fields come back as
+// `-L <socket> <mutation...>`, the mutation's target unquoted. Every other
+// invocation comes back unchanged. A compare-and-set whose condition failed is
+// counted too; the tests that count have no competing resize, so every
+// condition holds.
 func wireEffectiveFields(fields []string) []string {
-	if len(fields) < 9 || fields[0] != "-L" || fields[2] != "if-shell" || fields[3] != "-F" || fields[4] != "-t" ||
-		!strings.HasPrefix(fields[6], "#{&&:#{==:#{window_width},") {
+	if len(fields) < 3 || fields[0] != "-L" || fields[2] != "if-shell" {
 		return fields
 	}
-	out := []string{fields[0], fields[1]}
-	for _, field := range fields[7:] {
-		if field == ";" {
-			break
+	for at := 2; at+5 < len(fields); at++ {
+		if fields[at] != "if-shell" || fields[at+1] != "-F" || fields[at+2] != "-t" ||
+			!strings.HasPrefix(fields[at+4], "#{&&:#{==:#{window_width},") {
+			continue
 		}
-		out = append(out, strings.Trim(field, "'"))
+		out := []string{fields[0], fields[1]}
+		for _, field := range fields[at+5:] {
+			if field == ";" {
+				break
+			}
+			out = append(out, strings.Trim(field, "'"))
+		}
+		return out
 	}
-	return out
+	return fields
 }
 
 // pressWithoutRunningCmd feeds one KeyMsg through the REAL Update key
