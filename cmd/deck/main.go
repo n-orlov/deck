@@ -96,7 +96,7 @@ func runDetachedVerb(args []string, stdin io.Reader, stdout, stderr io.Writer) (
 // success, 1 with the failure on stderr, or a re-exec'd writer's own non-zero
 // exit code (whose stderr already said why).
 func runHookCommand(settings config.Settings, stdin io.Reader, stderr io.Writer) int {
-	err := runHook(context.Background(), settings, stdin)
+	err := runHook(context.Background(), settings, stdin, stderr)
 	var reexit *hookReexecExit
 	switch {
 	case err == nil:
@@ -677,8 +677,9 @@ func requireStateDatabase(path string) error {
 
 // runHook is intentionally selected before opening the normal application
 // store or constructing a tmux client. A late hook must not recreate deleted
-// state or bootstrap a tmux server.
-func runHook(ctx context.Context, settings config.Settings, stdin io.Reader) (runErr error) {
+// state or bootstrap a tmux server. stderr receives the one line a liveness
+// pass that ran out of its bound leaves behind (SPEC §3.1).
+func runHook(ctx context.Context, settings config.Settings, stdin io.Reader, stderr io.Writer) (runErr error) {
 	trimmed, err := readHookPayload(stdin)
 	if err != nil {
 		return err
@@ -727,9 +728,14 @@ func runHook(ctx context.Context, settings config.Settings, stdin io.Reader) (ru
 	if result.Kind == "session_end" {
 		return nil
 	}
-	// A process death this pass records is the "next `_hook` invocation" of
-	// SPEC §7: it is offered to the event hook here, the same way the TUI's
-	// reconcile offers it (SPEC §10.4), so an unattended crash still fires.
+	return runLivenessPass(ctx, db, logger, settings, stderr)
+}
+
+// runLivenessPass is the hook's one bounded liveness pass. A process death it
+// records is the "next `_hook` invocation" of SPEC §7: it is offered to the
+// event hook here, the same way the TUI's reconcile offers it (SPEC §10.4), so
+// an unattended crash still fires.
+func runLivenessPass(ctx context.Context, db *store.Store, logger *audit.Logger, settings config.Settings, stderr io.Writer) error {
 	liveness := service.Service{
 		Store:     db,
 		TMux:      tmux.Client{Socket: settings.Socket},
@@ -737,10 +743,19 @@ func runHook(ctx context.Context, settings config.Settings, stdin io.Reader) (ru
 		Clock:     settings.Clock,
 		EventHook: hookEventHookSource(settings),
 	}
-	if err := liveness.ReconcileWithin(ctx, settings.Reconcile); err != nil {
-		return fmt.Errorf("post-hook liveness pass: %w", err)
+	err := liveness.ReconcileWithin(ctx, settings.Reconcile)
+	if err == nil {
+		return nil
 	}
-	return nil
+	// R416: a pass that runs out of its bound has only skipped work the
+	// next reconcile or hook repairs, so it leaves the hook the status
+	// its own event handling earned. Any other failure still fails it.
+	var ranOut *service.BoundExceededError
+	if errors.As(err, &ranOut) {
+		sayln(stderr, "deck hook: post-hook liveness pass skipped, ran out of its", ranOut.Budget.String(), "bound:", ranOut.CallThatRanOut())
+		return nil
+	}
+	return fmt.Errorf("post-hook liveness pass: %w", err)
 }
 
 // openHookStore opens the existing state database for a hook. It returns a nil

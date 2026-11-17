@@ -216,7 +216,7 @@ func TestRunHookFailureModes(t *testing.T) {
 			if tc.prepare != nil {
 				tc.prepare(t, &settings)
 			}
-			err := runHook(context.Background(), settings, strings.NewReader(tc.stdin))
+			err := runHook(context.Background(), settings, strings.NewReader(tc.stdin), io.Discard)
 			if err == nil || !strings.Contains(err.Error(), tc.want) {
 				t.Fatalf("runHook err = %v, want it to contain %q", err, tc.want)
 			}
@@ -240,7 +240,7 @@ func TestRunHookUnresolvedHookIsPreservedAsAnOrphanEventAndRejected(t *testing.T
 		t.Fatal(err)
 	}
 	payload := `{"hook_event_name":"Notification","session_id":"conversation-nobody","notification_type":"permission_prompt"}`
-	err = runHook(context.Background(), settings, strings.NewReader(payload))
+	err = runHook(context.Background(), settings, strings.NewReader(payload), io.Discard)
 	if !errors.Is(err, hookrecv.ErrUnresolved) {
 		t.Fatalf("runHook err = %v, want hookrecv.ErrUnresolved", err)
 	}
@@ -277,7 +277,7 @@ func TestRunHookReportsAFailedPostHookLivenessPass(t *testing.T) {
 		t.Fatal(err)
 	}
 	settings.Reconcile = 50 * time.Millisecond
-	err = runHook(context.Background(), settings, strings.NewReader(`{"hook_event_name":"Notification","session_id":"conversation-live","notification_type":"permission_prompt"}`))
+	err = runHook(context.Background(), settings, strings.NewReader(`{"hook_event_name":"Notification","session_id":"conversation-live","notification_type":"permission_prompt"}`), io.Discard)
 	if err == nil || !strings.Contains(err.Error(), "post-hook liveness pass") {
 		t.Fatalf("runHook err = %v, want a 'post-hook liveness pass' failure", err)
 	}

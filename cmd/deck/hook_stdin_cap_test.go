@@ -48,7 +48,7 @@ func hookCapSettings(t *testing.T) (config.Settings, config.Paths) {
 func TestHookStdinOversizePayloadIsRejectedWithBoundedReads(t *testing.T) {
 	settings, paths := hookCapSettings(t)
 	src := &endlessReader{prefix: `{"hook_event_name":"Notification","padding":"`}
-	err := runHook(context.Background(), settings, src)
+	err := runHook(context.Background(), settings, src, io.Discard)
 	if !errors.Is(err, errHookPayloadTooLarge) {
 		t.Fatalf("oversize payload err = %v, want errHookPayloadTooLarge", err)
 	}
@@ -79,7 +79,7 @@ func TestHookStdinLargeRealisticPayloadIsNotTruncated(t *testing.T) {
 	// 4 MiB: far above any fixture payload, well inside the cap. A truncating
 	// reader would produce a JSON syntax error here.
 	payload := `{"hook_event_name":"SessionEnd","session_id":"conversation-big","reason":"logout","padding":"` + strings.Repeat("x", 4<<20) + `"}`
-	if err := runHook(context.Background(), settings, strings.NewReader(payload)); err != nil {
+	if err := runHook(context.Background(), settings, strings.NewReader(payload), io.Discard); err != nil {
 		t.Fatalf("4 MiB payload rejected: %v", err)
 	}
 }

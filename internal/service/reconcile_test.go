@@ -3,6 +3,7 @@ package service
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -854,4 +855,28 @@ func auditContains(t *testing.T, path, sessionID, event string) bool {
 		t.Fatal(err)
 	}
 	return false
+}
+
+// CallThatRanOut names the call and drops whatever a tmux command printed
+// after its cause (pane text lives there), whatever wrapped the cause.
+func TestBoundExceededErrorNamesTheCallAndDropsTrailingOutput(t *testing.T) {
+	cause := errors.New("signal: killed")
+	wrapped := fmt.Errorf("list tmux sessions for reconciliation: %w", fmt.Errorf("tmux -L s list-panes -a: %w: %s", cause, "PANE-TEXT"))
+	got := (&BoundExceededError{Budget: time.Second, Err: wrapped}).CallThatRanOut()
+	if want := "list tmux sessions for reconciliation: tmux -L s list-panes -a: signal: killed"; got != want {
+		t.Fatalf("CallThatRanOut = %q, want %q", got, want)
+	}
+	flat := &BoundExceededError{Err: errors.New("plain failure")}
+	if got := flat.CallThatRanOut(); got != "plain failure" || flat.Error() != "plain failure" {
+		t.Fatalf("flat error: CallThatRanOut = %q, Error = %q", got, flat.Error())
+	}
+}
+
+func TestReconcileWithinReportsOnlyItsOwnBoundAsBoundExceeded(t *testing.T) {
+	svc := Service{Store: nil}
+	if err := svc.ReconcileWithin(context.Background(), time.Second); err == nil {
+		t.Fatal("misconfigured pass unexpectedly succeeded")
+	} else if ranOut := (*BoundExceededError)(nil); errors.As(err, &ranOut) {
+		t.Fatalf("a configuration error was reported as running out of the bound: %v", err)
+	}
 }

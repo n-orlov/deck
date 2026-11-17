@@ -111,8 +111,12 @@ func TestReleasedHookBoundsStalledTmuxAndSkipsItForSessionEnd(t *testing.T) {
 	}
 
 	elapsed, stderr, err = run(`{"hook_event_name":"Notification","session_id":"conversation-notifying","notification_type":"permission_prompt"}`)
-	if err == nil || !strings.Contains(stderr, "post-hook liveness pass") {
-		t.Fatalf("stalled released hook err=%v stderr=%q", err, stderr)
+	// R416: a liveness pass that runs out of its bound no longer fails the
+	// hook; its own event handling earned exit 0. The line it leaves behind
+	// is pinned in full by
+	// TestReleasedHookExitsZeroWhenTheLivenessPassRunsOutOfItsBoundOnListPanes.
+	if err != nil || !strings.Contains(stderr, "ran out of its") {
+		t.Fatalf("stalled released hook err=%v stderr=%q, want exit 0 and the skipped-pass line", err, stderr)
 	}
 	// R164: deadline, not a budget -- same reasoning as the SessionEnd check
 	// above: this proves the DECK_RECONCILE_MS=30 liveness-pass bound cut the

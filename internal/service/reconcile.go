@@ -672,7 +672,48 @@ func (s Service) ReconcileWithin(ctx context.Context, budget time.Duration) erro
 	queued, hooks := withDeferredHooks(ctx)
 	passCtx, cancel := context.WithTimeout(queued, budget)
 	err := s.Reconcile(passCtx)
+	// Only the pass's own timer counts as running out of the bound: the
+	// caller's cancellation is not one. The error a killed tmux child
+	// returns is `signal: killed`, never context.DeadlineExceeded, so the
+	// pass context, not the error, is what says the bound ran out.
+	ranOut := err != nil && ctx.Err() == nil && errors.Is(passCtx.Err(), context.DeadlineExceeded)
 	cancel()
 	s.dispatchDeferred(ctx, hooks)
+	if ranOut {
+		return &BoundExceededError{Budget: budget, Err: err}
+	}
 	return err
+}
+
+// BoundExceededError is what ReconcileWithin returns when its pass ran out of
+// its budget on one of its tmux or store calls. It reads exactly as the call's
+// own error did; callers that treat a skipped pass differently from a failed
+// one (`deck _hook`) test for it with errors.As. The pass skipped whatever it
+// had not reached, and the next reconcile repairs that.
+type BoundExceededError struct {
+	Budget time.Duration
+	Err    error
+}
+
+func (e *BoundExceededError) Error() string { return e.Err.Error() }
+func (e *BoundExceededError) Unwrap() error { return e.Err }
+
+// CallThatRanOut names the call a BoundExceededError cut short, as the error
+// chain's own text up to and including its innermost cause. Anything a tmux
+// command printed after that cause (the `: <output>` its wrapper appends) is
+// dropped, so the line can never carry pane text.
+func (e *BoundExceededError) CallThatRanOut() string {
+	text := e.Err.Error()
+	leaf := e.Err
+	for next := errors.Unwrap(leaf); next != nil; next = errors.Unwrap(leaf) {
+		leaf = next
+	}
+	cause := leaf.Error()
+	if cause == "" {
+		return text
+	}
+	if at := strings.Index(text, cause); at >= 0 {
+		return text[:at+len(cause)]
+	}
+	return text
 }
