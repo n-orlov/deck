@@ -240,10 +240,49 @@ func TestSplitRenameDraft(t *testing.T) {
 		{`/rename bound{"command":"stop"}`, "bound", `{"command":"stop"}`},
 		{`{"command":"stop"}`, "", `{"command":"stop"}`},
 		{``, "", ``},
+		// The scenario typed its command first and deck's draft landed behind it.
+		{`{"command":"prompt","text":"hello"}/rename bound`, "bound", `{"command":"prompt","text":"hello"}`},
+		{`{"command":"stop","message":"done"}/rename two words  `, "two words", `{"command":"stop","message":"done"}`},
+		// "/rename " inside the command's own text is not a draft.
+		{`{"command":"prompt","text":"/rename inside"}`, "", `{"command":"prompt","text":"/rename inside"}`},
+		{`{"command":"prompt","text":"a } /rename b"}/rename outside`, "outside", `{"command":"prompt","text":"a } /rename b"}`},
+		// Text after the object that is not a draft leaves the line a whole command.
+		{`{"command":"stop"}junk`, "", `{"command":"stop"}junk`},
 	} {
 		name, command := splitRenameDraft(tc.line)
 		if name != tc.name || command != tc.command {
 			t.Errorf("splitRenameDraft(%q) = %q, %q; want %q, %q", tc.line, name, command, tc.name, tc.command)
 		}
+	}
+}
+
+// TestRenameDraftTypedBehindACommandStillRunsBothAndNamesTheThread reproduces
+// the pane input of the codex restart scenario under load (extended build 67,
+// agent_session.feature:104): the scenario typed the prompt command, deck's
+// "/rename restart codex" draft landed behind it before the Enter, so the fixture
+// read both on one line and died with "decode command: invalid character '/'".
+// The prompt must run (the thread exists) and the draft must name that thread.
+func TestRenameDraftTypedBehindACommandStillRunsBothAndNamesTheThread(t *testing.T) {
+	home, _, output := runPane(t,
+		`{"command":"prompt","text":"hello from restart codex"}/rename restart codex`,
+		``,
+	)
+	if !strings.Contains(output, "session-id:") {
+		t.Fatalf("the prompt command glued before the draft did not run:\n%s", output)
+	}
+	if _, name := threadName(t, home); name.String != "restart codex" {
+		t.Fatalf("threads.name = %q, want the draft's name", name.String)
+	}
+}
+
+// TestPromptTextMentioningRenameIsNotADraft: a prompt whose own text contains
+// "/rename " is one command, and the thread is not renamed by it.
+func TestPromptTextMentioningRenameIsNotADraft(t *testing.T) {
+	home, _, output := runPane(t, `{"command":"prompt","text":"please /rename me"}`)
+	if !strings.Contains(output, "session-id:") {
+		t.Fatalf("the prompt did not run:\n%s", output)
+	}
+	if _, name := threadName(t, home); name.Valid && name.String != "" {
+		t.Fatalf("threads.name = %q, want none: the text was a prompt, not a draft", name.String)
 	}
 }

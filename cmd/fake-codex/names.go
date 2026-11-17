@@ -68,14 +68,19 @@ func typedRename(line string) (string, bool) {
 }
 
 // splitRenameDraft splits one submitted line into the "/rename <name>" draft
-// deck typed and a pane command typed right behind it. Deck types its rename
-// without a newline and submits it after a gap (agent.CodexRenameGap); a
-// scenario command typed inside that gap lands on the same composer line, so
-// the line the fixture reads is the draft followed by the command's JSON. The
-// draft's name is the text before the JSON; the rest is the command. A line
-// without a draft is returned whole as the command.
+// deck typed and a pane command typed on the same composer line. Deck types its
+// rename without a newline and submits it after a gap (agent.CodexRenameGap),
+// and a scenario types its command JSON from another process, so the two
+// typists land on one line in either order: the draft followed by the command's
+// JSON, or the JSON followed by the draft (the scenario typed first, deck's
+// draft arrived before the Enter). The draft's name is the text outside the
+// JSON object; the rest is the command. A line without a draft is returned
+// whole as the command.
 func splitRenameDraft(line string) (name, command string) {
 	trimmed := strings.TrimSpace(line)
+	if name, command, ok := commandThenDraft(trimmed); ok {
+		return name, command
+	}
 	if !strings.HasPrefix(trimmed, renameLinePrefix) {
 		return "", line
 	}
@@ -85,6 +90,25 @@ func splitRenameDraft(line string) (name, command string) {
 	}
 	name, _ = typedRename(trimmed)
 	return name, ""
+}
+
+// commandThenDraft recognises `{"command":...}/rename <name>`: one complete
+// JSON object, then a draft. The object's end is found by decoding it, so a
+// "/rename " inside the command's own text is never mistaken for the draft.
+func commandThenDraft(line string) (name, command string, ok bool) {
+	if !strings.HasPrefix(line, "{") {
+		return "", "", false
+	}
+	decoder := json.NewDecoder(strings.NewReader(line))
+	var object json.RawMessage
+	if decoder.Decode(&object) != nil {
+		return "", "", false
+	}
+	name, ok = typedRename(line[decoder.InputOffset():])
+	if !ok {
+		return "", "", false
+	}
+	return name, string(object), true
 }
 
 // start creates the thread row with the conversation's first prompt (or finds
