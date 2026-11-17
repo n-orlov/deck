@@ -80,7 +80,7 @@ func newExternalResizeSession(t *testing.T, name string, nth int) (Client, strin
 // separate tmux call after the check (the window ends at the fit's 45x15).
 func TestFitWindowToPaneUnlessResizedKeepsAResizeThatLandsBetweenItsReadAndItsResize(t *testing.T) {
 	client, ran := newExternalResizeSession(t, "casresize", 1)
-	resizes, stop, err := client.FitWindowToPaneUnlessResized(context.Background(), "s0", "s0", 80, 24, 45, 15, func() bool { return true })
+	resizes, stop, err := client.FitWindowToPaneUnlessResized(context.Background(), "s0", "s0", WindowView{80, 24, "latest"}, 45, 15, func() bool { return true })
 	if err != nil || resizes != 0 || stop != FitResizedElsewhere {
 		t.Fatalf("fit resized between its read and its resize = (%d resizes, stop %d, %v), want (0, FitResizedElsewhere, nil)", resizes, stop, err)
 	}
@@ -95,7 +95,7 @@ func TestFitWindowToPaneUnlessResizedKeepsAResizeThatLandsBetweenItsReadAndItsRe
 // unset).
 func TestFitWindowToPaneUnlessResizedKeepsAResizeThatLandsBeforeItsUnpin(t *testing.T) {
 	client, ran := newExternalResizeSession(t, "casunpin", 1)
-	resizes, stop, err := client.FitWindowToPaneUnlessResized(context.Background(), "s0", "s0", 80, 24, 80, 24, func() bool { return true })
+	resizes, stop, err := client.FitWindowToPaneUnlessResized(context.Background(), "s0", "s0", WindowView{80, 24, "latest"}, 80, 24, func() bool { return true })
 	if err != nil || resizes != 0 || stop != FitResizedElsewhere {
 		t.Fatalf("fit whose unpin raced a resize = (%d resizes, stop %d, %v), want (0, FitResizedElsewhere, nil)", resizes, stop, err)
 	}
@@ -110,7 +110,7 @@ func TestFitWindowToPaneUnlessResizedKeepsAResizeThatLandsBeforeItsUnpin(t *test
 // other process's window.
 func TestFitWindowToPaneUnlessResizedKeepsAResizeThatLandsAfterItsOwnResizeBeforeItsUnpin(t *testing.T) {
 	client, ran := newExternalResizeSession(t, "caslate", 2)
-	resizes, stop, err := client.FitWindowToPaneUnlessResized(context.Background(), "s0", "s0", 80, 24, 45, 15, func() bool { return true })
+	resizes, stop, err := client.FitWindowToPaneUnlessResized(context.Background(), "s0", "s0", WindowView{80, 24, "latest"}, 45, 15, func() bool { return true })
 	if err != nil || resizes != 1 || stop != FitResizedElsewhere {
 		t.Fatalf("fit whose unpin raced a resize after its own = (%d resizes, stop %d, %v), want (1, FitResizedElsewhere, nil)", resizes, stop, err)
 	}
@@ -129,14 +129,14 @@ func TestUnpinWindowSizeIfAtOnlyUnpinsAWindowThatIsStillAtTheGivenSize(t *testin
 	client := Client{Socket: socket, Timeout: 5 * time.Second}
 	ctx := context.Background()
 
-	unpinned, err := client.UnpinWindowSizeIfAt(ctx, "s0", 80, 24)
+	unpinned, err := client.UnpinWindowSizeIfAt(ctx, "s0", WindowView{80, 24, "latest"})
 	if err != nil || unpinned {
 		t.Fatalf("unpin of a window believed 80x24 that is 100x27 = (%v, %v), want (false, nil)", unpinned, err)
 	}
 	if _, set, err := client.readBuiltinWindowOption(ctx, "s0"); err != nil || !set {
 		t.Fatalf("window-size after the refused unpin: set=%v (%v), want the pin still set", set, err)
 	}
-	unpinned, err = client.UnpinWindowSizeIfAt(ctx, "s0", 100, 27)
+	unpinned, err = client.UnpinWindowSizeIfAt(ctx, "s0", WindowView{100, 27, "manual"})
 	if err != nil || !unpinned {
 		t.Fatalf("unpin of a window at its own size = (%v, %v), want (true, nil)", unpinned, err)
 	}
@@ -154,14 +154,14 @@ func TestResizeWindowIfAtIssuesNothingForAStaleSize(t *testing.T) {
 	client := Client{Socket: socket, Timeout: 5 * time.Second}
 	ctx := context.Background()
 
-	applied, err := client.resizeWindowIfAt(ctx, "s0", fitWindowSize{81, 24}, fitWindowSize{50, 20})
+	applied, err := client.resizeWindowIfAt(ctx, "s0", WindowView{81, 24, "latest"}, fitWindowSize{50, 20})
 	if err != nil || applied {
 		t.Fatalf("resize from a stale 81x24 = (%v, %v), want (false, nil)", applied, err)
 	}
 	if w, h, _ := client.WindowSize(ctx, "s0"); w != 80 || h != 24 {
 		t.Fatalf("window after the stale resize = %dx%d, want untouched 80x24", w, h)
 	}
-	applied, err = client.resizeWindowIfAt(ctx, "s0", fitWindowSize{80, 24}, fitWindowSize{50, 20})
+	applied, err = client.resizeWindowIfAt(ctx, "s0", WindowView{80, 24, "latest"}, fitWindowSize{50, 20})
 	if err != nil || !applied {
 		t.Fatalf("resize from the true 80x24 = (%v, %v), want (true, nil)", applied, err)
 	}

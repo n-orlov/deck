@@ -2655,14 +2655,14 @@ func fitSelectedPreviewPane(client tmux.Client, slug, sessionID string, width, h
 	if err != nil {
 		return previewFitDone{sessionID: sessionID}
 	}
-	fromWidth, fromHeight, err := client.WindowSize(ctx, windowTarget)
+	from, err := client.ReadWindowView(ctx, windowTarget)
 	if err != nil {
 		return previewFitDone{sessionID: sessionID}
 	}
 	if !selection.holds(sessionID) {
 		return previewFitDone{sessionID: sessionID, selectionMoved: true}
 	}
-	if done, standDown := previewFitStandDown(ctx, client, windowTarget, sessionID, fromWidth, fromHeight, discounter); standDown {
+	if done, standDown := previewFitStandDown(ctx, client, windowTarget, sessionID, from, discounter); standDown {
 		return done
 	}
 	// The fit no-ops (0 resize-window calls) when the pane already
@@ -2677,7 +2677,7 @@ func fitSelectedPreviewPane(client tmux.Client, slug, sessionID string, width, h
 	// it removes above.
 	issuedAt := time.Now() // R410: taken before the resize is issued
 	keep := func() bool { return selection.holds(sessionID) }
-	resizes, stop, _ := client.FitWindowToPaneUnlessResized(ctx, windowTarget, pane.ID, fromWidth, fromHeight, width, height, keep)
+	resizes, stop, _ := client.FitWindowToPaneUnlessResized(ctx, windowTarget, pane.ID, from, width, height, keep)
 	if resizes > 0 && discounter != nil {
 		// R305: the resize makes the pane's program redraw (SIGWINCH);
 		// that output is deck's, not the agent's.
@@ -2710,7 +2710,7 @@ func fitSelectedPreviewPane(client tmux.Client, slug, sessionID string, width, h
 // here. clientAttached, exactly like foreignLiveClaim, does NOT latch: the
 // attach is transient and the row must regain its fit the moment the client
 // detaches.
-func previewFitStandDown(ctx context.Context, client tmux.Client, windowTarget, sessionID string, fromWidth, fromHeight int, discounter OutputDiscounter) (previewFitDone, bool) {
+func previewFitStandDown(ctx context.Context, client tmux.Client, windowTarget, sessionID string, from tmux.WindowView, discounter OutputDiscounter) (previewFitDone, bool) {
 	if state, perr := client.ProbeWindowOwnership(ctx, windowTarget); perr == nil && state == tmux.ClaimForeignLive {
 		return previewFitDone{sessionID: sessionID, foreignLiveClaim: true}, true
 	}
@@ -2721,9 +2721,9 @@ func previewFitStandDown(ctx context.Context, client tmux.Client, windowTarget, 
 		if discounter != nil {
 			discounter.Discount(sessionID, service.DiscountResize, time.Now())
 		}
-		// Only while the window is still at the size this fit read: a resize
-		// another process made since is theirs, and so is its pin.
-		_, _ = client.UnpinWindowSizeIfAt(ctx, windowTarget, fromWidth, fromHeight)
+		// Only while the window still looks as this fit read it (size and pin): a resize
+		// or pin another process made since is theirs.
+		_, _ = client.UnpinWindowSizeIfAt(ctx, windowTarget, from)
 		return previewFitDone{sessionID: sessionID, clientAttached: true}, true
 	}
 	return previewFitDone{}, false

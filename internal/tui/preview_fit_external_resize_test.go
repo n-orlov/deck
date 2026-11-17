@@ -179,3 +179,39 @@ func TestPreviewFitStandDownKeepsAResizeAnotherProcessMadeBeforeItsUnpin(t *test
 		t.Fatalf("window-size after the stand-down = %q (%v), want the other process's manual pin left in place: the unpin overwrote it", out, err)
 	}
 }
+
+// TestPreviewFitStandDownKeepsAPinAnotherProcessWroteWithoutChangingTheSize is
+// the same rule when the other process's change leaves the numbers alone: it
+// re-pins the window at the very size the fit read (`resize-window` to 80x24),
+// after the fit's read and before the stand-down's unpin. Width and height
+// still match, but `window-size` went latest -> manual, so the unpin does not
+// go out and the other process's pin stays.
+func TestPreviewFitStandDownKeepsAPinAnotherProcessWroteWithoutChangingTheSize(t *testing.T) {
+	socket := selectionTestSocket("fitstanddownpin")
+	const slug = "fitstanddownpin"
+	target := "deck_" + slug
+	newQuietSelectionPane(t, socket, target, 80, 24)
+	if out, err := exec.Command("tmux", "-L", socket, "set-option", "-g", "window-size", "latest").CombinedOutput(); err != nil {
+		t.Fatalf("set window-size latest: %v: %s", err, out)
+	}
+
+	dir := t.TempDir()
+	binary := filepath.Join(dir, "tmux")
+	script := "#!/bin/sh\ncase \"$*\" in\n*'#{session_attached}'*)\n\ttmux -L \"$2\" resize-window -t '" + target + "' -x 80 -y 24 || exit 1\n\techo 1\n\texit 0 ;;\nesac\nexec tmux \"$@\"\n"
+	if err := os.WriteFile(binary, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	client := tmux.Client{Socket: socket, Binary: binary}
+	done, ok := fitPreviewPane(client, slug, "sess-fitstanddownpin", 61, 27, nil).(previewFitDone)
+	if !ok || !done.clientAttached {
+		t.Fatalf("fit = %+v, want the attached-client stand-down", done)
+	}
+	if got := windowGeometry(t, socket, target); got != "80x24" {
+		t.Fatalf("window after the stand-down = %s, want 80x24", got)
+	}
+	out, err := exec.Command("tmux", "-L", socket, "show-options", "-wv", "-t", target, "window-size").CombinedOutput()
+	if err != nil || strings.TrimSpace(string(out)) != "manual" {
+		t.Fatalf("window-size after the stand-down = %q (%v), want the other process's manual pin left in place: the unpin overwrote it", out, err)
+	}
+}

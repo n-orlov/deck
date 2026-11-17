@@ -26,7 +26,7 @@ func TestFitWindowToPaneUnlessResizedLeavesAnotherProcessesResizeAlone(t *testin
 
 	// Another process resizes the window after the fit read 80x24.
 	runTmux(t, socket, "resize-window", "-t", "s0", "-x", "100", "-y", "27")
-	resizes, stop, err := client.FitWindowToPaneUnlessResized(ctx, "s0", "s0", 80, 24, 45, 15, func() bool { return true })
+	resizes, stop, err := client.FitWindowToPaneUnlessResized(ctx, "s0", "s0", WindowView{80, 24, "latest"}, 45, 15, func() bool { return true })
 	if err != nil || resizes != 0 || stop != FitResizedElsewhere {
 		t.Fatalf("fit started from 80x24 on a window resized to 100x27 = (%d resizes, stop %d, %v), want (0, FitResizedElsewhere, nil)", resizes, stop, err)
 	}
@@ -38,7 +38,7 @@ func TestFitWindowToPaneUnlessResizedLeavesAnotherProcessesResizeAlone(t *testin
 	}
 
 	// The caller no longer wants the fit: nothing is issued either.
-	resizes, stop, err = client.FitWindowToPaneUnlessResized(ctx, "s0", "s0", 100, 27, 45, 15, func() bool { return false })
+	resizes, stop, err = client.FitWindowToPaneUnlessResized(ctx, "s0", "s0", WindowView{100, 27, "manual"}, 45, 15, func() bool { return false })
 	if err != nil || resizes != 0 || stop != FitUnwanted {
 		t.Fatalf("unwanted fit = (%d resizes, stop %d, %v), want (0, FitUnwanted, nil)", resizes, stop, err)
 	}
@@ -47,7 +47,7 @@ func TestFitWindowToPaneUnlessResizedLeavesAnotherProcessesResizeAlone(t *testin
 	}
 
 	// From the size the window really has, the fit lands and unpins.
-	resizes, stop, err = client.FitWindowToPaneUnlessResized(ctx, "s0", "s0", 100, 27, 45, 15, func() bool { return true })
+	resizes, stop, err = client.FitWindowToPaneUnlessResized(ctx, "s0", "s0", WindowView{100, 27, "manual"}, 45, 15, func() bool { return true })
 	if err != nil || resizes != 1 || stop != FitFinished {
 		t.Fatalf("fit from the window's own size = (%d resizes, stop %d, %v), want (1, FitFinished, nil)", resizes, stop, err)
 	}
@@ -91,7 +91,7 @@ exec tmux "$@"
 	client := Client{Socket: socket, Binary: binary, Timeout: 5 * time.Second}
 	ctx := context.Background()
 
-	resizes, stop, err := client.FitWindowToPaneUnlessResized(ctx, "s0", "s0", 80, 24, 45, 15, func() bool { return true })
+	resizes, stop, err := client.FitWindowToPaneUnlessResized(ctx, "s0", "s0", WindowView{80, 24, "latest"}, 45, 15, func() bool { return true })
 	if err != nil || resizes != 1 || stop != FitResizedElsewhere {
 		t.Fatalf("fit interrupted after its first resize = (%d resizes, stop %d, %v), want (1, FitResizedElsewhere, nil)", resizes, stop, err)
 	}
