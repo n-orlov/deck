@@ -104,28 +104,36 @@ type codexPaneAnnouncement struct {
 // codexPaneAnnouncementFromCapture scans a tmux pane capture for
 // cmd/fake-codex's two SessionStart-adjacent banner lines
 // ("fake-codex session-id: <uuid>" and "fake-codex transcript-path:
-// <path>", both emitted once, together, the moment submitPrompt mints or
-// resumes a conversation) and returns whatever it found. ok is true only
-// once the session-id line itself has appeared -- the transcript-path line
-// is optional (cmd/fake-codex omits it when its own CODEX_HOME/HOME
-// resolution degrades to "nowhere writable"), so TranscriptPath may be ""
-// even when ok is true.
+// <path>", emitted by submitPrompt as two separate writes, the second right
+// after the first) and returns whatever it found. ok is true only once the
+// announcement is COMPLETE: the transcript-path line has appeared, or, when
+// cmd/fake-codex omitted it (its CODEX_HOME/HOME resolution degraded to
+// "nowhere writable"), the "Working" line submitPrompt prints after both
+// banners has appeared below the session-id line. A capture taken between
+// the two banner writes is therefore never taken for the whole
+// announcement, and TranscriptPath is "" only when the pane truly announced
+// none.
 func codexPaneAnnouncementFromCapture(capture string) (announcement codexPaneAnnouncement, ok bool) {
 	// A banner is found anywhere on its line, not only at its start: the pane's
 	// tty echoes text typed into it (deck's own "/rename <name>" entry, sent
 	// without a newline) and the fixture's next output lands right after that
 	// echo on the same row, so a banner can follow another command's text.
+	sawID, finished := false, false
 	for _, line := range strings.Split(capture, "\n") {
 		if _, id, found := strings.Cut(line, "fake-codex session-id: "); found {
 			if fields := strings.Fields(id); len(fields) > 0 {
 				announcement.SessionID = fields[0]
+				sawID, finished = true, false
 			}
 		}
 		if _, path, found := strings.Cut(line, "fake-codex transcript-path: "); found {
 			announcement.TranscriptPath = strings.TrimSpace(path)
 		}
+		if sawID && strings.Contains(line, "• Working") {
+			finished = true
+		}
 	}
-	return announcement, announcement.SessionID != ""
+	return announcement, announcement.SessionID != "" && (announcement.TranscriptPath != "" || finished)
 }
 
 // fakeCodexIsPromptedWith sends cmd/fake-codex's "prompt" pane command
