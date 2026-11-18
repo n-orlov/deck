@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"syscall"
@@ -156,24 +157,22 @@ func clientRowStillContainsAfterReconcileInterval(ctx context.Context, clientNam
 		return ctx.Err()
 	case <-timer.C:
 	}
-	h, err := assertionHarness(ctx)
+	return clientRowStillContains(ctx, clientName, sessionName, want)
+}
+
+// clientRowStillContains asserts the session's own sidebar row (never a
+// preview line that echoes its name) shows want as one of its badges.
+func clientRowStillContains(ctx context.Context, clientName, sessionName, want string) error {
+	runs, err := clientRowBadgeRuns(ctx, clientName, sessionName)
 	if err != nil {
 		return err
 	}
-	client, err := h.Client(clientName)
-	if err != nil {
-		return err
-	}
-	frame := client.Frame(false)
-	for _, line := range strings.Split(frame, "\n") {
-		if strings.Contains(line, sessionName) {
-			if !strings.Contains(line, want) {
-				return fmt.Errorf("deck client %q row %q no longer contains %q: %s", clientName, sessionName, want, line)
-			}
+	for _, run := range runs {
+		if slices.Contains(run, want) {
 			return nil
 		}
 	}
-	return fmt.Errorf("deck client %q has no rendered row %q:\n%s", clientName, sessionName, frame)
+	return fmt.Errorf("deck client %q row %q no longer contains %q: %s", clientName, sessionName, want, strings.Join(runs[0], " "))
 }
 
 func clientRowDoesNotContainAfterReconcileInterval(ctx context.Context, clientName, sessionName, unwanted string) error {

@@ -1828,24 +1828,16 @@ func clientScreenDoesNotContain(ctx context.Context, name, unwanted string) erro
 // session row. This keeps anti-fabrication coverage meaningful when another
 // row (for example, a live shell) truthfully has the unwanted status.
 func clientRowDoesNotContain(ctx context.Context, clientName, sessionName, unwanted string) error {
-	h, err := assertionHarness(ctx)
+	runs, err := clientRowBadgeRuns(ctx, clientName, sessionName)
 	if err != nil {
 		return err
 	}
-	client, err := h.Client(clientName)
-	if err != nil {
-		return err
-	}
-	frame := client.Frame(false)
-	for _, line := range strings.Split(frame, "\n") {
-		if strings.Contains(line, sessionName) {
-			if strings.Contains(line, unwanted) {
-				return fmt.Errorf("deck client %q row %q unexpectedly contains %q: %s", clientName, sessionName, unwanted, line)
-			}
-			return nil
+	for _, run := range runs {
+		if slices.Contains(run, unwanted) {
+			return fmt.Errorf("deck client %q row %q unexpectedly contains %q: %s", clientName, sessionName, unwanted, strings.Join(run, " "))
 		}
 	}
-	return fmt.Errorf("deck client %q has no rendered row %q:\n%s", clientName, sessionName, frame)
+	return nil
 }
 
 // sessionMarkedDegraded writes the exact permission_profile_reason string

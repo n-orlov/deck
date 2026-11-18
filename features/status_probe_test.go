@@ -290,6 +290,31 @@ func frameSessionRowShows(frame, rowName, want string, knownNames []string) bool
 	if rowName == "" || want == "" {
 		return false
 	}
+	for _, badges := range frameSessionRowBadgeRuns(frame, rowName, knownNames) {
+		for _, b := range badges {
+			if b == want {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// frameSessionRowBadgeRuns returns the badge run of every sidebar row of
+// frame that session rowName owns (usually one), by the exact rule
+// frameSessionRowShows documents: only the sidebar cell of a line is read, a
+// group header is never a row, the cell must start with rowName and parse as
+// a badge run, and a longer known name that the cell also parses under owns
+// it instead. An empty result means rowName has no rendered sidebar row. A
+// per-row assertion (positive or negative) reads its row through this and
+// never through "the first terminal line containing the name": the preview
+// pane shares every line with the sidebar, and a pane that echoes the
+// session's name (a launch command line `--name=<name>`) is not its row.
+func frameSessionRowBadgeRuns(frame, rowName string, knownNames []string) [][]string {
+	var runs [][]string
+	if rowName == "" {
+		return runs
+	}
 	for _, line := range strings.Split(frame, "\n") {
 		cell, ok := sidebarCell(line)
 		if !ok || sidebarCellIsGroupHeader(cell) {
@@ -310,16 +335,40 @@ func frameSessionRowShows(frame, rowName, want string, knownNames []string) bool
 				}
 			}
 		}
-		if !owned {
-			continue
-		}
-		for _, b := range badges {
-			if b == want {
-				return true
-			}
+		if owned {
+			runs = append(runs, badges)
 		}
 	}
-	return false
+	return runs
+}
+
+// clientRowBadgeRuns reads client clientName's frame and the store's session
+// names and returns rowName's own sidebar badge runs (frameSessionRowBadgeRuns).
+// The error names the frame when the row is not rendered.
+func clientRowBadgeRuns(ctx context.Context, clientName, rowName string) ([][]string, error) {
+	h, err := assertionHarness(ctx)
+	if err != nil {
+		return nil, err
+	}
+	client, err := h.Client(clientName)
+	if err != nil {
+		return nil, err
+	}
+	db, err := openObservedDatabase(h)
+	if err != nil {
+		return nil, err
+	}
+	defer db.Close()
+	names, err := storeSessionNames(ctx, db)
+	if err != nil {
+		return nil, err
+	}
+	frame := client.Frame(false)
+	runs := frameSessionRowBadgeRuns(frame, rowName, names)
+	if len(runs) == 0 {
+		return nil, fmt.Errorf("deck client %q has no rendered sidebar row %q:\n%s", clientName, rowName, frame)
+	}
+	return runs, nil
 }
 
 // sidebarRowLeadGlyphs is every status glyph sidebarRowLines
