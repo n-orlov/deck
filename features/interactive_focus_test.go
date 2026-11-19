@@ -22,9 +22,20 @@ func registerInteractiveFocusSteps(sc *godog.ScenarioContext) {
 }
 
 // interactiveSettleBound is the fixed pause the enter/leave steps used to
-// take after their key, and is now only the longest they wait for the mode
-// change to show: SendAwaitingInteractive returns the moment the frame does.
+// take after their key. It now paces only a write whose target mode the
+// frame already showed beforehand, where no frame change can prove anything.
 const interactiveSettleBound = 150 * time.Millisecond
+
+// interactiveChangeBound is the longest the enter/leave steps wait for the
+// mode change to show; SendAwaitingInteractive returns the moment the frame
+// does, so the bound is paid in full only when the change never comes (a
+// refused entry, a cropped title). It is well above interactiveSettleBound
+// because entry and exit run several tmux commands synchronously inside
+// Update, and on a loaded host (the nightly's -race stability passes) exit
+// alone was measured at 180-245ms: a 150ms bound returned before the list
+// frame landed, and a following no-poll "screen does not contain" step read
+// the stale interactive frame.
+const interactiveChangeBound = 2 * time.Second
 
 // interactiveFrameMarker is the text only interactive mode's frame carries
 // (the preview title's "Ctrl+Q to leave" and the footer's "Ctrl+Q leave
@@ -33,14 +44,14 @@ const interactiveFrameMarker = "Ctrl+Q"
 
 // SendAwaitingInteractive writes keys, then waits until the frame shows
 // interactive mode (wantInteractive) or the list view again (!wantInteractive),
-// for at most interactiveSettleBound. deck's Update claims the window, arms
+// for at most interactiveChangeBound. deck's Update claims the window, arms
 // the transport and flips its interactive flag (or tears all of that down)
 // synchronously before the next View, so a frame that already shows the new
 // mode proves the whole entry or exit sequence has finished -- what the
 // fixed pause only hoped for. When the frame never shows the change (a
-// refused entry, a cropped title) the wait runs out the same bound the fixed
-// pause had, and a frame that already showed the target mode before the
-// write proves nothing, so it is paced for the full bound as before.
+// refused entry, a cropped title) the wait runs out interactiveChangeBound,
+// and a frame that already showed the target mode before the write proves
+// nothing, so it is paced for interactiveSettleBound as before.
 func (d *ScreenDriver) SendAwaitingInteractive(ctx context.Context, keys string, wantInteractive bool) error {
 	showing := func() bool { return strings.Contains(d.Frame(false), interactiveFrameMarker) }
 	already := showing() == wantInteractive
@@ -51,7 +62,7 @@ func (d *ScreenDriver) SendAwaitingInteractive(ctx context.Context, keys string,
 		time.Sleep(interactiveSettleBound)
 		return nil
 	}
-	waitCtx, cancel := context.WithTimeout(ctx, interactiveSettleBound)
+	waitCtx, cancel := context.WithTimeout(ctx, interactiveChangeBound)
 	defer cancel()
 	for showing() != wantInteractive {
 		select {

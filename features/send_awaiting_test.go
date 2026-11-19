@@ -132,6 +132,18 @@ func TestSendAwaitingInteractiveFollowsTheModeMarker(t *testing.T) {
 			t.Fatalf("returned while the interactive marker was still on screen:\n%s", frame)
 		}
 	})
+	t.Run("a leave slower than the settle pace is still waited for", func(t *testing.T) {
+		driver, ctx := startScriptDriver(t, "printf 'Ctrl+Q to leave'; read x; sleep 0.5; printf '\\033[2J\\033[Hback in the list'; cat >/dev/null\n")
+		if err := driver.WaitForFrame(ctx, false, interactiveFrameMarker); err != nil {
+			t.Fatal(err)
+		}
+		if err := driver.SendAwaitingInteractive(ctx, "\r", false); err != nil {
+			t.Fatal(err)
+		}
+		if frame := driver.Frame(false); strings.Contains(frame, interactiveFrameMarker) {
+			t.Fatalf("returned while a slow exit's interactive marker was still on screen:\n%s", frame)
+		}
+	})
 	t.Run("a mode that never changes is paced for the full bound", func(t *testing.T) {
 		driver, ctx := startScriptDriver(t, "printf list; cat >/dev/null\n")
 		if err := driver.WaitForFrame(ctx, false, "list"); err != nil {
@@ -141,8 +153,8 @@ func TestSendAwaitingInteractiveFollowsTheModeMarker(t *testing.T) {
 		if err := driver.SendAwaitingInteractive(ctx, "\r", true); err != nil {
 			t.Fatal(err)
 		}
-		if elapsed := time.Since(start); elapsed < interactiveSettleBound {
-			t.Fatalf("returned after %s, want the full %s bound (the frame never showed interactive mode)", elapsed, interactiveSettleBound)
+		if elapsed := time.Since(start); elapsed < interactiveChangeBound {
+			t.Fatalf("returned after %s, want the full %s bound (the frame never showed interactive mode)", elapsed, interactiveChangeBound)
 		}
 	})
 }
