@@ -176,3 +176,13 @@ func TestSelectionOnSidebarTopLineOnlyForTheFirstContentLine(t *testing.T) {
 		})
 	}
 }
+
+// Every standalone driver launches with attach_on_new off (GH #52), so a
+// test that creates a session and then presses a list key is not raced by
+// the create's own entry into the interactive preview.
+func TestScreenDriverLaunchesWithAttachOnNewOff(t *testing.T) {
+	driver, ctx := startScriptDriver(t, "printf 'attach_on_new=[%s]' \"$DECK_ATTACH_ON_NEW\"; cat >/dev/null\n")
+	if err := driver.WaitForFrame(ctx, false, "attach_on_new=[0]"); err != nil {
+		t.Fatalf("driver did not default DECK_ATTACH_ON_NEW to 0: %v\n%s", err, driver.Frame(false))
+	}
+}

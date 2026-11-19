@@ -146,7 +146,15 @@ func startScreenDriver(ctx context.Context, binary string, env []string, dir str
 	// A launched deck checks for a newer release by default, which reaches the
 	// public release endpoint. No scenario is about that, so the check is off
 	// unless the caller's env says otherwise (a later entry wins).
-	cmd.Env = append(append(os.Environ(), "DECK_UPDATE_CHECK=0"), env...)
+	//
+	// [ui] attach_on_new (GH #52) is likewise on by default and carries a
+	// create into the interactive preview once the new pane is live. A test
+	// that creates a session and then presses a list key races that entry:
+	// on a loaded host the entry lands first and the key is typed into the
+	// pane instead (TestMouseReportingReenabledAfterAttachDetachCycle's `a`
+	// became the shell's "aecho"). Tests are written against the list, so it
+	// is off too; the scenarios about it turn it back on the same way.
+	cmd.Env = append(append(os.Environ(), "DECK_UPDATE_CHECK=0", "DECK_ATTACH_ON_NEW=0"), env...)
 	cmd.Env = append(cmd.Env, "TERM=xterm-256color", fmt.Sprintf("COLUMNS=%d", cols), fmt.Sprintf("LINES=%d", rows))
 	terminal, err := pty.StartWithSize(cmd, &pty.Winsize{Rows: rows, Cols: cols})
 	if err != nil {
